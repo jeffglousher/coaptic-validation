@@ -1,0 +1,134 @@
+{
+  "repository": "https://github.com/jeffglousher/coaptic",
+  "source_revision": "b749218e13722cbe9fd9bda3a9cf6f51c489c245",
+  "source_pull_requests": [
+    332,
+    334,
+    335,
+    346
+  ],
+  "files": [
+    {
+      "path": "tools/esphome/build_archive.py",
+      "original_sha256": "098fe193fc66e1ebba0642b0a971f631a306f68a565e836f472527463814f301"
+    },
+    {
+      "path": "tools/esphome/coaptic_rust_probe/CMakeLists.txt",
+      "original_sha256": "cbf0ca0d7e8c829c5b576523d3deb2fcad6f0e46df6d971d84f87f5d627f47da"
+    },
+    {
+      "path": "tools/esphome/components/coaptic_network/__init__.py",
+      "original_sha256": "9a90289203ae420c402f79370e681cbed883ef97c5ca8b81f354ccd73e4607b9"
+    },
+    {
+      "path": "tools/esphome/components/coaptic_network/coaptic_network.cpp",
+      "original_sha256": "ba74109f10a136aa4ff7c0bff909d0a8e447e62fd1565a41f5612cc3ae58808b"
+    },
+    {
+      "path": "tools/esphome/components/coaptic_network/coaptic_network.h",
+      "original_sha256": "14b73746226121afb75c71e37a3f29e97db9345e3cc3a75ec16d421a8bd86df4"
+    },
+    {
+      "path": "tools/esphome/components/coaptic_network/coaptic_rust_network/CMakeLists.txt",
+      "original_sha256": "3cd6a600c5809145782159ee8ed847989799102be0899ceef668a686ca3595eb"
+    },
+    {
+      "path": "tools/esphome/components/coaptic_probe/__init__.py",
+      "original_sha256": "7ecfafee726c6bd5a9e6568874e37b53f11dcf403fa6e7d887b53cce4bb07c1d"
+    },
+    {
+      "path": "tools/esphome/components/coaptic_probe/coaptic_probe.cpp",
+      "original_sha256": "4844b4e53aefe26889cd9433cc2cdc278c34f0e92ee294082c09b287c9770696"
+    },
+    {
+      "path": "tools/esphome/components/coaptic_probe/coaptic_probe.h",
+      "original_sha256": "a144910f59150b6c5e8fef97c07039b7f28ffb06438ea0347f4f14290d29fdf1"
+    },
+    {
+      "path": "tools/esphome/rust/Cargo.lock",
+      "original_sha256": "daa0af49661074db71a22820f2ef3930329911316105b4996e581f03cde11880"
+    },
+    {
+      "path": "tools/esphome/rust/Cargo.toml",
+      "original_sha256": "f34137c8e196509610b11577b7e0addf939d27a94b47e8d0291bdfebe1877550"
+    },
+    {
+      "path": "tools/esphome/rust/src/lib.rs",
+      "original_sha256": "980c710bfc73bb18c2c18bd605a1c38dfe57498f86f56a6b05ad7c0a8d250e05"
+    },
+    {
+      "path": "tools/esphome/rust/src/network.rs",
+      "original_sha256": "83b3765e9ab181a40f24e24eda7067340b47980def3257f386fcfb4809a0df91"
+    },
+    {
+      "path": "tools/esphome/rust/src/network_ffi.rs",
+      "original_sha256": "642bbe159565ab77875686aa08f32719646522358b13bb7e3712952ef28aae71"
+    },
+    {
+      "path": "tools/esphome/test_configuration.py",
+      "original_sha256": "dc94bbe8e6735346b40e069e3bad81beb3212cca9b402a69b5a7fbbec9d9845f"
+    },
+    {
+      "path": "tools/qualification/esp32/Cargo.lock",
+      "original_sha256": "a2804eb38ecda792171943811293645ee8545e5d2a37e3ff3b8ecd998f59d952"
+    },
+    {
+      "path": "tools/qualification/esp32/Cargo.toml",
+      "original_sha256": "c66d541d3c8d696ed2f1dda3d6850ad3741b407ef0fb9144bcb8100d697c4bcf"
+    },
+    {
+      "path": "tools/qualification/esp32/build.rs",
+      "original_sha256": "fc1c43d1f3cf7ae4a3037a9cc684aef2ab3f005d91b732f26a58b9e97cdae609"
+    },
+    {
+      "path": "tools/qualification/esp32/src/main.rs",
+      "original_sha256": "7cfbcfb23671a246b101e4c74ed70d6ffd0025be7a6950af7a1f076fcd0ae1e2"
+    },
+    {
+      "path": "tools/qualification/esp32.py",
+      "original_sha256": "e5f4e4b78330e10aa91c85b1a74fb721fa2623e9dbc36a4d0fdfb4f63fd05671"
+    },
+    {
+      "path": "tools/qualification/esp32_detect.py",
+      "original_sha256": "3b89b31a9bf42a826e835f02fd45a25c4a2b4d1a37105b026bcab381096527e2"
+    },
+    {
+      "path": "tools/qualification/esphome_capture.py",
+      "original_sha256": "d6f6337b94f0b5dd9d9d6fdf2b6da22758574c5ed9ffb6395415c02a630337c0"
+    },
+    {
+      "path": "tools/qualification/esphome_network.py",
+      "original_sha256": "3fb66d7077c7bdf663dadd0c0a28e2f8bd6b4437c442c3e6eb83b7702caf3e8e"
+    },
+    {
+      "path": "tools/qualification/esphome_probe.py",
+      "original_sha256": "4c4b06e399992f04a16844e6cfbe078577ea90fe46c558f50d0d9381df162a6e"
+    },
+    {
+      "path": "tools/qualification/network_peer.py",
+      "original_sha256": "bc39805c144aabb6acb8346b3c5739996db951c03572428963d36aec354e90c9"
+    },
+    {
+      "path": "tools/qualification/test_esp32.py",
+      "original_sha256": "64ea6d36016535718882ad3ea8d9f1e23a3f64351d119dec73fa5439edf375fa"
+    },
+    {
+      "path": "tools/qualification/test_esp32_detect.py",
+      "original_sha256": "3150f8fe3efacf86c3dc95ab54381220aff296923cc83c474e2f0cc7ec057dc7"
+    },
+    {
+      "path": "crates/qualification-no-std/examples/runtime.rs",
+      "original_sha256": "1ee810885d9d5b6c865bd7cd2c0d2129eaeb97d3f05777dc45a8b27fb8de28fa"
+    },
+    {
+      "path": "crates/qualification-no-std/src/lib.rs",
+      "original_sha256": "c494ae5839d77dfdd6040a80ced04e2e1cc81493c9847e49882f0526ebe900da",
+      "scope": "Runtime probe appended; existing current code-generation implementation retained."
+    }
+  ],
+  "omitted": [
+    "compiled static archive/build report",
+    "stale branch/board/run-ID example"
+  ],
+  "limitation": "Original source before companion adaptations; no device result attributed to the migrated candidate."
+}

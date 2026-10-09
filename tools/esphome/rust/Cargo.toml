@@ -1,0 +1,31 @@
+[package]
+name = "coaptic-esphome-probe"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+oscore = ["qualification-no-std/oscore"]
+network = ["dep:coaptic", "dep:critical-section"]
+library-only = []
+standalone = []
+
+[dependencies]
+qualification-no-std = { path = "../../../crates/qualification-no-std" }
+coaptic = { path = "../../../coaptic", default-features = false, optional = true }
+critical-section = { version = "1.2.0", optional = true }
+
+[target.'cfg(not(target_os = "none"))'.dependencies]
+critical-section = { version = "1.2.0", features = ["std"], optional = true }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"

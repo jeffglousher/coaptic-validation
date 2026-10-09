@@ -5,7 +5,8 @@ import subprocess
 
 SUITE = Path(__file__).resolve().parents[1]
 LIBRARY = SUITE / "coaptic"
-LOCKS = ("Cargo.lock", "tools/benchmark/native/Cargo.lock", "tools/security-interop/Cargo.lock", "tools/security-profile/Cargo.lock")
+LOCKS = ("Cargo.lock", "tools/benchmark/native/Cargo.lock", "tools/security-interop/Cargo.lock", "tools/security-profile/Cargo.lock",
+         "tools/esphome/rust/Cargo.lock", "tools/qualification/esp32/Cargo.lock")
 
 def git(root, *arguments):
     return subprocess.check_output(["git", "-C", str(root), *arguments], text=True).strip()

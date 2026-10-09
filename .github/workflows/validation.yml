@@ -341,6 +341,38 @@ jobs:
       - run: cargo test --locked -p coaptic-plugtest --features dtls,oscore
       - run: cargo run --locked -p coaptic-plugtest --bin dogfood -- --iterations 2 --compare crates/coaptic-plugtest/baselines/dogfood.json
       - run: cargo run --locked -p coaptic-plugtest --features oscore --bin dogfood -- --oscore --iterations 2 --compare crates/coaptic-plugtest/baselines/dogfood-oscore.json
+  esphome-configuration:
+    name: Custom ESPHome source and configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: jeffglousher/coaptic-validation
+          ref: ${{ inputs.suite_revision }}
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.library_repository }}
+          ref: ${{ inputs.library_revision }}
+          path: coaptic
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
+        with:
+          toolchain: 1.97.1
+          components: rustfmt, clippy
+      - name: Verify source and prepare pinned path dependencies
+        env:
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+      - run: python -m pip install esphome==2026.9.1
+      - run: python -m unittest discover -s tools/esphome -p 'test_*.py'
+      - run: cargo fmt --manifest-path tools/esphome/rust/Cargo.toml -- --check
+      - run: cargo clippy --locked --manifest-path tools/esphome/rust/Cargo.toml --all-targets --features network,oscore -- -D warnings
+      - run: cargo test --locked --manifest-path tools/esphome/rust/Cargo.toml --features network,oscore
   supervisor-tests:
     name: Validation runner tests
     runs-on: ubuntu-latest
