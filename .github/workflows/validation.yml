@@ -37,7 +37,10 @@ jobs:
           path: coaptic
           persist-credentials: false
       - name: Verify source and prepare pinned path dependencies
-        run: python tools/prepare.py --expected-revision "${{ inputs.library_revision }}" --output "${{ runner.temp }}/validation-source.json"
+        shell: bash
+        env:
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
           toolchain: 1.97.1
@@ -81,7 +84,10 @@ jobs:
           path: coaptic
           persist-credentials: false
       - name: Verify source and prepare pinned path dependencies
-        run: python tools/prepare.py --expected-revision "${{ inputs.library_revision }}" --output "${{ runner.temp }}/validation-source.json"
+        shell: bash
+        env:
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
           toolchain: 1.97.1
@@ -122,7 +128,10 @@ jobs:
           path: coaptic
           persist-credentials: false
       - name: Verify source and prepare pinned path dependencies
-        run: python tools/prepare.py --expected-revision "${{ inputs.library_revision }}" --output "${{ runner.temp }}/validation-source.json"
+        shell: bash
+        env:
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
           toolchain: 1.97.1
@@ -159,7 +168,10 @@ jobs:
           path: coaptic
           persist-credentials: false
       - name: Verify source and prepare pinned path dependencies
-        run: python tools/prepare.py --expected-revision "${{ inputs.library_revision }}" --output "${{ runner.temp }}/validation-source.json"
+        shell: bash
+        env:
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
           toolchain: 1.97.1
@@ -195,7 +207,10 @@ jobs:
           path: coaptic
           persist-credentials: false
       - name: Verify source and prepare pinned path dependencies
-        run: python tools/prepare.py --expected-revision "${{ inputs.library_revision }}" --output "${{ runner.temp }}/validation-source.json"
+        shell: bash
+        env:
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
           toolchain: 1.97.1
@@ -226,7 +241,10 @@ jobs:
           path: coaptic
           persist-credentials: false
       - name: Verify source and prepare pinned path dependencies
-        run: python tools/prepare.py --expected-revision "${{ inputs.library_revision }}" --output "${{ runner.temp }}/validation-source.json"
+        shell: bash
+        env:
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
           toolchain: 1.97.1
@@ -257,7 +275,10 @@ jobs:
           path: coaptic
           persist-credentials: false
       - name: Verify source and prepare pinned path dependencies
-        run: python tools/prepare.py --expected-revision "${{ inputs.library_revision }}" --output "${{ runner.temp }}/validation-source.json"
+        shell: bash
+        env:
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
           toolchain: stable
@@ -306,7 +327,10 @@ jobs:
           path: coaptic
           persist-credentials: false
       - name: Verify source and prepare pinned path dependencies
-        run: python tools/prepare.py --expected-revision "${{ inputs.library_revision }}" --output "${{ runner.temp }}/validation-source.json"
+        shell: bash
+        env:
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
         with:
           toolchain: stable
@@ -333,7 +357,10 @@ jobs:
           path: coaptic
           persist-credentials: false
       - name: Verify source and prepare pinned path dependencies
-        run: python tools/prepare.py --expected-revision "${{ inputs.library_revision }}" --output "${{ runner.temp }}/validation-source.json"
+        shell: bash
+        env:
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: '3.13'
