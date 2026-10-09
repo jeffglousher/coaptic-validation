@@ -65,8 +65,9 @@ def main():
     parser.add_argument("--work-root", type=Path, required=True)
     parser.add_argument("--branches", action="store_true")
     args = parser.parse_args()
-    os.chdir(ROOT)
     args.output = args.output.resolve()
+    args.work_root = args.work_root.resolve()
+    os.chdir(ROOT)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.work_root.mkdir(parents=True, exist_ok=True)
     # Fresh directory prevents stale profiles or cached artifacts passing a run.

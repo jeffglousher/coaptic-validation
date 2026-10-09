@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--target", choices=TARGETS, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    args.output = args.output.resolve()
     os.chdir(ROOT)
     rustc = subprocess.check_output(["rustc", "+" + TOOLCHAIN, "--version", "--verbose"], text=True)
     report = {"schema": "coaptic-cross-build/1", **source_identity(),

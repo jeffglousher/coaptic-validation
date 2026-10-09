@@ -27,6 +27,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    args.output = args.output.resolve()
     os.chdir(ROOT)
     report = {"schema": "coaptic-seeded-qualification/1",
               **source_identity(),
