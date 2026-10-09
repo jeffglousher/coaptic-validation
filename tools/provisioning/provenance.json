@@ -1,0 +1,16 @@
+{
+  "repository": "https://github.com/jeffglousher/coaptic",
+  "source_revision": "fc60098f30bbcc996ca8a83290e2188999673ad8",
+  "source_pull_request": 366,
+  "files": [
+    {
+      "path": "tools/provisioning/receipt_store.py",
+      "sha256": "9a2d13c9a3d918c14de26c946ac84909b55caac64c29b9d8c63cae2e2dca4e18"
+    },
+    {
+      "path": "tools/provisioning/test_receipt_store.py",
+      "sha256": "dea4832ad43254273d49135edec54547b9201e943ff812cd605ece258c72ed32"
+    }
+  ],
+  "limitation": "Host SQLite fixtures; no production authority, protected backup or flash power-loss qualification."
+}
