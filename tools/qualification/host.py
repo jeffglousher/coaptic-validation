@@ -96,6 +96,10 @@ def run_case(name, flags, execute=subprocess.run, *, target=None):
         environment = os.environ.copy()
         environment["CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_RUNNER"] = " ".join(RUNNER)
         environment["CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_LINKER"] = LINKER
+        # binfmt launches child executables without the parent's -L argument.
+        # QEMU's inherited interpreter prefix keeps process-recovery workers
+        # on the same target sysroot. It does not alter the native host loader.
+        environment["QEMU_LD_PREFIX"] = RUNNER[2]
         execution["env"] = environment
     timed_out = False
     try:
@@ -117,6 +121,7 @@ def run_case(name, flags, execute=subprocess.run, *, target=None):
             passed = False
     return {"features": name, "command": command, "target": target,
             "runner": RUNNER if target == EMULATED else None,
+            "runner_environment": {"QEMU_LD_PREFIX": RUNNER[2]} if target == EMULATED else {},
             "executables": artifacts, "executable_error": artifact_error,
             "passed": passed, "exit_code": code,
             "timed_out": timed_out, "executed": executed, "ignored": sum(ignored for _, ignored in summaries),

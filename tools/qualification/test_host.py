@@ -107,11 +107,13 @@ class TargetEvidenceTests(unittest.TestCase):
                 self.assertIn("--tests", command)
                 self.assertIn("--test-threads=1", command)
                 self.assertEqual(kwargs["env"]["CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_RUNNER"], "qemu-s390x -L /usr/s390x-linux-gnu")
+                self.assertEqual(kwargs["env"]["QEMU_LD_PREFIX"], "/usr/s390x-linux-gnu")
                 output = json.dumps({"reason": "compiler-artifact", "profile": {"test": True}, "executable": str(path)})
                 return subprocess.CompletedProcess(command, 0, output + "\ntest result: ok. 9 passed; 0 failed; 0 ignored;", "")
             result = run_case("core", [], execute, target="s390x-unknown-linux-gnu")
             self.assertTrue(result["passed"])
             self.assertEqual(result["executables"][0]["byte_order"], "big")
+            self.assertEqual(result["runner_environment"], {"QEMU_LD_PREFIX": "/usr/s390x-linux-gnu"})
             data[5] = 1
             data[18:20] = (22).to_bytes(2, "little")
             path.write_bytes(data)
