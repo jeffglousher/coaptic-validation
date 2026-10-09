@@ -56,6 +56,8 @@ Fuzzing uses fresh seeded corpora, bounded time/inputs/memory, three semantic
 oracles and nonzero execution/feedback requirements. Reports retain both source
 revisions and the fuzz lock hash. The coverage report also requires execution
 of 18 named RFC requirement proofs; this inventory is selected, not exhaustive.
+On Windows, supply `--asan-runtime-directory` for the installed MSVC ASan DLL;
+the runner adds it only to the campaign environment and records its hash.
 Device execution, stack limits, physical power-loss recovery, and full
 RFC conformance remain separate qualification work. Performance results are
 preliminary and must retain commands, environment, source revisions, and setup

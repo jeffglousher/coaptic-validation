@@ -23,12 +23,12 @@ def snapshot():
     return {**source_identity(), "fuzz_lock_sha256": hashlib.sha256((ROOT / "fuzz/Cargo.lock").read_bytes()).hexdigest()}
 
 
-def run_campaign(command, seconds, directory, execute=subprocess.run):
+def run_campaign(command, seconds, directory, execute=subprocess.run, *, env=None):
     row = {"command": command, "passed": False}
     paths = {name: directory / (name + ".log") for name in ("stdout", "stderr")}
     try:
         with paths["stdout"].open("wb") as stdout, paths["stderr"].open("wb") as stderr:
-            result = execute(command, stdout=stdout, stderr=stderr, timeout=seconds + 900)
+            result = execute(command, stdout=stdout, stderr=stderr, timeout=seconds + 900, env=env)
         row["exit_code"] = result.returncode
         for name, path in paths.items():
             row[name + "_file"] = str(path)
@@ -58,9 +58,19 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--seconds", type=int, default=60)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--asan-runtime-directory", type=Path,
+                        help="Windows directory containing clang_rt.asan_dynamic-x86_64.dll")
     args = parser.parse_args()
     if not 1 <= args.seconds <= 3600:
         parser.error("--seconds must be in 1..3600")
+    env = os.environ.copy()
+    runtime = None
+    if args.asan_runtime_directory is not None:
+        dll = args.asan_runtime_directory.resolve() / "clang_rt.asan_dynamic-x86_64.dll"
+        if not dll.is_file():
+            parser.error("ASan runtime DLL is missing from the specified directory")
+        env["PATH"] = str(dll.parent) + os.pathsep + env.get("PATH", "")
+        runtime = {"path": str(dll), "sha256": hashlib.sha256(dll.read_bytes()).hexdigest()}
     args.output = args.output.resolve()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     os.chdir(ROOT)
@@ -75,7 +85,7 @@ def main():
     if snapshot() != before:
         raise ValueError("source or prepared lockfiles changed during preflight")
     report = {"schema": "coaptic-fuzz/1", "passed": False,
-              **before, "work_directory": str(work),
+              **before, "work_directory": str(work), "asan_runtime": runtime,
               "compiler": subprocess.check_output(["rustc", "+" + TOOLCHAIN, "--version", "--verbose"], text=True),
               "cargo_fuzz": subprocess.check_output(["cargo", "fuzz", "--version"], text=True).strip(),
               "scope": "Coverage-guided libFuzzer campaigns with address sanitizer and semantic oracles",
@@ -91,7 +101,7 @@ def main():
                    f"-max_total_time={args.seconds}", "-runs=1000000", "-max_len=4096", "-timeout=10",
                    "-rss_limit_mb=1024", "-malloc_limit_mb=64", "-seed=9177", "-print_final_stats=1",
                    "-artifact_prefix=" + str(directory) + os.sep]
-        row = {"target": target, **run_campaign(command, args.seconds, directory)}
+        row = {"target": target, **run_campaign(command, args.seconds, directory, env=env)}
         if snapshot() != before:
             row.update(passed=False, error="source or prepared lockfiles changed during campaign")
         report["campaigns"].append(row)

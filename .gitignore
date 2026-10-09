@@ -4,3 +4,4 @@
 *.pdb
 *.rs.bk
 /tools/esphome/components/coaptic_network/lib/
+/fuzz/artifacts/
