@@ -34,7 +34,9 @@ class Eligibility(unittest.TestCase):
 
             argv = ["repeat", "--baseline", str(baseline), "--candidate", str(candidate),
                     "--runs", "1", "--operations", "1", "--output", str(output)]
-            with patch.object(sys, "argv", argv), patch.object(repeat.subprocess, "run", invoke), contextlib.redirect_stdout(io.StringIO()):
+            with patch.object(sys, "argv", argv), patch.object(repeat.subprocess, "run", invoke), \
+                 patch.object(repeat.platform, "platform", return_value="test-platform"), \
+                 contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(repeat.main(), 1)
             report = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(len(report["cells"]), 4)
