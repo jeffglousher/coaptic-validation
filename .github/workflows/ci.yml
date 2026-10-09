@@ -1,0 +1,23 @@
+name: Suite CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      library_revision:
+        description: Full Coaptic commit SHA
+        default: "992ee4408a417de12422201caab1562b26fc6c7e"
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: suite-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  validation:
+    uses: ./.github/workflows/validation.yml
+    with:
+      suite_revision: ${{ github.sha }}
+      library_repository: jeffglousher/coaptic
+      library_revision: ${{ inputs.library_revision || '992ee4408a417de12422201caab1562b26fc6c7e' }}

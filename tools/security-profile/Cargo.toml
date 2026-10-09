@@ -1,0 +1,15 @@
+[package]
+name = "coaptic-security-profile"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+coaptic = { path = "../../coaptic", default-features = false, features = ["oscore"] }
+getrandom = "=0.3.4"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

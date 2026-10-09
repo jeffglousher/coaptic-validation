@@ -1,0 +1,4 @@
+[workspace]
+members = ["crates/coaptic-plugtest", "crates/peer-coaptic", "crates/peer-coap-rs", "crates/qualification-no-std"]
+exclude = ["coaptic"]
+resolver = "2"

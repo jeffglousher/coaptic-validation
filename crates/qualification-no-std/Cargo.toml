@@ -1,0 +1,17 @@
+[package]
+name = "qualification-no-std"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+test = false
+doctest = false
+
+[features]
+default = []
+alloc = ["coaptic/alloc"]
+oscore = ["coaptic/oscore"]
+
+[dependencies]
+coaptic = { path = "../../coaptic", default-features = false }

@@ -1,0 +1,14 @@
+[package]
+name = "bench-rust-server"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[dependencies]
+coaptic = { path = "../../../../coaptic", default-features = false, features = ["std"] }
+coap = { version = "=0.28.1", default-features = false }
+coap-lite = "=0.13.3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "io-util"] }
+getrandom = "=0.3.4"
+mio = { version = "=1.2.4", features = ["net", "os-poll"] }

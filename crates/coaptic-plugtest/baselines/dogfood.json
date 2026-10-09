@@ -1,0 +1,328 @@
+{
+  "schema": "coaptic-dogfood/1",
+  "caveat": "Wall timings are host/load specific (printed as delta, not a fail). Path-proving Metrics floors fail the run on regression. Mixed-pair sum(block1_assemble)+sum(block2_assemble) is a floor (N=2 smoke lock, not a perf SLA). progress is informational.",
+  "host": null,
+  "iterations": 2,
+  "timeout_ms": 1500,
+  "block_timeout_ms": 4000,
+  "wall_s": 0.057090267,
+  "observe_collected": 2,
+  "observe_notify": 2,
+  "oscore": false,
+  "pairs": [
+    {
+      "name": "coap-rs → coaptic",
+      "series": [
+        {
+          "label": "GET /test",
+          "n": 2,
+          "wall_ms": {
+            "min": 0.11,
+            "mean": 0.391,
+            "p50": 0.11,
+            "p99": 0.672,
+            "max": 0.672
+          }
+        },
+        {
+          "label": "PUT /test",
+          "n": 2,
+          "wall_ms": {
+            "min": 0.1,
+            "mean": 0.2545,
+            "p50": 0.1,
+            "p99": 0.409,
+            "max": 0.409
+          }
+        },
+        {
+          "label": "POST /test",
+          "n": 2,
+          "wall_ms": {
+            "min": 0.14,
+            "mean": 0.14,
+            "p50": 0.14,
+            "p99": 0.14,
+            "max": 0.14
+          }
+        },
+        {
+          "label": "OBS GET /obs",
+          "n": 2,
+          "wall_ms": {
+            "min": 0.109,
+            "mean": 0.1225,
+            "p50": 0.109,
+            "p99": 0.136,
+            "max": 0.136
+          }
+        },
+        {
+          "label": "BLOCK2 GET /large",
+          "n": 2,
+          "wall_ms": {
+            "min": 0.229,
+            "mean": 0.2485,
+            "p50": 0.229,
+            "p99": 0.268,
+            "max": 0.268
+          }
+        },
+        {
+          "label": "BLOCK1 PUT /large-update",
+          "n": 2,
+          "wall_ms": {
+            "min": 0.168,
+            "mean": 0.171,
+            "p50": 0.168,
+            "p99": 0.174,
+            "max": 0.174
+          }
+        },
+        {
+          "label": "LOOP (all verbs)",
+          "n": 2,
+          "wall_ms": {
+            "min": 1.04,
+            "mean": 1.4735,
+            "p50": 1.04,
+            "p99": 1.907,
+            "max": 1.907
+          }
+        }
+      ],
+      "occupancy": "occupancy rx=0 tx=0",
+      "now_ms": 8,
+      "metrics": {
+        "rx_accepted": 18,
+        "rx_error": 0,
+        "tx_ok": 18,
+        "tx_fail": 0,
+        "con_retransmit": 0,
+        "give_up": 0,
+        "observe_notify": 0,
+        "observe_register": 2,
+        "observe_cancel": 2,
+        "block1_assemble": 4,
+        "block2_assemble": 0,
+        "progress": 1396,
+        "saturated": 0,
+        "nstart_reject": 0,
+        "empty_ack": 0,
+        "empty_rst": 0
+      }
+    },
+    {
+      "name": "coaptic → coap-rs",
+      "series": [
+        {
+          "label": "GET /test",
+          "n": 2,
+          "wall_ms": {
+            "min": 0.063,
+            "mean": 0.228,
+            "p50": 0.063,
+            "p99": 0.393,
+            "max": 0.393
+          },
+          "engine_delta_ms": {
+            "min": 0,
+            "mean": 0.0,
+            "max": 0
+          }
+        },
+        {
+          "label": "PUT /test",
+          "n": 2,
+          "wall_ms": {
+            "min": 0.058,
+            "mean": 0.2105,
+            "p50": 0.058,
+            "p99": 0.363,
+            "max": 0.363
+          },
+          "engine_delta_ms": {
+            "min": 0,
+            "mean": 0.0,
+            "max": 0
+          }
+        },
+        {
+          "label": "POST /test",
+          "n": 2,
+          "wall_ms": {
+            "min": 0.058,
+            "mean": 0.0585,
+            "p50": 0.058,
+            "p99": 0.059,
+            "max": 0.059
+          },
+          "engine_delta_ms": {
+            "min": 0,
+            "mean": 0.0,
+            "max": 0
+          }
+        },
+        {
+          "label": "OBS GET /obs",
+          "n": 2,
+          "wall_ms": {
+            "min": 0.057,
+            "mean": 0.0655,
+            "p50": 0.057,
+            "p99": 0.074,
+            "max": 0.074
+          },
+          "engine_delta_ms": {
+            "min": 0,
+            "mean": 0.0,
+            "max": 0
+          }
+        },
+        {
+          "label": "BLOCK2 GET /large",
+          "n": 2,
+          "wall_ms": {
+            "min": 0.132,
+            "mean": 0.149,
+            "p50": 0.132,
+            "p99": 0.166,
+            "max": 0.166
+          },
+          "engine_delta_ms": {
+            "min": 0,
+            "mean": 0.5,
+            "max": 1
+          }
+        },
+        {
+          "label": "BLOCK1 PUT /large-update",
+          "n": 2,
+          "wall_ms": {
+            "min": 0.154,
+            "mean": 0.1805,
+            "p50": 0.154,
+            "p99": 0.207,
+            "max": 0.207
+          },
+          "engine_delta_ms": {
+            "min": 0,
+            "mean": 0.0,
+            "max": 0
+          }
+        },
+        {
+          "label": "LOOP (all verbs)",
+          "n": 2,
+          "wall_ms": {
+            "min": 0.585,
+            "mean": 0.962,
+            "p50": 0.585,
+            "p99": 1.339,
+            "max": 1.339
+          },
+          "engine_delta_ms": {
+            "min": 0,
+            "mean": 0.5,
+            "max": 1
+          }
+        }
+      ],
+      "occupancy": "occupancy rx=0 tx=0",
+      "now_ms": 1,
+      "metrics": {
+        "rx_accepted": 18,
+        "rx_error": 0,
+        "tx_ok": 18,
+        "tx_fail": 0,
+        "con_retransmit": 0,
+        "give_up": 0,
+        "observe_notify": 0,
+        "observe_register": 2,
+        "observe_cancel": 2,
+        "block1_assemble": 0,
+        "block2_assemble": 4,
+        "progress": 946,
+        "saturated": 0,
+        "nstart_reject": 0,
+        "empty_ack": 0,
+        "empty_rst": 0
+      },
+      "capacities": "rx_dgram=4/1472 tx_dgram=4/1472 dedup=8 observe=4 rx_body=Some(2)xSome(4096) tx_body=Some(2)xSome(4096)"
+    },
+    {
+      "name": "coaptic ↔ coaptic observe notify",
+      "series": [
+        {
+          "label": "OBS register /obs",
+          "n": 2,
+          "wall_ms": {
+            "min": 0.027,
+            "mean": 0.0675,
+            "p50": 0.027,
+            "p99": 0.108,
+            "max": 0.108
+          },
+          "engine_delta_ms": {
+            "min": 0,
+            "mean": 0.0,
+            "max": 0
+          }
+        },
+        {
+          "label": "OBS notify /obs",
+          "n": 2,
+          "wall_ms": {
+            "min": 0.012,
+            "mean": 0.0175,
+            "p50": 0.012,
+            "p99": 0.023,
+            "max": 0.023
+          },
+          "engine_delta_ms": {
+            "min": 0,
+            "mean": 0.0,
+            "max": 0
+          }
+        },
+        {
+          "label": "OBS collect (reg+notify)",
+          "n": 2,
+          "wall_ms": {
+            "min": 0.065,
+            "mean": 0.117,
+            "p50": 0.065,
+            "p99": 0.169,
+            "max": 0.169
+          },
+          "engine_delta_ms": {
+            "min": 0,
+            "mean": 0.0,
+            "max": 0
+          }
+        }
+      ],
+      "occupancy": "occupancy rx=0 tx=0",
+      "now_ms": 5,
+      "metrics": {
+        "rx_accepted": 4,
+        "rx_error": 0,
+        "tx_ok": 6,
+        "tx_fail": 0,
+        "con_retransmit": 0,
+        "give_up": 0,
+        "observe_notify": 2,
+        "observe_register": 2,
+        "observe_cancel": 2,
+        "block1_assemble": 0,
+        "block2_assemble": 0,
+        "progress": 109,
+        "saturated": 0,
+        "nstart_reject": 0,
+        "empty_ack": 0,
+        "empty_rst": 0
+      },
+      "collected": 2
+    }
+  ]
+}

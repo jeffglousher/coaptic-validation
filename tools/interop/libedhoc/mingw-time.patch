@@ -1,0 +1,13 @@
+diff --git a/backends/log/include/edhoc_backend_log.h b/backends/log/include/edhoc_backend_log.h
+--- a/backends/log/include/edhoc_backend_log.h
++++ b/backends/log/include/edhoc_backend_log.h
+@@ -186,7 +186,8 @@ static inline void edhoc_log_get_timestamp(char *buffer, size_t size)
+ 	struct tm *tm_info;
+ 
+ 	gettimeofday(&tv, NULL);
+-	tm_info = localtime(&tv.tv_sec);
++	const time_t timestamp = (time_t)tv.tv_sec;
++	tm_info = localtime(&timestamp);
+ 
+ 	const int milliseconds = (int)(tv.tv_usec / 1000);
+ 	const int microseconds = (int)(tv.tv_usec % 1000);

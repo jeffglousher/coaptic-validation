@@ -1,0 +1,5 @@
+/coaptic/
+**/target/
+**/__pycache__/
+*.pdb
+*.rs.bk

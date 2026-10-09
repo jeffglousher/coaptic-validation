@@ -1,0 +1,15 @@
+[workspace]
+
+[package]
+name = "coaptic-security-interop"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+coaptic = { path = "../../coaptic", default-features = false, features = ["std", "oscore"] }
+getrandom = "=0.3.4"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
