@@ -4,10 +4,33 @@ import json
 import tempfile
 from pathlib import Path
 import unittest
-from host import CASES, run_case, run_matrix, binary_identity
+import os
+import sys
+import time
+from host import CASES, run_case, run_matrix, binary_identity, emulated_process
 
 
 class HostEvidenceTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "QEMU user-mode runner owns a POSIX process group")
+    def test_timeout_kills_descendants_holding_output_pipes(self):
+        script = "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); print('started',flush=True); time.sleep(60)"
+        started = time.monotonic()
+        with self.assertRaises(subprocess.TimeoutExpired) as caught:
+            emulated_process([sys.executable, "-c", script], timeout=1,
+                             capture_output=True, text=True, encoding="utf-8")
+        self.assertIn("started", caught.exception.output)
+        self.assertLess(time.monotonic() - started, 10)
+        result = emulated_process([sys.executable, "-c", "print('complete')"], timeout=5,
+                                  capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual((result.returncode, result.stdout.strip()), (0, "complete"))
+
+    def test_matrix_checkpoints_each_case_without_false_final_pass(self):
+        recorded = []
+        execute = lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "test result: ok. 1 passed; 0 failed; 0 ignored;", "")
+        results = run_matrix(execute, checkpoint=lambda cases: recorded.append(list(cases)))
+        self.assertEqual([len(cases) for cases in recorded], list(range(1, len(CASES) + 1)))
+        self.assertEqual(recorded[-1], results)
+
     def test_records_executed_and_ignored_counts(self):
         def execute(command, **kwargs):
             self.assertEqual(command[:5], ["cargo", "+1.97.1", "test", "--locked", "-p"])

@@ -1,4 +1,5 @@
 import sys
+import signal
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from source_identity import source_identity
@@ -83,7 +84,26 @@ def executable_evidence(stdout, target):
     return artifacts
 
 
-def run_case(name, flags, execute=subprocess.run, *, target=None):
+def emulated_process(command, *, timeout, **kwargs):
+    """Own the POSIX Cargo/QEMU process group through timeout and pipe cleanup."""
+    kwargs.pop("capture_output", None)
+    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          start_new_session=True, **kwargs) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            stdout, stderr = process.communicate(timeout=5)
+            raise subprocess.TimeoutExpired(command, timeout, output=stdout, stderr=stderr)
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
+def run_case(name, flags, execute=None, *, target=None):
+    if execute is None:
+        execute = emulated_process if target == EMULATED else subprocess.run
     command = ["cargo", "+" + TOOLCHAIN, "test", "--locked", "-p", "coaptic", *flags]
     if target is not None:
         if target not in TARGETS:
@@ -103,7 +123,8 @@ def run_case(name, flags, execute=subprocess.run, *, target=None):
         execution["env"] = environment
     timed_out = False
     try:
-        result = execute(command, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900, **execution)
+        result = execute(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                         timeout=600 if target == EMULATED else 900, **execution)
         code, stdout, stderr = result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired as error:
         code, stdout, stderr, timed_out = None, text(error.stdout), text(error.stderr), True
@@ -128,11 +149,13 @@ def run_case(name, flags, execute=subprocess.run, *, target=None):
             "stdout": stdout, "stderr": stderr}
 
 
-def run_matrix(execute=subprocess.run, *, target=None):
+def run_matrix(execute=None, *, target=None, checkpoint=None):
     cases = []
     for name, flags in CASES:
         result = run_case(name, flags, execute, target=target)
         cases.append(result)
+        if checkpoint is not None:
+            checkpoint(cases)
         print(("PASS" if result["passed"] else "FAIL") + " " + name, flush=True)
     return cases
 
@@ -165,7 +188,13 @@ def main():
               "target": args.target, "emulation_tools": emulation_tools(args.target),
               "scope": "Library unit/integration execution under qemu-s390x in six feature configurations; big-endian ELF headers and nonzero executed tests required; rustdoc excluded" if args.target == EMULATED else "Library test execution in six feature configurations; explicit 32-bit targets require matching native test-image headers and nonzero executed tests" if args.target else "Library unit, integration and rustdoc execution in six feature configurations on this host",
               "unqualified": ["independent process/DTLS adapters on this host", "MSRV on this host", "device execution", "target stack high-water", "full RFC or branch coverage"],
-              "cases": run_matrix(target=args.target)}
+              "cases": [], "passed": False}
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    def checkpoint(cases):
+        report["cases"] = list(cases)
+        args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    checkpoint([])
+    report["cases"] = run_matrix(target=args.target, checkpoint=checkpoint)
     report["passed"] = len(report["cases"]) == len(CASES) and all(case["passed"] for case in report["cases"]) and all(tool["exit_code"] == 0 for tool in report["emulation_tools"])
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
