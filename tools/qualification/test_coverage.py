@@ -39,6 +39,19 @@ class CoverageTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 source_totals(export, root)
 
+    def test_branch_evidence_requires_nonempty_valid_branch_counters(self):
+        root, export = self.fixture()
+        summary = export["data"][0]["files"][0]["summary"]
+        with self.assertRaises(KeyError):
+            source_totals(export, root, require_branches=True)
+        for count, covered in [(0, 0), (2, 3), (True, 1)]:
+            summary["branches"] = {"count": count, "covered": covered}
+            with self.assertRaises(ValueError):
+                source_totals(export, root, require_branches=True)
+        summary["branches"] = {"count": 4, "covered": 3}
+        _, totals = source_totals(export, root, require_branches=True)
+        self.assertEqual(totals["branches"], {"count": 4, "covered": 3, "percent": 75.0})
+
 
 if __name__ == "__main__":
     unittest.main()

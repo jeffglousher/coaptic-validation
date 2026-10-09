@@ -1,0 +1,24 @@
+{
+  "schema": "coaptic-contracts/1",
+  "scope": "Selected App and OSCORE protocol contracts; not an exhaustive RFC requirement inventory",
+  "requirements": [
+    {"id": "unknown-critical-request", "rfc": 7252, "section": "5.4.1", "tests": ["app::tests::unrecognized_critical_option_is_bad_option"]},
+    {"id": "post-dedup-effect", "rfc": 7252, "section": "4.5", "tests": ["app::tests::duplicate_con_post_does_not_reinvoke_handler", "app::tests::duplicate_con_post_insert_failure_does_not_rerun"]},
+    {"id": "separate-response", "rfc": 7252, "section": "5.2.2", "tests": ["app::tests::separate_response_is_empty_ack_then_con", "app::tests::duplicate_con_separate_replays_empty_ack"]},
+    {"id": "conditional-upload-refusal", "rfc": 7252, "section": "5.10.8", "tests": ["app::tests::fragmented_conditional_upload_is_refused_instead_of_becoming_unconditional", "app::tests::single_datagram_conditional_upload_preserves_conditions"]},
+    {"id": "observe-order", "rfc": 7641, "section": "3.4", "tests": ["app::tests::client_observe_serial_order_wrap_and_time_boundary"]},
+    {"id": "observe-reregistration", "rfc": 7641, "section": "3.3.1", "tests": ["app::tests::client_reregistration_preserves_call_identity_ordering_and_deadline", "app::tests::observe_reregistration_advances_sequence_without_inheriting_old_lifecycle"]},
+    {"id": "observe-format", "rfc": 7641, "section": "4.2", "tests": ["app::tests::client_observe_format_change_is_terminal_without_delivering_wrong_representation"]},
+    {"id": "block1-negotiation", "rfc": 7959, "section": "2.5", "tests": ["app::tests::block1_smaller_szx_continues_at_the_filled_byte", "app::tests::client_adopts_smaller_block1_size_from_continue"]},
+    {"id": "block2-retained-body", "rfc": 7959, "section": "2.4", "tests": ["app::tests::retained_classic_response_refuses_changed_bytes_or_etag_without_advancing", "app::tests::classic_block2_replays_exact_fragment_without_reexecuting_handler"]},
+    {"id": "qblock1-holes", "rfc": 9177, "section": "4.4", "tests": ["app::tests::qblock1_holes_are_request_entity_incomplete", "app::tests::qblock1_duplicate_con_repeats_ack_and_preserves_body"]},
+    {"id": "qblock2-recovery", "rfc": 9177, "section": "4.5", "tests": ["app::tests::qblock2_missing_tail_reissues_only_selected_blocks_without_advancing_window"]},
+    {"id": "no-response", "rfc": 7967, "section": "2", "tests": ["app::tests::client_no_response_preserves_bitmap_and_never_reports_silence_as_success", "app::tests::no_response_con_sends_empty_ack"]},
+    {"id": "echo-freshness", "rfc": 9175, "section": "2", "tests": ["app::tests::echo_freshness_missing_is_401_problem", "app::tests::echo_freshness_stale_is_401_problem", "app::tests::echo_freshness_fresh_runs_handler"]},
+    {"id": "oscore-replay", "rfc": 8613, "section": "7.4", "tests": ["oscore::tests::replay_rejects_duplicate_piv", "oscore::tests::corrupted_requests_do_not_poison_replay_acceptance_campaign"]},
+    {"id": "oscore-sender-reservation", "rfc": 8613, "section": "7.5", "tests": ["oscore::tests::sender_sequence_advances_but_cannot_roll_back_or_exceed_exhaustion", "oscore::tests::cancelled_calls_reclaim_oscore_bindings_without_reusing_sender_sequence"]},
+    {"id": "oscore-replay-restore", "rfc": 8613, "section": "7.5", "tests": ["oscore::tests::replay_checkpoint_validates_bounds_and_refuses_live_rollback", "oscore::tests::replay_checkpoint_restore_never_reopens_rejected_sequences_model"]},
+    {"id": "oscore-observe-replay", "rfc": 8613, "section": "7.4.1", "tests": ["oscore::tests::accept_notification_duplicate_piv_is_replay", "oscore::tests::protected_observe_reregistration_continues_sequence_and_replaces_request_binding"]},
+    {"id": "oscore-qblock2-authentication", "rfc": 8613, "section": "4.1.3.4", "tests": ["oscore::tests::app_oscore_qblock2_distinct_pivs_reorder_corruption_replay_and_cleanup", "oscore::tests::app_oscore_qblock2_sequence_exhaustion_releases_body_without_plaintext_fallback"]}
+  ]
+}

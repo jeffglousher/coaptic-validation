@@ -18,6 +18,8 @@ CAMPAIGNS = (
     (["--test", "seeded_qualification"], ["seeded_datagram_mutations_preserve_views_and_reject_invalid_headers", "seeded_cbor_mutations_keep_bounds_and_known_values"]),
     (["--lib", "oscore::tests::seeded_replay_window_matches_set_model"], ["oscore::tests::seeded_replay_window_matches_set_model"]),
     (["--lib", "oscore::tests::corrupted_requests_do_not_poison_replay_acceptance_campaign"], ["oscore::tests::corrupted_requests_do_not_poison_replay_acceptance_campaign"]),
+    (["--lib", "app::lifecycle_soak::compound_lifecycle_soak"], ["app::lifecycle_soak::compound_lifecycle_soak_plain", "app::lifecycle_soak::compound_lifecycle_soak_oscore"]),
+    (["--test", "persistent_replay", "durable_replay_barrier_survives_restart_and_refuses_storage_errors"], ["durable_replay_barrier_survives_restart_and_refuses_storage_errors"]),
 )
 
 
@@ -29,8 +31,8 @@ def main():
     report = {"schema": "coaptic-seeded-qualification/1",
               **source_identity(),
               "compiler": subprocess.check_output(["rustc", "+" + TOOLCHAIN, "--version", "--verbose"], text=True),
-              "scope": "Finite seeded fixed/allocated body parity, parser mutations, set-model replay states and authenticated corruption/replay checks",
-              "unqualified": ["coverage-guided fuzzing", "line/branch coverage", "exhaustive input space", "network fault/lifecycle soak", "device execution"],
+              "scope": "Finite seeded body parity, parser mutations, replay states, authenticated corruption, compound logical-clock lifecycle faults and host process durable-barrier recovery",
+              "unqualified": ["coverage-guided fuzzing", "line/branch coverage", "exhaustive input space", "physical network fault/soak", "device/flash execution"],
               "campaigns": []}
     for flags, names in CAMPAIGNS:
         command = ["cargo", "+" + TOOLCHAIN, "test", "--locked", "-p", "coaptic", "--all-features", *flags, "--", "--nocapture", "--test-threads=1"]
