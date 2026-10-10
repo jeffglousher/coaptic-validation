@@ -142,6 +142,53 @@ fn non_observe_notifications_reach_each_client_backend() {
         }
         assert!(result.error.is_none(), "{client}: {:?}", result.error);
         assert!(!result.capture.snapshot().is_empty());
+        reject_incomplete_observe_loop(&result.capture);
+    }
+}
+
+fn reject_incomplete_observe_loop(capture: &coaptic_plugtest::pcap::Capture) {
+    use coaptic::message::{Code, Message, Opt, Type, decode, encode, encode_uint};
+    use coaptic_plugtest::pcap::Capture;
+    let packets = capture.snapshot();
+    let last = packets
+        .iter()
+        .filter_map(|p| decode(&p.bytes).ok())
+        .filter_map(|p| p.observe().and_then(Result::ok))
+        .max()
+        .unwrap();
+    let catalog = Catalog::load().unwrap();
+    for fault in ["missing", "token", "sequence", "payload", "format"] {
+        let changed = Capture::new();
+        for packet in &packets {
+            let parsed = decode(&packet.bytes).unwrap();
+            let mut bytes = packet.bytes.clone();
+            if parsed.code() == Code::CONTENT && parsed.observe() == Some(Ok(last)) {
+                match fault {
+                    "missing" => continue,
+                    "token" => bytes[4] ^= 1,
+                    "payload" => *bytes.last_mut().unwrap() ^= 1,
+                    "sequence" | "format" => {
+                        let sequence = encode_uint(if fault == "sequence" { 0 } else { last });
+                        let format = encode_uint(if fault == "format" { 42 } else { 0 });
+                        let options = [Opt::observe(&sequence), Opt::content_format(&format)];
+                        let message =
+                            Message::new(Type::NonConfirmable, Code::CONTENT, parsed.message_id())
+                                .with_token(parsed.token())
+                                .with_options(&options)
+                                .with_payload(parsed.payload());
+                        let mut buffer = [0; 128];
+                        let length = encode(&message, &mut buffer).unwrap();
+                        bytes = buffer[..length].to_vec();
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            changed.push(packet.src, packet.dst, &bytes, packet.decrypted);
+        }
+        assert!(
+            catalog.grade("TD_COAP_OBS_02", &changed).is_err(),
+            "accepted {fault} final notification"
+        );
     }
 }
 

@@ -591,21 +591,39 @@ fn observe_non(
     if first.ty != Type::NonConfirmable || first.payload != site::OBS_BODY {
         return Err(PeerError("OBS_02 initial NON notification".into()));
     }
-    server.notify(&["obs-non"], site::OBS_BODY_2)?;
-    let second = client.take_notification(Duration::from_secs(3))?;
-    expect_codes("TD_COAP_OBS_02", second.code, &[Code::CONTENT])?;
-    if second.ty != Type::NonConfirmable || second.payload != site::OBS_BODY_2 {
-        return Err(PeerError("OBS_02 next NON notification".into()));
+    if first.content_format != Some(0) {
+        return Err(PeerError("OBS_02 initial content-format".into()));
     }
-    let (Some(a), Some(b)) = (first.observe, second.observe) else {
-        return Err(PeerError("OBS_02 missing Observe sequence".into()));
-    };
-    let delta = b.wrapping_sub(a) & 0x00ff_ffff;
-    if !(1..0x0080_0000).contains(&delta) {
-        return Err(PeerError(format!("OBS_02 sequence {a} then {b}")));
-    }
-    if first.content_format != Some(0) || second.content_format != Some(0) {
-        return Err(PeerError("OBS_02 content-format".into()));
+    let mut previous = first
+        .observe
+        .ok_or_else(|| PeerError("OBS_02 missing initial Observe sequence".into()))?;
+    // The vendored TD repeats its notification steps. Require two later state
+    // changes; registration plus a single update does not exercise that loop.
+    for payload in [site::OBS_BODY_2, site::OBS_BODY] {
+        // Respect the server's NON congestion hold before the next periodic
+        // change. A one-shot notify during that hold may legitimately send zero.
+        thread::sleep(Duration::from_millis(
+            u64::from(coaptic::message::ObserveTransmission::NON_TIMEOUT_MS) + 20,
+        ));
+        server.notify(&["obs-non"], payload)?;
+        let next = client.take_notification(Duration::from_secs(3))?;
+        expect_codes("TD_COAP_OBS_02", next.code, &[Code::CONTENT])?;
+        if next.ty != Type::NonConfirmable || next.payload != payload {
+            return Err(PeerError("OBS_02 next NON notification".into()));
+        }
+        let sequence = next
+            .observe
+            .ok_or_else(|| PeerError("OBS_02 missing Observe sequence".into()))?;
+        let delta = sequence.wrapping_sub(previous) & 0x00ff_ffff;
+        if !(1..0x0080_0000).contains(&delta) {
+            return Err(PeerError(format!(
+                "OBS_02 sequence {previous} then {sequence}"
+            )));
+        }
+        if next.content_format != first.content_format {
+            return Err(PeerError("OBS_02 content-format".into()));
+        }
+        previous = sequence;
     }
     Ok(())
 }
