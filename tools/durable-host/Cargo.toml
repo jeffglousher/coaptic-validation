@@ -9,3 +9,6 @@ publish = false
 [dependencies]
 coaptic = { path = "../../coaptic", default-features = false, features = ["std", "edhoc"] }
 blake3 = "=1.8.7"
+
+[dev-dependencies]
+getrandom = "=0.3.4"

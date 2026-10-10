@@ -48,6 +48,15 @@ cross-principal scoping, storage failure and recovery. `accept_receipt` checks
 the fixture's complete returned bytes; a real network client must first
 authenticate a successful response from its intended service.
 
+The localhost UDP test retains a complete 1024-byte pending operation while
+discarding the first committed reply. It reconnects with fresh OS-random pairwise
+OSCORE contexts, refuses a wrong key, revoked policy and changed content, then
+authenticates and accepts the original receipt with exactly one effect. The
+fixture explicitly maps its one protected channel to a full principal; it is
+not an enrollment provider. Persistence runs after `poll_with` returns, using
+one bounded deferred work item. Process termination and protected reconnects
+are separate tests; this does not claim an independently deployed host service.
+
 File locking is cooperative, checksums are not authentication, and the caller
 protects storage against unauthorized replacement. A valid old snapshot cannot
 be recognized as stale by this journal alone. The evidence concerns ordinary
