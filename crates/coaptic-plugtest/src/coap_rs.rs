@@ -233,10 +233,15 @@ impl Peer for CoapRsPeer {
     }
 
     fn take_notification(&mut self, timeout: Duration) -> Result<ClientResponse, PeerError> {
-        self.observe
+        let response = self
+            .observe
             .as_ref()
             .ok_or("no observe client")?
-            .receive(timeout)
+            .receive(timeout);
+        if response.is_err() {
+            self.observe = None;
+        }
+        response
     }
 
     fn take_capture(&mut self) -> Capture {
@@ -807,5 +812,27 @@ mod observe_tests {
         let (sender, hold) = queue();
         queue_notification(&sender, &hold.failed, Ok(packet(2)));
         assert_eq!(hold.receive(Duration::ZERO).unwrap().payload, vec![7; 2]);
+    }
+
+    #[test]
+    fn peer_failure_cancels_and_releases_the_observe_owner() {
+        let mut peer = CoapRsPeer::new();
+        let (sender, mut hold) = queue();
+        let (cancel, mut receiver) = oneshot::channel();
+        hold.cancel = Some(cancel);
+        let failed = Arc::clone(&hold.failed);
+        peer.observe = Some(hold);
+        queue_notification(&sender, &failed, Ok(packet(2)));
+        assert_eq!(
+            peer.take_notification(Duration::ZERO).unwrap().payload,
+            vec![7; 2]
+        );
+        assert!(peer.observe.is_some());
+        for _ in 0..=OBSERVE_QUEUE {
+            queue_notification(&sender, &failed, Ok(packet(2)));
+        }
+        assert!(peer.take_notification(Duration::ZERO).is_err());
+        assert!(peer.observe.is_none());
+        assert!(matches!(receiver.try_recv(), Ok(ObserveMessage::Terminate)));
     }
 }
