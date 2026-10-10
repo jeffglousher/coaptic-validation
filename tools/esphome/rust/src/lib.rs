@@ -44,6 +44,9 @@ pub mod network;
 #[cfg(all(feature = "network", feature = "oscore"))]
 pub mod security_state;
 
+#[cfg(feature = "telemetry")]
+pub mod pending_telemetry;
+
 #[cfg(all(feature = "network", target_os = "none"))]
 mod network_ffi;
 

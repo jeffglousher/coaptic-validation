@@ -528,15 +528,17 @@ jobs:
         with:
           toolchain: 1.97.1
           components: rustfmt, clippy
+          targets: thumbv7em-none-eabi
       - name: Verify source and prepare pinned path dependencies
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
         run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - run: python -m pip install esphome==2026.9.1
       - run: python -m unittest discover -s tools/esphome -p 'test_*.py'
-      - run: cargo fmt --manifest-path tools/esphome/rust/Cargo.toml -- --check
-      - run: cargo clippy --locked --manifest-path tools/esphome/rust/Cargo.toml --all-targets --features network,oscore,host -- -D warnings
-      - run: cargo test --locked --manifest-path tools/esphome/rust/Cargo.toml --features network,oscore,host
+      - run: cargo +1.97.1 fmt --manifest-path tools/esphome/rust/Cargo.toml -- --check
+      - run: cargo +1.97.1 clippy --locked --manifest-path tools/esphome/rust/Cargo.toml --all-targets --features network,oscore,host,telemetry -- -D warnings
+      - run: cargo +1.97.1 test --locked --manifest-path tools/esphome/rust/Cargo.toml --features network,oscore,host,telemetry
+      - run: cargo +1.97.1 check --locked --manifest-path tools/esphome/rust/Cargo.toml --target thumbv7em-none-eabi --lib --no-default-features --features network,telemetry,library-only
   supervisor-tests:
     name: Validation runner tests
     runs-on: ubuntu-latest

@@ -11,4 +11,5 @@ coaptic = { path = "../../coaptic", default-features = false, features = ["std",
 blake3 = "=1.8.7"
 
 [dev-dependencies]
+coaptic-esphome-probe = { path = "../esphome/rust", features = ["telemetry", "library-only"] }
 getrandom = "=0.3.4"
