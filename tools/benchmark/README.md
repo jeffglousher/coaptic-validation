@@ -121,6 +121,38 @@ python -m unittest discover -s tools/benchmark -p 'test_*.py'
 cargo test --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-load
 ```
 
+## Diagnostic stage timing
+
+The separate `bench-profile` package enables Coaptic's `diagnostics` feature.
+Its in-process mode measures each `App::poll`; socket mode additionally separates
+active, idle and failed polls/receives, complete sends and failed sends. A short
+or overlong send counts as failed. Existing aggregate records are retained, with
+an additional `coaptic-profile-timing/1` JSON record after the run.
+An active poll succeeds and receives a new datagram; an idle poll succeeds without
+a new datagram and can still process timers or retained protocol work. A failed
+poll returns an error regardless of whether it received a datagram.
+
+Each distribution has a sample count, total and maximum nanoseconds, 21 fixed
+bins, and an overflow count above the final bound. Reported bin upper bounds are
+inclusive: the first bin includes zero, and subsequent bins exclude the previous
+bound. Overflow samples retain their full value in the maximum and total. A
+`counter_saturated` flag means the counters cannot represent exact accounting.
+These bins bound a tail's location; they do not supply exact latency quantiles.
+Recording uses fixed storage without per-sample allocation or logging.
+
+Socket receive timing starts at the transport call, excluding earlier kernel
+queue residence. A complete send means the local transport accepted every byte;
+it does not establish remote receipt or delivery. Nested transport timings are
+included in poll timing, so distributions must not be added together. The
+in-process probe excludes kernel I/O and response validation from its poll clock.
+Instrumentation, allocator accounting and histogram updates perturb this
+diagnostic workload; keep it separate from diagnostics-disabled comparison runs
+and from MCU or physical end-to-end latency claims.
+
+```sh
+cargo test --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-profile
+```
+
 Architecture and further workload decisions are tracked in
 [#340](https://github.com/jeffglousher/coaptic/issues/340); delivery is
 [#341](https://github.com/jeffglousher/coaptic/issues/341). Existing interop,
