@@ -1,0 +1,2 @@
+# Preparation hashes the exact lock bytes; keep them identical on every host.
+**/Cargo.lock text eol=lf

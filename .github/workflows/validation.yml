@@ -16,6 +16,56 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
 jobs:
+  durable-host:
+    name: durable host receipts (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: jeffglousher/coaptic-validation
+          ref: ${{ inputs.suite_revision }}
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.library_repository }}
+          ref: ${{ inputs.library_revision }}
+          path: coaptic
+          persist-credentials: false
+      - name: Verify source and prepare pinned path dependencies
+        shell: bash
+        env:
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
+        with:
+          toolchain: 1.97.1
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: tools/durable-host
+      - run: cargo fmt --manifest-path tools/durable-host/Cargo.toml -- --check
+      - run: cargo clippy --locked --manifest-path tools/durable-host/Cargo.toml --all-targets -- -D warnings
+      - name: Process termination, refusal and recovery evidence
+        shell: bash
+        run: |
+          rustc -Vv > "$RUNNER_TEMP/durable-host-toolchain.txt"
+          cargo -V >> "$RUNNER_TEMP/durable-host-toolchain.txt"
+          cargo test --locked --manifest-path tools/durable-host/Cargo.toml -- --nocapture 2>&1 | tee "$RUNNER_TEMP/durable-host-tests.log"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: durable-host-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/durable-host-tests.log
+            ${{ runner.temp }}/durable-host-toolchain.txt
+            ${{ runner.temp }}/validation-source.json
+          if-no-files-found: error
+
   protected-container:
     name: protected Linux container
     runs-on: ubuntu-latest

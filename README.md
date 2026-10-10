@@ -18,7 +18,7 @@ cargo test --locked -p coaptic-plugtest --features dtls,oscore
 ```
 
 Preparation rejects modified source and mismatched plugtest fixtures. It aligns
-only Coaptic's path-package version in the six lockfiles; dependency pins stay
+only Coaptic's path-package version in the seven lockfiles; dependency pins stay
 fixed. Keep the preparation report with results. Reports identify the library
 and suite revisions, dirty state, prepared lock hashes, and fixture hashes.
 
@@ -26,6 +26,7 @@ and suite revisions, dirty state, prepared lock hashes, and fixture hashes.
 - [Independent process interoperability](tools/interop/README.md)
 - [Benchmark method and limitations](tools/benchmark/README.md)
 - [Qualification commands](#qualification)
+- [Durable host effect/receipt reference](tools/durable-host/README.md)
 
 Coaptic CI calls [validation.yml](.github/workflows/validation.yml) at an exact
 suite commit. This repository's CI checks the public baseline in `library.json`;
