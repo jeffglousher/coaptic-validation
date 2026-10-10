@@ -3125,6 +3125,52 @@
       "executable": "tools/interop/run.py:discovery"
     },
     {
+      "id": "separate:coap-rs",
+      "client": "coaptic",
+      "server": "coap-rs",
+      "transport": "udp",
+      "security": "none",
+      "address_family": "ipv4-loopback",
+      "execution_platforms": [
+        "linux",
+        "windows"
+      ],
+      "requires": [],
+      "features": [
+        "separate-response"
+      ],
+      "positive_proof": [
+        "the coap-rs UDP fixture sends an empty ACK of the request MID followed by a CON 2.05 separate-payload"
+      ],
+      "failure_proof": [
+        "a piggybacked response fails"
+      ],
+      "executable": "tools/interop/run.py:separate_response"
+    },
+    {
+      "id": "separate-client:coaptic->coap-rs",
+      "client": "coaptic",
+      "server": "coap-rs",
+      "transport": "udp",
+      "security": "none",
+      "address_family": "ipv4-loopback",
+      "execution_platforms": [
+        "linux",
+        "windows"
+      ],
+      "requires": [],
+      "features": [
+        "separate-response"
+      ],
+      "positive_proof": [
+        "the Coaptic client accepts the coap-rs UDP fixture's separate CON 2.05 and acknowledges its MID"
+      ],
+      "failure_proof": [
+        "wrong MID, wrong Token, a piggybacked reply or a missing client ACK fails"
+      ],
+      "executable": "tools/interop/run.py:separate_client"
+    },
+    {
       "id": "separate:coaptic",
       "client": "coaptic",
       "server": "coaptic",
@@ -4187,7 +4233,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "The coap-rs server does not issue separate responses.",
+      "reason": "The standalone coap-rs separate-response fixture is exercised over IPv4 UDP only. DTLS, lossy response retransmission, other address families and embedded execution remain unqualified.",
       "issue": 200,
       "executable_cases": []
     },

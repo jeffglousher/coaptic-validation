@@ -11,6 +11,8 @@ macro_rules! conn_as_any {
 mod coap_dtls;
 #[path = "../../../tools/interop/dtls_listener.rs"]
 mod dtls_listener;
+#[path = "../../../tools/interop/separate_listener.rs"]
+mod separate_listener;
 #[path = "../../../tools/interop/support.rs"]
 mod support;
 use coap::{Server, client::CoAPClient, request::RequestBuilder};
@@ -72,7 +74,9 @@ async fn run() -> Result<(), Error> {
             let _ = listener.addr().await?;
             Server::from_listeners(vec![Box::new(coap_dtls::Server(listener))])
         } else {
-            Server::new_udp(a.address())?
+            Server::from_listeners(vec![Box::new(
+                separate_listener::SeparateListener::bind(a.address()).await?,
+            )])
         };
         let resource = Arc::new(std::sync::Mutex::new(support::MethodResource::new()));
         let upload = Arc::new(std::sync::Mutex::new(support::UploadResource::new()));
@@ -92,6 +96,27 @@ async fn run() -> Result<(), Error> {
                     async move {
                         let path = req.get_path();
                         let method = *req.get_method();
+                        if method == RequestType::Get && path == "separate" {
+                            let request_mid = req.message.header.message_id;
+                            let kind = if req.message.header.get_type()
+                                == coap_lite::MessageType::Confirmable
+                            {
+                                coap_lite::MessageType::Confirmable
+                            } else {
+                                coap_lite::MessageType::NonConfirmable
+                            };
+                            if let Some(response) = req.response.as_mut() {
+                                response.message.header.set_type(kind);
+                                response.message.header.message_id = request_mid.wrapping_add(1);
+                                response.message.header.code =
+                                    MessageClass::Response(ResponseType::Content);
+                                response.message.payload = b"separate-payload".to_vec();
+                                response
+                                    .message
+                                    .set_content_format(ContentFormat::TextPlain);
+                            }
+                            return req;
+                        }
                         if path == "upload" {
                             let method: u8 = MessageClass::Request(method).into();
                             let format_ok = req

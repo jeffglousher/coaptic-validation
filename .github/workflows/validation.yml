@@ -41,7 +41,7 @@ jobs:
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
         run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: 1.97.1
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -88,7 +88,7 @@ jobs:
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
         run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: 1.97.1
           targets: ${{ matrix.target }}
@@ -132,7 +132,7 @@ jobs:
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
         run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: 1.97.1
           targets: s390x-unknown-linux-gnu
@@ -172,7 +172,7 @@ jobs:
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
         run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: 1.97.1
           components: llvm-tools
@@ -208,7 +208,7 @@ jobs:
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
         run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: nightly-2026-10-01
           components: llvm-tools
@@ -244,7 +244,7 @@ jobs:
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
         run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: nightly-2026-10-01
           components: rust-src
@@ -284,7 +284,7 @@ jobs:
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
         run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: 1.97.1
           targets: ${{ matrix.target }}
@@ -318,7 +318,7 @@ jobs:
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
         run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: 1.97.1
       - run: python3 tools/qualification/seeded.py --output ${{ runner.temp }}/seeded.json
@@ -352,7 +352,7 @@ jobs:
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
         run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: stable
           components: clippy
@@ -404,7 +404,7 @@ jobs:
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
         run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
         with:
           toolchain: stable
           components: rustfmt, clippy
@@ -443,7 +443,7 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
         with:
           toolchain: 1.97.1
           components: rustfmt, clippy
@@ -485,7 +485,7 @@ jobs:
       - run: python -m unittest discover -s tools/benchmark -p 'test_*.py'
       - run: python -m unittest discover -s tools/security-profile -p 'test_*.py'
       - run: python -m unittest discover -s tools/provisioning -p 'test_*.py'
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: 1.97.1
           components: rustfmt, clippy
