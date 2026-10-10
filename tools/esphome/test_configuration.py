@@ -37,7 +37,7 @@ def archive_fixture(root, config):
     directory.mkdir()
     archive = directory / "libcoaptic_esphome_probe.a"
     archive.write_bytes(b"configuration-only opaque fixture; not a linkable archive")
-    report = {"schema": "coaptic-esphome-archive/2", "target": "xtensa-esp32s3-none-elf",
+    report = {"schema": "coaptic-esphome-archive/3", "target": "xtensa-esp32s3-none-elf",
               "features": ["network", "standalone"], "source": LIBRARY, "suite_source": SUITE,
               "dirty": False, "suite_dirty": False, "suite_locks": {name: "3" * 64 for name in LOCKS},
               "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}

@@ -42,7 +42,7 @@ def main():
              ROOT / "crates/qualification-no-std/Cargo.toml"]
     for directory in [ROOT / "coaptic/src", manifest.parent / "src", ROOT / "crates/qualification-no-std/src"]:
         files.extend(sorted(directory.rglob("*.rs")))
-    report = {"schema": "coaptic-esphome-archive/2", "target": TARGET,
+    report = {"schema": "coaptic-esphome-archive/3", "target": TARGET,
               "features": features, **source,
               "compiler": subprocess.check_output(["rustc", "+" + args.toolchain, "-Vv"], text=True),
               "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
