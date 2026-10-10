@@ -284,7 +284,8 @@
     "coap": [
       {"type": "NON", "code": "0.01", "uri_path": ["obs-non"], "observe": "register"},
       {"type": "NON", "code": "2.05", "token": "echo", "observe": "present", "content_format": 0, "payload": "obs-0"},
-      {"type": "NON", "code": "2.05", "token": "echo", "observe": "increase", "content_format": 0, "payload": "obs-1"}
+      {"type": "NON", "code": "2.05", "token": "echo", "observe": "increase", "content_format": 0, "payload": "obs-1"},
+      {"type": "NON", "code": "2.05", "token": "echo", "observe": "increase", "content_format": 0, "payload": "obs-0"}
     ]
   },
   "TD_COAP_OBS_04": {
