@@ -444,9 +444,16 @@ mod tests {
             .unwrap();
         let expected = receipt(&pending);
         let before = backend.0.borrow().record;
-        let mut changed = expected.encode();
-        changed[16] ^= 1;
-        for bytes in [&expected.encode()[..55], &changed[..], &[0; 57][..]] {
+        let mut changed_digest = expected.encode();
+        changed_digest[16] ^= 1;
+        let mut changed_id = expected.encode();
+        changed_id[0] ^= 1;
+        for bytes in [
+            &expected.encode()[..55],
+            &changed_digest[..],
+            &changed_id[..],
+            &[0; 57][..],
+        ] {
             assert_eq!(
                 pending.accept_authenticated_receipt(bytes),
                 Err(Error::InvalidReceipt)
@@ -456,6 +463,15 @@ mod tests {
         pending
             .accept_authenticated_receipt(&expected.encode())
             .unwrap();
+        let before = backend.0.borrow().record;
+        let mut different_sequence = expected.encode();
+        different_sequence[55] ^= 1;
+        assert_eq!(
+            pending.accept_authenticated_receipt(&different_sequence),
+            Err(Error::InvalidReceipt)
+        );
+        assert_eq!(backend.0.borrow().record, before);
+        assert_eq!(pending.completion(), Ok(Some(expected)));
     }
     #[test]
     fn missing_corrupt_wrong_owner_and_wrong_context_never_reinitialize() {
