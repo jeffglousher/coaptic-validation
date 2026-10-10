@@ -9,12 +9,17 @@
 //! with diagnostics disabled for performance comparisons.
 //!
 //! `bench-profile socket HOST PORT BYTES SECONDS` runs an instrumented real UDP
-//! fixture and prints aggregate poll/transport timing after the bounded run.
+//! fixture and prints poll/transport totals and bounded timing distributions
+//! after the run.
 //! Drive it with `bench-load` separately. Nested clocks and allocator accounting
 //! perturb this diagnostic run; its residual poll time includes wrapper and
 //! clock overhead and is not a production latency or capacity measurement.
 //! The process is single-threaded; allocator counting is enabled only around
 //! the named phase. Payload generation, validation, and reporting are excluded.
+
+mod timing;
+
+use timing::{BIN_UPPER_BOUNDS_NS, Distribution, SendTimings};
 
 use coaptic::message::{BlockValue, Message, MessageId, Opt, Token, Type, decode};
 use coaptic::storage::{Capacities, DatagramIo, UdpSocketIo, WorkMetrics};
@@ -192,6 +197,7 @@ fn core_probe(bytes: usize, operations: usize) -> Result<(), Box<dyn std::error:
     let mut app = bind_result?;
     let mut hot = Counts::default();
     let mut elapsed_ns = 0u128;
+    let mut poll_timing = Distribution::default();
     let mut datagrams = 0usize;
     for operation in 0..operations {
         let token = Token::new(&(operation as u64).to_be_bytes()).ok_or("token length")?;
@@ -215,8 +221,10 @@ fn core_probe(bytes: usize, operations: usize) -> Result<(), Box<dyn std::error:
             begin();
             let started = Instant::now();
             let outcome = app.poll(datagrams as u64);
-            elapsed_ns += started.elapsed().as_nanos();
+            let elapsed = started.elapsed().as_nanos();
+            elapsed_ns += elapsed;
             let count = end();
+            poll_timing.record(elapsed);
             hot.allocations += count.allocations;
             hot.reallocations += count.reallocations;
             hot.bytes += count.bytes;
@@ -262,6 +270,9 @@ fn core_probe(bytes: usize, operations: usize) -> Result<(), Box<dyn std::error:
     println!(
         "{{\"kind\":\"core\",\"body_bytes\":{bytes},\"operations\":{operations},\"datagrams\":{datagrams},\"poll_ns\":{elapsed_ns},\"setup_allocations\":{},\"setup_allocated_bytes\":{},\"poll_allocations\":{},\"poll_reallocations\":{},\"poll_allocated_bytes\":{}}}",
         setup.allocations, setup.bytes, hot.allocations, hot.reallocations, hot.bytes
+    );
+    println!(
+        "{{\"kind\":\"stage_timing\",\"schema\":\"coaptic-profile-timing/1\",\"mode\":\"core\",\"body_bytes\":{bytes},\"clock\":\"std::time::Instant\",\"bin_upper_bounds_ns\":{BIN_UPPER_BOUNDS_NS:?},\"poll\":{poll_timing}}}"
     );
     print_work(app.work_metrics());
     Ok(())
@@ -367,6 +378,10 @@ struct TransportTimes {
     receive_invalid_data_errors: u64,
     receive_other_errors: u64,
     send_ns: u128,
+    active_receive: Distribution,
+    idle_receive: Distribution,
+    failed_receive: Distribution,
+    send: SendTimings,
     received: bool,
 }
 
@@ -385,10 +400,17 @@ impl DatagramIo for TimedSocket {
         let mut times = self.times.borrow_mut();
         times.received = matches!(outcome, Ok(Some(_)));
         match &outcome {
-            Ok(Some(_)) => times.active_receive_ns += elapsed,
-            Ok(None) => times.idle_receive_ns += elapsed,
+            Ok(Some(_)) => {
+                times.active_receive_ns += elapsed;
+                times.active_receive.record(elapsed);
+            }
+            Ok(None) => {
+                times.idle_receive_ns += elapsed;
+                times.idle_receive.record(elapsed);
+            }
             Err(error) => {
                 times.failed_receive_ns += elapsed;
+                times.failed_receive.record(elapsed);
                 if error.kind() == std::io::ErrorKind::InvalidData {
                     times.receive_invalid_data_errors += 1;
                 } else {
@@ -403,7 +425,9 @@ impl DatagramIo for TimedSocket {
         let started = Instant::now();
         let outcome = DatagramIo::send(&mut self.socket, peer, bytes);
         let elapsed = started.elapsed().as_nanos();
-        self.times.borrow_mut().send_ns += elapsed;
+        let mut times = self.times.borrow_mut();
+        times.send_ns += elapsed;
+        times.send.record(bytes.len(), &outcome, elapsed);
         outcome
     }
 }
@@ -434,6 +458,9 @@ fn socket_probe(
     let mut active_ns = 0u128;
     let mut idle_ns = 0u128;
     let mut failed_ns = 0u128;
+    let mut active_poll = Distribution::default();
+    let mut idle_poll = Distribution::default();
+    let mut failed_poll = Distribution::default();
     let mut hot = Counts::default();
     let mut errors = 0u64;
     while started.elapsed().as_secs() < seconds {
@@ -446,10 +473,13 @@ fn socket_probe(
         let count = end();
         if outcome.is_err() {
             failed_ns += elapsed;
+            failed_poll.record(elapsed);
         } else if times.borrow().received {
             active_ns += elapsed;
+            active_poll.record(elapsed);
         } else {
             idle_ns += elapsed;
+            idle_poll.record(elapsed);
         }
         hot.allocations += count.allocations;
         hot.reallocations += count.reallocations;
@@ -469,6 +499,14 @@ fn socket_probe(
         hot.allocations,
         hot.reallocations,
         hot.bytes
+    );
+    println!(
+        "{{\"kind\":\"stage_timing\",\"schema\":\"coaptic-profile-timing/1\",\"mode\":\"socket\",\"body_bytes\":{bytes},\"clock\":\"std::time::Instant\",\"bin_upper_bounds_ns\":{BIN_UPPER_BOUNDS_NS:?},\"active_poll\":{active_poll},\"idle_poll\":{idle_poll},\"failed_poll\":{failed_poll},\"active_receive\":{},\"idle_receive\":{},\"failed_receive\":{},\"complete_send\":{},\"failed_send\":{}}}",
+        times.active_receive,
+        times.idle_receive,
+        times.failed_receive,
+        times.send.complete,
+        times.send.failed,
     );
     print_work(app.work_metrics());
     Ok(())

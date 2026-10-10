@@ -485,3 +485,12 @@ jobs:
       - run: python -m unittest discover -s tools/benchmark -p 'test_*.py'
       - run: python -m unittest discover -s tools/security-profile -p 'test_*.py'
       - run: python -m unittest discover -s tools/provisioning -p 'test_*.py'
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: 1.97.1
+          components: rustfmt, clippy
+      - name: Check diagnostic profiler
+        run: |
+          cargo fmt --manifest-path tools/benchmark/native/Cargo.toml -p bench-profile -- --check
+          cargo clippy --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-profile --all-targets -- -D warnings
+          cargo test --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-profile
