@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use coap::Server;
-use coap::client::UdpCoAPClient;
+use coap::client::{ObserveMessage, UdpCoAPClient};
 use coap::request::RequestBuilder;
 use coap::server::{Listener, Responder, TransportRequestSender};
 use coap_lite::{
@@ -29,6 +29,60 @@ pub struct CoapRsPeer {
     stop: Option<oneshot::Sender<()>>,
     addr: Option<SocketAddr>,
     notify: crate::peer::NotifyMailbox,
+    observe: Option<ObserveHold>,
+}
+
+const OBSERVE_QUEUE: usize = 8;
+const OBSERVE_WIRE_LIMIT: usize = 2048;
+
+struct ObserveHold {
+    notifications: std::sync::mpsc::Receiver<Result<ClientResponse, PeerError>>,
+    failed: Arc<AtomicBool>,
+    cancel: Option<oneshot::Sender<ObserveMessage>>,
+}
+
+impl ObserveHold {
+    fn receive(&self, timeout: Duration) -> Result<ClientResponse, PeerError> {
+        if self.failed.load(Ordering::Acquire) {
+            return Err("observe notification queue or wire limit exceeded".into());
+        }
+        let response = self.notifications.recv_timeout(timeout);
+        if self.failed.load(Ordering::Acquire) {
+            return Err("observe notification queue or wire limit exceeded".into());
+        }
+        response.map_err(|error| PeerError(error.to_string()))?
+    }
+}
+
+impl Drop for ObserveHold {
+    fn drop(&mut self) {
+        if let Some(cancel) = self.cancel.take() {
+            let _ = cancel.send(ObserveMessage::Terminate);
+        }
+    }
+}
+
+fn queue_notification(
+    sender: &std::sync::mpsc::SyncSender<Result<ClientResponse, PeerError>>,
+    failed: &AtomicBool,
+    packet: std::io::Result<coap_lite::Packet>,
+) {
+    if failed.load(Ordering::Acquire) {
+        return;
+    }
+    let response = match packet {
+        Ok(packet) => {
+            if packet.to_bytes_with_limit(OBSERVE_WIRE_LIMIT).is_err() {
+                failed.store(true, Ordering::Release);
+                return;
+            }
+            Ok(from_lite(&packet))
+        }
+        Err(error) => Err(PeerError(error.to_string())),
+    };
+    if sender.try_send(response).is_err() {
+        failed.store(true, Ordering::Release);
+    }
 }
 
 impl Default for CoapRsPeer {
@@ -53,6 +107,7 @@ impl CoapRsPeer {
             stop: None,
             addr: None,
             notify: Arc::new(Mutex::new(None)),
+            observe: None,
         }
     }
 }
@@ -141,6 +196,54 @@ impl Peer for CoapRsPeer {
         self.addr
     }
 
+    fn begin_observe(
+        &mut self,
+        dest: SocketAddr,
+        req: &ClientRequest,
+    ) -> Result<ClientResponse, PeerError> {
+        self.observe = None;
+        let destination = dest.to_string();
+        let registration = build_lite_request(req, &destination)?;
+        let (sender, notifications) = std::sync::mpsc::sync_channel(OBSERVE_QUEUE);
+        let failed = Arc::new(AtomicBool::new(false));
+        let callback_failed = Arc::clone(&failed);
+        let timeout = req.timeout;
+        let cancel = self
+            .rt
+            .block_on(async move {
+                let mut client = UdpCoAPClient::new(&destination).await?;
+                client.set_receive_timeout(timeout);
+                client
+                    .observe_with(registration, move |response| {
+                        queue_notification(&sender, &callback_failed, response);
+                    })
+                    .await
+            })
+            .map_err(|error| PeerError(error.to_string()))?;
+        self.observe = Some(ObserveHold {
+            notifications,
+            failed,
+            cancel: Some(cancel),
+        });
+        let response = self.take_notification(req.timeout);
+        if response.is_err() {
+            self.observe = None;
+        }
+        response
+    }
+
+    fn take_notification(&mut self, timeout: Duration) -> Result<ClientResponse, PeerError> {
+        let response = self
+            .observe
+            .as_ref()
+            .ok_or("no observe client")?
+            .receive(timeout);
+        if response.is_err() {
+            self.observe = None;
+        }
+        response
+    }
+
     fn take_capture(&mut self) -> Capture {
         self.capture.clone()
     }
@@ -160,6 +263,7 @@ impl Peer for CoapRsPeer {
 
 impl Drop for CoapRsPeer {
     fn drop(&mut self) {
+        self.observe = None;
         self.stop_server();
     }
 }
@@ -627,5 +731,108 @@ impl SeparateListener {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod observe_tests {
+    use super::*;
+
+    fn packet(payload: usize) -> coap_lite::Packet {
+        let mut packet = coap_lite::Packet::new();
+        packet.header.set_type(LiteType::NonConfirmable);
+        packet.header.code = MessageClass::Response(ResponseType::Content);
+        packet.set_token(vec![1]);
+        packet.payload = vec![7; payload];
+        packet
+    }
+
+    fn queue() -> (
+        std::sync::mpsc::SyncSender<Result<ClientResponse, PeerError>>,
+        ObserveHold,
+    ) {
+        let (sender, notifications) = std::sync::mpsc::sync_channel(OBSERVE_QUEUE);
+        (
+            sender,
+            ObserveHold {
+                notifications,
+                failed: Arc::new(AtomicBool::new(false)),
+                cancel: None,
+            },
+        )
+    }
+
+    #[test]
+    fn complete_notification_boundary_and_refusal_after_overflow() {
+        let (sender, hold) = queue();
+        let complete = packet(OBSERVE_WIRE_LIMIT - 6);
+        assert_eq!(
+            complete
+                .to_bytes_with_limit(OBSERVE_WIRE_LIMIT)
+                .unwrap()
+                .len(),
+            OBSERVE_WIRE_LIMIT
+        );
+        queue_notification(&sender, &hold.failed, Ok(complete));
+        assert_eq!(
+            hold.receive(Duration::ZERO).unwrap().payload,
+            vec![7; OBSERVE_WIRE_LIMIT - 6]
+        );
+        for _ in 0..OBSERVE_QUEUE {
+            queue_notification(&sender, &hold.failed, Ok(packet(2)));
+        }
+        queue_notification(&sender, &hold.failed, Ok(packet(2)));
+        assert!(hold.receive(Duration::ZERO).is_err());
+        assert_eq!(hold.notifications.try_iter().count(), OBSERVE_QUEUE);
+        // Loss remains visible even after capacity becomes available.
+        queue_notification(&sender, &hold.failed, Ok(packet(2)));
+        assert!(hold.receive(Duration::ZERO).is_err());
+    }
+
+    #[test]
+    fn oversized_transport_failure_empty_queue_and_drop_cancel() {
+        let (sender, mut hold) = queue();
+        assert!(hold.receive(Duration::ZERO).is_err());
+        queue_notification(
+            &sender,
+            &hold.failed,
+            Err(std::io::Error::other("transport failed")),
+        );
+        assert_eq!(
+            hold.receive(Duration::ZERO).unwrap_err().0,
+            "transport failed"
+        );
+        queue_notification(&sender, &hold.failed, Ok(packet(OBSERVE_WIRE_LIMIT - 5)));
+        assert!(hold.receive(Duration::ZERO).is_err());
+        let (cancel, mut receiver) = oneshot::channel();
+        hold.cancel = Some(cancel);
+        drop(hold);
+        assert!(matches!(receiver.try_recv(), Ok(ObserveMessage::Terminate)));
+        // A fresh registration owns fresh refusal state.
+        let (sender, hold) = queue();
+        queue_notification(&sender, &hold.failed, Ok(packet(2)));
+        assert_eq!(hold.receive(Duration::ZERO).unwrap().payload, vec![7; 2]);
+    }
+
+    #[test]
+    fn peer_failure_cancels_and_releases_the_observe_owner() {
+        let mut peer = CoapRsPeer::new();
+        let (sender, mut hold) = queue();
+        let (cancel, mut receiver) = oneshot::channel();
+        hold.cancel = Some(cancel);
+        let failed = Arc::clone(&hold.failed);
+        peer.observe = Some(hold);
+        queue_notification(&sender, &failed, Ok(packet(2)));
+        assert_eq!(
+            peer.take_notification(Duration::ZERO).unwrap().payload,
+            vec![7; 2]
+        );
+        assert!(peer.observe.is_some());
+        for _ in 0..=OBSERVE_QUEUE {
+            queue_notification(&sender, &failed, Ok(packet(2)));
+        }
+        assert!(peer.take_notification(Duration::ZERO).is_err());
+        assert!(peer.observe.is_none());
+        assert!(matches!(receiver.try_recv(), Ok(ObserveMessage::Terminate)));
     }
 }

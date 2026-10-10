@@ -36,11 +36,14 @@ fn core_goldens_do_not_blanket_allow_extra() {
 }
 
 #[test]
-fn backlog_6lowpan_skipped() {
+fn out_of_scope_6lowpan_scenarios_are_explicitly_skipped() {
     for id in catalog::lowpan_ids() {
         let reason = catalog::skip_reason(id).expect("6LoWPAN must skip");
         assert!(reason.contains("6LoWPAN"), "{id}: {reason}");
-        assert!(reason.contains("future/backlog"), "{id}: {reason}");
+        assert!(
+            reason.contains("outside the accepted 0.0.10"),
+            "{id}: {reason}"
+        );
     }
 }
 
@@ -115,6 +118,31 @@ fn td_coap_link() {
 #[test]
 fn td_coap_obs() {
     assert_suite("OBS", catalog::OBS, &runner::default_pairs());
+}
+
+#[test]
+fn non_observe_notifications_reach_each_client_backend() {
+    for client in ["coaptic", "coap-rs"] {
+        let result = runner::run_td(
+            "TD_COAP_OBS_02",
+            runner::Pair {
+                client,
+                server: "coaptic",
+            },
+        );
+        if let Some(directory) = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            result
+                .capture
+                .write_pcap(
+                    std::fs::File::create(directory.join(format!("obs-02-{client}.pcap"))).unwrap(),
+                )
+                .unwrap();
+        }
+        assert!(result.error.is_none(), "{client}: {:?}", result.error);
+        assert!(!result.capture.snapshot().is_empty());
+    }
 }
 
 #[test]

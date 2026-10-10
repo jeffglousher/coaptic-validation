@@ -576,9 +576,10 @@ fn observe_non(
     client: &mut dyn Peer,
     server: &mut dyn Peer,
 ) -> Result<(), PeerError> {
-    if client.name() != "coaptic" || server.name() != "coaptic" {
+    if server.name() != "coaptic" {
         return Err(PeerError(
-            "SKIP: coap-rs wrapper does not collect notifications".into(),
+            "SKIP: coverage gap #199: coap-rs server wrapper does not emit NON notifications"
+                .into(),
         ));
     }
     let mut reg = ClientRequest::get(&["obs-non"]);
