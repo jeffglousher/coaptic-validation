@@ -14,6 +14,7 @@ default = []
 oscore = ["qualification-no-std/oscore", "coaptic?/oscore", "dep:hmac", "dep:sha2"]
 network = ["dep:coaptic", "dep:critical-section"]
 host = ["coaptic?/std", "dep:getrandom"]
+telemetry = ["network", "oscore", "coaptic?/edhoc"]
 library-only = []
 standalone = []
 

@@ -130,6 +130,15 @@ that result to durable device recovery, independently observe the restart and
 allow no intervening protected traffic. Silence alone is not a passing result.
 This finite driver is a qualification tool, not an unbounded host service.
 
+The optional Rust `telemetry` feature provides
+[`pending_telemetry`](tools/esphome/rust/src/pending_telemetry.rs): one
+authenticated 1,214-byte caller-owned record for a complete pending operation
+and its matching receipt. It requires separate storage from OSCORE counters,
+refuses uncertain writes until recovery, and compiles without `std` or `alloc`.
+It is an adapter building block; the live ESPHome service does not yet send
+durable application telemetry through it. Physical restart/power-loss evidence
+and the deployed device-to-host flow remain in the project issues.
+
 Build tooling requires clean library and suite checkouts after preparation:
 
 ```sh
