@@ -155,6 +155,17 @@ pub struct Journal {
     checkpoint: Checkpoint,
 }
 
+impl Drop for Journal {
+    fn drop(&mut self) {
+        // On Unix, a concurrent fork can temporarily inherit the same open file
+        // description until exec. Closing our handle alone then leaves its flock
+        // held by the child. Explicitly release our ownership before closing.
+        // No journal operations may follow Drop; close remains the fallback if
+        // unlock fails. A subsequent owner still has to acquire the file lock.
+        let _ = self.file.unlock();
+    }
+}
+
 impl Journal {
     /// Explicit first provisioning only; refuses an existing path.
     pub fn create(path: &Path, authority: Authority, capacity: usize) -> Result<Self, Error> {
@@ -320,5 +331,42 @@ impl ReceiptStore for Journal {
         // Keep the mutex guard live until both effect and receipt are committed.
         drop(policy);
         Ok(receipt)
+    }
+}
+
+#[cfg(test)]
+mod ownership_tests {
+    use super::*;
+
+    #[test]
+    fn drop_releases_lock_even_while_an_inherited_description_remains_open() {
+        // A duplicated descriptor models the open-file-description lifetime
+        // inherited by a concurrent fork, without unsafe code or timing races.
+        let public = [
+            0x02, 0x6b, 0x17, 0xd1, 0xf2, 0xe1, 0x2c, 0x42, 0x47, 0xf8, 0xbc, 0xe6, 0xe5, 0x63,
+            0xa4, 0x40, 0xf2, 0x77, 0x03, 0x7d, 0x81, 0x2d, 0xeb, 0x33, 0xa0, 0xf4, 0xa1, 0x39,
+            0x45, 0xd8, 0x98, 0xc2, 0x96,
+        ];
+        let authority = Authority::new(Policy {
+            anchor: TrustAnchor::from_parts([3; 32], 1, [4; 32]).unwrap(),
+            principal: coaptic::provisioning::PinnedPeer::from_public_key(&public, 1)
+                .unwrap()
+                .principal(),
+            resource: [5; 32],
+            enabled: true,
+        });
+        let path = std::env::temp_dir().join(format!("coaptic-lock-drop-{}", std::process::id()));
+        let store = Journal::create(&path, authority.clone(), 1).unwrap();
+        let inherited = store.file.try_clone().unwrap();
+        assert!(matches!(
+            Journal::open(&path, authority.clone()),
+            Err(Error::Lock(_))
+        ));
+        drop(store);
+        let reopened = Journal::open(&path, authority).unwrap();
+        assert_eq!(reopened.effects().unwrap(), 0);
+        drop(inherited);
+        drop(reopened);
+        std::fs::remove_file(path).unwrap();
     }
 }
