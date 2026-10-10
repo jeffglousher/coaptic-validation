@@ -36,6 +36,23 @@ def source_revision(value):
     return value
 
 
+def fixed_hex(length):
+    def validate(value):
+        value = cv.string(value)
+        if not re.fullmatch(r"[0-9a-f]{%d}" % (length * 2), value):
+            raise cv.Invalid("OSCORE values require exact lowercase hexadecimal lengths")
+        return value
+    return validate
+
+
+def validate_security(config):
+    if bool(config.get("oscore")) == config["allow_plaintext"]:
+        raise cv.Invalid("select protected oscore or explicit allow_plaintext, never both")
+    if "oscore" in config and config["oscore"]["sender_id"] == config["oscore"]["recipient_id"]:
+        raise cv.Invalid("OSCORE Sender and Recipient IDs must differ")
+    return config
+
+
 def validate_runtime(config):
     if config["rust_runtime"] == "bundled":
         if esp32.get_esp32_variant() != VARIANT_ESP32S3:
@@ -59,7 +76,7 @@ def validate_runtime(config):
                         for value in locks.values())):
                 raise cv.Invalid("Coaptic Rust archive lockfile provenance mismatch")
             if (report["target"] != "xtensa-esp32s3-none-elf" or
-                    report["features"] != ["network", "standalone"]):
+                    report["features"] != ["network", "standalone"] + (["oscore"] if "oscore" in config else [])):
                 raise cv.Invalid("Coaptic Rust archive target or features mismatch")
             if hashlib.sha256((root / "libcoaptic_esphome_probe.a").read_bytes()).hexdigest() != report["archive_sha256"]:
                 raise cv.Invalid("Coaptic Rust archive checksum mismatch")
@@ -76,12 +93,22 @@ CONFIG_SCHEMA = cv.All(
         cv.Optional("rust_runtime", default="source"): cv.one_of("source", "bundled", "external"),
         cv.Optional("expected_library_revision"): source_revision,
         cv.Optional("expected_suite_revision"): source_revision,
+        cv.Optional("allow_plaintext", default=False): cv.boolean,
+        cv.Optional("oscore"): cv.Schema({
+            cv.Required("master_secret"): fixed_hex(32),
+            cv.Required("master_salt"): fixed_hex(16),
+            cv.Required("context_id"): fixed_hex(16),
+            cv.Optional("sender_id", default=1): cv.int_range(min=0, max=255),
+            cv.Optional("recipient_id", default=2): cv.int_range(min=0, max=255),
+            cv.Optional("provision_only", default=False): cv.boolean,
+        }),
         cv.Optional("port", default=5683): cv.int_range(min=1, max=65535),
     }).extend(cv.COMPONENT_SCHEMA),
     cv.only_on_esp32,
     cv.only_with_framework("esp-idf"),
     esp32.only_on_variant(supported=[VARIANT_ESP32C3, VARIANT_ESP32C6, VARIANT_ESP32S3]),
     native_toolchain,
+    validate_security,
     validate_runtime,
 )
 
@@ -91,6 +118,11 @@ async def to_code(config):
     await cg.register_component(component, config)
     cg.add(component.set_run_id(config["run_id"]))
     cg.add(component.set_port(config["port"]))
+    if "oscore" in config:
+        security = config["oscore"]
+        cg.add(component.set_oscore(security["master_secret"], security["master_salt"],
+                                    security["context_id"], security["sender_id"],
+                                    security["recipient_id"], security["provision_only"]))
     if config["rust_runtime"] == "external":
         return
     if config["rust_runtime"] == "bundled":
@@ -104,4 +136,4 @@ async def to_code(config):
     esp32.add_idf_component(name="coaptic_rust_probe", path=str(rust_component))
     cg.add_cmake_arg("COAPTIC_RUST_MANIFEST", str(root / "rust" / "Cargo.toml"))
     cg.add_cmake_arg("COAPTIC_NETWORK", "ON")
-    cg.add_cmake_arg("COAPTIC_OSCORE", "OFF")
+    cg.add_cmake_arg("COAPTIC_OSCORE", "ON" if "oscore" in config else "OFF")

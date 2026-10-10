@@ -12,6 +12,13 @@ unsafe extern "C" {
     ) -> i32;
     fn coaptic_socket_send(context: *mut c_void, bytes: *const u8, length: u32, peer: u64) -> i32;
     fn coaptic_socket_clock(context: *mut c_void) -> u64;
+    fn coaptic_security_mode(context: *mut c_void) -> u32;
+    #[cfg(feature = "oscore")]
+    fn coaptic_security_config(context: *mut c_void, bytes: *mut u8, length: u32) -> bool;
+    #[cfg(feature = "oscore")]
+    fn coaptic_security_read(context: *mut c_void, bytes: *mut u8, length: u32) -> i32;
+    #[cfg(feature = "oscore")]
+    fn coaptic_security_commit(context: *mut c_void, bytes: *const u8, length: u32) -> bool;
     fn coaptic_socket_random(bytes: *mut u8, length: u32) -> bool;
     fn coaptic_enter_critical();
     fn coaptic_leave_critical();
@@ -63,6 +70,33 @@ impl DatagramIo for Socket {
     }
 }
 
+#[cfg(feature = "oscore")]
+struct Nvs(*mut c_void);
+#[cfg(feature = "oscore")]
+impl super::security_state::Store for Nvs {
+    fn read(
+        &mut self,
+    ) -> Result<Option<[u8; super::security_state::RECORD_BYTES]>, super::security_state::Error>
+    {
+        let mut bytes = [0; super::security_state::RECORD_BYTES];
+        match unsafe { coaptic_security_read(self.0, bytes.as_mut_ptr(), bytes.len() as u32) } {
+            0 => Ok(None),
+            1 => Ok(Some(bytes)),
+            _ => Err(super::security_state::Error::Unavailable),
+        }
+    }
+    fn commit(
+        &mut self,
+        bytes: &[u8; super::security_state::RECORD_BYTES],
+    ) -> Result<(), super::security_state::Error> {
+        if unsafe { coaptic_security_commit(self.0, bytes.as_ptr(), bytes.len() as u32) } {
+            Ok(())
+        } else {
+            Err(super::security_state::Error::Unavailable)
+        }
+    }
+}
+
 /// Runs the IPv4 qualification service with ESPHome-owned task and socket state.
 ///
 /// # Safety
@@ -81,14 +115,54 @@ pub unsafe extern "C" fn coaptic_network_run(context: *mut c_void, id: *const u8
     }
     let mut run_id = [0; 32];
     run_id.copy_from_slice(unsafe { core::slice::from_raw_parts(id, 32) });
-    let result = super::network::run(
-        Socket(context),
-        |bytes| unsafe { coaptic_socket_random(bytes.as_mut_ptr(), bytes.len() as u32) },
-        || {
-            let now = unsafe { coaptic_socket_clock(context) };
-            (now != u64::MAX).then_some(now)
-        },
-        &run_id,
-    );
-    if result.is_ok() { 0 } else { -1 }
+    let mode = unsafe { coaptic_security_mode(context) };
+    let random =
+        |bytes: &mut [u8]| unsafe { coaptic_socket_random(bytes.as_mut_ptr(), bytes.len() as u32) };
+    let clock = || {
+        let now = unsafe { coaptic_socket_clock(context) };
+        (now != u64::MAX).then_some(now)
+    };
+    let result = match mode {
+        0 => super::network::run(Socket(context), random, clock, &run_id),
+        #[cfg(feature = "oscore")]
+        1 | 2 => {
+            let mut bytes = [0; 66];
+            if !unsafe { coaptic_security_config(context, bytes.as_mut_ptr(), bytes.len() as u32) }
+            {
+                return -1;
+            }
+            let credentials = super::security_state::Credentials {
+                secret: bytes[..32].try_into().unwrap(),
+                salt: bytes[32..48].try_into().unwrap(),
+                context: bytes[48..64].try_into().unwrap(),
+                sender: bytes[64],
+                recipient: bytes[65],
+            };
+            bytes.fill(0);
+            if mode == 2 {
+                // Explicit offline mode: no socket read/send or network service.
+                super::security_state::provision(&mut Nvs(context), &credentials)
+                    .map_err(|_| "provisioning")
+            } else {
+                super::network::run_protected(
+                    Socket(context),
+                    random,
+                    clock,
+                    &run_id,
+                    &credentials,
+                    Nvs(context),
+                )
+            }
+        }
+        _ => Err("unsupported security mode"),
+    };
+    match result {
+        Ok(()) => 0,
+        Err("security recovery") => -2,
+        Err("security checkpoint") => -3,
+        Err("sender reservation") => -4,
+        Err("provisioning") => -5,
+        Err("unsupported security mode") => -6,
+        Err(_) => -1,
+    }
 }

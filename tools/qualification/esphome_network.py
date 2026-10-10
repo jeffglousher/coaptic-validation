@@ -35,7 +35,7 @@ def main():
     config["esphome"]["name"] = f"coaptic-{args.chip}-udp"
     config["external_components"][0]["components"] = ["coaptic_network"]
     del config["coaptic_probe"]
-    config["coaptic_network"] = {"run_id": run_id, "qualification_only": True}
+    config["coaptic_network"] = {"run_id": run_id, "qualification_only": True, "allow_plaintext": True}
     config["wifi"] = {"ap": {"ssid": ssid, "password": password}, "reboot_timeout": "0s"}
     config["logger"]["level"] = "INFO"
     path = directory / "network.yaml"
