@@ -40,7 +40,10 @@ fn out_of_scope_6lowpan_scenarios_are_explicitly_skipped() {
     for id in catalog::lowpan_ids() {
         let reason = catalog::skip_reason(id).expect("6LoWPAN must skip");
         assert!(reason.contains("6LoWPAN"), "{id}: {reason}");
-        assert!(reason.contains("outside the accepted 0.0.10"), "{id}: {reason}");
+        assert!(
+            reason.contains("outside the accepted 0.0.10"),
+            "{id}: {reason}"
+        );
     }
 }
 
