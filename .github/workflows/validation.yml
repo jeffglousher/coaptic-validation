@@ -16,6 +16,37 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
 jobs:
+  protected-container:
+    name: protected Linux container
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: jeffglousher/coaptic-validation
+          ref: ${{ inputs.suite_revision }}
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.library_repository }}
+          ref: ${{ inputs.library_revision }}
+          path: coaptic
+          persist-credentials: false
+      - name: Verify source and prepare pinned path dependencies
+        env:
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+        run: python3 tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+      - run: python3 -m unittest discover -s tools/qualification -p 'test_container_host.py'
+      - run: python3 tools/qualification/container_host.py --output "$RUNNER_TEMP/protected-container"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: protected-linux-container
+          path: |
+            ${{ runner.temp }}/protected-container/
+            ${{ runner.temp }}/validation-source.json
+          if-no-files-found: error
+
   host-platforms:
     name: host library (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
