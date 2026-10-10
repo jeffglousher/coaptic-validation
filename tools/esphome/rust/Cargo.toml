@@ -11,8 +11,9 @@ crate-type = ["rlib"]
 
 [features]
 default = []
-oscore = ["qualification-no-std/oscore"]
+oscore = ["qualification-no-std/oscore", "coaptic?/oscore", "dep:hmac", "dep:sha2"]
 network = ["dep:coaptic", "dep:critical-section"]
+host = ["coaptic?/std", "dep:getrandom"]
 library-only = []
 standalone = []
 
@@ -20,6 +21,10 @@ standalone = []
 qualification-no-std = { path = "../../../crates/qualification-no-std" }
 coaptic = { path = "../../../coaptic", default-features = false, optional = true }
 critical-section = { version = "1.2.0", optional = true }
+
+getrandom = { version = "=0.3.4", optional = true }
+hmac = { version = "0.13.0", default-features = false, optional = true }
+sha2 = { version = "0.11.0", default-features = false, optional = true }
 
 [target.'cfg(not(target_os = "none"))'.dependencies]
 critical-section = { version = "1.2.0", features = ["std"], optional = true }
@@ -29,3 +34,8 @@ opt-level = 3
 lto = "thin"
 codegen-units = 1
 panic = "abort"
+
+[[bin]]
+name = "waveshare-peer"
+path = "src/bin/waveshare_peer.rs"
+required-features = ["network", "oscore", "host"]

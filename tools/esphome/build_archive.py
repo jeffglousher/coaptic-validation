@@ -19,7 +19,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--toolchain", default="coaptic-esp-1.97")
     parser.add_argument("--expected-library-revision", required=True)
+    parser.add_argument("--oscore", action="store_true")
     args = parser.parse_args()
+    features = FEATURES + (["oscore"] if args.oscore else [])
     try:
         source = build_source(args.expected_library_revision)
     except ValueError as error:
@@ -27,7 +29,7 @@ def main():
     manifest = ROOT / "tools/esphome/rust/Cargo.toml"
     command = ["cargo", "+" + args.toolchain, "rustc", "-Zbuild-std=core", "--locked",
                "--release", "--target", TARGET, "--no-default-features",
-               "--features", ",".join(FEATURES), "--manifest-path", str(manifest),
+               "--features", ",".join(features), "--manifest-path", str(manifest),
                "--crate-type", "staticlib"]
     subprocess.run(command, check=True, cwd=ROOT)
     metadata = json.loads(subprocess.check_output(
@@ -41,7 +43,7 @@ def main():
     for directory in [ROOT / "coaptic/src", manifest.parent / "src", ROOT / "crates/qualification-no-std/src"]:
         files.extend(sorted(directory.rglob("*.rs")))
     report = {"schema": "coaptic-esphome-archive/2", "target": TARGET,
-              "features": FEATURES, **source,
+              "features": features, **source,
               "compiler": subprocess.check_output(["rustc", "+" + args.toolchain, "-Vv"], text=True),
               "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
               "sources": {p.relative_to(ROOT).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}

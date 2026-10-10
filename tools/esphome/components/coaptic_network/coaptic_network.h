@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cstdint>
 #include <string>
+#include "nvs.h"
 
 namespace esphome::coaptic_network {
 
@@ -13,6 +14,15 @@ class CoapticNetwork : public Component {
  public:
   void set_run_id(const std::string &value) { run_id_ = value; }
   void set_port(uint16_t value) { port_ = value; }
+  void set_oscore(const std::string &secret, const std::string &salt, const std::string &context,
+                  uint8_t sender, uint8_t recipient, bool provision) {
+    secret_ = secret; salt_ = salt; context_ = context;
+    sender_ = sender; recipient_ = recipient; security_mode_ = provision ? 2 : 1;
+  }
+  uint32_t security_mode() const { return security_mode_; }
+  bool security_config(uint8_t *bytes, uint32_t length);
+  int32_t read_security(uint8_t *bytes, uint32_t length);
+  bool commit_security(const uint8_t *bytes, uint32_t length);
   void loop() override;
   void on_shutdown() override;
   float get_setup_priority() const override { return setup_priority::LATE; }
@@ -35,6 +45,10 @@ class CoapticNetwork : public Component {
   uint32_t logged_{0};
   bool started_{false};
   std::string run_id_;
+  std::string secret_, salt_, context_;
+  uint8_t sender_{1}, recipient_{2};
+  uint32_t security_mode_{0};
+  nvs_handle_t security_handle_{0};
 };
 
 }

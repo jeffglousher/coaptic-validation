@@ -10,3 +10,4 @@ coaptic_network:
   run_id: !secret coaptic_run_id
   qualification_only: true
   rust_runtime: source
+  allow_plaintext: true # Unprotected qualification only.

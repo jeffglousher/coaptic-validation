@@ -21,7 +21,7 @@ def network_configuration(root, runtime="bundled", chip="esp32s3"):
     config["external_components"][0]["components"] = ["coaptic_network"]
     del config["coaptic_probe"]
     config["coaptic_network"] = {"run_id": "a" * 32, "qualification_only": True,
-                                  "rust_runtime": runtime}
+                                  "rust_runtime": runtime, "allow_plaintext": True}
     config["wifi"] = {"ssid": "qualification-test", "reboot_timeout": "0s"}
     return config
 
@@ -42,6 +42,14 @@ def archive_fixture(root, config):
               "dirty": False, "suite_dirty": False, "suite_locks": {name: "3" * 64 for name in LOCKS},
               "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}
     return archive, directory / "build.json", report
+
+
+def protected_config(config):
+    config["coaptic_network"].pop("allow_plaintext", None)
+    config["coaptic_network"]["oscore"] = {
+        "master_secret": "39" * 32, "master_salt": "42" * 16, "context_id": "27" * 16,
+    }
+    return config
 
 
 class ConfigurationRefusalTests(unittest.TestCase):
@@ -75,6 +83,48 @@ class ConfigurationRefusalTests(unittest.TestCase):
                                         capture_output=True, text=True, timeout=60)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(message, result.stdout + result.stderr)
+
+    def test_protected_configuration_refuses_missing_mixed_malformed_and_wrong_archive_features(self):
+        for change, message in [
+            ("missing", "select protected oscore"),
+            ("mixed", "select protected oscore"),
+            ("secret", "exact lowercase hexadecimal"),
+            ("ids", "IDs must differ"),
+            ("archive", "target or features mismatch"),
+        ]:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                config = protected_config(network_configuration(root, "bundled" if change == "archive" else "source"))
+                if change == "missing": del config["coaptic_network"]["oscore"]
+                elif change == "mixed": config["coaptic_network"]["allow_plaintext"] = True
+                elif change == "secret": config["coaptic_network"]["oscore"]["master_secret"] = "39" * 31
+                elif change == "ids": config["coaptic_network"]["oscore"].update(sender_id=2, recipient_id=2)
+                else:
+                    _, marker, report = archive_fixture(root, config)
+                    marker.write_text(json.dumps(report), encoding="utf-8")
+                path = root / "network.yaml"
+                path.write_text(json.dumps(config), encoding="utf-8")
+                result = subprocess.run([sys.executable, "-m", "esphome", "config", str(path)], capture_output=True, text=True, timeout=60)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stdout + result.stderr)
+
+    def test_protected_and_offline_provisioning_modes_generate_one_oscore_runtime(self):
+        for runtime, provision in [("source", False), ("bundled", False), ("bundled", True), ("external", False)]:
+            with self.subTest(runtime=runtime, provision=provision), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                config = protected_config(network_configuration(root, runtime))
+                config["coaptic_network"]["oscore"]["provision_only"] = provision
+                if runtime == "bundled":
+                    _, marker, report = archive_fixture(root, config)
+                    report["features"].append("oscore")
+                    marker.write_text(json.dumps(report), encoding="utf-8")
+                path = root / "network.yaml"
+                path.write_text(json.dumps(config), encoding="utf-8")
+                result = subprocess.run([sys.executable, "-m", "esphome", "compile", str(path), "--only-generate"], capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                main = (root / "build/src/main.cpp").read_text()
+                self.assertIn("set_oscore(", main)
+                if runtime == "source": self.assertIn('set(COAPTIC_OSCORE "ON")', (root / "build/CMakeLists.txt").read_text())
 
     def test_bundled_and_external_network_runtimes_generate_without_replacing_component_dirs(self):
         for runtime in ["source", "bundled", "external"]:

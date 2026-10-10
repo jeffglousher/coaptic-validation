@@ -68,15 +68,45 @@ limitations; see the benchmark method before interpreting them.
 The local [package](tools/esphome/coaptic-network-package.yaml) preserves the
 consuming configuration's device, Wi-Fi and API/OTA settings. It requires ESP-IDF
 and an explicit qualification-only opt-in. No upstream ESPHome contribution is
-planned. Its IPv4 UDP service is a plaintext test fixture without actuators,
-identity credentials or durable security state.
+planned. The sample package explicitly selects `allow_plaintext: true` for
+unprotected qualification. Protected mode instead requires an `oscore` profile
+with unique private `master_secret` (32 bytes), `master_salt` (16 bytes),
+`context_id` (16 bytes), and mirrored Sender/Recipient IDs. Use ESPHome secret
+references; never commit credential values. The two modes cannot be combined.
+
+For first-time setup, an operator stages fresh credentials and selects
+`oscore.provision_only: true`: that image writes the authenticated 100-byte NVS
+record and exposes no UDP service. A later image with `provision_only: false`
+recovers that record before protected traffic. Missing, corrupt, wrong-context
+and uncertain storage refuse; no record is silently reset. Sender ranges of
+256 are durably reserved and skipped after restart; inbound replay checkpoints
+commit before dispatch. A failed or ambiguous commit stops the service.
+The qualification task also stops after 32 consecutive poll failures, including
+invalid protected packets; sustained hostile-traffic availability is unqualified.
+
+The task exclusively owns its context and NVS record. Authentication/readback
+protect against corruption and accidental substitution, not restoration of a
+valid old flash snapshot. NVS and compiled credentials do not establish hostile
+rollback resistance or production key custody. After uncertain freshness or
+state loss, provision fresh credentials through an explicit operator step.
+This service supplies no actuators or durable application-effect receipts.
+
+The finite Rust `waveshare-peer` host driver uses fixed Coaptic storage with
+`std` and without `alloc`. Its private credential file has 66 bytes; its locked
+100-byte state file requires explicit offline `provision` before `check`.
+Each process recovery skips the previous 256-value sender reservation.
+`replay` locally authenticates the saved identity request, sends it first, then
+requires a fresh protected response matching the firmware run ID. To attribute
+that result to durable device recovery, independently observe the restart and
+allow no intervening protected traffic. Silence alone is not a passing result.
+This finite driver is a qualification tool, not an unbounded host service.
 
 Build tooling requires clean library and suite checkouts after preparation:
 
 ```sh
 python tools/qualification/esp32.py --chip esp32c3 --expected-library-revision LIBRARY_COMMIT_SHA --output target/c3/build.json
 python tools/qualification/esphome_probe.py --chip esp32s3 --compile --expected-library-revision LIBRARY_COMMIT_SHA --output target/s3/build.json
-python tools/esphome/build_archive.py --expected-library-revision LIBRARY_COMMIT_SHA
+python tools/esphome/build_archive.py --expected-library-revision LIBRARY_COMMIT_SHA --oscore
 ```
 
 ESPHome tooling pins version 2026.9.1 and ESP-IDF 5.5.5. S3 compilation requires

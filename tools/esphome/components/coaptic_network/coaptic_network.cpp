@@ -22,6 +22,7 @@ void CoapticNetwork::loop() {
     if (!network::is_connected() && !wifi::global_wifi_component->is_ap_active())
       return;
     started_ = true;
+    if (security_mode_ != 2) {
     socket_ = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     sockaddr_in address{};
     address.sin_family = AF_INET;
@@ -36,6 +37,7 @@ void CoapticNetwork::loop() {
       mark_failed();
       return;
     }
+    }
     if (xTaskCreate(run_, "coaptic_udp", STACK_BYTES, this, 1, &task_) != pdPASS) {
       close(socket_);
       socket_ = -1;
@@ -44,15 +46,22 @@ void CoapticNetwork::loop() {
       mark_failed();
       return;
     }
-    ESP_LOGI(TAG, "COAPTIC_NETWORK_READY run_id=%s port=%u", run_id_.c_str(), port_);
+    if (security_mode_ == 2)
+      ESP_LOGI(TAG, "COAPTIC_SECURITY_PROVISION_START run_id=%s", run_id_.c_str());
+    else
+      ESP_LOGI(TAG, "COAPTIC_NETWORK_READY run_id=%s port=%u mode=%lu", run_id_.c_str(), port_, static_cast<unsigned long>(security_mode_));
   }
   if (task_ == nullptr)
     return;
   if (result_.load(std::memory_order_acquire) != 0) {
     vTaskDelete(task_);
     task_ = nullptr;
-    ESP_LOGE(TAG, "COAPTIC_NETWORK_STOPPED result=%lu", static_cast<unsigned long>(result_.load()));
-    mark_failed();
+    if (security_mode_ == 2 && result_.load() == 1) {
+      ESP_LOGI(TAG, "COAPTIC_SECURITY_PROVISIONED run_id=%s; no network service", run_id_.c_str());
+    } else {
+      ESP_LOGE(TAG, "COAPTIC_NETWORK_STOPPED result=%lu", static_cast<unsigned long>(result_.load()));
+      mark_failed();
+    }
     return;
   }
   if (millis() - logged_ >= 5000) {
@@ -72,9 +81,13 @@ void CoapticNetwork::loop() {
 void CoapticNetwork::run_(void *argument) {
   auto *self = static_cast<CoapticNetwork *>(argument);
   int32_t result = coaptic_network_run(self, reinterpret_cast<const uint8_t *>(self->run_id_.data()));
-  close(self->socket_);
+  if (self->socket_ >= 0) close(self->socket_);
   self->socket_ = -1;
-  self->result_.store(result == 0 ? 1 : 2, std::memory_order_release);
+  if (self->security_handle_ != 0) {
+    nvs_close(self->security_handle_);
+    self->security_handle_ = 0;
+  }
+  self->result_.store(result == 0 ? 1 : static_cast<uint32_t>(-result) + 1, std::memory_order_release);
   for (;;) {
     vTaskDelay(portMAX_DELAY);
   }
@@ -143,6 +156,37 @@ uint64_t CoapticNetwork::clock() {
   return stop_.load(std::memory_order_acquire) ? UINT64_MAX : static_cast<uint64_t>(esp_timer_get_time() / 1000);
 }
 
+bool CoapticNetwork::security_config(uint8_t *bytes, uint32_t length) {
+  if (bytes == nullptr || length != 66 || secret_.size() != 64 || salt_.size() != 32 || context_.size() != 32)
+    return false;
+  uint32_t offset = 0;
+  for (const auto *text : {&secret_, &salt_, &context_}) {
+    for (size_t i = 0; i < text->size(); i += 2) {
+      auto nibble = [](char c) -> int { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1; };
+      const int high = nibble((*text)[i]), low = nibble((*text)[i + 1]);
+      if (high < 0 || low < 0) return false;
+      bytes[offset++] = static_cast<uint8_t>((high << 4) | low);
+    }
+  }
+  bytes[64] = sender_; bytes[65] = recipient_;
+  return sender_ != recipient_;
+}
+
+int32_t CoapticNetwork::read_security(uint8_t *bytes, uint32_t length) {
+  if (bytes == nullptr || length != 100) return -1;
+  if (security_handle_ == 0 && nvs_open("coaptic_sec", NVS_READWRITE, &security_handle_) != ESP_OK) return -1;
+  size_t stored = 0;
+  const esp_err_t status = nvs_get_blob(security_handle_, "state_v1", nullptr, &stored);
+  if (status == ESP_ERR_NVS_NOT_FOUND) return 0;
+  if (status != ESP_OK || stored != length) return -1;
+  return nvs_get_blob(security_handle_, "state_v1", bytes, &stored) == ESP_OK && stored == length ? 1 : -1;
+}
+
+bool CoapticNetwork::commit_security(const uint8_t *bytes, uint32_t length) {
+  if (bytes == nullptr || length != 100 || security_handle_ == 0) return false;
+  return nvs_set_blob(security_handle_, "state_v1", bytes, length) == ESP_OK && nvs_commit(security_handle_) == ESP_OK;
+}
+
 void CoapticNetwork::on_shutdown() {
   stop_.store(true, std::memory_order_release);
   for (uint32_t waited = 0; task_ != nullptr && waited < 1000; waited += 10) {
@@ -177,4 +221,17 @@ extern "C" void coaptic_enter_critical() {
 }
 extern "C" void coaptic_leave_critical() {
   portEXIT_CRITICAL(&COAPTIC_MUX);
+}
+
+extern "C" uint32_t coaptic_security_mode(void *context) {
+  return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->security_mode();
+}
+extern "C" bool coaptic_security_config(void *context, uint8_t *bytes, uint32_t length) {
+  return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->security_config(bytes, length);
+}
+extern "C" int32_t coaptic_security_read(void *context, uint8_t *bytes, uint32_t length) {
+  return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->read_security(bytes, length);
+}
+extern "C" bool coaptic_security_commit(void *context, const uint8_t *bytes, uint32_t length) {
+  return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->commit_security(bytes, length);
 }
