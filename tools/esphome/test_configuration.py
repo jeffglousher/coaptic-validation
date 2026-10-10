@@ -37,7 +37,7 @@ def archive_fixture(root, config):
     directory.mkdir()
     archive = directory / "libcoaptic_esphome_probe.a"
     archive.write_bytes(b"configuration-only opaque fixture; not a linkable archive")
-    report = {"schema": "coaptic-esphome-archive/2", "target": "xtensa-esp32s3-none-elf",
+    report = {"schema": "coaptic-esphome-archive/3", "target": "xtensa-esp32s3-none-elf",
               "features": ["network", "standalone"], "source": LIBRARY, "suite_source": SUITE,
               "dirty": False, "suite_dirty": False, "suite_locks": {name: "3" * 64 for name in LOCKS},
               "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}
@@ -53,6 +53,25 @@ def protected_config(config):
 
 
 class ConfigurationRefusalTests(unittest.TestCase):
+    def test_archive_schema_versions_require_their_exact_lock_sets(self):
+        for version, host_lock, accepted in [(2, False, True), (2, True, False),
+                                             (3, True, True), (3, False, False)]:
+            with self.subTest(version=version, host_lock=host_lock), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                config = network_configuration(root)
+                _, marker, report = archive_fixture(root, config)
+                report["schema"] = f"coaptic-esphome-archive/{version}"
+                if not host_lock:
+                    del report["suite_locks"]["tools/durable-host/Cargo.lock"]
+                marker.write_text(json.dumps(report), encoding="utf-8")
+                path = root / "network.yaml"
+                path.write_text(json.dumps(config), encoding="utf-8")
+                result = subprocess.run([sys.executable, "-m", "esphome", "config", str(path)],
+                                        capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode == 0, accepted, result.stdout + result.stderr)
+                if not accepted:
+                    self.assertIn("lockfile provenance mismatch", result.stdout + result.stderr)
+
     def test_bundled_network_refuses_wrong_chip_and_corrupt_archive(self):
         for change, message in [
             ("chip", "prepared only for ESP32-S3"),

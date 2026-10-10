@@ -62,7 +62,7 @@ def validate_runtime(config):
             report = json.loads((root / "build.json").read_text())
             if any(key not in config for key in ["expected_library_revision", "expected_suite_revision"]):
                 raise cv.Invalid("bundled Rust requires both expected source revisions")
-            if (report.get("schema") != "coaptic-esphome-archive/2" or
+            if (report.get("schema") not in {"coaptic-esphome-archive/2", "coaptic-esphome-archive/3"} or
                     report.get("source") != config["expected_library_revision"] or
                     report.get("suite_source") != config["expected_suite_revision"] or
                     report.get("dirty") is not False or report.get("suite_dirty") is not False):
@@ -71,6 +71,8 @@ def validate_runtime(config):
             expected_locks = {"Cargo.lock", "tools/benchmark/native/Cargo.lock", "tools/security-interop/Cargo.lock",
                               "tools/security-profile/Cargo.lock", "tools/esphome/rust/Cargo.lock",
                               "tools/qualification/esp32/Cargo.lock"}
+            if report["schema"] == "coaptic-esphome-archive/3":
+                expected_locks.add("tools/durable-host/Cargo.lock")
             if (not isinstance(locks, dict) or set(locks) != expected_locks or
                     any(not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
                         for value in locks.values())):
