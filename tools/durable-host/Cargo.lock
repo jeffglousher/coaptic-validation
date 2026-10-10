@@ -132,7 +132,19 @@ version = "0.0.0"
 dependencies = [
  "blake3",
  "coaptic",
+ "coaptic-esphome-probe",
  "getrandom",
+]
+
+[[package]]
+name = "coaptic-esphome-probe"
+version = "0.0.0"
+dependencies = [
+ "coaptic",
+ "critical-section",
+ "hmac 0.13.0",
+ "qualification-no-std",
+ "sha2",
 ]
 
 [[package]]
@@ -161,6 +173,12 @@ checksum = "5ca28b0ae3115b884660db4118d803791fd6756b6e88f39c0f3f7859060d7566"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "critical-section"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
 
 [[package]]
 name = "crypto-bigint"
@@ -418,6 +436,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "qualification-no-std"
+version = "0.0.0"
+dependencies = [
+ "coaptic",
 ]
 
 [[package]]
