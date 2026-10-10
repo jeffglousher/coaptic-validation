@@ -137,7 +137,7 @@ pub fn assert_ids_match_yaml() {
 #[must_use]
 pub fn skip_reason(id: &str) -> Option<&'static str> {
     if id.starts_with("TD_6LoWPAN_") {
-        return Some("future/backlog: 6LoWPAN (contributor opportunity)");
+        return Some("6LoWPAN is outside the accepted 0.0.10 qualification scope");
     }
     if id.starts_with("TD_COAP_DTLS_") && !cfg!(feature = "dtls") {
         return Some("enable crate feature dtls (harness webrtc-dtls adapter)");
@@ -156,7 +156,7 @@ pub fn skip_reason(id: &str) -> Option<&'static str> {
             "coverage gap #199: DTLS backend has no RFC 7250 raw public key; an X.509 run is a different test",
         ),
         _ if OBS.contains(&id) && id != "TD_COAP_OBS_02" => Some(
-            "coverage gap #199: Observe cancel, Max-Age, re-registration, restart, loss, or large notifications are not qualified; coap-rs does not collect notifications",
+            "coverage gap #199: Observe cancel, Max-Age, re-registration, restart, loss, or large notifications are not qualified",
         ),
         _ => None,
     }

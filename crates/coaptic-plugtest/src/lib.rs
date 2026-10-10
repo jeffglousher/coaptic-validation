@@ -24,8 +24,11 @@
 //!   coaptic↔coaptic GET/PUT/POST + Observe notify + Inner Block-wise
 //!   loop and fails if the OSCORE path, protected notify, or protected
 //!   Block is cold or a plain completion sneaks through. Observe notify
-//!   and OSCORE stay coaptic↔coaptic (`coap` 0.28 has no OSCORE and
-//!   does not collect notifies). Wall min/mean/p50/p99/max;
+//!   and OSCORE stay between Coaptic peers in dogfood (`coap` 0.28 has no OSCORE).
+//!   The TD runner collects NON notifications with either client backend against
+//!   a Coaptic server. The coap-rs wrapper retains at most eight notifications of
+//!   at most 2,048 wire bytes; overflow fails the run. This does not qualify the
+//!   dependency runtime for production. Wall min/mean/p50/p99/max;
 //!   [`coaptic::App::reset_metrics`] around each timed window; snapshot
 //!   via [`coaptic::App::metrics`]. Optional `--json` writes schema
 //!   `coaptic-dogfood/1`. `--compare PATH` fails if path-proving Metrics
@@ -59,7 +62,7 @@
 //!
 //! # 6LoWPAN
 //!
-//! `TD_6LoWPAN_*` stay skipped (`future/backlog: 6LoWPAN (contributor opportunity)`).
+//! `TD_6LoWPAN_*` stay outside the accepted 0.0.10 qualification scope.
 //!
 //! Tracking: <https://github.com/jeffglousher/coaptic/issues/199>.
 
