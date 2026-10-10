@@ -6,5 +6,5 @@ rust-version = "1.85"
 publish = false
 
 [dependencies]
-coaptic = { path = "../../../../coaptic", default-features = false, features = ["std", "diagnostics"] }
+coaptic = { path = "../../../../coaptic", default-features = false, features = ["std", "alloc", "diagnostics"] }
 getrandom = "=0.3.4"
