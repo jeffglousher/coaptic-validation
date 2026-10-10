@@ -27,6 +27,8 @@ class HostEvidenceTests(unittest.TestCase):
                         checkpoint(cases)
                         return cases
                     with patch.object(host, "ROOT", library), patch.object(host, "source_identity", return_value={}), \
+                         patch.object(host.platform, "platform", return_value="fixture-platform"), \
+                         patch.object(host.platform, "machine", return_value="fixture-machine"), \
                          patch.object(host.subprocess, "check_output", return_value="compiler"), \
                          patch.object(host, "run_matrix", side_effect=matrix), \
                          patch.object(sys, "argv", ["host.py", "--output", "report.json"]):
