@@ -36,3 +36,11 @@ Upload readback is `accepted:calls`. `sesame` selects the public RFC 8613 C.1 se
 The Coaptic OSCORE client retries one authenticated 4.01 that carries Echo, once, with the same request. The libcoap direction uses its B.1.2 challenge.
 
 coap-rs answers a skipped Block1 number with 2.31. coap-rs and libcoap apply a duplicated counter POST twice.
+
+The standalone coap-rs UDP fixture also serves `/separate`: an empty request ACK,
+then a complete CON response with the original token and a new MID. The relay
+checks both MID bindings, the full payload and the client's empty response ACK.
+Admission and queued responses are each bounded to eight, with a 2,048-byte
+datagram limit. Oversized or saturated input receives no ACK; releasing an owner
+restores admission. This fixture does not qualify separate responses over DTLS
+or retransmission after a lost separate response.

@@ -4,10 +4,33 @@ import unittest
 from unittest.mock import patch
 from run import (Proxy, decode, expect, summary, validate_timing, measure_requests, method_workflow,
                   expect_identical_requests, ipv6_dtls_request, replay_envelope, coap_message,
-                  upload_block, coap_payload, block1_value, decoded_options, block1_fields)
+                  upload_block, coap_payload, block1_value, decoded_options, block1_fields, grade_separate_trace)
 
 
 class RunnerTests(unittest.TestCase):
+    def test_separate_response_requires_both_mid_bindings_and_request_token(self):
+        packets = [("request", bytes.fromhex("41011234a1b87365706172617465")),
+                   ("response", bytes.fromhex("60001234")),
+                   ("response", bytes.fromhex("41455678a1ff") + b"separate-payload"),
+                   ("request", bytes.fromhex("60005678"))]
+        trace = [{"direction": direction, "hex": packet.hex()} for direction, packet in packets]
+        self.assertEqual(grade_separate_trace(trace)["responses"], 2)
+        for index, replacement in [(1, bytes.fromhex("60001235")),
+                                   (2, bytes.fromhex("41451234a1ff") + b"separate-payload"),
+                                   (2, bytes.fromhex("41455678a2ff") + b"separate-payload"),
+                                   (3, bytes.fromhex("60005679"))]:
+            invalid = [dict(row) for row in trace]
+            invalid[index]["hex"] = replacement.hex()
+            with self.assertRaises(AssertionError):
+                grade_separate_trace(invalid)
+        with self.assertRaises(AssertionError):
+            grade_separate_trace(trace[:3])
+        for malformed in (b"", bytes.fromhex("49455678a1"), bytes.fromhex("81455678a1")):
+            invalid = [dict(row) for row in trace]
+            invalid[2]["hex"] = malformed.hex()
+            with self.assertRaises(AssertionError):
+                grade_separate_trace(invalid)
+
     def test_wrong_schema_is_not_accepted(self):
         with self.assertRaises(RuntimeError):
             decode('{"schema":"other","event":"response"}')
