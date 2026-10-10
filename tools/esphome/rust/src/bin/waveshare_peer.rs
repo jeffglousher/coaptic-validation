@@ -187,6 +187,32 @@ fn raw_request(context: &mut SecurityContext, mid: u16) -> Result<([u8; 1152], u
         .map_err(|_| "probe protect")?;
     Ok((wire, n))
 }
+
+fn verify_saved_identity(c: &Credentials, bytes: &[u8]) -> Result<()> {
+    // Authenticate locally before using silence as evidence. This does not send
+    // a fresh request, which would advance (and could mask loss of) device state.
+    let mirror = Credentials {
+        secret: c.secret,
+        salt: c.salt,
+        context: c.context,
+        sender: c.recipient,
+        recipient: c.sender,
+    };
+    let mut verifier =
+        SecurityContext::derive(mirror.parameters()).map_err(|_| "saved request context")?;
+    let mut opened = [0; 1152];
+    let (request, _) = verifier
+        .unprotect_request(
+            &decode(bytes).map_err(|_| "saved request decode")?,
+            &mut opened,
+        )
+        .map_err(|_| "saved request authentication")?;
+    let mut path = request.uri_path();
+    if request.code() != Code::GET || path.next() != Some(Ok("identity")) || path.next().is_some() {
+        return Err("saved request identity");
+    }
+    Ok(())
+}
 fn run() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
     if args.len() != 7 {
@@ -209,21 +235,11 @@ fn run() -> Result<()> {
     probe
         .set_read_timeout(Some(Duration::from_millis(500)))
         .map_err(|_| "probe timeout")?;
-    if args[1] == "replay" {
-        let mut f = File::open(&args[5]).map_err(|_| "saved wire unavailable")?;
-        let len = f.metadata().map_err(|_| "wire metadata")?.len() as usize;
-        if len == 0 || len > 1152 {
-            return Err("saved wire length");
-        }
-        let mut bytes = [0; 1152];
-        f.read_exact(&mut bytes[..len]).map_err(|_| "wire read")?;
-        no_response(&probe, peer, &bytes[..len])?;
-        println!("{{\"passed\":true,\"case\":\"persisted_device_replay_refusal\"}}");
-        return Ok(());
-    }
-    if args[1] != "check" || args[6].len() != 32 || !args[6].bytes().all(|b| b.is_ascii_hexdigit())
+    if !["check", "replay"].contains(&args[1].as_str())
+        || args[6].len() != 32
+        || !args[6].bytes().all(|b| b.is_ascii_hexdigit())
     {
-        return Err("check mode/run identity");
+        return Err("network mode/run identity");
     }
     let store = FileStore::open(Path::new(&args[4]), false)?;
     let (mut state, context) = State::recover(store, &c).map_err(|_| "host security recovery")?;
@@ -243,6 +259,40 @@ fn run() -> Result<()> {
         .map_err(|_| "app bind")?;
     let clock = Instant::now();
     let mut output = [0; 4096];
+    if args[1] == "replay" {
+        let mut f = File::open(&args[5]).map_err(|_| "saved wire unavailable")?;
+        let len = f.metadata().map_err(|_| "wire metadata")?.len() as usize;
+        if len == 0 || len > 1152 {
+            return Err("saved wire length");
+        }
+        let mut bytes = [0; 1152];
+        f.read_exact(&mut bytes[..len]).map_err(|_| "wire read")?;
+        verify_saved_identity(&c, &bytes[..len])?;
+        // These must be the first protected packets after the observed restart.
+        // Establish fresh authenticated liveness only after testing the old wire.
+        for _ in 0..3 {
+            no_response(&probe, peer, &bytes[..len])?;
+        }
+        let (code, n) = query(
+            &mut client,
+            &mut state,
+            &clock,
+            peer.into(),
+            RequestSpec {
+                code: Code::GET,
+                path: "identity",
+                payload: &[],
+            },
+            &mut output,
+        )?;
+        if code != Code::CONTENT || &output[..n] != args[6].as_bytes() {
+            return Err("firmware liveness after replay refusal");
+        }
+        println!(
+            "{{\"passed\":true,\"case\":\"replay_first_then_authenticated_identity\",\"refusal_attempts\":3,\"sender_start\":{start},\"scope\":\"requires independently observed device restart and no intervening protected traffic\"}}"
+        );
+        return Ok(());
+    }
     let (code, n) = query(
         &mut client,
         &mut state,
@@ -379,6 +429,69 @@ fn main() -> std::process::ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn saved_identity_requires_authentication_and_exact_path() {
+        let c = Credentials {
+            secret: [0x31; 32],
+            salt: [0x52; 16],
+            context: [0x73; 16],
+            sender: 1,
+            recipient: 2,
+        };
+        let mut context = SecurityContext::derive(c.parameters()).unwrap();
+        let options = [Opt::uri_path("identity")];
+        let request = Message::new(Type::Confirmable, Code::GET, MessageId::new(7))
+            .with_token(Token::new(b"old").unwrap())
+            .with_options(&options);
+        let mut bytes = [0; 1152];
+        let n = context.protect_request(&request, &mut bytes).unwrap();
+        assert!(verify_saved_identity(&c, &bytes[..n]).is_ok());
+        bytes[n - 1] ^= 1;
+        assert!(verify_saved_identity(&c, &bytes[..n]).is_err());
+        bytes[n - 1] ^= 1;
+        let mut foreign = Credentials {
+            secret: c.secret,
+            salt: c.salt,
+            context: c.context,
+            sender: c.sender,
+            recipient: c.recipient,
+        };
+        foreign.secret[0] ^= 1;
+        assert!(verify_saved_identity(&foreign, &bytes[..n]).is_err());
+        assert!(verify_saved_identity(&c, &[]).is_err());
+        let options = [Opt::uri_path("identity"), Opt::uri_path("extra")];
+        let request =
+            Message::new(Type::Confirmable, Code::GET, MessageId::new(8)).with_options(&options);
+        let n = context.protect_request(&request, &mut bytes).unwrap();
+        assert_eq!(
+            verify_saved_identity(&c, &bytes[..n]),
+            Err("saved request identity")
+        );
+    }
+
+    #[test]
+    fn replay_response_is_failure_even_before_fresh_liveness() {
+        let server = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let address = server.local_addr().unwrap();
+        server
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let responder = std::thread::spawn(move || {
+            let mut bytes = [0; 32];
+            let (_, peer) = server.recv_from(&mut bytes).unwrap();
+            server.send_to(b"accepted stale request", peer).unwrap();
+        });
+        let probe = UdpSocket::bind("127.0.0.1:0").unwrap();
+        probe
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        assert_eq!(
+            no_response(&probe, address, b"saved protected request"),
+            Err("refused probe received a datagram")
+        );
+        responder.join().unwrap();
+    }
+
     #[test]
     fn file_store_refuses_concurrent_owner_truncation_and_implicit_creation() {
         let root = std::env::temp_dir().join(format!("coaptic-state-proof-{}", std::process::id()));
