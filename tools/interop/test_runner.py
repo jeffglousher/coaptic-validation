@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 from run import (Proxy, decode, expect, summary, validate_timing, measure_requests, method_workflow,
                   expect_identical_requests, ipv6_dtls_request, replay_envelope, coap_message,
-                  upload_block, coap_payload, block1_value, decoded_options, block1_fields, grade_separate_trace)
+                  upload_block, coap_payload, block1_value, decoded_options, block1_fields, grade_separate_trace, grade_separate_loss)
 
 
 class RunnerTests(unittest.TestCase):
@@ -30,6 +30,37 @@ class RunnerTests(unittest.TestCase):
             invalid[2]["hex"] = malformed.hex()
             with self.assertRaises(AssertionError):
                 grade_separate_trace(invalid)
+
+    def test_separate_loss_requires_actual_loss_identical_retransmission_and_later_ack(self):
+        response = bytes.fromhex("41455678a1ff") + b"separate-payload"
+        packets = [("request", "forward", bytes.fromhex("41011234a1b87365706172617465")),
+                   ("response", "forward", bytes.fromhex("60001234")),
+                   ("response", "drop", response),
+                   ("response", "forward", response),
+                   ("request", "forward", bytes.fromhex("60005678"))]
+        trace = [{"direction": direction, "action": action, "hex": wire.hex()}
+                 for direction, action, wire in packets]
+        self.assertEqual(grade_separate_loss(trace)["retransmissions"], 1)
+        invalid = []
+        for missing in (1, 2, 3, 4):
+            invalid.append([dict(row) for i, row in enumerate(trace) if i != missing])
+        for index in (2, 3):
+            for offset in (2, 4, len(response) - 1):
+                changed = [dict(row) for row in trace]
+                wire = bytearray(response)
+                wire[offset] ^= 1
+                changed[index]["hex"] = wire.hex()
+                invalid.append(changed)
+        for left, right in ((1, 2), (2, 3), (3, 4)):
+            changed = [dict(row) for row in trace]
+            changed[left], changed[right] = changed[right], changed[left]
+            invalid.append(changed)
+        no_loss = [dict(row) for row in trace]
+        no_loss[2]["action"] = "forward"
+        invalid.append(no_loss)
+        for case in invalid:
+            with self.subTest(case=case), self.assertRaises(AssertionError):
+                grade_separate_loss(case)
 
     def test_wrong_schema_is_not_accepted(self):
         with self.assertRaises(RuntimeError):

@@ -44,3 +44,11 @@ Admission and queued responses are each bounded to eight, with a 2,048-byte
 datagram limit. Oversized or saturated input receives no ACK; releasing an owner
 restores admission. This fixture does not qualify separate responses over DTLS
 or retransmission after a lost separate response.
+
+The separate-response loss cases use Coaptic and coap-rs clients against the
+Coaptic server over IPv4 loopback UDP. The relay forwards the empty request ACK,
+drops exactly the first separate CON 2.05, and requires an identical complete
+retransmission followed by the client's matching ACK. The request deadline is
+eight seconds; the relay retains at most 256 datagrams. Missing, changed or
+out-of-order evidence fails. These cases do not qualify the coap-rs server's
+retransmission, protected transports, other address families or hardware.

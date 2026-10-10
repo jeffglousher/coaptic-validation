@@ -3171,6 +3171,52 @@
       "executable": "tools/interop/run.py:separate_client"
     },
     {
+      "id": "separate-loss:coaptic->coaptic",
+      "client": "coaptic",
+      "server": "coaptic",
+      "transport": "udp",
+      "security": "none",
+      "address_family": "ipv4-loopback",
+      "execution_platforms": [
+        "linux",
+        "windows"
+      ],
+      "requires": [],
+      "features": [
+        "separate-response"
+      ],
+      "positive_proof": [
+        "empty request ACK, exactly one dropped separate CON, identical complete retransmission and subsequent client ACK"
+      ],
+      "failure_proof": [
+        "missing drop, changed retransmission, wrong bindings or an absent/early client ACK fails"
+      ],
+      "executable": "tools/interop/run.py:separate_loss_client"
+    },
+    {
+      "id": "separate-loss:coap-rs->coaptic",
+      "client": "coap-rs",
+      "server": "coaptic",
+      "transport": "udp",
+      "security": "none",
+      "address_family": "ipv4-loopback",
+      "execution_platforms": [
+        "linux",
+        "windows"
+      ],
+      "requires": [],
+      "features": [
+        "separate-response"
+      ],
+      "positive_proof": [
+        "empty request ACK, exactly one dropped separate CON, identical complete retransmission and subsequent client ACK"
+      ],
+      "failure_proof": [
+        "missing drop, changed retransmission, wrong bindings or an absent/early client ACK fails"
+      ],
+      "executable": "tools/interop/run.py:separate_loss_client"
+    },
+    {
       "id": "separate:coaptic",
       "client": "coaptic",
       "server": "coaptic",
