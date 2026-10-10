@@ -42,13 +42,23 @@ python tools/qualification/host.py --output target/host.json
 python tools/qualification/seeded.py --output target/seeded.json
 python tools/qualification/cross_build.py --target thumbv7em-none-eabi --output target/cross-build.json
 python tools/qualification/coverage.py --work-root BUILD_PARENT --output target/coverage.json
+python tools/qualification/coverage.py --branches --work-root BUILD_PARENT --output target/branches.json
+python tools/qualification/fuzz.py --seconds 60 --output target/fuzz.json
 ```
 
 Host checks cover six feature modes; explicit i686 targets verify 32-bit test
 images, and s390x uses QEMU with ELF endianness checks. Cross builds establish
 code generation only. Seeded campaigns are finite sanity checks. LLVM coverage
 covers compiled source, including test modules; it has no acceptance percentage.
-Device execution, stack limits, power-loss recovery, branch coverage, and full
+Branch coverage and address-sanitized libFuzzer campaigns require
+`nightly-2026-10-01` with `llvm-tools` and `rust-src`, plus cargo-fuzz 0.13.1.
+Fuzzing uses fresh seeded corpora, bounded time/inputs/memory, three semantic
+oracles and nonzero execution/feedback requirements. Reports retain both source
+revisions and the fuzz lock hash. The coverage report also requires execution
+of 18 named RFC requirement proofs; this inventory is selected, not exhaustive.
+On Windows, supply `--asan-runtime-directory` for the installed MSVC ASan DLL;
+the runner adds it only to the campaign environment and records its hash.
+Device execution, stack limits, physical power-loss recovery, and full
 RFC conformance remain separate qualification work. Performance results are
 preliminary and must retain commands, environment, source revisions, and setup
 limitations; see the benchmark method before interpreting them.

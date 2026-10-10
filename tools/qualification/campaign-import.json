@@ -1,0 +1,51 @@
+{
+  "source_repository": "https://github.com/jeffglousher/coaptic",
+  "source_revision": "05a4e2305d4846b76c37baa072df3f5ccc35cef6",
+  "files": [
+    {
+      "path": "fuzz/Cargo.toml",
+      "original_sha256": "5376d77fdd3b66fc1602d54575366f3ba66610430f7960675b46a2499e3b0718"
+    },
+    {
+      "path": "fuzz/Cargo.lock",
+      "original_sha256": "8143a9ed2f1ff97b3aec4ca2dfdf424a15d12330088449afd0ae275fcc86e142"
+    },
+    {
+      "path": "fuzz/fuzz_targets/datagram.rs",
+      "original_sha256": "409be2c134116fc123c4f81e77db0fe3ee5333147ec1631f9180fb11cb1ffd9a"
+    },
+    {
+      "path": "fuzz/fuzz_targets/cbor.rs",
+      "original_sha256": "6c06a3dcac34dd989ce829b233892e28ee10be720377a82d6978b5a5e3a75d5c"
+    },
+    {
+      "path": "fuzz/fuzz_targets/oscore.rs",
+      "original_sha256": "4c366679a6cfc3b907041e76ba015b78b60d031ffcd542b6d483a3e2e924471a"
+    },
+    {
+      "path": "tools/qualification/fuzz.py",
+      "original_sha256": "707e1294732515f61c80034c7bc6998c4c40f2555757253735fd00aa908360a1"
+    },
+    {
+      "path": "tools/qualification/test_fuzz.py",
+      "original_sha256": "ae5d46d0fc1053c7ddc0954b80fadce6f43ff432174986a5c3b7347aaacd8848"
+    },
+    {
+      "path": "tools/qualification/contracts.py",
+      "original_sha256": "11641604963c34669d6273b290f60a9752e522aa773a71f7b966ca344abf9162"
+    },
+    {
+      "path": "tools/qualification/contracts.json",
+      "original_sha256": "da5de8551d8fab7a830cc4ddc8f59e943e71db497def71929149e4418a06f4c1"
+    },
+    {
+      "path": "tools/qualification/test_contracts.py",
+      "original_sha256": "2ba9d67eb32db1483979063159b69d79178ee7239300448069223b871bbfed26"
+    }
+  ],
+  "adaptations": [
+    "Companion path dependency; preserve core version 0.0.10 and other dependency pins",
+    "Bounded campaigns and both-repository/lock evidence",
+    "Named contract proofs integrated into line/branch coverage; finite lifecycle and process recovery campaigns"
+  ]
+}

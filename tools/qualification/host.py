@@ -180,6 +180,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--target", choices=tuple(TARGETS))
     args = parser.parse_args()
+    args.output = args.output.resolve()
     os.chdir(ROOT)
     report = {"schema": "coaptic-host-qualification/1",
               **source_identity(),

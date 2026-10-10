@@ -7,10 +7,37 @@ import unittest
 import os
 import sys
 import time
+from unittest.mock import patch
+import host
 from host import CASES, run_case, run_matrix, binary_identity, emulated_process
 
 
 class HostEvidenceTests(unittest.TestCase):
+    def test_relative_report_stays_in_callers_directory_on_success_and_failure(self):
+        original = Path.cwd()
+        with tempfile.TemporaryDirectory() as name:
+            caller = Path(name)
+            library = caller / "library"
+            library.mkdir()
+            try:
+                for passed in (True, False):
+                    os.chdir(caller)
+                    cases = [{"passed": passed} for _ in CASES]
+                    def matrix(*args, checkpoint, **kwargs):
+                        checkpoint(cases)
+                        return cases
+                    with patch.object(host, "ROOT", library), patch.object(host, "source_identity", return_value={}), \
+                         patch.object(host.platform, "platform", return_value="fixture-platform"), \
+                         patch.object(host.platform, "machine", return_value="fixture-machine"), \
+                         patch.object(host.subprocess, "check_output", return_value="compiler"), \
+                         patch.object(host, "run_matrix", side_effect=matrix), \
+                         patch.object(sys, "argv", ["host.py", "--output", "report.json"]):
+                        self.assertEqual(host.main(), 0 if passed else 1)
+                    self.assertEqual(json.loads((caller / "report.json").read_text())["passed"], passed)
+                    self.assertFalse((library / "report.json").exists())
+            finally:
+                os.chdir(original)
+
     @unittest.skipUnless(os.name == "posix", "QEMU user-mode runner owns a POSIX process group")
     def test_timeout_kills_descendants_holding_output_pipes(self):
         script = "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); print('started',flush=True); time.sleep(60)"
