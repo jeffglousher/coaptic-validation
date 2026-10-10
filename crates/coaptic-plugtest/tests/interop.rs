@@ -130,6 +130,16 @@ fn non_observe_notifications_reach_each_client_backend() {
                 server: "coaptic",
             },
         );
+        if let Some(directory) = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            result
+                .capture
+                .write_pcap(
+                    std::fs::File::create(directory.join(format!("obs-02-{client}.pcap"))).unwrap(),
+                )
+                .unwrap();
+        }
         assert!(result.error.is_none(), "{client}: {:?}", result.error);
         assert!(!result.capture.snapshot().is_empty());
     }

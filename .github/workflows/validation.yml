@@ -412,8 +412,18 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked -p coaptic-plugtest --all-targets --features dtls,oscore -- -D warnings
       - run: cargo test --locked -p coaptic-plugtest --features dtls,oscore
+        env:
+          COAPTIC_OBSERVE_CAPTURE_DIR: ${{ runner.temp }}/observe-captures
       - run: cargo run --locked -p coaptic-plugtest --bin dogfood -- --iterations 2 --compare crates/coaptic-plugtest/baselines/dogfood.json
       - run: cargo run --locked -p coaptic-plugtest --features oscore --bin dogfood -- --oscore --iterations 2 --compare crates/coaptic-plugtest/baselines/dogfood-oscore.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: observe-notifications
+          path: |
+            ${{ runner.temp }}/observe-captures/
+            ${{ runner.temp }}/validation-source.json
+          if-no-files-found: error
   esphome-configuration:
     name: Custom ESPHome source and configuration
     runs-on: ubuntu-latest
