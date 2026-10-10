@@ -6,7 +6,7 @@ rust-version = "1.85"
 publish = false
 
 [dependencies]
-coaptic = { path = "../../../../coaptic", default-features = false, features = ["std"] }
+coaptic = { path = "../../../../coaptic", default-features = false, features = ["std", "alloc"] }
 coap = { version = "=0.28.1", default-features = false }
 coap-lite = "=0.13.3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "io-util"] }
