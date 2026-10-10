@@ -52,3 +52,7 @@ retransmission followed by the client's matching ACK. The request deadline is
 eight seconds; the relay retains at most 256 datagrams. Missing, changed or
 out-of-order evidence fails. These cases do not qualify the coap-rs server's
 retransmission, protected transports, other address families or hardware.
+The coap-rs client can repeat the original GET despite its empty ACK. The trace
+retains those retries and matching repeated ACKs; every delivered separate
+response must still match the dropped bytes exactly. This checks recovery and
+bindings, not a complete retransmission-timer conformance schedule.

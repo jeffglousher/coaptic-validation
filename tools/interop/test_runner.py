@@ -41,6 +41,12 @@ class RunnerTests(unittest.TestCase):
         trace = [{"direction": direction, "action": action, "hex": wire.hex()}
                  for direction, action, wire in packets]
         self.assertEqual(grade_separate_loss(trace)["retransmissions"], 1)
+        duplicated_request = trace[:3] + [dict(trace[0]), dict(trace[1])] + trace[3:]
+        self.assertEqual(grade_separate_loss(duplicated_request)["request_retries"], 1)
+        wrong_repeat_ack = [dict(row) for row in duplicated_request]
+        wrong_repeat_ack[4]["hex"] = "60009999"
+        with self.assertRaises(AssertionError):
+            grade_separate_loss(wrong_repeat_ack)
         invalid = []
         for missing in (1, 2, 3, 4):
             invalid.append([dict(row) for i, row in enumerate(trace) if i != missing])

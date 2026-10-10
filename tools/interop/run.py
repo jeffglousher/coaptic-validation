@@ -1668,8 +1668,18 @@ def grade_separate_loss(trace):
               if row["direction"] == "response" and row["action"] == "forward"]
     if len(before) != 1 or len(before[0]) != 4 or before[0][:2] != b"\x60\x00":
         raise AssertionError("empty ACK must precede the first separate response loss")
+    # coap-rs can repeat its original GET despite the empty ACK. Preserve that
+    # evidence and allow only a matching repeat ACK, never a changed response.
+    registration = bytes.fromhex(next(row["hex"] for row in trace
+                                     if row["direction"] == "request"))
+    request_retries = [bytes.fromhex(row["hex"]) for row in trace
+                       if row["direction"] == "request" and row["action"] == "forward"
+                       and len(bytes.fromhex(row["hex"])) > 4]
+    if any(wire != registration for wire in request_retries):
+        raise AssertionError("retried request changed")
     repeats = [(i, bytes.fromhex(row["hex"])) for i, row in enumerate(trace)
-               if row["direction"] == "response" and row["action"] == "forward" and i > drop_at]
+               if row["direction"] == "response" and row["action"] == "forward" and i > drop_at
+               and bytes.fromhex(row["hex"]) != before[0]]
     if not repeats or any(wire != lost for _, wire in repeats):
         raise AssertionError("retransmission changed or is missing")
     delivered_at = repeats[0][0]
@@ -1678,7 +1688,8 @@ def grade_separate_loss(trace):
                         and bytes.fromhex(row["hex"]) == b"\x60\x00" + lost[2:4]]
     if not acknowledgements or any(i <= delivered_at for i in acknowledgements):
         raise AssertionError("client ACK must follow delivery of the retransmission")
-    result.update(trace=trace, drops=1, retransmissions=len(repeats))
+    result.update(trace=trace, drops=1, retransmissions=len(repeats),
+                  request_retries=max(0, len(request_retries) - 1))
     return result
 
 
