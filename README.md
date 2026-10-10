@@ -18,7 +18,7 @@ cargo test --locked -p coaptic-plugtest --features dtls,oscore
 ```
 
 Preparation rejects modified source and mismatched plugtest fixtures. It aligns
-only Coaptic's path-package version in the four lockfiles; dependency pins stay
+only Coaptic's path-package version in the six lockfiles; dependency pins stay
 fixed. Keep the preparation report with results. Reports identify the library
 and suite revisions, dirty state, prepared lock hashes, and fixture hashes.
 
@@ -52,6 +52,35 @@ Device execution, stack limits, power-loss recovery, branch coverage, and full
 RFC conformance remain separate qualification work. Performance results are
 preliminary and must retain commands, environment, source revisions, and setup
 limitations; see the benchmark method before interpreting them.
+
+### Custom ESPHome qualification
+
+The local [package](tools/esphome/coaptic-network-package.yaml) preserves the
+consuming configuration's device, Wi-Fi and API/OTA settings. It requires ESP-IDF
+and an explicit qualification-only opt-in. No upstream ESPHome contribution is
+planned. Its IPv4 UDP service is a plaintext test fixture without actuators,
+identity credentials or durable security state.
+
+Build tooling requires clean library and suite checkouts after preparation:
+
+```sh
+python tools/qualification/esp32.py --chip esp32c3 --expected-library-revision LIBRARY_COMMIT_SHA --output target/c3/build.json
+python tools/qualification/esphome_probe.py --chip esp32s3 --compile --expected-library-revision LIBRARY_COMMIT_SHA --output target/s3/build.json
+python tools/esphome/build_archive.py --expected-library-revision LIBRARY_COMMIT_SHA
+```
+
+ESPHome tooling pins version 2026.9.1 and ESP-IDF 5.5.5. S3 compilation requires
+the `coaptic-esp-1.97` Espressif Rust toolchain. Generated archives stay out of
+git; bundled mode requires both expected source revisions and checks the archive
+checksum, target, features and prepared lock hashes. External mode lets a
+consuming Rust subsystem own the enclosing static library and panic handler.
+Configuration-only tests use opaque archive bytes and do not establish linking.
+
+Capture recording requires both `--expected-library-revision` and
+`--expected-suite-revision`, unchanged firmware hashes and fresh run IDs. Build
+reports are not device results or authenticated attestation. These commands do
+not deploy firmware. Protected networking, platform entropy and durable flash
+recovery remain unqualified.
 
 ## License
 

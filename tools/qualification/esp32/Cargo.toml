@@ -1,0 +1,26 @@
+[package]
+name = "qualification-esp32"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[features]
+default = ["esp32c3"]
+esp32c3 = ["esp-hal/esp32c3", "esp-println/esp32c3", "esp-bootloader-esp-idf/esp32c3"]
+esp32c6 = ["esp-hal/esp32c6", "esp-println/esp32c6", "esp-bootloader-esp-idf/esp32c6"]
+oscore = ["qualification-no-std/oscore"]
+
+[dependencies]
+qualification-no-std = { path = "../../../crates/qualification-no-std" }
+esp-hal = { version = "=1.2.2" }
+esp-println = { version = "=0.18.0", default-features = false, features = ["auto"] }
+esp-bootloader-esp-idf = { version = "=0.6.0" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+debug = 2
+panic = "abort"

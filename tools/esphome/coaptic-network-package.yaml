@@ -1,0 +1,12 @@
+# Custom qualification package. The consuming configuration owns esp32, wifi,
+# logger, API/OTA and all unrelated components. Use a fresh secret run ID.
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [coaptic_network]
+
+coaptic_network:
+  run_id: !secret coaptic_run_id
+  qualification_only: true
+  rust_runtime: source
