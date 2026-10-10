@@ -48,10 +48,13 @@ cross-principal scoping, storage failure and recovery. `accept_receipt` checks
 the fixture's complete returned bytes; a real network client must first
 authenticate a successful response from its intended service.
 
-The localhost UDP test retains a complete 1024-byte pending operation while
+The localhost UDP test durably stores a complete 1024-byte pending operation in
+its own locked, authenticated fixed-record file and reopens that file after
 discarding the first committed reply. It reconnects with fresh OS-random pairwise
 OSCORE contexts, refuses a wrong key, revoked policy and changed content, then
-authenticates and accepts the original receipt with exactly one effect. The
+authenticates and accepts the original receipt with exactly one effect. It then
+durably records completion and reopens the pending file to verify that receipt.
+The
 fixture explicitly maps its one protected channel to a full principal; it is
 not an enrollment provider. Persistence runs after `poll_with` returns, using
 one bounded deferred work item. Process termination and protected reconnects
