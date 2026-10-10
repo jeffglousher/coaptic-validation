@@ -316,6 +316,10 @@ class Proxy:
                         action = "corrupt"
                     elif self.mode == "blackhole":
                         action = "drop"
+                    elif (self.mode == "drop-separate" and not incoming and not dropped
+                          and len(data) >= 4 and data[0] >> 6 == 1
+                          and (data[0] >> 4) & 3 == 0 and data[1] == 69):
+                        action, dropped = "drop", True
                     elif self.mode == "drop-reply" and not incoming and not dropped:
                         action, dropped = "drop", True
                     elif self.mode == "delay-reply" and not incoming and not dropped:
@@ -1640,6 +1644,55 @@ def separate_client(client, server, timeout=6000):
     return grade_separate_trace(trace)
 
 
+def separate_loss_client(client, server):
+    """Lose the first separate CON, then require its complete acknowledged retransmission."""
+    with Server(server, "udp") as service:
+        with Proxy(service.number, "drop-separate") as relay:
+            result = request(client, "udp", relay.number, path="separate", timeout=8000)
+        trace = relay.trace
+    expect(result, 69, b"separate-payload")
+    return grade_separate_loss(trace)
+
+
+def grade_separate_loss(trace):
+    forwarded = [row for row in trace if row["action"] == "forward"]
+    result = grade_separate_trace(forwarded)
+    drops = [(i, row) for i, row in enumerate(trace) if row["action"] == "drop"]
+    if len(drops) != 1 or drops[0][1]["direction"] != "response":
+        raise AssertionError("exactly one separate response must be dropped")
+    drop_at, row = drops[0]
+    lost = bytes.fromhex(row["hex"])
+    if len(lost) < 4 or lost[0] >> 6 != 1 or (lost[0] >> 4) & 3 != 0 or lost[1] != 69:
+        raise AssertionError("dropped message was not a separate CON 2.05")
+    before = [bytes.fromhex(row["hex"]) for row in trace[:drop_at]
+              if row["direction"] == "response" and row["action"] == "forward"]
+    if len(before) != 1 or len(before[0]) != 4 or before[0][:2] != b"\x60\x00":
+        raise AssertionError("empty ACK must precede the first separate response loss")
+    # coap-rs can repeat its original GET despite the empty ACK. Preserve that
+    # evidence and allow only a matching repeat ACK, never a changed response.
+    registration = bytes.fromhex(next(row["hex"] for row in trace
+                                     if row["direction"] == "request"))
+    request_retries = [bytes.fromhex(row["hex"]) for row in trace
+                       if row["direction"] == "request" and row["action"] == "forward"
+                       and len(bytes.fromhex(row["hex"])) > 4]
+    if any(wire != registration for wire in request_retries):
+        raise AssertionError("retried request changed")
+    repeats = [(i, bytes.fromhex(row["hex"])) for i, row in enumerate(trace)
+               if row["direction"] == "response" and row["action"] == "forward" and i > drop_at
+               and bytes.fromhex(row["hex"]) != before[0]]
+    if not repeats or any(wire != lost for _, wire in repeats):
+        raise AssertionError("retransmission changed or is missing")
+    delivered_at = repeats[0][0]
+    acknowledgements = [i for i, row in enumerate(trace)
+                        if row["direction"] == "request" and row["action"] == "forward"
+                        and bytes.fromhex(row["hex"]) == b"\x60\x00" + lost[2:4]]
+    if not acknowledgements or any(i <= delivered_at for i in acknowledgements):
+        raise AssertionError("client ACK must follow delivery of the retransmission")
+    result.update(trace=trace, drops=1, retransmissions=len(repeats),
+                  request_retries=max(0, len(request_retries) - 1))
+    return result
+
+
 def grade_separate_trace(trace):
     def packet(row):
         wire = bytes.fromhex(row["hex"])
@@ -2324,6 +2377,9 @@ def main():
     case("separate:coaptic", lambda: separate_response(peers["coaptic"]))
     case("separate:coap-rs", lambda: separate_response(peers["coap-rs"]))
     case("separate-client:coaptic->coap-rs", lambda: separate_client(peers["coaptic"], peers["coap-rs"]))
+    for client in ("coaptic", "coap-rs"):
+        case(f"separate-loss:{client}->coaptic",
+             lambda client=client: separate_loss_client(peers[client], peers["coaptic"]))
     case("no-response-5:coaptic", lambda: no_response_internal(peers["coaptic"]))
     case("observe:coaptic", lambda: observe_counter(peers["coaptic"]))
     case("conditional:coaptic", lambda: conditional_workflow(peers["coaptic"]))
