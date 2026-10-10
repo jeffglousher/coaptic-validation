@@ -63,6 +63,34 @@ RFC conformance remain separate qualification work. Performance results are
 preliminary and must retain commands, environment, source revisions, and setup
 limitations; see the benchmark method before interpreting them.
 
+### Protected Linux container
+
+With Docker available on an isolated Linux host, prepare the selected library
+revision as above, then run:
+
+```sh
+python3 tools/qualification/container_host.py --output target/protected-container
+```
+
+Use a new output directory for each run. The runner uses the pinned official
+Rust 1.97.1 image digest in its source and mounts the library read-only. It builds
+separate `std` fixed-storage and `std,alloc` heap-storage examples, records their
+hashes, then disconnects external container networking before execution. Both
+peers use loopback and fresh in-process OSCORE credentials.
+
+Seven cases check complete 200-byte responses, unknown-argument refusal,
+`--alloc` refusal when allocator support was not compiled, and valid recovery.
+The report retains commands, raw stdout/stderr, exit codes, library/suite/lock
+identities, the image digest and toolchain. Only the runner's uniquely named
+container is removed; image caches are retained.
+
+The [initial hosted run](https://github.com/jeffglousher/coaptic-validation/actions/runs/38078017939)
+passed all seven cases against core `47058bb169e855694b267b7fb658d6010f8d93f2`
+and clean synthetic suite `d6350482860acb6319b60f0589b842fc5e8dc2cc`.
+The `protected-linux-container` artifact contains the full evidence. This
+qualifies those localhost examples in a container, not physical devices,
+enrollment, persistence, routed networks or sustained service capacity.
+
 ### Custom ESPHome qualification
 
 The local [package](tools/esphome/coaptic-network-package.yaml) preserves the
