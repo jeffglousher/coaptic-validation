@@ -111,6 +111,8 @@ def grade(trace, result, endpoints, before, after, mode):
     previous_time = -1
     request_retries = dropped = final_forwarded = final_seen = 0
     retry_intervals = []
+    final_retry_pending = False
+    final_request_retries = 0
     first_time = {}
     for row in trace:
         direction, action = row["direction"], row["action"]
@@ -134,6 +136,9 @@ def grade(trace, result, endpoints, before, after, mode):
             if wire in unique:
                 require(wire == latest and not acknowledged, "retry changed or settled request ownership")
                 request_retries += 1
+                if dropped and bytes(body) == LARGE:
+                    final_retry_pending = True
+                    final_request_retries += 1
                 interval = at - first_time[wire]
                 require(interval >= 1_950_000_000, "request retry before original RTO")
                 retry_intervals.append(interval)
@@ -191,6 +196,8 @@ def grade(trace, result, endpoints, before, after, mode):
                 acknowledged = True
             if int(plain.code) == 65:
                 require(bytes(body) == LARGE, "Created before exact complete body")
+                require(not final_seen or final_retry_pending, "Created repeated without final-request retry after loss")
+                final_retry_pending = False
                 final_seen += 1
                 if action == "drop":
                     dropped += 1
@@ -207,13 +214,13 @@ def grade(trace, result, endpoints, before, after, mode):
     if mode == "baseline":
         require(dropped == 0 and final_forwarded == 1, "baseline delivery mismatch")
     elif mode == "drop-once":
-        require(dropped == 1 and final_forwarded == 1 and request_retries >= 1,
+        require(dropped == 1 and final_forwarded == 1 and final_request_retries >= 1,
                 "one-loss recovery not exercised")
     elif mode == "drop-permanent":
-        require(dropped >= 2 and final_forwarded == 0 and request_retries >= 1,
+        require(dropped >= 2 and final_forwarded == 0 and final_request_retries >= 1,
                 "permanent loss/timeout not exercised")
     return {"authenticated_inner_blocks": len(unique), "body_bytes_observed": len(body),
-            "exact_request_retries": request_retries, "retry_intervals_ns": retry_intervals,
+            "exact_request_retries": request_retries, "final_request_retries_after_loss": final_request_retries, "retry_intervals_ns": retry_intervals,
             "dropped_authenticated_created": dropped, "effect_before": prior, "effect_after": current,
             "client_outcome": "timeout; independently observed one application effect" if mode == "drop-permanent"
                               else "wrong-key refusal" if wrong else "complete Created",

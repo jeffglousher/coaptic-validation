@@ -135,6 +135,16 @@ class ProtectedQBlockTests(unittest.TestCase):
             with self.subTest(case=name), self.assertRaises(AssertionError):
                 grade(*data)
 
+    def test_unrelated_retry_does_not_prove_final_reply_recovery(self):
+        for mode in ("drop-once", "drop-permanent"):
+            data = evidence(mode)
+            data[0].insert(1, copy.deepcopy(data[0][0]))
+            data[0].pop(5)  # Remove the actual final-request retry.
+            for i, row in enumerate(data[0]):
+                row["time_ns"] = 0 if i == 0 else 2_000_000_000 + i * 10_000_000
+            with self.subTest(mode=mode), self.assertRaises(AssertionError):
+                grade(*data)
+
     def test_loss_and_timeout_mutations_refuse(self):
         for mode, mutate in [
             ("drop-once", lambda x: x[0][3].update(action="forward")),
