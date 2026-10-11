@@ -125,3 +125,24 @@ per schedule. Mutations reject wrong endpoints/family, changed peer or forwarded
 bytes, missing loss/retry proof and ACK-before-delivery. This qualifies the
 bounded standalone fixture, not upstream coap-rs reliability, scoped/routed
 networks, protected transport or sustained availability.
+
+
+`con-qblock1-loss:coaptic->libcoap` qualifies the existing independent CON upload
+fixture over IPv4 loopback. The 2000-byte request uses two Q-Block1 payloads
+(SZX 6), one Request-Tag and Size1. The relay forwards the initial 1024 bytes and
+requires their owned empty ACK before dropping the later payload. A successful
+schedule requires byte-identical retransmission and a matching final 2.01 ACK;
+the libcoap handler checks the entire pattern and its `accepted:calls` readback
+must advance exactly once. Permanently dropping the later payload must produce
+a protocol timeout, with only 1024 partial bytes delivered and neither counter
+changed. A fresh client process and relay then complete against the same server.
+The successful schedules have twelve-second deadlines; refusal has six seconds
+and must retain a genuine retry. Traces are limited to 256 datagrams and bind
+each packet to exact endpoints, monotonic capture time and unchanged wire bytes.
+The first retry must match the fixture's unchanged 2–3 second initial RTO, allowing
+50 ms early capture skew and one second of late host scheduling. Zero/compressed
+capture intervals refuse; this is not qualification of every timer boundary.
+The readback counts are in-memory fixture application effects, not durable receipts.
+This finite CON case uses existing RFC 7252 reliability as referenced by RFC 9177
+section 7.1; it does not qualify NON missing-block recovery, timed-out Call reuse,
+protected transport, routed networks, hardware or sustained availability.
