@@ -60,6 +60,24 @@ not an enrollment provider. Persistence runs after `poll_with` returns, using
 one bounded deferred work item. Process termination and protected reconnects
 are separate tests; this does not claim an independently deployed host service.
 
+The reusable `coaptic_esphome_probe::protected_telemetry::run` adapter connects
+the pending record to fixed-storage protected I/O. It recovers security sender
+reservations before sending the retained ID and complete payload, checks the
+intended service's authenticated receipt, and commits completion before success.
+`cargo test --locked --manifest-path tools/durable-host/Cargo.toml --test pending_adapter`
+qualifies this path with an in-memory datagram link and the real file journal.
+Lost replies, wrong keys, invalid receipts, application refusal, regressing time
+and ambiguous completion commits preserve recoverable work; successful retry
+leaves exactly one journal effect. Missing records and a wrong resource refuse
+before I/O, including a changed resource after completion. A required finite
+deadline also bounds silence after an empty ACK. Recovered completion performs
+no network work.
+The adapter stores no new operation ID and initializes no records. This evidence
+does not connect the runner to ESP flash callbacks or execute device firmware;
+those physical integration steps remain under
+[#333](https://github.com/jeffglousher/coaptic/issues/333) and
+[#365](https://github.com/jeffglousher/coaptic/issues/365).
+
 File locking is cooperative, checksums are not authentication, and the caller
 protects storage against unauthorized replacement. A valid old snapshot cannot
 be recognized as stale by this journal alone. The evidence concerns ordinary
