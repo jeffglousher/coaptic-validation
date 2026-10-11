@@ -1,20 +1,30 @@
 //! Bounded UDP fixture for separate responses; not a production CoAP transport.
 //!
-//! At most eight admitted requests and eight complete responses are retained.
+//! Backend admission, queued replies and separate-CON rows are each bounded to eight.
 //! Oversized input and admission exhaustion are dropped before acknowledgement.
 //! Response queue pressure waits within admission bounds; an oversized response
 //! terminates this listener instead of truncating.
-//! This fixture does not qualify lost-response retransmission or DTLS.
+//! Separate CON state is bounded globally to eight and per endpoint to one.
+//! This standalone fixture does not qualify DTLS or upstream coap-rs reliability.
 
 use async_trait::async_trait;
 use coap::server::{Listener, Responder, TransportRequestSender};
 use coap_lite::{CoapOption, MessageClass, MessageType, Packet, RequestType};
-use std::{io, net::SocketAddr, sync::Arc};
+use rand::Rng;
+use std::{
+    io,
+    net::SocketAddr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+#[path = "separate_pending.rs"]
+mod separate_pending;
+use separate_pending::{Admission, Pending};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 
 const MAX_DATAGRAM: usize = 2048;
 const MAX_PENDING: usize = 8;
-type Reply = io::Result<(Vec<u8>, SocketAddr)>;
+type Reply = io::Result<(Vec<u8>, SocketAddr, Option<u64>)>;
 
 pub struct SeparateListener {
     socket: tokio::net::UdpSocket,
@@ -37,6 +47,7 @@ impl SeparateListener {
 }
 
 struct SeparateResponder {
+    reservation: Option<u64>,
     address: SocketAddr,
     tx: mpsc::Sender<Reply>,
     // Retained until the backend releases this request, bounding its ingress.
@@ -47,7 +58,7 @@ struct SeparateResponder {
 impl Responder for SeparateResponder {
     async fn respond(&self, response: Vec<u8>) {
         let reply = if response.len() <= MAX_DATAGRAM {
-            Ok((response, self.address))
+            Ok((response, self.address, self.reservation))
         } else {
             Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -86,7 +97,15 @@ impl Listener for SeparateListener {
         Ok(tokio::spawn(async move {
             // Sentinel byte prevents treating a truncated large datagram as valid.
             let mut buffer = [0u8; MAX_DATAGRAM + 1];
+            let mut pending = Pending::new();
             loop {
+                // Service due work before ingress, including under continuous input.
+                for (bytes, peer) in pending.due(Instant::now()) {
+                    send_complete(&self.socket, &bytes, peer).await?;
+                }
+                let deadline = pending
+                    .deadline()
+                    .unwrap_or_else(|| Instant::now() + Duration::from_secs(60));
                 tokio::select! {
                     datagram = self.socket.recv_from(&mut buffer) => {
                         let (size, source) = match datagram {
@@ -97,26 +116,39 @@ impl Listener for SeparateListener {
                             other => other?,
                         };
                         if size > MAX_DATAGRAM { continue; }
+                        if pending.control(source, &buffer[..size]) { continue; }
                         let Ok(packet) = Packet::from_bytes(&buffer[..size]) else { continue; };
                         // Empty ACK/RST messages do not occupy backend request slots.
                         if !matches!(packet.header.code, MessageClass::Request(_)) { continue; }
                         let Ok(permit) = Arc::clone(&self.admission).try_acquire_owned() else { continue; };
                         let separate = packet.get_option(CoapOption::UriPath)
                             .is_some_and(|parts| parts.len() == 1 && parts.front().is_some_and(|path| path == b"separate"));
-                        if separate && packet.header.get_type() == MessageType::Confirmable
+                        let reservation = if separate && packet.header.get_type() == MessageType::Confirmable
                             && packet.header.code == MessageClass::Request(RequestType::Get) {
+                            let admission = pending.admit(source, &buffer[..size], Instant::now());
+                            if admission == Admission::Refused { continue; }
                             let mid = packet.header.message_id.to_be_bytes();
                             send_complete(&self.socket, &[0x60, 0, mid[0], mid[1]], source).await?;
-                        }
+                            match admission {
+                                Admission::Fresh(id) => Some(id),
+                                Admission::Duplicate => continue,
+                                Admission::Refused => unreachable!(),
+                            }
+                        } else { None };
                         sender.send((buffer[..size].to_vec(), Arc::new(SeparateResponder {
-                            address: source, tx: self.response_tx.clone(), _permit: permit,
+                            reservation, address: source, tx: self.response_tx.clone(), _permit: permit,
                         }))).map_err(|_| io::Error::other("server receiver closed"))?;
                     }
                     response = self.response_rx.recv() => {
                         let Some(reply) = response else { return Ok(()) };
-                        let (bytes, destination) = reply?;
+                        let (bytes, destination, reservation) = reply?;
+                        if let Some(id) = reservation {
+                            let interval = Duration::from_millis(rand::thread_rng().gen_range(2000..=3000));
+                            if !pending.complete(id, &bytes, Instant::now(), interval) { continue; }
+                        }
                         send_complete(&self.socket, &bytes, destination).await?;
                     }
+                    _ = tokio::time::sleep_until(deadline.into()) => {}
                 }
             }
         }))
@@ -142,6 +174,7 @@ mod tests {
         let permit = Arc::clone(&listener.admission).try_acquire_owned().unwrap();
         let (tx, mut rx) = mpsc::channel(MAX_PENDING);
         let responder = SeparateResponder {
+            reservation: None,
             address: listener.socket.local_addr().unwrap(),
             tx,
             _permit: permit,
@@ -158,7 +191,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn oversized_and_saturated_input_never_acknowledges_then_recovers() {
+    async fn oversized_nstart_refusal_and_ack_release_recover() {
         let listener = SeparateListener::bind("127.0.0.1:0".parse().unwrap())
             .await
             .unwrap();
@@ -166,63 +199,62 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel();
         let task = Box::new(listener).listen(tx).await.unwrap();
         let socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
-        let mut packet = Packet::new();
-        packet.header.set_type(MessageType::Confirmable);
-        packet.header.code = MessageClass::Request(RequestType::Get);
-        packet.add_option(CoapOption::UriPath, b"separate".to_vec());
-        packet.payload = vec![1; MAX_DATAGRAM];
-        let large = packet.to_bytes_with_limit(MAX_DATAGRAM + 100).unwrap();
+        let request = [
+            0x41, 1, 0, 3, 9, 0xb8, b's', b'e', b'p', b'a', b'r', b'a', b't', b'e',
+        ];
+        let mut large = request.to_vec();
+        large.resize(MAX_DATAGRAM + 1, 1);
+        let mut buffer = [0u8; MAX_DATAGRAM];
         socket.send_to(&large, address).await.unwrap();
-        let mut buffer = [0; MAX_DATAGRAM];
         assert!(
             timeout(Duration::from_millis(30), socket.recv_from(&mut buffer))
                 .await
                 .is_err()
         );
         assert!(rx.try_recv().is_err());
-        packet.payload.clear();
-        let mut owners = Vec::new();
-        for mid in 0..MAX_PENDING {
-            packet.header.message_id = mid as u16;
-            socket
-                .send_to(&packet.to_bytes().unwrap(), address)
-                .await
-                .unwrap();
-            let (size, _) = timeout(Duration::from_secs(1), socket.recv_from(&mut buffer))
-                .await
-                .unwrap()
-                .unwrap();
-            assert_eq!(&buffer[..size], &[0x60, 0, 0, mid as u8]);
-            owners.push(
-                timeout(Duration::from_secs(1), rx.recv())
-                    .await
-                    .unwrap()
-                    .unwrap(),
-            );
-        }
-        socket
-            .send_to(&packet.to_bytes().unwrap(), address)
-            .await
-            .unwrap();
-        assert!(
-            timeout(Duration::from_millis(30), socket.recv_from(&mut buffer))
-                .await
-                .is_err()
-        );
-        assert!(rx.try_recv().is_err());
-        drop(owners.pop());
-        packet.header.message_id = 100;
-        socket
-            .send_to(&packet.to_bytes().unwrap(), address)
-            .await
-            .unwrap();
+        socket.send_to(&request, address).await.unwrap();
         let (size, _) = timeout(Duration::from_secs(1), socket.recv_from(&mut buffer))
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(&buffer[..size], &[0x60, 0, 0, 100]);
+        assert_eq!(&buffer[..size], &[0x60, 0, 0, 3]);
         let (_, owner) = rx.recv().await.unwrap();
-        owner.respond(vec![7; MAX_DATAGRAM + 1]).await;
+        let mut another = request;
+        another[3] = 5;
+        socket.send_to(&another, address).await.unwrap();
+        assert!(
+            timeout(Duration::from_millis(30), socket.recv_from(&mut buffer))
+                .await
+                .is_err()
+        );
+        assert!(rx.try_recv().is_err());
+        let response = vec![0x41, 69, 0, 4, 9, 0xff, 77];
+        owner.respond(response.clone()).await;
+        let (size, _) = timeout(Duration::from_secs(1), socket.recv_from(&mut buffer))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(&buffer[..size], response);
+        // Wrong MID and a matching MID from another endpoint cannot free NSTART.
+        socket.send_to(&[0x60, 0, 0, 99], address).await.unwrap();
+        let stranger = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        stranger.send_to(&[0x70, 0, 0, 4], address).await.unwrap();
+        socket.send_to(&another, address).await.unwrap();
+        assert!(
+            timeout(Duration::from_millis(30), socket.recv_from(&mut buffer))
+                .await
+                .is_err()
+        );
+        assert!(rx.try_recv().is_err());
+        socket.send_to(&[0x60, 0, 0, 4], address).await.unwrap();
+        socket.send_to(&another, address).await.unwrap();
+        let (size, _) = timeout(Duration::from_secs(1), socket.recv_from(&mut buffer))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(&buffer[..size], &[0x60, 0, 0, 5]);
+        let (_, new_owner) = rx.recv().await.unwrap();
+        new_owner.respond(vec![7; MAX_DATAGRAM + 1]).await;
         assert_eq!(
             timeout(Duration::from_secs(1), task)
                 .await

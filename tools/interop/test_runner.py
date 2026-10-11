@@ -64,6 +64,11 @@ class RunnerTests(unittest.TestCase):
         no_loss = [dict(row) for row in trace]
         no_loss[2]["action"] = "forward"
         invalid.append(no_loss)
+        for index in (0, 1, 3, 4):
+            for action in ("hold", "drop"):
+                changed = [dict(row) for row in trace]
+                changed[index]["action"] = action
+                invalid.append(changed)
         for case in invalid:
             with self.subTest(case=case), self.assertRaises(AssertionError):
                 grade_separate_loss(case)
