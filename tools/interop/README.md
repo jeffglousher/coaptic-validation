@@ -236,7 +236,10 @@ or stale stamps (including unsupported asynchronous copies) refuse transfer
 binding. This does not qualify proxy/async behavior or preclude their earlier
 upstream empty ACK. Same-token replacement and recipient recreation cannot retarget an old
 response. Failed decoding or replacement allocation preserves the prior request
-association. Distinct response blocks use fresh
+association and receive replay state, including valid zero-valued sequence/window
+boundaries. Request replay validation uses one fixed stack recipient-context view
+only for scalar staging; it does not own or free its borrowed references. This
+adds stack use and is not a stack or whole-process ceiling. Distinct response blocks use fresh
 server PIVs; ciphertext retransmissions remain unchanged. The exact upstream,
 patch and modified-source hashes are checked before building and reported with
 the binary identity; this is a patched peer, not unmodified libcoap qualification.
