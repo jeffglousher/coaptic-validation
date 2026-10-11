@@ -4,3 +4,5 @@
 # Preserve vendored package and original RFC bytes for provenance checks.
 /vendor/webrtc-dtls/** -text
 /knowledge/rfcs/*.txt -text
+
+tools/interop/libcoap/patches/*.patch text eol=lf

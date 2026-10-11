@@ -485,7 +485,7 @@ int main(int argc,char **argv) {
     coap_register_handler(unknown, COAP_REQUEST_GET, cond_resource);
     coap_register_handler(unknown, COAP_REQUEST_DELETE, cond_resource);
     coap_add_resource(ctx, unknown);
-    printf("{\"schema\":\"coaptic-peer/2\",\"event\":\"ready\",\"peer\":\"libcoap\",\"stack\":\"libcoap %s\",\"port\":%ld,\"transport\":\"%s\"}\n",LIBCOAP_PACKAGE_VERSION,port,oscore?"oscore":dtls?"dtls":"udp");
+    printf("{\"schema\":\"coaptic-peer/2\",\"event\":\"ready\",\"peer\":\"libcoap\",\"stack\":\"libcoap %s\",\"port\":%ld,\"transport\":\"%s\",\"libcoap_patch_sha256\":\"%s\"}\n",LIBCOAP_PACKAGE_VERSION,port,oscore?"oscore":dtls?"dtls":"udp",COAPTIC_LIBCOAP_PATCH_SHA);
     while(coap_io_process(ctx,100)>=0) {}
     status=1;
   } else {
