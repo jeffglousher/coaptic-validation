@@ -16,7 +16,7 @@ class ContractEvidenceTests(unittest.TestCase):
         self.assertEqual(result["manifest_sha256"], hashlib.sha256(raw).hexdigest())
         contracts = {row["id"]: row for row in result["requirements"]}
         for identity in ("conditional-upload-refusal", "fragmented-if-match", "classic-block1-if-none-match",
-                         "classic-block1-error-no-response"):
+                         "classic-block1-error-no-response", "qblock1-if-none-match"):
             self.assertIn(identity, contracts)
             for name in contracts[identity]["tests"]:
                 for replacement in ("", f"test {name} ... ignored", f"test {name} ... FAILED"):
@@ -26,18 +26,24 @@ class ContractEvidenceTests(unittest.TestCase):
                     row = next(row for row in refused["requirements"] if row["id"] == identity)
                     self.assertEqual(row["missing"], [name])
 
-    def test_old_refusal_name_cannot_substitute_for_current_execution(self):
+    def test_old_refusal_names_cannot_substitute_for_current_execution(self):
         manifest = json.loads(MANIFEST.read_bytes())
-        current = "app::tests::fragmented_if_none_match_and_etag_refuse_instead_of_becoming_unconditional"
-        old = "app::tests::fragmented_conditional_upload_is_refused_instead_of_becoming_unconditional"
         names = {name for row in manifest["requirements"] for name in row["tests"]}
-        self.assertIn(current, names)
-        self.assertNotIn(old, names)
-        output = "\n".join(f"test {name} ... ok" for name in sorted((names - {current}) | {old}))
-        result = load_and_evaluate(output)
-        self.assertFalse(result["passed"])
-        row = next(row for row in result["requirements"] if row["id"] == "conditional-upload-refusal")
-        self.assertEqual(row["missing"], [current])
+        for identity, current, old in (
+            ("conditional-upload-refusal",
+             "app::tests::fragmented_etag_refuses_instead_of_becoming_unconditional",
+             "app::tests::fragmented_if_none_match_and_etag_refuse_instead_of_becoming_unconditional"),
+            ("classic-block1-if-none-match",
+             "fragmented_etag_refusal_cancel_and_deadline_reclaim_before_recovery",
+             "if_none_match_q_refusal_cancel_and_deadline_reclaim_before_recovery"),
+        ):
+            self.assertIn(current, names)
+            self.assertNotIn(old, names)
+            output = "\n".join(f"test {name} ... ok" for name in sorted((names - {current}) | {old}))
+            result = load_and_evaluate(output)
+            self.assertFalse(result["passed"])
+            row = next(row for row in result["requirements"] if row["id"] == identity)
+            self.assertEqual(row["missing"], [current])
 
     def fixture(self):
         return {"schema": "coaptic-contracts/1", "scope": "fixture", "requirements": [
