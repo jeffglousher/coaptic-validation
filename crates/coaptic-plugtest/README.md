@@ -336,3 +336,37 @@ Unsupported directions remain SKIP. Set `COAPTIC_OBSERVE_CAPTURE_DIR` to retain
 representations; it does not qualify protected supersession, arbitrary source
 cardinality or sustained traffic. Tracked in
 [#443](https://github.com/jeffglousher/coaptic/issues/443).
+
+### DTLS handshake loss limitation
+
+TD_COAP_DTLS_03 remains SKIP. A test-only intact-datagram gateway inventories six
+normal PSK handshake datagrams for webrtc-dtls 0.12.0, then drops each once in a
+fresh connection. The first five losses recover with retransmission and the
+complete authenticated CoAP response. Dropping the last server CCS/Finished
+datagram produces a six-second timeout: intact client final-flight retries arrive,
+but the server does not resend its last flight. Starting the server receive pump
+immediately after its handshake completes does not resolve the failure. A fresh
+connection then succeeds. The diagnostic explicitly reports `literal_complete:
+false`; its passing regression test is not a literal TD pass.
+
+The backend's `src/handshaker.rs` returns when handshake completion is first set;
+`src/conn/mod.rs` calls that handshake once before returning the connection. The
+later public receive path reads application data without driving the private
+final-flight retransmission state again. No dependency or cryptographic-message
+patch is included. The gateway only drops whole original datagrams; it never
+changes Finished, ciphertext or transcript contents.
+
+Run the focused diagnostic with `cargo test -p coaptic-plugtest --features dtls
+--lib dtls03_loss_characterization -- --nocapture`. With
+`COAPTIC_OBSERVE_CAPTURE_DIR` set, its `dtls03-diagnostic` subdirectory retains
+eight wire captures and a JSON report distinguishing baseline, six loss cases
+and fresh recovery. Each case is limited to 256 captured datagrams, 2048-byte
+receive scratch and six seconds. Forty-two evidence mutations reject incorrect
+loss, ownership, bytes, completion, missing retries and application evidence.
+
+The loopback server binds port 5684 as prescribed by the original TD. This fixture
+uses `/secure`, matching its resource precondition and stimulus; the TD's later
+`/test` line is inconsistent with those requirements. Both peers use the same
+test-only DTLS backend, so this is neither independent-stack DTLS interoperability
+nor hardware qualification. The core has no DTLS dependency. Full literal
+acceptance remains incomplete in [#446](https://github.com/jeffglousher/coaptic/issues/446).

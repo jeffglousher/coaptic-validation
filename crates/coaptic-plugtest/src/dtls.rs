@@ -12,11 +12,15 @@
 //! `TD_COAP_DTLS_01` records the handshake on the UDP socket (cipher offer,
 //! selection, and Finished) plus the decrypted GET. `TD_COAP_DTLS_02`–`03`
 //! and the raw-public-key TDs stay skipped: a plaintext `decrypt_error` is
-//! not graded, each-flight loss is not injected, and this backend has no
+//! not graded, final-server-flight loss does not recover in this backend, and it has no
 //! RFC 7250 raw public key. X.509 qualification is a different test.
+//! A test-only intact-datagram diagnostic retains the DTLS03 backend limitation.
 
 #[path = "../../../tools/interop/coap_dtls.rs"]
 mod coap_dtls;
+
+#[cfg(test)]
+mod loss;
 
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
