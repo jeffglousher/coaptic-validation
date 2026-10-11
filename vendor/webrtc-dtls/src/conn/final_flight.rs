@@ -14,7 +14,7 @@ use crate::flight::Packet;
 use crate::handshake::handshake_header::{HandshakeHeader, HANDSHAKE_HEADER_LENGTH};
 use crate::handshake::HandshakeType;
 
-// RFC 6347 Â§4.2.4: at least twice RFC 793's two-minute default MSL.
+// RFC 6347 section 4.2.4: at least twice RFC 793's two-minute default MSL.
 const RETENTION: Duration = Duration::from_secs(240);
 const INITIAL_RETRY: Duration = Duration::from_secs(1);
 const MAX_RETRY: Duration = Duration::from_secs(60);
