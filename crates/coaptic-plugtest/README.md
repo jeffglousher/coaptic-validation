@@ -103,6 +103,26 @@ wire sequence. This is protocol-state restart on loopback, not physical reboot,
 protected peer authentication, or sustained availability. Both coap-rs directions
 remain SKIP. See [#416](https://github.com/jeffglousher/coaptic/issues/416).
 
+### Same-owner Observe GET and cancellation
+
+`cargo test --locked -p coaptic-plugtest --test interop same_owner_get_preserves_observation_and_explicit_cancel_stops_it`
+executes literal TD_COAP_OBS_10 and TD_COAP_OBS_12 with Coaptic on both ends.
+The client reuses its App, socket and clock origin. An unrelated GET uses a fresh
+token without Observe and leaves the original subscription delivering complete
+CON notifications. Explicit cancellation uses `deregister_call` to retain the
+original token and exact request identity; its complete ACK has no Observe.
+Three attempted updates across three one-second quiet intervals then produce no
+traffic or application delivery, followed by fresh same-endpoint registration.
+
+The strict twelve-/fourteen-datagram oracles bind paths, endpoints, tokens, MIDs,
+Observe values, content format and complete bodies. Sixteen trace mutations per
+scenario must fail. Separate live checks refuse wrong-path/wrong-peer cancellation
+before I/O, preserve the original observation, then cancel and recover. Other
+backends refuse the new hook by default; both coap-rs directions remain SKIP.
+`COAPTIC_OBSERVE_CAPTURE_DIR` retains each scenario's PCAP. These plaintext
+loopback tests do not qualify authenticated ownership or sustained availability.
+Tracking: [#419](https://github.com/jeffglousher/coaptic/issues/419).
+
 ### Observe reset socket qualification
 
 `cargo test --locked -p coaptic-plugtest --test observe_reset` checks RFC 7641

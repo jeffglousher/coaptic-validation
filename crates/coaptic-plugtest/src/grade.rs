@@ -203,6 +203,9 @@ impl Catalog {
 /// Grade one TD.
 pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), String> {
     let packets = capture.snapshot();
+    if matches!(td, "TD_COAP_OBS_10" | "TD_COAP_OBS_12") {
+        grade_observe_owner_request(&packets, td == "TD_COAP_OBS_12")?;
+    }
     if td == "TD_COAP_OBS_06" {
         grade_observe_restart(&packets)?;
     }
@@ -290,6 +293,77 @@ pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), St
                 "{td}: {n} leftover CoAP datagrams (set allow_extra if this TD is chatty)",
                 n = leftover.len()
             ));
+        }
+    }
+    Ok(())
+}
+
+/// Same-owner GET/cancellation plus subsequent observation or fresh recovery.
+/// OBS_12 quiet duration/non-delivery are asserted by the live runner.
+fn grade_observe_owner_request(packets: &[Packet], cancel: bool) -> Result<(), String> {
+    let mut ordered = packets.to_vec();
+    ordered.sort_by_key(|p| p.t_ns);
+    let mut seen = HashSet::new();
+    ordered.retain(|p| seen.insert((p.src, p.dst, p.bytes.clone())));
+    if ordered.len() != if cancel { 14 } else { 12 } {
+        return Err("Observe owner request has incomplete/extra datagrams".into());
+    }
+    grade_confirmable_observe(&ordered[..6])?;
+    let parse = |i: usize| {
+        decode(&ordered[i].bytes).map_err(|e| format!("Observe owner packet {i}: {e:?}"))
+    };
+    let registration = parse(0)?;
+    let request = parse(6)?;
+    let reply = parse(7)?;
+    let client = ordered[0].src;
+    let server = ordered[0].dst;
+    if ordered[6].src != client
+        || ordered[6].dst != server
+        || request.ty() != Type::Confirmable
+        || request.code() != Code::GET
+        || request.uri_path().collect::<Vec<_>>() != [Ok("obs")]
+        || request.observe() != if cancel { Some(Ok(1)) } else { None }
+        || request.token().is_empty()
+        || (request.token() == registration.token()) != cancel
+        || request.message_id() == registration.message_id()
+    {
+        return Err("Observe owner request path/endpoint/token/MID/Observe".into());
+    }
+    if ordered[7].src != server
+        || ordered[7].dst != client
+        || reply.ty() != Type::Acknowledgement
+        || reply.code() != Code::CONTENT
+        || reply.message_id() != request.message_id()
+        || reply.token() != request.token()
+        || reply.observe().is_some()
+        || reply.payload() != crate::site::OBS_BODY
+        || reply.content_format() != Some(Ok(coaptic::message::ContentFormat::TEXT_PLAIN))
+    {
+        return Err("Observe owner request complete ACK".into());
+    }
+    if cancel {
+        grade_confirmable_observe(&ordered[8..])?;
+        if ordered[8].src != client
+            || ordered[8].dst != server
+            || parse(8)?.token() == registration.token()
+        {
+            return Err("OBS_12 fresh registration on original endpoint".into());
+        }
+    } else {
+        let mut continued = ordered[..2].to_vec();
+        continued.extend_from_slice(&ordered[8..]);
+        grade_confirmable_observe(&continued)?;
+        let previous = parse(4)?
+            .observe()
+            .and_then(Result::ok)
+            .ok_or("OBS_10 previous sequence")?;
+        let current = parse(8)?
+            .observe()
+            .and_then(Result::ok)
+            .ok_or("OBS_10 continued sequence")?;
+        let delta = current.wrapping_sub(previous) & 0x00ff_ffff;
+        if delta == 0 || delta >= 0x0080_0000 {
+            return Err("OBS_10 sequence did not progress across unrelated GET".into());
         }
     }
     Ok(())
