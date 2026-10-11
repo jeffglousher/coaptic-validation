@@ -150,9 +150,29 @@ records. [Synthetic fixtures](tools/qualification/test_raw_udp.py) exercise
 refusal grading and do not qualify hardware or sustained availability.
 
 Pacing targets observable delivery through the device socket boundary, not
-throughput. An initial 2 ms trial sent all 256 datagrams but recorded only 56
-device drops; the unchanged strict grader rejected its incomplete accounting.
-The slower retry retains a separate host source identity and evidence record.
+throughput. The [source-bound physical record](tools/qualification/evidence/waveshare-raw-udp-20261011.json)
+and [qualification report](https://github.com/jeffglousher/coaptic/issues/462#issuecomment-6107306240)
+retain three actual trials: 56 recorded drops at 2 ms pacing, 64 at 50 ms,
+and all 256 after enabling IPv4 reassembly in the qualification image. The
+unchanged strict grader rejected both incomplete trials and accepted the third,
+including all 20 protected controls and timer progress. Those failures do not
+conclusively locate packet loss. Firmware and host source identities are separate.
+
+The successful ESP-IDF v5.5.5 qualification image adds these platform settings
+to the existing ESPHome `esp32.framework` configuration:
+
+```yaml
+sdkconfig_options:
+  CONFIG_LWIP_IP4_REASSEMBLY: y
+  CONFIG_LWIP_IP_REASS_MAX_PBUFS: "10"
+```
+
+These settings let fragmented IPv4 UDP datagrams reach the socket boundary.
+The generated SDK configuration changed only the reassembly enable flag; the
+waiting-pbuf limit remained 10. Its three-second reassembly lifetime and ten-pbuf
+count describe platform resources outside Coaptic's storage budget, not a byte
+or whole-device memory ceiling. This qualification configuration does not change
+core defaults or establish sustained availability or throughput.
 
 The grader's `--help` lists the required retained artifacts. Its manifest binds
 40-character core/suite revisions, host binary and OTA hashes, protected mode

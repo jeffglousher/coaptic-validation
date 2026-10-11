@@ -1,0 +1,343 @@
+{
+  "schema": "coaptic-constrained-udp-qualification/1",
+  "device": "reserved Waveshare ESP32-S3 qualification device",
+  "date": "2026-10-11",
+  "scope": "Finite actual C++/FFI UDP-boundary refusal and protected recovery; no allocation claim about the ESPHome or lwIP platform.",
+  "method": {
+    "groups": 4,
+    "packets_per_group": 64,
+    "udp_payload_lengths": [
+      1153,
+      2047,
+      2048,
+      4096
+    ],
+    "payload_byte": 165,
+    "packet_bytes": 598016,
+    "protected_controls_each_phase": [
+      "identity: exact 32-byte run ID",
+      "large: exact 2000 bytes of 0x5a",
+      "echo: exact 128 bytes of 0x5a",
+      "ticks: four-byte authenticated strictly increasing value"
+    ],
+    "control_phases": 5,
+    "clock": "same host UTC; encrypted API timestamps are host receipt times",
+    "strict_requirement": "all 256 actual device socket drops plus complete protected controls and timer/poll progress",
+    "grader_source_revision": "b7de1cd1198c6808b2825908ae5d8f0ff7e0c9e8",
+    "grader_sha256": "e0c0e117a89d1b30dc4e2d6b4a3cba13b89ed2732bda8c3d21bd665d55f6ac82"
+  },
+  "platform": {
+    "esp_idf": "v5.5.5",
+    "qualification_only_sdkconfig": {
+      "CONFIG_LWIP_IP4_REASSEMBLY": "y",
+      "CONFIG_LWIP_IP_REASS_MAX_PBUFS": 10
+    },
+    "actual_generated_delta": {
+      "LWIP_IP4_REASSEMBLY": {
+        "before": false,
+        "after": true
+      }
+    },
+    "reassembly_max_age_seconds": 3,
+    "waiting_reassembly_pbuf_count": 10,
+    "sources": [
+      "https://github.com/espressif/esp-idf/blob/v5.5.5/components/lwip/Kconfig#L198-L216",
+      "https://github.com/espressif/esp-idf/blob/v5.5.5/components/lwip/port/include/lwipopts.h#L170-L228"
+    ]
+  },
+  "trials": [
+    {
+      "attempt": "initial",
+      "host_packet_spacing_ms": 2,
+      "ipv4_reassembly": false,
+      "run_id": "e804ab5f550a49bfa40608d37ce49755",
+      "firmware": {
+        "core_revision": "0d3cfdd40143f6d091acf23afa022c2553b6717a",
+        "suite_revision": "9aac9b677c2f807973c674daaa59bedcaedebd8b",
+        "run_id": "e804ab5f550a49bfa40608d37ce49755",
+        "mode": 1,
+        "ota_sha256": "339649ed65879ee8896e89388b26c8dcbf7a5e3013ac2ca2f0289ed7785f3a50"
+      },
+      "host": {
+        "core_revision": "0d3cfdd40143f6d091acf23afa022c2553b6717a",
+        "suite_revision": "9aac9b677c2f807973c674daaa59bedcaedebd8b",
+        "binary_sha256": "8ca3a8b381c8d239a76c7a32010f5dd101269850c6e22cdd32a7c4556f9225f5"
+      },
+      "host_compiler": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-pc-windows-msvc\nrelease: 1.97.1\nLLVM version: 22.1.6\n",
+      "host_build_command": [
+        "cargo",
+        "+1.97.1",
+        "build",
+        "--locked",
+        "--release",
+        "--manifest-path",
+        "tools/esphome/rust/Cargo.toml",
+        "--features",
+        "network,oscore,host",
+        "--bin",
+        "waveshare-peer"
+      ],
+      "retained_sha256": {
+        "host_report": "9130b8331bd2953d51f88402c53fda5f6c7dfb85e5a1788a2ce9937f3b7cfd5b",
+        "encrypted_api_capture": "966ec83d6332667b4a65a5174b4d62d88cc7fe12111dbdc611ca3b69a2d41427",
+        "manifest": "630564861e5e9f779941771c9185abddcb34680333828103286bd86dd14f1885",
+        "original_grade": "9df4385e15dc0d54a1b6359f496be7acf049bf498809f6b8468f95fcedb9b7d3",
+        "host_exit": "c1cb94375bfccf970c36ae5652b82fda3b182005585cd777a89ca02aac0badb2",
+        "firmware_config": "76e7cc787262e6a95e8ffef1283865a2e26ab9a4932982cc362a3ea47e956d9a",
+        "generated_sdkconfig": "fd8a09b7e228e2e3606dcbea042aa2e290034a149adfd5ca25355978aaa8ee4e",
+        "capture_tool": "0ce0fc7761a88d8bc49aee3bafcfc8f57c39300eaab9e33e63ab0e47376cb784",
+        "host_build": "da7a8c850a23c7c825111f6b590a4c494536f769f5c0dafae27682ebfc87ee3a",
+        "firmware_preparation": "413fef5c144365de772036f35029bec5a24fb7d1e8874321678b9cf4ec696d33",
+        "component_archive": "b7838cc362e9a70034161d4982e6c7003c2e362ede5cac1f76f2e3f2571a28a0",
+        "installation": "359148ee46e353d4abc218d66f7b33a64688881273da134a7348363788872c73"
+      },
+      "ota_sha256": "339649ed65879ee8896e89388b26c8dcbf7a5e3013ac2ca2f0289ed7785f3a50",
+      "static_archive_sha256": "ecbb76918e0e8a2de9f75b636c4ba84ddbada2709a24e79104a48b7ccfc0b64a",
+      "start_ms": 1791707363424,
+      "end_ms": 1791707366068,
+      "duration_ms": 2644,
+      "host_events": 278,
+      "packet_count": 256,
+      "protected_controls": 20,
+      "timer_values": [
+        247,
+        249,
+        252,
+        254,
+        257
+      ],
+      "counter_before": {
+        "rx": 0,
+        "tx": 0,
+        "dropped": 0,
+        "polls": 5464,
+        "idle_waits": 5464,
+        "scheduler_yields": 0,
+        "wait_errors": 0
+      },
+      "counter_after": {
+        "rx": 81,
+        "tx": 25,
+        "dropped": 56,
+        "polls": 5932,
+        "idle_waits": 5851,
+        "scheduler_yields": 1,
+        "wait_errors": 0
+      },
+      "counter_delta": {
+        "rx": 81,
+        "tx": 25,
+        "dropped": 56,
+        "polls": 468,
+        "idle_waits": 387,
+        "scheduler_yields": 1,
+        "wait_errors": 0
+      },
+      "original_grade_passed": false,
+      "original_grade_error": "actual raw drop accounting incomplete or contaminated",
+      "independent_offline_regrade_matches": true
+    },
+    {
+      "attempt": "paced-retry",
+      "host_packet_spacing_ms": 50,
+      "ipv4_reassembly": false,
+      "run_id": "e804ab5f550a49bfa40608d37ce49755",
+      "firmware": {
+        "core_revision": "0d3cfdd40143f6d091acf23afa022c2553b6717a",
+        "suite_revision": "9aac9b677c2f807973c674daaa59bedcaedebd8b",
+        "run_id": "e804ab5f550a49bfa40608d37ce49755",
+        "mode": 1,
+        "ota_sha256": "339649ed65879ee8896e89388b26c8dcbf7a5e3013ac2ca2f0289ed7785f3a50"
+      },
+      "host": {
+        "core_revision": "0d3cfdd40143f6d091acf23afa022c2553b6717a",
+        "suite_revision": "b7de1cd1198c6808b2825908ae5d8f0ff7e0c9e8",
+        "binary_sha256": "c7b28a1cd4d9b141379a529d5a16fac9c59ab2a7f96c7bced187a6a1e2354b4e"
+      },
+      "host_compiler": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-pc-windows-msvc\nrelease: 1.97.1\nLLVM version: 22.1.6\n",
+      "host_build_command": [
+        "cargo",
+        "+1.97.1",
+        "build",
+        "--locked",
+        "--release",
+        "--manifest-path",
+        "tools/esphome/rust/Cargo.toml",
+        "--features",
+        "network,oscore,host",
+        "--bin",
+        "waveshare-peer"
+      ],
+      "retained_sha256": {
+        "host_report": "774909ddf1e59c3dd3b91c24c412244c6f09592ed3bffda979e16420fcc02895",
+        "encrypted_api_capture": "07903fea603c1adb3660d7b2f701061a090474e306678f719dfcad27fc5629dd",
+        "manifest": "00feec45237c3c5624f3b3ee5ac8d7ee1109727be19a66610c3f3df7ce6aea15",
+        "original_grade": "9df4385e15dc0d54a1b6359f496be7acf049bf498809f6b8468f95fcedb9b7d3",
+        "host_exit": "59af24b4137eb4f64e083945590c629cb96740c7695132ffa95004eecf9bc97b",
+        "firmware_config": "76e7cc787262e6a95e8ffef1283865a2e26ab9a4932982cc362a3ea47e956d9a",
+        "generated_sdkconfig": "fd8a09b7e228e2e3606dcbea042aa2e290034a149adfd5ca25355978aaa8ee4e",
+        "capture_tool": "0ce0fc7761a88d8bc49aee3bafcfc8f57c39300eaab9e33e63ab0e47376cb784",
+        "host_build": "2ebced6eb9f9b8fc141e5ac2242b581365d411383c41b01bcad971106afa58a0",
+        "firmware_preparation": "413fef5c144365de772036f35029bec5a24fb7d1e8874321678b9cf4ec696d33",
+        "component_archive": "b7838cc362e9a70034161d4982e6c7003c2e362ede5cac1f76f2e3f2571a28a0",
+        "installation": "359148ee46e353d4abc218d66f7b33a64688881273da134a7348363788872c73"
+      },
+      "ota_sha256": "339649ed65879ee8896e89388b26c8dcbf7a5e3013ac2ca2f0289ed7785f3a50",
+      "static_archive_sha256": "ecbb76918e0e8a2de9f75b636c4ba84ddbada2709a24e79104a48b7ccfc0b64a",
+      "start_ms": 1791707680212,
+      "end_ms": 1791707695043,
+      "duration_ms": 14831,
+      "host_events": 278,
+      "packet_count": 256,
+      "protected_controls": 20,
+      "timer_values": [
+        1495,
+        1510,
+        1524,
+        1538,
+        1553
+      ],
+      "counter_before": {
+        "rx": 81,
+        "tx": 25,
+        "dropped": 56,
+        "polls": 34082,
+        "idle_waits": 34001,
+        "scheduler_yields": 1,
+        "wait_errors": 0
+      },
+      "counter_after": {
+        "rx": 170,
+        "tx": 50,
+        "dropped": 120,
+        "polls": 35895,
+        "idle_waits": 35725,
+        "scheduler_yields": 1,
+        "wait_errors": 0
+      },
+      "counter_delta": {
+        "rx": 89,
+        "tx": 25,
+        "dropped": 64,
+        "polls": 1813,
+        "idle_waits": 1724,
+        "scheduler_yields": 0,
+        "wait_errors": 0
+      },
+      "original_grade_passed": false,
+      "original_grade_error": "actual raw drop accounting incomplete or contaminated",
+      "independent_offline_regrade_matches": true
+    },
+    {
+      "attempt": "reassembly-retry",
+      "host_packet_spacing_ms": 50,
+      "ipv4_reassembly": true,
+      "run_id": "c6188bec69a064dd679b32095bf075f8",
+      "firmware": {
+        "core_revision": "0d3cfdd40143f6d091acf23afa022c2553b6717a",
+        "suite_revision": "9aac9b677c2f807973c674daaa59bedcaedebd8b",
+        "run_id": "c6188bec69a064dd679b32095bf075f8",
+        "mode": 1,
+        "ota_sha256": "e7742c51749b27cd654976cf39064c5c4e432c44638780cbd85e7be14b71c7a6"
+      },
+      "host": {
+        "core_revision": "0d3cfdd40143f6d091acf23afa022c2553b6717a",
+        "suite_revision": "b7de1cd1198c6808b2825908ae5d8f0ff7e0c9e8",
+        "binary_sha256": "c7b28a1cd4d9b141379a529d5a16fac9c59ab2a7f96c7bced187a6a1e2354b4e"
+      },
+      "host_compiler": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-pc-windows-msvc\nrelease: 1.97.1\nLLVM version: 22.1.6\n",
+      "host_build_command": [
+        "cargo",
+        "+1.97.1",
+        "build",
+        "--locked",
+        "--release",
+        "--manifest-path",
+        "tools/esphome/rust/Cargo.toml",
+        "--features",
+        "network,oscore,host",
+        "--bin",
+        "waveshare-peer"
+      ],
+      "retained_sha256": {
+        "host_report": "e727a4375b5121d314fa24c7058f1bca254c3563bf43dd54b04451c74bf82c09",
+        "encrypted_api_capture": "e48910c0f88bbe29ec73487cc81ce7582e2f2fc6314df0270b8d2dbee672dce3",
+        "manifest": "c1816454f8d5751214ff14324cc75d02b2d8baa54f010ab6bdab2e59fbf34d0d",
+        "original_grade": "66ac463e45f84a995bc4179083ea46280c12fe7f343b7beda148475bdd73bf4e",
+        "host_exit": "12f4a82c283126d617b7acc026ae9aff941b1c70e3a7714892e8351dd179afe6",
+        "firmware_config": "c2fba093573a6b9fb21ecb47d43bd3f51a7565d43227aa2705aefdf553f350dc",
+        "generated_sdkconfig": "cf093244656081a2a71e65afc1d44887c08befb75b53f9bf65ace9530362e5df",
+        "capture_tool": "0ce0fc7761a88d8bc49aee3bafcfc8f57c39300eaab9e33e63ab0e47376cb784",
+        "host_build": "2ebced6eb9f9b8fc141e5ac2242b581365d411383c41b01bcad971106afa58a0",
+        "firmware_preparation": "aeb6c2e419c39f7fc8a2e345c5ea93ce400c1a6b7c420f77836b78757a18af25",
+        "component_archive": "b7838cc362e9a70034161d4982e6c7003c2e362ede5cac1f76f2e3f2571a28a0",
+        "installation": "716586d060a50143a9dde39c2ff5ad85f59b819193c94b8fd285b38e32864f6b"
+      },
+      "ota_sha256": "e7742c51749b27cd654976cf39064c5c4e432c44638780cbd85e7be14b71c7a6",
+      "static_archive_sha256": "ecbb76918e0e8a2de9f75b636c4ba84ddbada2709a24e79104a48b7ccfc0b64a",
+      "start_ms": 1791708490257,
+      "end_ms": 1791708505080,
+      "duration_ms": 14823,
+      "host_events": 278,
+      "packet_count": 256,
+      "protected_controls": 20,
+      "timer_values": [
+        219,
+        234,
+        248,
+        262,
+        277
+      ],
+      "counter_before": {
+        "rx": 0,
+        "tx": 0,
+        "dropped": 0,
+        "polls": 5007,
+        "idle_waits": 5007,
+        "scheduler_yields": 0,
+        "wait_errors": 0
+      },
+      "counter_after": {
+        "rx": 281,
+        "tx": 25,
+        "dropped": 256,
+        "polls": 6455,
+        "idle_waits": 6183,
+        "scheduler_yields": 0,
+        "wait_errors": 0
+      },
+      "counter_delta": {
+        "rx": 281,
+        "tx": 25,
+        "dropped": 256,
+        "polls": 1448,
+        "idle_waits": 1176,
+        "scheduler_yields": 0,
+        "wait_errors": 0
+      },
+      "original_grade_passed": true,
+      "original_grade_error": null,
+      "independent_offline_regrade_matches": true
+    }
+  ],
+  "saved_configuration": {
+    "saved_config_sha256": "4245cc12551544efc11fd868bbead42d606e4b22a668b763feeb85b8c2a9b3c0",
+    "prior_config_sha256": "b5970d958b5c601016522b5f7bdcb71a7d86d5efee7b2d656cb77deb94190994",
+    "backup_retained": true,
+    "management_credentials_preserved": true,
+    "secrets_unchanged": true,
+    "source": "0d3cfdd40143f6d091acf23afa022c2553b6717a",
+    "suite_source": "9aac9b677c2f807973c674daaa59bedcaedebd8b",
+    "static_archive_sha256": "ecbb76918e0e8a2de9f75b636c4ba84ddbada2709a24e79104a48b7ccfc0b64a"
+  },
+  "limitations": [
+    "The first two trials failed exact drop accounting; host send completion and successful controls do not establish delivery of every datagram.",
+    "IPv4 reassembly configuration explains a plausible delivery prerequisite; these captures do not conclusively locate every missing packet in the failed trials.",
+    "The final trial qualifies this finite paced workload and exact source/platform configuration, not sustained hostile-traffic availability, throughput, scheduling fairness, routed networks or other hardware.",
+    "Ten waiting pbufs is a count bound, not a byte limit or whole-device memory ceiling. lwIP/ESPHome heap and IP reassembly are outside Coaptic fixed-storage budgets.",
+    "The SDK setting is qualification-only; core defaults, original configurations, firmware, failed trials and private security state are retained.",
+    "Firmware identity is verified build/install provenance plus encrypted API run identity, not measured or cryptographic firmware attestation.",
+    "Private credentials, network addresses, full configurations and local paths are excluded. Original private evidence is retained and identified by hashes."
+  ],
+  "core_version": "0.0.10"
+}
