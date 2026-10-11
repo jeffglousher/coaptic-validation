@@ -452,10 +452,11 @@ jobs:
           cmake -S tools/interop/libcoap -B target/libcoap-lifetime -G Ninja -DLIBCOAP_SOURCE="$RUNNER_TEMP/libcoap" -DCMAKE_BUILD_TYPE=Debug -DENABLE_DTLS=ON -DDTLS_BACKEND=openssl -DENABLE_OSCORE=ON -DLIBCOAP_QBLOCK_PATCH=ON -DLIBCOAP_QBLOCK_SANITIZE=ON
           cmake --build target/libcoap-lifetime --target qblock-patch-test --parallel 2
       - name: Mandatory protected Q2 lifetime sanitizer gate before wire traffic
+        shell: bash
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
-        run: target/libcoap-lifetime/qblock-patch-test | tee target/qblock-patch-test.txt
+        run: target/libcoap-lifetime/qblock-patch-test 2>&1 | tee target/qblock-patch-test.txt
       - name: Build source-identified patched process peer
         run: |
           cmake -S tools/interop/libcoap -B target/libcoap-peer -G Ninja -DLIBCOAP_SOURCE="$RUNNER_TEMP/libcoap" -DCMAKE_BUILD_TYPE=Release -DENABLE_DTLS=ON -DDTLS_BACKEND=openssl -DENABLE_OSCORE=ON -DLIBCOAP_QBLOCK_PATCH=ON

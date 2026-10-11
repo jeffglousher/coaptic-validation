@@ -46,7 +46,7 @@ responses, and permits only one outstanding separate response per endpoint.
 Oversized or saturated input receives no ACK. Matching empty ACK/RST releases
 the response slot; wrong endpoint/MID or malformed controls do not. A ten-second
 backend deadline rejects late replies by reservation identity. Response retries
-use randomized 2â€“3 second initial timeouts, exponential backoff and at most four
+use randomized 2–3 second initial timeouts, exponential backoff and at most four
 retransmissions within the RFC 7252 transmission span; final expiry releases the
 slot. These are standalone fixture rules, not an upstream coap-rs reliability
 claim. DTLS remains unqualified.
@@ -142,7 +142,7 @@ changed. A fresh client process and relay then complete against the same server.
 The successful schedules have twelve-second deadlines; refusal has six seconds
 and must retain a genuine retry. Traces are limited to 256 datagrams and bind
 each packet to exact endpoints, monotonic capture time and unchanged wire bytes.
-The first retry must match the fixture's unchanged 2â€“3 second initial RTO, allowing
+The first retry must match the fixture's unchanged 2–3 second initial RTO, allowing
 50 ms early capture skew and one second of late host scheduling. Zero/compressed
 capture intervals refuse; this is not qualification of every timer boundary.
 The readback counts are in-memory fixture application effects, not durable receipts.
