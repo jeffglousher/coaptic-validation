@@ -20,12 +20,12 @@ unit-test dependencies; it is not used by the companion production build.
 The ordinary server transfers its already generated final CCS/Finished packets
 into a private response owner before exposing handshake completion. A finite
 private task accepts intact authenticated retries for four minutes (RFC6347
-section4.2.4 and RFC793's two-minute MSL). It coalesces requests and rate-limits
+section 4.2.4 and RFC793's two-minute MSL). It coalesces requests and rate-limits
 responses from one second with exponential backoff capped at sixty seconds.
 A fixed additional sixty-second drain allowance lets a retry accepted just
 before the acceptance cutoff reach its rate deadline. Neither deadline extends:
-new retries cannot add work at/after240 seconds, and retained packets and blocked
-queue reservations are released by the hard300-second deadline or close.
+new retries cannot add work at or after 240 seconds, and retained packets and blocked
+queue reservations are released by the hard 300-second deadline or close.
 
 The task submits through the existing connection writer, preserving fresh record
 sequence ownership, and never cancels a generic connection receive. Deadlines
@@ -49,3 +49,17 @@ Real intact-loss qualification:
 `cargo test --locked -p coaptic-plugtest --features dtls --lib dtls03_`.
 No altered-Finished experiment, DTLS02 prescribed-alert claim, RPK support,
 independent DTLS stack or hardware qualification is included.
+
+Diagnostic minimization after vendoring: CodeQL reported eleven cleartext-logging
+paths in unchanged upstream statements. Two production traces printed only the
+peer-certificate count; eight codec assertions printed public, hardcoded fixture
+values; one local cookie assertion received certificate-enum taint despite its
+ClientHello match. These paths did not demonstrate private-key or master-secret
+disclosure. Static diagnostics now retain the same equality checks without
+certificate or cookie value dumps. No query is suppressed and no alert dismissed.
+
+Nine original files differ from the original hash manifest: the connection
+implementation/tests, handshake cache, handshaker, flight4, and four codec test
+files (extended-master-secret extension, certificate, certificate-request and
+certificate-verify). The private final-flight module is new. The original hashes
+remain unchanged so each owned edit can be compared with the upstream package.

@@ -109,10 +109,7 @@ impl Flight for Flight4 {
             };
 
             state.peer_certificates.clone_from(&h.certificate);
-            trace!(
-                "[handshake] PeerCertificates4 {}",
-                state.peer_certificates.len()
-            );
+            trace!("[handshake] peer certificate message received");
         }
 
         if let Some(message) = msgs.get(&HandshakeType::CertificateVerify) {
@@ -443,11 +440,7 @@ impl Flight for Flight4 {
 
         match cfg.client_auth {
             ClientAuthType::RequireAnyClientCert => {
-                trace!(
-                    "{} peer_certificates.len() {}",
-                    srv_cli_str(state.is_client),
-                    state.peer_certificates.len(),
-                );
+                trace!("[handshake] checking required peer certificate presence");
                 if state.peer_certificates.is_empty() {
                     return Err((
                         Some(Alert {

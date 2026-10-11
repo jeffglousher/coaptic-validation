@@ -2326,7 +2326,7 @@ async fn test_multiple_hello_verify_request() -> Result<()> {
 
     for i in 0..cookies.len() {
         let cookie = &cookies[i];
-        trace!("cookie {}: {:?}", i, cookie);
+        trace!("checking cookie at exchange {i}");
 
         // read client hello
         let mut resp = vec![0; 1024];
@@ -2336,10 +2336,9 @@ async fn test_multiple_hello_verify_request() -> Result<()> {
         match record.content {
             Content::Handshake(h) => match h.handshake_message {
                 HandshakeMessage::ClientHello(client_hello) => {
-                    assert_eq!(
-                        &client_hello.cookie, cookie,
-                        "Wrong cookie {}, expected: {:?}, got: {:?}",
-                        i, &client_hello.cookie, cookie
+                    assert!(
+                        &client_hello.cookie == cookie,
+                        "client hello cookie mismatch at exchange {i}"
                     );
                 }
                 _ => panic!("unexpected handshake message"),
