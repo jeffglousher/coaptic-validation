@@ -1,0 +1,231 @@
+{
+  "schema": "coaptic-entropy-footprint/1",
+  "issue": "https://github.com/jeffglousher/coaptic/issues/420",
+  "comparison": {
+    "baseline": "9a74f2362040fde40d3b869229b4abf9c319bd35",
+    "candidate": "05fd33d6d24888443a4130e83a6c9b5ec7e90c32",
+    "candidate_merge": "beef47dd85b57779c175cfe6d58c5b316ea975a1",
+    "candidate_tree": "4b72daaa07299f49a806bf1a48db2993e78112fa",
+    "suite": "fa0db679aae244ecf96dfe3122cdddf94ffbb1ac",
+    "sources_clean": true
+  },
+  "toolchain": {
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-pc-windows-msvc\nrelease: 1.99.0\nLLVM version: 23.1.1",
+    "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+    "target": "x86_64-pc-windows-msvc"
+  },
+  "method": {
+    "layout_feature_modes": [
+      "none",
+      "std",
+      "alloc",
+      "std,alloc"
+    ],
+    "default_features": false,
+    "oscore": false,
+    "layout": "size_of App; one route, four client Calls, zero deferred rows, zero-sized DatagramIo; Default block-wise=true, Constrained block-wise=false",
+    "stateful_layout": "Constrained one-route/four-Call App, false block-wise; owned-u64 or borrowed-u64 synthetic callback; callback is not a cryptographic entropy qualification",
+    "size_probe_sha256": "2ea99bfac71a0c47dcde497bf0031f46c1b0898e08b2f2c696d965376e45eee2",
+    "layout_probe_sha256": "0a190469dc155edd84175603d6f068df53bee448d29d8e2ccf75e6a2904abd56",
+    "profile": "unchanged bench-profile64/65536 bytes, three complete operations per source/size; release thin-LTO/codegen-units1; std,alloc,diagnostics; source-separated build targets"
+  },
+  "inline_bytes": {
+    "all_modes_fixed_default": {
+      "baseline": 47608,
+      "candidate": 47616
+    },
+    "all_modes_fixed_constrained": {
+      "baseline": 15264,
+      "candidate": 15272
+    },
+    "alloc_modes_default": {
+      "baseline": 13296,
+      "candidate": 13304
+    },
+    "alloc_modes_constrained": {
+      "baseline": 9200,
+      "candidate": 9208
+    },
+    "alloc_memory": {
+      "baseline": 648,
+      "candidate": 648
+    },
+    "candidate_constrained_owned_u64": 15280,
+    "candidate_constrained_borrowed_u64": 15280,
+    "borrowed_external_u64": 8
+  },
+  "diagnostics": [
+    {
+      "variant": "baseline",
+      "core": {
+        "kind": "core",
+        "body_bytes": 64,
+        "operations": 3,
+        "datagrams": 3,
+        "poll_ns": 72600,
+        "setup_allocations": 32,
+        "setup_allocated_bytes": 21126,
+        "poll_allocations": 0,
+        "poll_reallocations": 0,
+        "poll_allocated_bytes": 0
+      },
+      "work": {
+        "kind": "work",
+        "polls": 3,
+        "recv_attempts": 3,
+        "recv_idle": 0,
+        "rx_wire_bytes": 54,
+        "tx_wire_bytes": 255,
+        "app_rx_staged_bytes": 54,
+        "block_rx_staged_bytes": 0,
+        "block_tx_staged_bytes": 0,
+        "tx_payload_encoded_bytes": 192,
+        "body_snapshot_bytes": 0,
+        "raw_rx_copied_bytes": 0,
+        "raw_tx_copied_bytes": 0,
+        "body_compare_calls": 0,
+        "body_compare_candidate_bytes": 0
+      }
+    },
+    {
+      "variant": "candidate",
+      "core": {
+        "kind": "core",
+        "body_bytes": 64,
+        "operations": 3,
+        "datagrams": 3,
+        "poll_ns": 98300,
+        "setup_allocations": 32,
+        "setup_allocated_bytes": 21126,
+        "poll_allocations": 0,
+        "poll_reallocations": 0,
+        "poll_allocated_bytes": 0
+      },
+      "work": {
+        "kind": "work",
+        "polls": 3,
+        "recv_attempts": 3,
+        "recv_idle": 0,
+        "rx_wire_bytes": 54,
+        "tx_wire_bytes": 255,
+        "app_rx_staged_bytes": 54,
+        "block_rx_staged_bytes": 0,
+        "block_tx_staged_bytes": 0,
+        "tx_payload_encoded_bytes": 192,
+        "body_snapshot_bytes": 0,
+        "raw_rx_copied_bytes": 0,
+        "raw_tx_copied_bytes": 0,
+        "body_compare_calls": 0,
+        "body_compare_candidate_bytes": 0
+      }
+    },
+    {
+      "variant": "baseline",
+      "core": {
+        "kind": "core",
+        "body_bytes": 65536,
+        "operations": 3,
+        "datagrams": 192,
+        "poll_ns": 392800,
+        "setup_allocations": 32,
+        "setup_allocated_bytes": 214662,
+        "poll_allocations": 0,
+        "poll_reallocations": 0,
+        "poll_allocated_bytes": 0
+      },
+      "work": {
+        "kind": "work",
+        "polls": 192,
+        "recv_attempts": 192,
+        "recv_idle": 0,
+        "rx_wire_bytes": 3978,
+        "tx_wire_bytes": 201360,
+        "app_rx_staged_bytes": 3978,
+        "block_rx_staged_bytes": 0,
+        "block_tx_staged_bytes": 0,
+        "tx_payload_encoded_bytes": 196608,
+        "body_snapshot_bytes": 0,
+        "raw_rx_copied_bytes": 0,
+        "raw_tx_copied_bytes": 0,
+        "body_compare_calls": 0,
+        "body_compare_candidate_bytes": 0
+      }
+    },
+    {
+      "variant": "candidate",
+      "core": {
+        "kind": "core",
+        "body_bytes": 65536,
+        "operations": 3,
+        "datagrams": 192,
+        "poll_ns": 224900,
+        "setup_allocations": 32,
+        "setup_allocated_bytes": 214662,
+        "poll_allocations": 0,
+        "poll_reallocations": 0,
+        "poll_allocated_bytes": 0
+      },
+      "work": {
+        "kind": "work",
+        "polls": 192,
+        "recv_attempts": 192,
+        "recv_idle": 0,
+        "rx_wire_bytes": 3978,
+        "tx_wire_bytes": 201360,
+        "app_rx_staged_bytes": 3978,
+        "block_rx_staged_bytes": 0,
+        "block_tx_staged_bytes": 0,
+        "tx_payload_encoded_bytes": 196608,
+        "body_snapshot_bytes": 0,
+        "raw_rx_copied_bytes": 0,
+        "raw_tx_copied_bytes": 0,
+        "body_compare_calls": 0,
+        "body_compare_candidate_bytes": 0
+      }
+    }
+  ],
+  "source_hashes": {
+    "coaptic\\Cargo.lock": "d8bc6d1a761508188943a57919c64b5f26c7e4c4fa52f26c9d24e403806a9a69",
+    "coaptic\\Cargo.toml": "aa7679d78abdee8fa8e25157c6ead9ffdc11fbd6948fe635863a89ce0a6feb9f",
+    "tools\\benchmark\\native\\Cargo.lock": "46c0948ab45312dbf4cc2a8af05bfffb56df71e793ae07fed0c429d705066bb8",
+    "tools\\benchmark\\native\\Cargo.toml": "bd030ec2d190313ec25b328b92c0b3c70115496404d281cb0b10c0fa5dbe5f46",
+    "tools\\benchmark\\native\\profile\\Cargo.toml": "df6c34cafe5653e9cf9fc80393bfc2ea9aa40183cba215f6d3a636448701c76c",
+    "tools\\benchmark\\native\\profile\\src\\main.rs": "bb7e40a8346b4512f1340a25115ef7cc9c3968e78a9b930f2dc105cbbf0b5dc1",
+    "tools\\benchmark\\native\\profile\\src\\timing.rs": "25b3777797159e47cd4dc4a1c2f6b80e0194139ea3514184e3358ff54f00e44b"
+  },
+  "profile_binary_sha256": {
+    "baseline": "a31f0b94d0974caec8ba3f8fe8672da9c0d36414b452876b0501d2194ff8fa21",
+    "candidate": "0bbc96dc64b11bd7876e1aeee25ea9975fa061f3d52c6dbeff5e9d03c6af512f"
+  },
+  "historical_context": {
+    "core": "5039b5af791bdc95327992caeef798b2740731c8",
+    "same_exact_size_recipe": true,
+    "allocated_app_inline_bytes": 13296,
+    "fixed_app_inline_bytes": 47608,
+    "alloc_memory_inline_bytes": 648,
+    "timings_not_pooled": true
+  },
+  "limits": [
+    "OSCORE disabled for these layout/diagnostic configurations; not a security throughput test.",
+    "Type inline sizes exclude stack peaks, heap pool contents, external driver/callback allocations and whole-process/MCU resources.",
+    "Synthetic callback tests layout only, never entropy quality; borrowed external storage is separately reported.",
+    "Historical5039 exact-recipe results are context only and were not pooled into timing evidence.",
+    "Initial dep-info discovery failure and shared-target artifact reuse attempt retained separately; only source-isolated final commands/results accepted.",
+    "Instrumentation and shared-host scheduling perturb these tiny timing samples; no speed ranking or equivalence claim."
+  ],
+  "retained_evidence": {
+    "archive_name": "stateful-entropy-review-20261010.zip",
+    "bytes": 4802646,
+    "files": 111,
+    "sha256": "13daec8c0eaabe9f93d0bdf88b90ef9a2d0f8b910a267106ac5f13c87575efc5",
+    "contents": "commands, raw logs, sources/locks/toolchain identities, binaries/probes, independently hash-checked archive index; failed harness discovery/shared-target attempts retained separately"
+  },
+  "packaged_recipe_verification": {
+    "passed": true,
+    "layout_rows": 8,
+    "diagnostic_source_size_pairs": 4,
+    "logical_work_and_allocation_match": true,
+    "timings_not_compared": true,
+    "commands": 44
+  }
+}
