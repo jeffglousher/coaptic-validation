@@ -109,6 +109,14 @@ class CancellationTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "server MID reused"):
             review(r, {"patch_sha256": "patch"})
 
+    def test_silence_before_resource_change_does_not_replace_post_change_hold(self):
+        r = evidence(fresh_token=b"n")
+        shift = r["trace"][10]["time_ns"] - 5_000 - r["quiet_readback"]["trace"][-1]["time_ns"]
+        for row in r["quiet_readback"]["trace"]:
+            row["time_ns"] += shift
+        with self.assertRaisesRegex(AssertionError, "after confirmed resource change"):
+            review(r, {"patch_sha256": "patch"})
+
     def test_hold_update_readback_and_fresh_recovery_are_required(self):
         mutations = [lambda r: r["writes"].pop(),
                      lambda r: r["quiet_readback"]["result"].update(payload_hex=b"1".hex()),

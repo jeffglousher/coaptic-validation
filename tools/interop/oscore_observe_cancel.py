@@ -161,8 +161,11 @@ def review(record, patch):
     readback = record["quiet_readback"]["trace"]
     require(writes[1]["trace"][-1]["time_ns"] < readback[0]["time_ns"]
             and readback[-1]["time_ns"] < after[0]["time_ns"], "missing authenticated quiet-interval effect")
+    quiet_after_readback = after[0]["time_ns"] - readback[-1]["time_ns"]
+    require(quiet_after_readback >= 500_000_000, "missing quiet observation after confirmed resource change")
     return {"same_server": list(server), "complete_bodies": ["0", "1", "1", "2", "3", "4"],
             "quiet_interval_ns": after[0]["time_ns"] - cancelled[-1]["time_ns"],
+            "quiet_after_readback_ns": quiet_after_readback,
             "request_pivs": pivs, "scope": "finite IPv4 loopback explicit cancellation; no enrollment, power-loss, routed-network or sustained-availability qualification"}
 
 

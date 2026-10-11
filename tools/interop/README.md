@@ -379,7 +379,8 @@ registration/cancellation Tokens and distinct request bindings, and requires
 the cancellation response and its transport controls to settle. An independent
 protected POST and complete authenticated GET readback confirm the counter
 changes to `2` during the quiet interval, with no observer traffic before fresh
-registration. Fresh registration must use a different Token and deliver all
+registration and at least 500 milliseconds observed after the completed readback.
+Fresh registration must use a different Token and deliver all
 three current representations on the same live server. This is a bounded absence
 observation, not a claim that the server can never send another notification.
 
