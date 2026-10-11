@@ -203,6 +203,9 @@ impl Catalog {
 /// Grade one TD.
 pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), String> {
     let packets = capture.snapshot();
+    if td == "TD_COAP_OBS_04" {
+        grade_observe_server_reset(&packets)?;
+    }
     if td == "TD_COAP_OBS_14" {
         grade_observe_pumping(&packets)?;
     }
@@ -309,6 +312,47 @@ pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), St
                 n = leftover.len()
             ));
         }
+    }
+    Ok(())
+}
+
+/// Same-token recovery after real elapsed Max-Age plus MAX_LATENCY.
+fn grade_observe_server_reset(packets: &[Packet]) -> Result<(), String> {
+    let mut ordered = packets.to_vec();
+    ordered.sort_by_key(|p| p.t_ns);
+    let mut seen = HashSet::new();
+    ordered.retain(|p| seen.insert((p.src, p.dst, p.bytes.clone())));
+    if ordered.len() != 12 {
+        return Err("OBS04 requires two complete six-datagram observation phases".into());
+    }
+    grade_confirmable_observe(&ordered[..6])?;
+    grade_confirmable_observe(&ordered[6..])?;
+    let initial = decode(&ordered[0].bytes).map_err(|e| format!("OBS04 initial: {e:?}"))?;
+    let refresh = decode(&ordered[6].bytes).map_err(|e| format!("OBS04 refresh: {e:?}"))?;
+    let last = decode(&ordered[4].bytes).map_err(|e| format!("OBS04 last notification: {e:?}"))?;
+    let restarted =
+        decode(&ordered[7].bytes).map_err(|e| format!("OBS04 restarted response: {e:?}"))?;
+    if ordered[6].src != ordered[0].src
+        || ordered[6].dst != ordered[0].dst
+        || refresh.token() != initial.token()
+        || refresh.message_id() == initial.message_id()
+        || initial.options().collect::<Vec<_>>() != refresh.options().collect::<Vec<_>>()
+        || initial.payload() != refresh.payload()
+        || !initial.payload().is_empty()
+    {
+        return Err("OBS04 same endpoint, token and request identity refresh".into());
+    }
+    let max_age = match last.max_age() {
+        Some(Ok(age)) => age,
+        None => 60,
+        Some(Err(_)) => return Err("OBS04 malformed Max-Age".into()),
+    };
+    let wait_ns = (u128::from(max_age) + 100) * 1_000_000_000;
+    if ordered[6].t_ns.saturating_sub(ordered[4].t_ns) < wait_ns {
+        return Err("OBS04 refresh before real Max-Age plus MAX_LATENCY".into());
+    }
+    if restarted.observe() != Some(Ok(0)) || last.observe() != Some(Ok(2)) {
+        return Err("OBS04 reset sequence was not exercised".into());
     }
     Ok(())
 }
@@ -1922,5 +1966,76 @@ mod tests {
         }"#;
         let exp: ExpectTd = serde_json::from_str(json).unwrap();
         grade_td("lead-noise", &exp, &cap).expect("grade");
+    }
+}
+
+#[cfg(test)]
+mod observe_reset_tests {
+    use super::*;
+    #[test]
+    fn observe_server_reset_real_elapsed_recovery_and_mutation_refusal() {
+        let started = std::time::Instant::now();
+        let result = crate::runner::run_td(
+            "TD_COAP_OBS_04",
+            crate::runner::Pair {
+                client: "coaptic",
+                server: "coaptic",
+            },
+        );
+        assert!(result.error.is_none(), "{:?}", result.error);
+        assert!(started.elapsed() >= std::time::Duration::from_secs(160));
+        let mut packets = result.capture.snapshot();
+        packets.sort_by_key(|p| p.t_ns);
+        let mut seen = HashSet::new();
+        packets.retain(|p| seen.insert((p.src, p.dst, p.bytes.clone())));
+        assert_eq!(packets.len(), 12);
+        grade_observe_server_reset(&packets).unwrap();
+        for (target, fault) in [
+            (0, "path"),
+            (1, "body"),
+            (2, "body"),
+            (3, "mid"),
+            (4, "body"),
+            (5, "endpoint"),
+            (6, "early"),
+            (6, "token"),
+            (6, "endpoint"),
+            (6, "mid"),
+            (7, "body"),
+            (8, "body"),
+            (9, "mid"),
+            (10, "body"),
+            (11, "missing"),
+        ] {
+            let mut changed = packets.clone();
+            match fault {
+                "missing" => {
+                    changed.remove(target);
+                }
+                "body" | "path" => *changed[target].bytes.last_mut().unwrap() ^= 1,
+                "mid" => changed[target].bytes[3] ^= 1,
+                "token" => changed[target].bytes[4] ^= 1,
+                "endpoint" => changed[target].src = changed[target].dst,
+                "early" => {
+                    let delta = changed[6].t_ns - changed[4].t_ns - 1_000_000_000;
+                    for packet in &mut changed[6..] {
+                        packet.t_ns -= delta;
+                    }
+                }
+                _ => unreachable!(),
+            }
+            assert!(
+                grade_observe_server_reset(&changed).is_err(),
+                "accepted {target} {fault}"
+            );
+        }
+        if let Some(directory) = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            result
+                .capture
+                .write_pcap(std::fs::File::create(directory.join("obs-04-coaptic.pcap")).unwrap())
+                .unwrap();
+        }
     }
 }

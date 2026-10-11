@@ -200,7 +200,7 @@ pub trait Peer {
         Err(PeerError("observe collect not supported".into()))
     }
 
-    /// Issue an unrelated GET or explicit cancellation on the retained client owner.
+    /// Issue a GET, explicit refresh or cancellation on the retained client owner.
     /// Unsupported backends refuse instead of replacing the client/socket.
     fn request_on_observe(
         &mut self,
@@ -209,6 +209,11 @@ pub trait Peer {
     ) -> Result<ClientResponse, PeerError> {
         let _ = (dest, req);
         Err(PeerError("same-owner Observe request not supported".into()))
+    }
+
+    /// Lose server protocol state while preserving its UDP endpoint; wait for completion.
+    fn reset_observe_server(&mut self) -> Result<(), PeerError> {
+        Err(PeerError("same-endpoint server reset not supported".into()))
     }
 
     /// Lose client protocol state while preserving the registered UDP endpoint.

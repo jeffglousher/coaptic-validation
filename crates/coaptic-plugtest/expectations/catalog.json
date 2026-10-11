@@ -292,13 +292,7 @@
       {"type": "NON", "code": "2.05", "token": "echo", "observe": "increase", "content_format": 0, "payload": "obs-0"}
     ]
   },
-  "TD_COAP_OBS_04": {
-    "allow_extra": true,
-    "coap": [
-      {"code": "0.01", "observe": "register"},
-      {"code": "2.05"}
-    ]
-  },
+  "TD_COAP_OBS_04": { "allow_extra": true, "coap": [] },
   "TD_COAP_OBS_05": {
     "allow_extra": true,
     "coap": [
