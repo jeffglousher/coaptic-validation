@@ -64,3 +64,24 @@ retiring the old ring/webpki chain. Dedicated tests qualify mutual X.509 GET in
 the two mixed directions and Coaptic self-pair, and require a certificate-verifier
 error for unrelated trust roots on either endpoint. They do not upgrade skipped
 RPK TDs to passes; independent DTLS-backend coverage remains libcoap/OpenSSL.
+
+### Observe reset socket qualification
+
+`cargo test --locked -p coaptic-plugtest --test observe_reset` checks RFC 7641
+section 4.5 against the Coaptic App server and a scripted UDP client on loopback.
+Wrong message-ID and wrong-endpoint resets must leave notifications working.
+A matching reset must stop notifications for a 3.5-second observation window
+(longer than the 3-second NON hold), while an ordinary GET and fresh registration
+must still succeed. The exact server-side packet trace rejects missing resets,
+wrong reset ownership, late notifications, and corrupted recovered payloads.
+Registration and health exchanges must use the expected endpoint directions,
+resource paths and complete fixture bodies; 23 trace mutations exercise refusal.
+Set `COAPTIC_OBSERVE_CAPTURE_DIR` to retain `rfc7641-non-reset.pcap`.
+
+This plaintext fixture qualifies message/endpoint matching, not authenticated
+peer identity or protected interoperability. It is not TD_COAP_OBS_06: that TD
+requires CON notifications, while this fixture exercises NON notifications.
+The literal TD remains skipped; finite silence is not sustained availability
+qualification. Tracking: [#402](https://github.com/jeffglousher/coaptic/issues/402),
+[#199](https://github.com/jeffglousher/coaptic/issues/199), and
+[#202](https://github.com/jeffglousher/coaptic/issues/202).
