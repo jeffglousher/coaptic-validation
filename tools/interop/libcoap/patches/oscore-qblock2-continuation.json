@@ -1,0 +1,17 @@
+{
+  "schema": "coaptic-libcoap-patch/1",
+  "upstream": "851533c3cf63d16984d370ce39d586ecb3694971",
+  "patch": "oscore-qblock2-continuation.patch",
+  "patch_sha256": "6117d1dafa93970005cf6c8df468ac2b252b1192b6cd4df5199308c5bb414c28",
+  "files": {
+    "include/coap3/coap_block_internal.h": "c5f890117c9fa3a2f4e1294f219fa3593ab3405c57f86f00aa2d41311ae38d17",
+    "include/coap3/coap_pdu_internal.h": "5e3d53cf2fdf42cef4fe4f8db6c9ea296a47ffec8051c2404443b76020210b81",
+    "include/coap3/coap_session_internal.h": "858f2c15e70e59f753f0ba091ca4fed841d7138f1ea3fbb6edea0863898a603b",
+    "include/oscore/oscore_context.h": "39b519832f3ae207e544f506f65f33ea65c337e109a2e13a4da15efcb261e7c9",
+    "src/coap_block.c": "72137b70d3c25bb0069a43598c3c935376ff80693027a82117779a2f9afd846d",
+    "src/coap_net.c": "40e66ac00611eabc9a66c045728f54a29c045d0cd9fbf2828781cc6fbeaf2f87",
+    "src/coap_oscore.c": "083dd113f1300e878ccf3ac63e0ae3167908bd54d1b4a7287667461027ba5cc8",
+    "src/coap_pdu.c": "7bfb921f200f1e051bb787cf0177addb893abc07c08fe39b6db2c05c2d3c25bb",
+    "src/coap_session.c": "a0023696e12768424df714a3b507416fa13129c00d503972b86b43afd2744530"
+  }
+}
