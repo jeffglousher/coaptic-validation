@@ -112,8 +112,9 @@ def baseline_grade(trace, result, endpoints, *, partial=False, family="ipv4"):
             request_pending = False
             forms.append("piggybacked content")
         else:
+            # Message IDs belong to their sender/endpoint (RFC 7252 section 4.4).
             require(ty == 0 and not request_pending and server_pending is None
-                    and mid not in response_mids and mid not in request_mids,
+                    and mid not in response_mids,
                     "separate CON violates owner/NSTART")
             server_pending = mid
             response_mids.add(mid)
@@ -242,7 +243,7 @@ def campaign_grade(trace, result, endpoints, mode, *, family="ipv4"):
                 for option in plain.opt.option_list():
                     options.setdefault(int(option.number), []).append(option.encode())
                 old_tag = [o.encode() for o in prior.opt.option_list() if int(o.number) == 4]
-                require((wire[0] >> 4) & 3 == 0 and wire[2:4] not in (req[2:4], first[2:4])
+                require((wire[0] >> 4) & 3 == 0 and wire[2:4] != first[2:4]
                         and packet_token(wire) == packet_token(req) and set(decoded_options(wire)) == {9}, "lost CON ownership")
                 require(int(plain.code) == 69 and plain.payload == LARGE[1024:]
                         and set(options) <= {4, 12, 14, 28, 31} and options.get(4) == old_tag
