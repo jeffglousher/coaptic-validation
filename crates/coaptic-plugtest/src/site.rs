@@ -47,6 +47,22 @@ static OBS_SEQ: AtomicU32 = AtomicU32::new(0);
 // Serialized TD ownership is enforced by runner::harness_lock. Zero preserves
 // the original fixed snapshot fixture; 1/2 select the two updated representations.
 static OBS_REPRESENTATION: AtomicU8 = AtomicU8::new(0);
+static OBS_STATE: AtomicU8 = AtomicU8::new(0);
+
+pub(crate) fn set_observed_state(state: u8) {
+    OBS_STATE.store(state, Ordering::SeqCst);
+    if state == 0 {
+        OBS_REPRESENTATION.store(0, Ordering::SeqCst);
+    }
+}
+
+pub(crate) fn observed_response() -> Response<'static> {
+    match OBS_STATE.load(Ordering::SeqCst) {
+        1 => Response::not_found(),
+        2 => Response::content(OBS_BODY_2).content_format(ContentFormat::OCTET_STREAM),
+        _ => Response::content(current_observe_body()).content_format(ContentFormat::TEXT_PLAIN),
+    }
+}
 
 pub(crate) fn observe_update_body(payload: &[u8]) -> Option<&'static [u8]> {
     if payload == OBS_BODY {
@@ -100,6 +116,7 @@ pub fn reset() {
     *large_update_slot().lock().expect("large-update") = None;
     TEST_EXISTS.store(true, Ordering::SeqCst);
     OBS_SEQ.store(0, Ordering::SeqCst);
+    OBS_STATE.store(0, Ordering::SeqCst);
     OBS_REPRESENTATION.store(0, Ordering::SeqCst);
 }
 
@@ -208,13 +225,16 @@ fn post_large_post(req: Request<'_>) -> Response<'static> {
 }
 
 fn get_obs(_req: Request<'_>) -> Response<'static> {
-    Response::content(current_observe_body())
-        .content_format(ContentFormat::TEXT_PLAIN)
-        .observe(0)
-        .max_age(5)
+    if OBS_STATE.load(Ordering::SeqCst) == 1 {
+        return Response::not_found();
+    }
+    observed_response().observe(0).max_age(5)
 }
 
 fn obs_snapshot() -> Response<'static> {
+    if OBS_STATE.load(Ordering::SeqCst) != 0 {
+        return observed_response();
+    }
     let body = if OBS_REPRESENTATION.load(Ordering::SeqCst) == 0 {
         OBS_BODY_2
     } else {
@@ -226,6 +246,7 @@ fn obs_snapshot() -> Response<'static> {
 }
 
 fn delete_obs(_req: Request<'_>) -> Response<'static> {
+    set_observed_state(1);
     Response::deleted()
 }
 

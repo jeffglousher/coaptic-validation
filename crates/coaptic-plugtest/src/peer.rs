@@ -228,6 +228,12 @@ pub trait Peer {
         Err(PeerError("notify not supported".into()))
     }
 
+    /// Set the bounded fixture state: 0 restores, 1 deletes, 2 changes format.
+    fn set_observed_state(&mut self, path: &[&str], state: u8) -> Result<(), PeerError> {
+        let _ = (path, state);
+        Err(PeerError("observed fixture state not supported".into()))
+    }
+
     /// Change the bounded fixture resource and notify observers with CON.
     fn update_observed(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
         let _ = (path, payload);

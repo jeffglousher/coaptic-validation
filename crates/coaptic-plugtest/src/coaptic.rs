@@ -39,6 +39,7 @@ struct ServerCtl {
 }
 
 enum NotifyCommand {
+    SetObservedState(u8),
     Notification {
         path: Vec<String>,
         payload: Vec<u8>,
@@ -212,6 +213,19 @@ impl Peer for CoapticPeer {
         Ok(())
     }
 
+    fn set_observed_state(&mut self, path: &[&str], state: u8) -> Result<(), PeerError> {
+        if path != ["obs"] || state > 2 {
+            return Err(PeerError("unsupported bounded observed state".into()));
+        }
+        let server = self.server.as_ref().ok_or("no server")?;
+        let mut command = server.notify.lock().expect("state");
+        if command.is_some() {
+            return Err(PeerError("notification command occupied".into()));
+        }
+        *command = Some(NotifyCommand::SetObservedState(state));
+        Ok(())
+    }
+
     fn update_observed(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
         if path != ["obs"] {
             return Err(PeerError("update requires /obs".into()));
@@ -263,6 +277,12 @@ fn server_loop(
         let _ = app.poll(now);
         if let Some(command) = notify.lock().expect("n").take() {
             match command {
+                NotifyCommand::SetObservedState(state) => {
+                    site::set_observed_state(state);
+                    if state != 0 {
+                        let _ = app.notify_confirmable(now, &["obs"], site::observed_response());
+                    }
+                }
                 NotifyCommand::Notification {
                     path,
                     payload,
@@ -827,6 +847,87 @@ mod observe_update_tests {
         assert!(
             unsupported
                 .update_observed(&["obs"], site::OBS_BODY_2)
+                .unwrap_err()
+                .0
+                .contains("not supported")
+        );
+        assert!(unsupported.take_capture().snapshot().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod observe_terminal_tests {
+    use super::*;
+
+    #[test]
+    fn terminal_fixture_refuses_invalid_and_occupied_commands() {
+        let _guard = crate::runner::harness_lock();
+        let mut server = CoapticPeer::new();
+        let dest = server.start_server().unwrap();
+        let mut client = CoapticPeer::new();
+        let mut registration = ClientRequest::get(&["obs"]);
+        registration.observe = Some(0);
+        client.begin_observe(dest, &registration).unwrap();
+        let before = server.take_capture().snapshot().len();
+        for (path, state) in [(&["test"][..], 1), (&["obs"][..], 3), (&["obs"][..], 255)] {
+            assert!(server.set_observed_state(path, state).is_err());
+        }
+        client.observe_quiet_for(Duration::from_millis(30)).unwrap();
+        assert_eq!(server.take_capture().snapshot().len(), before);
+        let readback = client
+            .request_on_observe(dest, &ClientRequest::get(&["obs"]))
+            .unwrap();
+        assert_eq!(readback.payload, site::OBS_BODY);
+        assert_eq!(readback.content_format, Some(0));
+        server.set_observed_state(&["obs"], 2).unwrap();
+        assert_eq!(
+            client
+                .take_notification(Duration::from_secs(1))
+                .unwrap()
+                .code,
+            Code::NOT_ACCEPTABLE
+        );
+        drop(client);
+        drop(server);
+        let mut fresh = CoapticPeer::new();
+        let dest = fresh.start_server().unwrap();
+        let readback = CoapticPeer::new()
+            .send_request(dest, &ClientRequest::get(&["obs"]))
+            .unwrap();
+        assert_eq!(readback.payload, site::OBS_BODY);
+        assert_eq!(readback.content_format, Some(0));
+        drop(fresh);
+
+        let mut bounded = CoapticPeer::new();
+        let command = Arc::new(Mutex::new(Some(NotifyCommand::SetObservedState(1))));
+        bounded.server = Some(ServerCtl {
+            addr: dest,
+            stop: Arc::new(AtomicBool::new(false)),
+            notify: Arc::clone(&command),
+            join: None,
+        });
+        assert!(
+            bounded
+                .set_observed_state(&["obs"], 2)
+                .unwrap_err()
+                .0
+                .contains("occupied")
+        );
+        assert!(matches!(
+            *command.lock().unwrap(),
+            Some(NotifyCommand::SetObservedState(1))
+        ));
+        *command.lock().unwrap() = None;
+        bounded.set_observed_state(&["obs"], 0).unwrap();
+        assert!(matches!(
+            *command.lock().unwrap(),
+            Some(NotifyCommand::SetObservedState(0))
+        ));
+        assert!(bounded.take_capture().snapshot().is_empty());
+        let mut unsupported = crate::runner::peer_by_name("coap-rs").unwrap();
+        assert!(
+            unsupported
+                .set_observed_state(&["obs"], 1)
                 .unwrap_err()
                 .0
                 .contains("not supported")
