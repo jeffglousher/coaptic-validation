@@ -1,6 +1,6 @@
 //! Finite host qualification service, never an enrollment authority.
 //!
-//! Usage: telemetry-service provision|serve BIND PEER CREDENTIALS SECURITY JOURNAL
+//! Usage: telemetry-service provision|provision-journal|serve BIND PEER CREDENTIALS SECURITY JOURNAL
 //! BINDING TIMEOUT_MS MAX_POLLS RUN_ID [drop-first-receipt]
 //!
 //! The operator-private credential record is the same 66-byte layout used by
@@ -10,7 +10,10 @@
 //! This explicitly associates the pairwise credentials with that principal; it
 //! does not derive the principal from OSCORE or claim enrolled ownership.
 //! `provision` creates missing security/journal files offline and refuses existing
-//! paths. `serve` only opens existing records. Interrupted provisioning is an
+//! paths. `provision-journal` creates only the missing journal from BINDING; it
+//! never opens credentials/security or sockets and never advances security state.
+//! Use it to add telemetry to an already provisioned pairwise context. `serve`
+//! authenticates and restores existing security normally. Interrupted provisioning is an
 //! operator-reconciliation case; it never falls back to resetting either record.
 #![forbid(unsafe_code)]
 use coaptic::provisioning::{PinnedPeer, TrustAnchor};
@@ -58,7 +61,7 @@ fn run() -> Result<(), &'static str> {
     let args: Vec<_> = std::env::args().collect();
     if !(11..=12).contains(&args.len()) {
         return Err(
-            "usage: telemetry-service provision|serve BIND PEER CREDENTIALS SECURITY JOURNAL BINDING TIMEOUT_MS MAX_POLLS RUN_ID [drop-first-receipt]",
+            "usage: telemetry-service provision|provision-journal|serve BIND PEER CREDENTIALS SECURITY JOURNAL BINDING TIMEOUT_MS MAX_POLLS RUN_ID [drop-first-receipt]",
         );
     }
     let drop_first = args
@@ -73,8 +76,14 @@ fn run() -> Result<(), &'static str> {
         return Err("run ID");
     }
     let (policy, content_format) = binding(Path::new(&args[7]))?;
-    let credentials = credentials(Path::new(&args[4]))?;
     let authority = Authority::new(policy);
+    if args[1] == "provision-journal" {
+        Journal::create(Path::new(&args[6]), authority, MAX_ROWS)
+            .map_err(|_| "journal provisioning")?;
+        println!("{{\"run_id\":\"{run_id}\",\"journal_provisioned\":true}}");
+        return Ok(());
+    }
+    let credentials = credentials(Path::new(&args[4]))?;
     if args[1] == "provision" {
         let mut security = FileStore::open(Path::new(&args[5]), true)?;
         security_state::provision(&mut security, &credentials)

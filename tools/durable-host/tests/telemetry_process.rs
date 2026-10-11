@@ -2,6 +2,7 @@ use coaptic::provisioning::{OperationId, Receipt, TelemetryOperation};
 use coaptic::storage::UdpSocketIo;
 use coaptic::{App, Code, ContentFormat, profiles};
 use coaptic_esphome_probe::{host_state::FileStore, security_state as security};
+use security::Store;
 use std::{
     io::{BufRead, Read},
     net::UdpSocket,
@@ -172,10 +173,34 @@ fn child_service_lost_reply_then_restart_recovers_exact_durable_receipt() {
     let reservation = UdpSocket::bind("127.0.0.1:0").unwrap();
     let address = reservation.local_addr().unwrap();
     drop(reservation);
-    let provision = args(&root, "provision", &address.to_string(), &peer.to_string())
+    // The pairwise context already exists and remains exclusively owned here.
+    // Journal provisioning must not open it, read credentials, or bind a socket.
+    let server_credentials = security::Credentials {
+        secret: c.secret,
+        salt: c.salt,
+        context: c.context,
+        sender: 2,
+        recipient: 1,
+    };
+    let mut existing_security = FileStore::open(&root.join("security"), true).unwrap();
+    security::provision(&mut existing_security, &server_credentials).unwrap();
+    let before = existing_security.read().unwrap();
+    std::fs::rename(root.join("credentials"), root.join("held-credentials")).unwrap();
+    let provision = args(&root, "provision-journal", "no-socket", "no-peer")
         .output()
         .unwrap();
     assert!(provision.status.success());
+    assert_eq!(existing_security.read().unwrap(), before);
+    assert!(
+        !args(&root, "provision-journal", "no-socket", "no-peer")
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+    assert_eq!(existing_security.read().unwrap(), before);
+    std::fs::rename(root.join("held-credentials"), root.join("credentials")).unwrap();
+    drop(existing_security);
     assert!(
         !args(&root, "provision", &address.to_string(), &peer.to_string())
             .output()
