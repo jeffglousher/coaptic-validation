@@ -41,17 +41,25 @@ The standalone coap-rs UDP fixture also serves `/separate`: an empty request ACK
 then a complete CON response with the original token and a new MID. The relay
 checks both MID bindings, the full payload and the client's empty response ACK.
 Admission and queued responses are each bounded to eight, with a 2,048-byte
-datagram limit. Oversized or saturated input receives no ACK; releasing an owner
-restores admission. This fixture does not qualify separate responses over DTLS
-or retransmission after a lost separate response.
+datagram limit. Separate-CON state retains at most eight complete requests and
+responses, and permits only one outstanding separate response per endpoint.
+Oversized or saturated input receives no ACK. Matching empty ACK/RST releases
+the response slot; wrong endpoint/MID or malformed controls do not. A ten-second
+backend deadline rejects late replies by reservation identity. Response retries
+use randomized 2–3 second initial timeouts, exponential backoff and at most four
+retransmissions within the RFC 7252 transmission span; final expiry releases the
+slot. These are standalone fixture rules, not an upstream coap-rs reliability
+claim. DTLS remains unqualified.
 
 The separate-response loss cases use Coaptic and coap-rs clients against the
-Coaptic server over IPv4 loopback UDP. The relay forwards the empty request ACK,
+Coaptic server, and a Coaptic client against the standalone coap-rs fixture,
+over IPv4 loopback UDP. The relay forwards the empty request ACK,
 drops exactly the first separate CON 2.05, and requires an identical complete
 retransmission followed by the client's matching ACK. The request deadline is
 eight seconds; the relay retains at most 256 datagrams. Missing, changed or
-out-of-order evidence fails. These cases do not qualify the coap-rs server's
-retransmission, protected transports, other address families or hardware.
+out-of-order evidence fails. A fresh client must then complete against the same
+server. These cases do not qualify protected transports, other address families
+or hardware.
 The coap-rs client can repeat the original GET despite its empty ACK. The trace
 retains those retries and matching repeated ACKs; every delivered separate
 response must still match the dropped bytes exactly. This checks recovery and
@@ -64,6 +72,18 @@ and 7.2 distinguish NON transfer recovery from CON congestion control: with
 libcoap's default NSTART of one, dropping a CON payload prevents a higher block
 from arriving. Existing CON cases retain their original request type.
 
+The IPv6 variant also retains each datagram's exact source, destination and
+relay endpoints and requires AF_INET6 with IPV6_V6ONLY on both relay sockets.
+An independent `::1` GET verifies server reachability. Three schedules run
+against the same server: selective missing-block recovery to the full 2000-byte
+body, permanent block-1 loss with 1744 delivered bytes and a protocol timeout,
+then fresh full recovery. The refusal deadline is six seconds, allowing the
+RFC 9177 four-second NON_RECEIVE_TIMEOUT to trigger a selective retry. Complete
+transfers have a twenty-second deadline; each trace is bounded to 256 datagrams.
+Partial evidence cannot pass the complete-response oracle. Endpoint/family,
+loss, representation and timeout mutations are rejected. This is loopback UDP
+qualification, not scoped link-local, routed, protected or hardware evidence.
+
 The relay selects 256-byte blocks, withholds block 1 until the client requests
 it, and requires a higher block to arrive before that selective recovery. The
 20-second deadline and 256-datagram trace bound apply. Delivered payloads must
@@ -71,5 +91,5 @@ reassemble the exact 2000-byte pattern with stable ETag, Size2 and block size,
 contiguous numbers and a final block. The report retains the full trace,
 including original and forwarded bytes. Mutation tests reject absent loss,
 wrong recovery options, CON fallback and incomplete or changed body evidence.
-This case covers IPv4 loopback UDP; protected recovery, other address families,
-CON loss recovery against libcoap and hardware remain unqualified.
+These cases cover IPv4 and IPv6 loopback UDP; protected recovery, scoped/routed
+networks, CON loss recovery against libcoap and hardware remain unqualified.

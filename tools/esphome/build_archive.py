@@ -20,8 +20,11 @@ def main():
     parser.add_argument("--toolchain", default="coaptic-esp-1.97")
     parser.add_argument("--expected-library-revision", required=True)
     parser.add_argument("--oscore", action="store_true")
+    parser.add_argument("--telemetry", action="store_true")
     args = parser.parse_args()
-    features = FEATURES + (["oscore"] if args.oscore else [])
+    if args.telemetry and not args.oscore:
+        parser.error("--telemetry requires --oscore")
+    features = FEATURES + (["oscore"] if args.oscore else []) + (["telemetry"] if args.telemetry else [])
     try:
         source = build_source(args.expected_library_revision)
     except ValueError as error:

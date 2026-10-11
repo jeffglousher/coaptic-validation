@@ -301,7 +301,7 @@ class Proxy:
                     except ConnectionResetError:
                         # Windows reports late ICMP port-unreachable when a
                         # one-shot client exits after the first duplicate reply.
-                        if self.mode in ("duplicate-request", "dtls-reconnect", "drop-qblock2", "reorder-qblock2") and sock is self.front:
+                        if self.mode in ("duplicate-request", "dtls-reconnect", "drop-qblock2", "drop-qblock2-permanent", "reorder-qblock2") and sock is self.front:
                             continue
                         raise
                     incoming = sock is self.front
@@ -328,7 +328,7 @@ class Proxy:
                         action, dropped = "delay", True
                     elif self.mode == "duplicate-request" and incoming and not duplicated:
                         action, duplicated = "duplicate", True
-                    elif self.mode == "drop-qblock2":
+                    elif self.mode in ("drop-qblock2", "drop-qblock2-permanent"):
                         # Shrink the /large size hint, then drop block 1 until the client asks for it.
                         # Block 0 still arrives, so Size2 is seen. The probe token is left alone.
                         token = packet_token(data)
@@ -338,7 +338,7 @@ class Proxy:
                                     large_tokens.add(token)
                             except (AssertionError, IndexError):
                                 pass
-                            if held_num is not None and qblock2_requests_num(data, held_num):
+                            if self.mode != "drop-qblock2-permanent" and held_num is not None and qblock2_requests_num(data, held_num):
                                 release_held = True
                         elif not release_held:
                             num = qblock2_content_num(data)
@@ -360,7 +360,7 @@ class Proxy:
                     if len(self.trace) >= (8192 if self.mode == "dtls-reconnect" else 256):
                         raise RuntimeError("proxy trace limit exceeded")
                     forwarded = data[:-1] + bytes([data[-1] ^ 0x80]) if action == "corrupt" else data
-                    if self.mode == "drop-qblock2" and incoming and action == "forward" and packet_token(data) in large_tokens:
+                    if self.mode in ("drop-qblock2", "drop-qblock2-permanent") and incoming and action == "forward" and packet_token(data) in large_tokens:
                         forwarded = shrink_qblock2_szx(data)
                     elif self.qblock2_szx is not None and incoming and action == "forward":
                         try:
@@ -369,7 +369,9 @@ class Proxy:
                         except (AssertionError, IndexError):
                             pass
                     self.trace.append({"direction": "request" if incoming else "response",
-                                       "action": action, "hex": data.hex(), "forwarded_hex": forwarded.hex()})
+                                       "action": action, "hex": data.hex(), "forwarded_hex": forwarded.hex(),
+                                       "source": list(source), "destination": list(self.dest if incoming else client),
+                                       "relay": list((self.back if incoming else self.front).getsockname())})
                     if action == "delay":
                         time.sleep(0.25)
                     if action not in ("drop", "hold"):
@@ -1652,8 +1654,12 @@ def separate_loss_client(client, server):
         with Proxy(service.number, "drop-separate") as relay:
             result = request(client, "udp", relay.number, path="separate", timeout=8000)
         trace = relay.trace
-    expect(result, 69, b"separate-payload")
-    return grade_separate_loss(trace)
+        expect(result, 69, b"separate-payload")
+        proof = grade_separate_loss(trace)
+        recovery = request(client, "udp", service.number, path="separate", timeout=8000)
+        expect(recovery, 69, b"separate-payload")
+    proof["fresh_client_recovery"] = True
+    return proof
 
 
 def grade_separate_loss(trace):
@@ -1848,6 +1854,18 @@ def qblock2_missing(client, server, *, non=False):
 
 def grade_qblock2_missing(trace, *, require_ack=False, require_non=False):
     """Require actual loss, a later selective request, and a complete delivered body."""
+    return _grade_qblock2_transfer(trace, require_ack=require_ack, require_non=require_non, complete=True)
+
+
+def grade_qblock2_timeout(trace, result):
+    """A protocol timeout with proven partial data is refusal, never complete success."""
+    expect_refusal(result)
+    if result.get("payload_hex") or "code" in result:
+        raise AssertionError("timeout reported an application response")
+    return _grade_qblock2_transfer(trace, require_ack=False, require_non=True, complete=False)
+
+
+def _grade_qblock2_transfer(trace, *, require_ack, require_non, complete):
     raw_trace = trace
     trace = [dict(row, hex=row.get("forwarded_hex", row["hex"]))
              if row["action"] == "forward" else row for row in trace]
@@ -1967,15 +1985,20 @@ def grade_qblock2_missing(trace, *, require_ack=False, require_non=False):
             raise AssertionError("Q-Block2 responses did not share one ETag")
         if num == missing and index > recover_at:
             resent = True
-    if not resent:
+    if complete and not resent:
         raise AssertionError("the missing block was not delivered after the recovery request")
+    if not complete and missing in parts:
+        raise AssertionError("permanent loss delivered the missing block")
     if any(request_szx != szx for parsed in recovers for _, _, request_szx in parsed):
         raise AssertionError("recovery SZX did not match the representation")
     if terminal is None or not parts or terminal != max(parts):
         raise AssertionError("no terminal Q-Block2 block completed the body")
-    if sorted(parts) != list(range(terminal + 1)):
-        raise AssertionError(f"Q-Block2 numbers are not contiguous: {sorted(parts)}")
-    if b"".join(parts[i] for i in range(max(parts) + 1)) != LARGE:
+    expected_nums = [num for num in range(terminal + 1) if complete or num != missing]
+    if sorted(parts) != expected_nums:
+        raise AssertionError(f"Q-Block2 numbers do not match expected delivery: {sorted(parts)}")
+    size = 1 << (szx + 4)
+    if terminal != (len(LARGE) - 1) // size or any(
+            payload != LARGE[num * size:(num + 1) * size] for num, payload in parts.items()):
         raise AssertionError("forwarded Q-Block2 payloads are not the 2000-byte pattern")
     for row in dropped:
         packet = bytes.fromhex(row["hex"])
@@ -1983,7 +2006,7 @@ def grade_qblock2_missing(trace, *, require_ack=False, require_non=False):
         sizes = options.get(28, [])
         if (options.get(4) != [etag] or len(sizes) != 1 or int.from_bytes(sizes[0], "big") != len(LARGE)
                 or block1_fields(options[31][0]) != (missing, True, szx)
-                or coap_payload(packet) != parts[missing]):
+                or coap_payload(packet) != LARGE[missing * size:(missing + 1) * size]):
             raise AssertionError("dropped Q-Block2 payload did not match the recovered representation")
         if require_non and (packet[0] >> 4) & 3 != 1:
             raise AssertionError("the NON recovery case dropped a confirmable payload")
@@ -1992,8 +2015,59 @@ def grade_qblock2_missing(trace, *, require_ack=False, require_non=False):
                 if row["direction"] == "response" and row["action"] == "forward"]
         if not any(len(p) == 4 and p[1] == 0 and (p[0] >> 4) & 3 == 2 for p in acks):
             raise AssertionError("confirmable Q-Block2 did not get an empty ACK")
-    return {"missing": missing, "drops": len(dropped), "length": len(LARGE),
-            "blocks": len(parts), "szx": szx, "trace": raw_trace}
+    proof = {"missing": missing, "drops": len(dropped), "blocks": len(parts), "szx": szx, "trace": raw_trace}
+    if complete:
+        proof["length"] = len(LARGE)
+    else:
+        proof.update(complete=False, partial_bytes=sum(map(len, parts.values())))
+    return proof
+
+
+def grade_ipv6_relay(trace, endpoints):
+    """Bind every trace row to the actual IPv6-only sockets and exact peers."""
+    def endpoint(value):
+        if (not isinstance(value, (list, tuple)) or len(value) != 4 or value[0] != "::1"
+                or type(value[1]) is not int or not 0 < value[1] < 65536 or value[2:] not in ([0, 0], (0, 0))):
+            raise AssertionError("not an exact IPv6 loopback endpoint")
+        return tuple(value)
+    if endpoints.get("family") != "AF_INET6" or endpoints.get("v6only") != [1, 1]:
+        raise AssertionError("relay did not use IPv6-only sockets")
+    front, back, server = (endpoint(endpoints.get(key)) for key in ("front", "back", "server"))
+    if len({front, back, server}) != 3:
+        raise AssertionError("relay endpoints overlap")
+    requests = [row for row in trace if row["direction"] == "request"]
+    if not requests:
+        raise AssertionError("no IPv6 request")
+    client = endpoint(requests[0].get("source"))
+    for row in trace:
+        actual = tuple(endpoint(row.get(key)) for key in ("source", "destination", "relay"))
+        expected = (client, server, back) if row["direction"] == "request" else (server, client, front)
+        if row["direction"] not in ("request", "response") or actual != expected:
+            raise AssertionError("IPv6 relay endpoint ownership mismatch")
+    return {"client": client, "server": server, "front": front, "back": back}
+
+
+def qblock2_ipv6_loss(client, server):
+    """Independent IPv6 NON loss recovery, permanent partial refusal, then fresh recovery."""
+    proofs = {}
+    with Server(server, "udp", family="ipv6") as service:
+        probe = ipv6_probe(service.number)
+        for label, mode, deadline in [("recovery", "drop-qblock2", 20000),
+                                      ("partial_refusal", "drop-qblock2-permanent", 6000),
+                                      ("fresh_recovery", "drop-qblock2", 20000)]:
+            with Proxy(service.number, mode, family="ipv6") as relay:
+                endpoints = {"family": "AF_INET6" if relay.front.family == relay.back.family == socket.AF_INET6 else "wrong",
+                             "v6only": [sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) for sock in (relay.front, relay.back)],
+                             "front": relay.front.getsockname(), "back": relay.back.getsockname(), "server": relay.dest}
+                result = request(client, "udp", relay.number, path="large", family="ipv6", timeout=deadline, qblock2_non=True)
+            ownership = grade_ipv6_relay(relay.trace, endpoints)
+            if label == "partial_refusal":
+                proof = grade_qblock2_timeout(relay.trace, result)
+            else:
+                expect(result, 69, LARGE)
+                proof = grade_qblock2_missing(relay.trace, require_non=True)
+            proofs[label] = dict(proof=proof, endpoints=endpoints, ownership=ownership, result=result, deadline_ms=deadline)
+    return {"probe": probe, "schedules": proofs}
 
 
 def qblock2_window(client, server):
@@ -2439,6 +2513,7 @@ def main():
     case("separate:coaptic", lambda: separate_response(peers["coaptic"]))
     case("separate:coap-rs", lambda: separate_response(peers["coap-rs"]))
     case("separate-client:coaptic->coap-rs", lambda: separate_client(peers["coaptic"], peers["coap-rs"]))
+    case("separate-loss:coaptic->coap-rs", lambda: separate_loss_client(peers["coaptic"], peers["coap-rs"]))
     for client in ("coaptic", "coap-rs"):
         case(f"separate-loss:{client}->coaptic",
              lambda client=client: separate_loss_client(peers[client], peers["coaptic"]))
@@ -2478,6 +2553,8 @@ def main():
              lambda client=client, server=server: qblock2_missing(peers[client], peers[server]))
     case("qblock2-missing:coaptic->libcoap",
          lambda: qblock2_missing(peers["coaptic"], peers["libcoap"], non=True))
+    case("ipv6-qblock2-loss:coaptic->libcoap",
+         lambda: qblock2_ipv6_loss(peers["coaptic"], peers["libcoap"]))
     case("qblock2-reorder:coaptic->coaptic",
          lambda: qblock2_reorder(peers["coaptic"], peers["coaptic"]))
     for client, server in [("coaptic", "coaptic"), ("coaptic", "libcoap"), ("libcoap", "coaptic")]:

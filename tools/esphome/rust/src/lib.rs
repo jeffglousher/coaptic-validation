@@ -44,11 +44,22 @@ pub mod network;
 #[cfg(all(feature = "network", feature = "oscore"))]
 pub mod security_state;
 
+#[cfg(all(
+    feature = "host",
+    feature = "network",
+    feature = "oscore",
+    not(target_os = "none")
+))]
+pub mod host_state;
+
 #[cfg(feature = "telemetry")]
 pub mod pending_telemetry;
 
 #[cfg(feature = "telemetry")]
 pub mod protected_telemetry;
+
+#[cfg(feature = "telemetry")]
+pub mod telemetry_config;
 
 #[cfg(all(feature = "network", target_os = "none"))]
 mod network_ffi;
