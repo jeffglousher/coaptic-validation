@@ -151,8 +151,9 @@ section 7.1; it does not qualify NON missing-block recovery, timed-out Call reus
 protected transport, routed networks, hardware or sustained availability.
 
 
-`relay-cap-256:coaptic->libcoap` qualifies a finite IPv4 UDP loopback
-refusal/recovery boundary. Against one libcoap server, fresh client processes
+`relay-cap-256:coaptic->libcoap` and `ipv6-relay-cap-256:coaptic->libcoap`
+qualify finite IPv4 and IPv6 UDP loopback refusal/recovery boundaries. Against
+one libcoap server, fresh client processes
 first assemble the exact 2000-byte representation, complete a small response
 through a silent 256-byte wire-datagram cap, time out while the cap drops every
 oversized first Block2 response, and assemble all 2000 bytes after the cap is
@@ -162,7 +163,11 @@ unchanged RTO of 2 to 3 seconds with 50 ms early capture and one second late sch
 tolerance. Each request has a 6.5-second peer deadline and a distinct process
 deadline; a killed or stuck process is a failure. The relay limits each trace to
 256 records. A retry of a rejected first block may obtain a new server ETag;
-delivered blocks of a complete representation must retain one ETag.
+delivered blocks of a complete representation must retain one ETag. The IPv6
+case uses IPv6-only relay sockets and an independent `::1` server probe. Every
+captured endpoint must include zero flow and scope identifiers; mixed families,
+missing fields and nonzero identifiers refuse grading. This does not qualify
+IPv6 zone identifiers.
 
 This case records a silent relay limit, not an IP MTU or ICMP discovery result,
 adaptive block shrinking, continuation of the timed-out Call, protected traffic,

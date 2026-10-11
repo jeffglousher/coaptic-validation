@@ -1,9 +1,11 @@
 """Finite silent datagram-cap evidence; not ICMP or adaptive PMTU qualification."""
 
 
-def grade(trace, result, endpoints, *, path, capped, deadline_ms=6500):
+def grade(trace, result, endpoints, *, path, capped, deadline_ms=6500, family="ipv4"):
     from run import BODY, LARGE, block1_fields, coap_payload, decoded_options, expect, expect_refusal, packet_token
 
+    if family not in ("ipv4", "ipv6"):
+        raise AssertionError("unsupported relay address family")
     refusal = capped and path == "large"
     expected_body = LARGE if path == "large" else BODY
     if path not in ("test", "large") or type(capped) is not bool or deadline_ms != 6500:
@@ -19,9 +21,12 @@ def grade(trace, result, endpoints, *, path, capped, deadline_ms=6500):
         expect(result, 69, expected_body)
 
     def endpoint(value):
-        if (not isinstance(value, (tuple, list)) or len(value) != 2 or value[0] != "127.0.0.1"
-                or type(value[1]) is not int or not 0 < value[1] < 65536):
-            raise AssertionError("not an exact IPv4 loopback endpoint")
+        ipv6 = family == "ipv6"
+        if (not isinstance(value, (tuple, list)) or len(value) != (4 if ipv6 else 2)
+                or value[0] != ("::1" if ipv6 else "127.0.0.1")
+                or type(value[1]) is not int or not 0 < value[1] < 65536
+                or (ipv6 and any(type(part) is not int or part != 0 for part in value[2:]))):
+            raise AssertionError("not an exact loopback endpoint with zero flow/scope")
         return tuple(value)
 
     if not 2 <= len(trace) <= 256:
@@ -111,7 +116,7 @@ def grade(trace, result, endpoints, *, path, capped, deadline_ms=6500):
             "first_retry_interval_ns": request_times[1] - request_times[0] if refusal else None}
 
 
-def grade_campaign(schedules):
+def grade_campaign(schedules, *, family="ipv4"):
     expected = {"baseline": ("large", False), "control": ("test", True),
                 "refusal": ("large", True), "recovery": ("large", False)}
     if set(schedules) != set(expected):
@@ -125,26 +130,30 @@ def grade_campaign(schedules):
             raise AssertionError("campaign changed server endpoint")
         server = current
         grade(row["trace"], row["result"], row["endpoints"], path=path, capped=capped,
-              deadline_ms=row["deadline_ms"])
+              deadline_ms=row["deadline_ms"], family=family)
         if row["trace"][0]["time_ns"] <= prior_end:
             raise AssertionError("campaign schedules are not in execution order")
         prior_end = row["trace"][-1]["time_ns"]
     return True
 
 
-def workflow(client, server):
-    from run import Proxy, Server, request
+def workflow(client, server, *, family="ipv4"):
+    from run import Proxy, Server, ipv6_probe, request
+
+    if family not in ("ipv4", "ipv6"):
+        raise ValueError("unsupported relay address family")
 
     schedules = {}
-    with Server(server, "udp") as service:
+    with Server(server, "udp", family=family) as service:
+        probe = ipv6_probe(service.number) if family == "ipv6" else None
         for label, path, capped in (("baseline", "large", False), ("control", "test", True),
                                     ("refusal", "large", True), ("recovery", "large", False)):
-            with Proxy(service.number, "cap-256" if capped else "dtls-reconnect") as relay:
+            with Proxy(service.number, "cap-256" if capped else "dtls-reconnect", family=family) as relay:
                 endpoints = {"front": relay.front.getsockname(), "back": relay.back.getsockname(), "server": relay.dest}
-                result = request(client, "udp", relay.number, path=path, timeout=6500)
-            proof = grade(relay.trace, result, endpoints, path=path, capped=capped)
+                result = request(client, "udp", relay.number, path=path, timeout=6500, family=family)
+            proof = grade(relay.trace, result, endpoints, path=path, capped=capped, family=family)
             schedules[label] = {"proof": proof, "result": result, "trace": relay.trace,
                                 "endpoints": endpoints, "deadline_ms": 6500}
-    grade_campaign(schedules)
-    return {"family": "ipv4", "transport": "udp", "schedules": schedules,
+    grade_campaign(schedules, family=family)
+    return {"family": family, "transport": "udp", "schedules": schedules, "ipv6_probe": probe,
             "limitation": "Silent relay datagram cap, not IP MTU discovery or adaptive shrinking; recovery uses a fresh client/relay and the same server with the cap removed."}
