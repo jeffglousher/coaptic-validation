@@ -1,4 +1,4 @@
-//! Intact-datagram characterization of the backend gap in literal DTLS03.
+//! Bounded intact-datagram qualification of the Coaptic DTLS03 direction.
 
 use super::*;
 use std::net::UdpSocket;
@@ -105,6 +105,7 @@ impl Gateway {
         client: SocketAddr,
         server: SocketAddr,
         target: Option<Target>,
+        drop_limit: usize,
         capture: Capture,
     ) -> Result<Self, PeerError> {
         front
@@ -117,7 +118,7 @@ impl Gateway {
         let events = Arc::new(Mutex::new(Vec::new()));
         let thread_events = Arc::clone(&events);
         let join = thread::spawn(move || {
-            let mut dropped = false;
+            let mut dropped = 0;
             let mut bytes = [0; 2048];
             while !thread_stop.load(Ordering::SeqCst) {
                 for (from_client, incoming, outgoing, source, destination) in [
@@ -137,7 +138,7 @@ impl Gateway {
                                 from_client,
                                 records: handshake_records(&bytes[..n])?,
                             };
-                            let lose = target.as_ref() == Some(&key) && !dropped;
+                            let lose = target.as_ref() == Some(&key) && dropped < drop_limit;
                             capture.push(
                                 source,
                                 incoming
@@ -155,7 +156,7 @@ impl Gateway {
                                     return Err(PeerError("gateway short send".into()));
                                 }
                             } else {
-                                dropped = true;
+                                dropped += 1;
                             }
                             let mut log = thread_events.lock().expect("gateway events");
                             log.push(Event {
@@ -218,6 +219,10 @@ fn io_from_conn(conn: DTLSConn, local: SocketAddr, peer: SocketAddr) -> DtlsIo {
 }
 
 async fn exchange(target: Option<Target>) -> Result<Case, PeerError> {
+    exchange_with_limit(target, 1).await
+}
+
+async fn exchange_with_limit(target: Option<Target>, drop_limit: usize) -> Result<Case, PeerError> {
     let capture = Capture::new();
     let client = tokio::net::UdpSocket::bind("127.0.0.1:0")
         .await
@@ -245,6 +250,7 @@ async fn exchange(target: Option<Target>) -> Result<Case, PeerError> {
         client_addr,
         server_addr,
         target,
+        drop_limit,
         capture.clone(),
     )?;
     let mut serving = None;
@@ -335,6 +341,8 @@ fn grade_case(case: &Case, target: Option<&Target>, complete: bool) -> Result<()
         return Err("gateway wire/event count".into());
     }
     let mut lost = None;
+    let mut lost_count = 0;
+    let mut record_ids = std::collections::HashSet::new();
     for (index, (event, packet)) in case.events.iter().zip(&wire).enumerate() {
         let (source, destination, sent_from, received_at) = if event.target.from_client {
             (client, server, back, front)
@@ -349,11 +357,24 @@ fn grade_case(case: &Case, target: Option<&Target>, complete: bool) -> Result<()
         {
             return Err("gateway ownership or intact datagram mismatch".into());
         }
+        let mut records = event.bytes.as_slice();
+        while !records.is_empty() {
+            let epoch = u16::from_be_bytes([records[3], records[4]]);
+            let sequence = records[5..11]
+                .iter()
+                .fold(0u64, |value, byte| (value << 8) | u64::from(*byte));
+            if !record_ids.insert((event.source, epoch, sequence)) {
+                return Err("record sequence reused by connection writer".into());
+            }
+            let size = 13 + usize::from(u16::from_be_bytes([records[11], records[12]]));
+            records = &records[size..];
+        }
         if !event.forwarded {
-            if lost.is_some() || Some(&event.target) != target {
+            if (complete && lost.is_some()) || Some(&event.target) != target {
                 return Err("wrong or repeated loss".into());
             }
-            lost = Some(index);
+            lost.get_or_insert(index);
+            lost_count += 1;
         }
     }
     if target.is_some() != lost.is_some() {
@@ -369,8 +390,10 @@ fn grade_case(case: &Case, target: Option<&Target>, complete: bool) -> Result<()
                 return Err("lost packet did not retransmit".into());
             }
         } else {
-            // This known backend failure is a timeout, never a literal TD PASS.
+            // Permanent intact loss must end at the finite client deadline,
+            // without exposing application traffic or inventing completion.
             if case.elapsed < CASE_TIMEOUT
+                || lost_count < 2
                 || target.from_client
                 || target
                     .records
@@ -378,9 +401,11 @@ fn grade_case(case: &Case, target: Option<&Target>, complete: bool) -> Result<()
                     .map(|r| (r.kind, r.epoch))
                     .collect::<Vec<_>>()
                     != [(20, 0), (22, 1)]
-                || case.events[index + 1..].iter().any(|e| &e.target == target)
+                || case.events[index + 1..]
+                    .iter()
+                    .any(|e| e.forwarded && &e.target == target)
             {
-                return Err("not the observed final-flight backend timeout".into());
+                return Err("not a bounded permanent final-flight loss refusal".into());
             }
             let prior = case.events[..index]
                 .iter()
@@ -473,7 +498,7 @@ fn retain(cases: &[Case], targets: &[Target]) {
     let Some(directory) = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR") else {
         return;
     };
-    let directory = std::path::PathBuf::from(directory).join("dtls03-diagnostic");
+    let directory = std::path::PathBuf::from(directory).join("dtls03-loss");
     std::fs::create_dir_all(&directory).unwrap();
     let mut reports = Vec::new();
     for (index, case) in cases.iter().enumerate() {
@@ -502,7 +527,7 @@ fn retain(cases: &[Case], targets: &[Target]) {
         };
         serde_json::json!({"revision":git(&["rev-parse","HEAD"]),"dirty":!git(&["status","--porcelain"]).is_empty()})
     };
-    let report = serde_json::json!({"literal_td":"TD_COAP_DTLS_03","literal_complete":false,"literal_status":"SKIP","suite":identity(root),"core":identity(&root.join("coaptic")),"backend":"webrtc-dtls 0.12.0","normal_targets":targets,"cases":reports,"case_order":"baseline, six targeted one-datagram losses, fresh recovery","failed_target_index":5,"limitation":"final server CCS+Finished loss does not recover; client retries intact final flight; fresh handshake succeeds"});
+    let report = serde_json::json!({"literal_td":"TD_COAP_DTLS_03","literal_complete":true,"literal_status":"PASS","direction":"coaptic-to-coaptic","suite":identity(root),"core":identity(&root.join("coaptic")),"backend":"vendored webrtc-dtls 0.12.0 with bounded final-flight retention","normal_targets":targets,"cases":reports,"case_order":"baseline, six targeted one-datagram losses, permanent final-flight loss refusal, fresh recovery","fixture_mapping":"TD /secure stimulus chosen over inconsistent /test step; UDP server port5684; exact secure fixture body","limitations":"other application directions remain SKIP; no first-party core DTLS, DTLS02 alert or RPK claim"});
     std::fs::write(
         directory.join("report.json"),
         serde_json::to_vec_pretty(&report).unwrap(),
@@ -510,44 +535,60 @@ fn retain(cases: &[Case], targets: &[Target]) {
     .unwrap();
 }
 
-#[test]
-fn dtls03_loss_characterization_retains_final_flight_failure() {
-    let _guard = crate::runner::harness_lock();
-    let baseline = runtime().unwrap().block_on(exchange(None)).unwrap();
-    grade_case(&baseline, None, true).unwrap();
+fn qualify() -> Result<(Vec<Case>, Vec<Target>), PeerError> {
+    let baseline = runtime()?.block_on(exchange(None))?;
+    grade_case(&baseline, None, true).map_err(PeerError)?;
     let targets: Vec<_> = baseline
         .events
         .iter()
-        .filter(|e| !e.target.records.is_empty())
-        .map(|e| e.target.clone())
+        .filter(|event| !event.target.records.is_empty())
+        .map(|event| event.target.clone())
         .collect();
-    assert_eq!(
-        targets.len(),
-        6,
-        "normal handshake packetization changed; audit every target"
-    );
-    for (i, target) in targets.iter().enumerate() {
-        assert!(
-            !targets[..i].contains(target),
-            "normal run retransmitted; inventory is not normal"
-        );
+    if targets.len() != 6
+        || targets
+            .iter()
+            .enumerate()
+            .any(|(i, target)| targets[..i].contains(target))
+    {
+        return Err(PeerError(
+            "normal handshake packetization changed; audit every target".into(),
+        ));
     }
     let mut cases = vec![baseline];
-    for (index, target) in targets.iter().enumerate() {
-        let case = runtime()
-            .unwrap()
-            .block_on(exchange(Some(target.clone())))
-            .unwrap();
-        grade_case(&case, Some(target), index < 5).unwrap();
+    for target in &targets {
+        let case = runtime()?.block_on(exchange(Some(target.clone())))?;
+        grade_case(&case, Some(target), true).map_err(PeerError)?;
         cases.push(case);
     }
-    let recovery = runtime().unwrap().block_on(exchange(None)).unwrap();
-    grade_case(&recovery, None, true).unwrap();
+    let refused =
+        runtime()?.block_on(exchange_with_limit(Some(targets[5].clone()), MAX_DATAGRAMS))?;
+    grade_case(&refused, Some(&targets[5]), false).map_err(PeerError)?;
+    cases.push(refused);
+    let recovery = runtime()?.block_on(exchange(None))?;
+    grade_case(&recovery, None, true).map_err(PeerError)?;
     cases.push(recovery);
     retain(&cases, &targets);
-    // The test passes only as a characterization of the explicit backend gap.
-    assert!(!cases[6].completed);
-    assert!(crate::catalog::skip_reason("TD_COAP_DTLS_03").is_some());
+    Ok((cases, targets))
+}
+
+pub(super) fn run() -> Result<Capture, PeerError> {
+    let (cases, _) = qualify()?;
+    Ok(cases[0].capture.clone())
+}
+
+#[test]
+fn dtls03_all_intact_losses_refuse_permanent_loss_and_fresh_recovery() {
+    let _guard = crate::runner::harness_lock();
+    let (cases, targets) = qualify().unwrap();
+    assert!(cases[..7].iter().all(|case| case.completed));
+    assert!(!cases[7].completed);
+    assert!(cases[8].completed);
+    let mut false_completion = cases[7].clone();
+    false_completion.completed = true;
+    assert!(grade_case(&false_completion, Some(&targets[5]), false).is_err());
+    let mut false_authentication = cases[7].clone();
+    false_authentication.client_authenticated = true;
+    assert!(grade_case(&false_authentication, Some(&targets[5]), false).is_err());
     for index in 1..=6 {
         let target = &targets[index - 1];
         for fault in [
@@ -557,6 +598,7 @@ fn dtls03_loss_characterization_retains_final_flight_failure() {
             "wrong-owner",
             "false-completion",
             "missing-retry",
+            "record-sequence-reuse",
             "application",
         ] {
             let mut changed = cases[index].clone();
@@ -575,14 +617,7 @@ fn dtls03_loss_characterization_retains_final_flight_failure() {
                         .events
                         .iter()
                         .enumerate()
-                        .map(|(i, e)| {
-                            i > lost
-                                && if index < 6 {
-                                    &e.target == target
-                                } else {
-                                    e.target.from_client
-                                }
-                        })
+                        .map(|(i, e)| i > lost && &e.target == target)
                         .collect();
                     let mut wire_index = 0;
                     changed.packets.retain(|p| {
@@ -601,6 +636,26 @@ fn dtls03_loss_characterization_retains_final_flight_failure() {
                         .filter_map(|(e, remove)| (!remove).then_some(e))
                         .collect();
                 }
+                "record-sequence-reuse" => {
+                    let retry = changed
+                        .events
+                        .iter()
+                        .enumerate()
+                        .find(|(i, event)| *i > lost && &event.target == target)
+                        .unwrap()
+                        .0;
+                    let original_sequence = changed.events[lost].bytes[5..11].to_vec();
+                    changed.events[retry].bytes[5..11].copy_from_slice(&original_sequence);
+                    changed.events[retry].forwarded_bytes =
+                        Some(changed.events[retry].bytes.clone());
+                    changed
+                        .packets
+                        .iter_mut()
+                        .filter(|packet| !packet.decrypted)
+                        .nth(retry)
+                        .unwrap()
+                        .bytes = changed.events[retry].bytes.clone();
+                }
                 "application" => {
                     if let Some(p) = changed.packets.iter_mut().find(|p| p.decrypted) {
                         *p.bytes.last_mut().unwrap() ^= 1;
@@ -613,9 +668,29 @@ fn dtls03_loss_characterization_retains_final_flight_failure() {
                 _ => unreachable!(),
             }
             assert!(
-                grade_case(&changed, Some(target), index < 6).is_err(),
+                grade_case(&changed, Some(target), true).is_err(),
                 "accepted case{index} {fault}"
             );
         }
     }
+}
+
+#[test]
+fn dtls03_final_flight_loss_recovers_same_connection() {
+    let _guard = crate::runner::harness_lock();
+    let baseline = runtime().unwrap().block_on(exchange(None)).unwrap();
+    grade_case(&baseline, None, true).unwrap();
+    let targets: Vec<_> = baseline
+        .events
+        .iter()
+        .filter(|event| !event.target.records.is_empty())
+        .map(|event| event.target.clone())
+        .collect();
+    assert_eq!(targets.len(), 6);
+    let final_flight = &targets[5];
+    let recovered = runtime()
+        .unwrap()
+        .block_on(exchange(Some(final_flight.clone())))
+        .unwrap();
+    grade_case(&recovered, Some(final_flight), true).unwrap();
 }

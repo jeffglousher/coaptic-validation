@@ -208,5 +208,7 @@ permits that decryption-failure response. The fixture-specific oracle now requir
 its exact endpoint/MID/token, Max-Age zero and `Decryption failed` payload, while
 still requiring client timeout, no authenticated upload progress and unchanged
 handler counts. This diagnostic establishes no authenticated success. The failed
-campaign remains retained; the final fresh-recovery schedule still needs a new
-hosted execution.
+campaign remains retained; the final fresh-recovery schedule was not reached in
+that failed run. The later actual campaign (`38131267282`) passed all six schedules,
+including fresh recovery; [source-bound results](https://github.com/jeffglousher/coaptic/issues/468#issuecomment-6108057349)
+retain the successful trace separately from both failed campaigns.
