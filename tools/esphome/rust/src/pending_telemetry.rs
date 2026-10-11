@@ -206,6 +206,17 @@ impl<'a, S: Store> Pending<'a, S> {
         }
     }
 
+    /// Resource bound to the retained pending or completed operation.
+    /// An empty provisioned record has no resource binding yet.
+    pub fn retained_resource(&self) -> Result<Option<[u8; 32]>, Error> {
+        self.ready()?;
+        if self.bytes[48] == 0 {
+            Ok(None)
+        } else {
+            operation(&self.bytes).map(|operation| Some(*operation.resource()))
+        }
+    }
+
     pub fn begin(
         &mut self,
         id: OperationId,
