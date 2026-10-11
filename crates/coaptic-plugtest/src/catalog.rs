@@ -144,7 +144,7 @@ pub fn skip_reason(id: &str) -> Option<&'static str> {
     }
     match id {
         "TD_COAP_DTLS_02" => Some(
-            "coverage gap #199: prescribed decrypt_error alert is not visible as a plaintext fatal alert",
+            "coverage gap #199: wrong-PSK record authentication is distinct from the prescribed decrypt_error alert",
         ),
         "TD_COAP_DTLS_04" | "TD_COAP_DTLS_05" | "TD_COAP_DTLS_06" | "TD_COAP_DTLS_07" => Some(
             "coverage gap #199: DTLS backend has no RFC 7250 raw public key; an X.509 run is a different test",

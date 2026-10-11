@@ -379,3 +379,14 @@ neither independent-stack DTLS interoperability nor hardware qualification.
 The core has no DTLS dependency; DTLS02 prescribed-alert and RPK gaps remain open.
 Tracking: [#446](https://github.com/jeffglousher/coaptic/issues/446) and
 [#480](https://github.com/jeffglousher/coaptic/issues/480).
+
+
+The separate `dtls_record_policy_ordinary_wrong_key_refusal_and_fresh_recovery`
+fixture qualifies the owned CCM/CCM8 record-error policy (#485), using ordinary
+PSK handshakes and Rust CoAP codecs on owned IPv4 loopback sockets. It requires
+valid exchange, same-known-identity wrong-key fatal `bad_record_mac(20)` before
+application delivery, and fresh valid recovery. Captures and a bounded report
+are retained under `target/pcaps/dtls-record-policy`. This is a backend diagnostic,
+not literal DTLS02: that TD still requires alert51 and remains SKIP. No altered
+Finished messages, independent DTLS backend, physical device or GCM qualification
+is included. Hosted actual execution is required before a qualification claim.

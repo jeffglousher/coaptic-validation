@@ -160,6 +160,13 @@ impl CryptoCcm {
         let nonce = GenericArray::from_slice(&nonce);
 
         let out = &r[RECORD_LAYER_HEADER_SIZE + 8..];
+        let tag_len = match self.remote_ccm {
+            CryptoCcmType::CryptoCcm(_) => CRYPTO_CCM_TAG_LENGTH,
+            CryptoCcmType::CryptoCcm8(_) => CRYPTO_CCM_8_TAG_LENGTH,
+        };
+        if out.len() < tag_len {
+            return Err(Error::ErrInvalidPacketLength);
+        }
 
         let mut buffer: Vec<u8> = Vec::new();
         buffer.extend_from_slice(out);
@@ -169,13 +176,13 @@ impl CryptoCcm {
                 let additional_data =
                     generate_aead_additional_data(&h, out.len() - CRYPTO_CCM_TAG_LENGTH);
                 ccm.decrypt_in_place(nonce, &additional_data, &mut buffer)
-                    .map_err(|e| Error::Other(e.to_string()))?;
+                    .map_err(|_| Error::ErrInvalidMac)?;
             }
             CryptoCcmType::CryptoCcm8(ccm8) => {
                 let additional_data =
                     generate_aead_additional_data(&h, out.len() - CRYPTO_CCM_8_TAG_LENGTH);
                 ccm8.decrypt_in_place(nonce, &additional_data, &mut buffer)
-                    .map_err(|e| Error::Other(e.to_string()))?;
+                    .map_err(|_| Error::ErrInvalidMac)?;
             }
         }
 
@@ -184,5 +191,62 @@ impl CryptoCcm {
         d.extend_from_slice(&buffer);
 
         Ok(d)
+    }
+}
+
+#[cfg(test)]
+mod record_policy_tests {
+    use super::*;
+
+    fn codec(tag: CryptoCcmTagLen, key: &[u8; 16], iv: &[u8; 4]) -> CryptoCcm {
+        CryptoCcm::new(&tag, key, iv, key, iv)
+    }
+    fn header(len: usize) -> RecordLayerHeader {
+        RecordLayerHeader {
+            content_type: ContentType::ApplicationData,
+            protocol_version: PROTOCOL_VERSION1_2,
+            epoch: 1,
+            sequence_number: 7,
+            content_len: len as u16,
+        }
+    }
+    #[test]
+    fn ccm_short_record_refuses_without_tag_length_underflow() {
+        for (tag, bytes) in [
+            (CryptoCcmTagLen::CryptoCcm8TagLength, 8),
+            (CryptoCcmTagLen::CryptoCcmTagLength, 16),
+        ] {
+            let key = rand::random::<[u8; 16]>();
+            let iv = rand::random::<[u8; 4]>();
+            let ccm = codec(tag, &key, &iv);
+            for length in 0..8 + bytes {
+                let mut wire = Vec::new();
+                header(length).marshal(&mut wire).unwrap();
+                wire.resize(RECORD_LAYER_HEADER_SIZE + length, 0);
+                assert!(ccm.decrypt(&wire).is_err(), "short record must refuse");
+            }
+        }
+    }
+    #[test]
+    fn ccm_authentication_is_typed_and_valid_record_recovers() {
+        for tag in [
+            CryptoCcmTagLen::CryptoCcm8TagLength,
+            CryptoCcmTagLen::CryptoCcmTagLength,
+        ] {
+            let key = rand::random::<[u8; 16]>();
+            let iv = rand::random::<[u8; 4]>();
+            let mut wrong_key = key;
+            wrong_key[0] ^= 1;
+            let sender = codec(tag.clone(), &key, &iv);
+            let receiver = codec(tag.clone(), &key, &iv);
+            let wrong = codec(tag, &wrong_key, &iv);
+            let mut plain = Vec::new();
+            header(4).marshal(&mut plain).unwrap();
+            plain.extend_from_slice(b"test");
+            let encrypted = sender.encrypt(&header(4), &plain).unwrap();
+            assert_eq!(wrong.decrypt(&encrypted).unwrap_err(), Error::ErrInvalidMac);
+            let opened = receiver.decrypt(&encrypted).unwrap();
+            assert_eq!(&opened[RECORD_LAYER_HEADER_SIZE..], b"test");
+        }
     }
 }

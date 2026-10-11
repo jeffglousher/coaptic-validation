@@ -4376,6 +4376,39 @@
         "not ICMP PMTU discovery or adaptive block shrinking"
       ],
       "executable": "tools/interop/relay_cap.py:workflow"
+    },
+    {
+      "id": "ipv6-relay-cap-256:coaptic->libcoap",
+      "client": "coaptic",
+      "server": "libcoap",
+      "transport": "udp",
+      "security": "none",
+      "address_family": "ipv6-loopback",
+      "execution_platforms": [
+        "linux",
+        "windows"
+      ],
+      "requires": [],
+      "features": [
+        "block2",
+        "relay-datagram-cap",
+        "bounded-timeout",
+        "fresh-client-recovery",
+        "ipv6"
+      ],
+      "positive_proof": [
+        "exact 2000-byte baseline and fresh recovery on same server",
+        "exact small response through active 256-byte wire-datagram cap",
+        "exact endpoint and unchanged forwarded-byte ownership",
+        "IPv6-only loopback endpoints with zero flow/scope identifiers and independent ::1 probe"
+      ],
+      "failure_proof": [
+        "all over-cap responses dropped with complete first-block metadata and exact bytes",
+        "identical CON request retry then bounded protocol timeout without application response",
+        "not ICMP PMTU discovery or adaptive block shrinking",
+        "mixed-family, nonzero flow/scope and incomplete endpoint evidence refuse"
+      ],
+      "executable": "tools/interop/relay_cap.py:workflow"
     }
   ],
   "gaps": [
@@ -4423,7 +4456,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "Coaptic NON Q-Block2 recovery against libcoap is qualified over IPv4 and IPv6 loopback UDP, including IPv6 permanent-loss partial timeout and fresh recovery. CON retransmission recovery, bounded partial refusal and fresh-process recovery against libcoap are qualified at NSTART1 over IPv4 and IPv6 loopback; post-MAX_TRANSMIT_SPAN selective recovery, protected, scoped and routed addressing remain unqualified. coap-rs has no Q-Block.",
+      "reason": "Coaptic-to-libcoap Q-Block2 loss/refusal/fresh recovery is qualified over IPv4 and IPv6 plaintext loopback UDP. Protected IPv4 Q-Block1 recovery is qualified in #468; protected IPv4 CON Q-Block2 loss/refusal/fresh recovery is qualified in #472 against the explicitly patched peer. These finite schedules do not qualify post-MAX_TRANSMIT_SPAN selective recovery, other protected modes or directions, scoped/routed addressing, or hardware. coap-rs has no Q-Block.",
       "issue": 200,
       "executable_cases": []
     },
@@ -4503,7 +4536,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "Scoped IPv6 zone identifiers are not a loopback case. Coaptic-to-libcoap IPv4 UDP now qualifies a silent 256-byte relay datagram cap: small-response success, oversized Block2 loss with bounded timeout and fresh complete recovery after removing the cap. This is not ICMP path-MTU discovery or adaptive shrinking; other peers, protected transports, IPv6, scoped/routed and compound-fault cases remain unqualified.",
+      "reason": "Scoped IPv6 zone identifiers are not a loopback case. Coaptic-to-libcoap IPv4 and IPv6 loopback UDP now qualify a silent 256-byte relay datagram cap: small-response success, oversized Block2 loss with bounded timeout and fresh complete recovery after removing the cap. This is not ICMP path-MTU discovery or adaptive shrinking; other peers, protected transports, scoped/routed and compound-fault cases remain unqualified.",
       "issue": 200,
       "executable_cases": []
     },
@@ -4551,7 +4584,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "No fuzz or requirements-coverage campaign in this suite.",
+      "reason": "Separate qualification jobs provide finite seeded, coverage-guided fuzz smoke, and source/branch requirement-contract evidence. These are not process-interoperability cases or comprehensive campaigns; broader parser/state-machine, lifecycle and resource qualification remains tracked in #202.",
       "issue": 202,
       "executable_cases": []
     },
