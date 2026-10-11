@@ -85,3 +85,32 @@ The literal TD remains skipped; finite silence is not sustained availability
 qualification. Tracking: [#402](https://github.com/jeffglousher/coaptic/issues/402),
 [#199](https://github.com/jeffglousher/coaptic/issues/199), and
 [#202](https://github.com/jeffglousher/coaptic/issues/202).
+
+### Cloud admission and protected progress
+
+`cargo test --locked -p coaptic-plugtest --features edhoc --test cloud_admission_progress -- --nocapture`
+qualifies a finite caller-scheduled workload using public admission and OSCORE
+APIs. `CloudAdmission<3,1,3,4>` holds two authenticated owners while one abandoned
+reachable handshake fills its sole pending slot. Thirty-two repeated admission
+datagrams produce six cached replies and 26 budget refusals without fresh
+entropy or deadline renewal. Both existing owners complete a protected exchange
+per round, each with the entire 192-byte request and 256-byte response checked.
+
+The test refuses new admission before the original expiry and restores it at
+expiry. A full active pool refuses a fourth owner; explicit release denies the
+old route and permits replacement while surviving owners continue. Seventy
+protected exchanges complete across the full scenario with exact bodies, tokens,
+codes and options. One separate cross-owner packet must fail both endpoint routing
+and authentication under the other owner's context; later valid traffic succeeds.
+`COAPTIC_CLOUD_PROGRESS_REPORT` optionally writes the result;
+CI retains it alongside the exact source/preparation identity.
+
+The host fixture allocates and uses deterministic test entropy, synthetic
+monotonic timestamps and installed trust. The library admission structure and
+cryptographic buffers remain bounded.
+This uses low-level OSCORE owners and an explicit round-robin caller schedule,
+not expanded App capacity or scheduler-independent fairness. It does not qualify
+sockets, physical devices, sustained availability or throughput. Tracking:
+[#409](https://github.com/jeffglousher/coaptic/issues/409),
+[#340](https://github.com/jeffglousher/coaptic/issues/340), and
+[#202](https://github.com/jeffglousher/coaptic/issues/202).
