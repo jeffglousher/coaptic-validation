@@ -1034,3 +1034,23 @@ fn observe_con_and_ack_loss_preserve_nstart_and_recover() {
     );
     assert_eq!(unsupported.observe_losses(), 0);
 }
+
+#[test]
+fn observe_large_complete_block2_snapshots() {
+    let result = runner::run_td(
+        "TD_COAP_OBS_13",
+        Pair {
+            client: "coaptic",
+            server: "coaptic",
+        },
+    );
+    assert!(result.error.is_none(), "{:?}", result.error);
+    if let Some(directory) = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR") {
+        let directory = std::path::PathBuf::from(directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        result
+            .capture
+            .write_pcap(std::fs::File::create(directory.join("obs-13-coaptic.pcap")).unwrap())
+            .unwrap();
+    }
+}

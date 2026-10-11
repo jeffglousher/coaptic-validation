@@ -243,6 +243,12 @@ pub trait Peer {
         0
     }
 
+    /// Persist one of three bounded large snapshots and notify with CON.
+    fn update_large_observed(&mut self, path: &[&str], version: u8) -> Result<(), PeerError> {
+        let _ = (path, version);
+        Err(PeerError("large Observe update not supported".into()))
+    }
+
     /// Set the bounded fixture state: 0 restores, 1 deletes, 2 changes format.
     fn set_observed_state(&mut self, path: &[&str], state: u8) -> Result<(), PeerError> {
         let _ = (path, state);

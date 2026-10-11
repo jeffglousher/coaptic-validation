@@ -40,6 +40,7 @@ struct ServerCtl {
 }
 
 enum NotifyCommand {
+    UpdateLargeObserved(u8),
     SetObservedState(u8),
     Notification {
         path: Vec<String>,
@@ -261,6 +262,19 @@ impl Peer for CoapticPeer {
         }
     }
 
+    fn update_large_observed(&mut self, path: &[&str], version: u8) -> Result<(), PeerError> {
+        if path != ["obs-large"] || site::observe_large(version).is_none() {
+            return Err(PeerError("unsupported bounded large representation".into()));
+        }
+        let server = self.server.as_ref().ok_or("no server")?;
+        let mut command = server.notify.lock().expect("large update");
+        if command.is_some() {
+            return Err(PeerError("notification command occupied".into()));
+        }
+        *command = Some(NotifyCommand::UpdateLargeObserved(version));
+        Ok(())
+    }
+
     fn set_observed_state(&mut self, path: &[&str], state: u8) -> Result<(), PeerError> {
         if path != ["obs"] || state > 2 {
             return Err(PeerError("unsupported bounded observed state".into()));
@@ -326,6 +340,11 @@ fn server_loop(
         let _ = app.poll(now);
         if let Some(command) = notify.lock().expect("n").take() {
             match command {
+                NotifyCommand::UpdateLargeObserved(version) => {
+                    site::commit_observe_large(version);
+                    let _ =
+                        app.notify_confirmable(now, &["obs-large"], site::observe_large_response());
+                }
                 NotifyCommand::SetObservedState(state) => {
                     site::set_observed_state(state);
                     if state != 0 {
@@ -518,6 +537,7 @@ fn intern_path(path: &[String]) -> Result<&'static str, PeerError> {
         ["path", "sub1"] => "path/sub1",
         ["obs"] => "obs",
         ["obs-non"] => "obs-non",
+        ["obs-large"] => "obs-large",
         ["secure"] => "secure",
         other => {
             return Err(PeerError(format!(
