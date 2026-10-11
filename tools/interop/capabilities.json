@@ -4341,7 +4341,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "Coaptic NON Q-Block2 recovery against libcoap is qualified over IPv4 and IPv6 loopback UDP, including IPv6 permanent-loss partial timeout and fresh recovery. CON retransmission recovery and bounded partial refusal against libcoap are qualified at NSTART1 over IPv4 loopback; post-MAX_TRANSMIT_SPAN selective recovery, protected, scoped and routed addressing remain unqualified. coap-rs has no Q-Block.",
+      "reason": "Coaptic NON Q-Block2 recovery against libcoap is qualified over IPv4 and IPv6 loopback UDP, including IPv6 permanent-loss partial timeout and fresh recovery. CON retransmission recovery, bounded partial refusal and fresh-process recovery against libcoap are qualified at NSTART1 over IPv4 and IPv6 loopback; post-MAX_TRANSMIT_SPAN selective recovery, protected, scoped and routed addressing remain unqualified. coap-rs has no Q-Block.",
       "issue": 200,
       "executable_cases": []
     },
