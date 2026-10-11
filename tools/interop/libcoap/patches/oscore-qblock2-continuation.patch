@@ -463,7 +463,7 @@ index 18e61c8..74ba487 100644
          if (sent->pdu->type == COAP_MESSAGE_CON &&
              COAP_PROTO_NOT_RELIABLE(session->proto) &&
 diff --git a/src/coap_oscore.c b/src/coap_oscore.c
-index a1d4592..0e975ad 100644
+index a1d4592..b53fc1e 100644
 --- a/src/coap_oscore.c
 +++ b/src/coap_oscore.c
 @@ -22,6 +22,7 @@
@@ -553,15 +553,17 @@ index a1d4592..0e975ad 100644
    if (ciphertext_buffer)
      coap_free_type(COAP_OSCORE_BUF, ciphertext_buffer);
    coap_delete_pdu_lkd(osc_pdu);
-@@ -842,6 +887,7 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+@@ -841,7 +886,9 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+   size_t encrypt_len;
    size_t tag_len;
    oscore_recipient_ctx_t *rcp_ctx = NULL;
++  oscore_recipient_ctx_t request_replay; /* Borrowed view; replay scalars only. */
    oscore_association_t *association = NULL;
 +  int request_observe = 0;
    uint8_t external_aad_buffer[100];
    coap_bin_const_t external_aad;
    oscore_sender_ctx_t *snd_ctx = NULL;
-@@ -849,6 +895,10 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+@@ -849,6 +896,10 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
    coap_pdu_t *sent_pdu = NULL;
  #endif /* COAP_CLIENT_SUPPORT */
 
@@ -572,7 +574,35 @@ index a1d4592..0e975ad 100644
    opt = coap_check_option(pdu, COAP_OPTION_OSCORE, &opt_iter);
    assert(opt);
    if (opt == NULL)
-@@ -1202,39 +1252,6 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+@@ -1047,8 +1098,12 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+      * Requires in COSE object as appropriate
+      *   partial_iv (as received)
+      */
+-    if (rcp_ctx->initial_state == 0 &&
+-        !oscore_validate_sender_seq(rcp_ctx, cose)) {
++    /* Validate against a stack view. Zero-valued replay state is meaningful;
++     * no failure or error-response callback may observe an uncommitted update.
++     * No ownership or destructor operation uses this borrowed view. */
++    request_replay = *rcp_ctx;
++    if (request_replay.initial_state == 0 &&
++        !oscore_validate_sender_seq(&request_replay, cose)) {
+       coap_log_warn("OSCORE: Replayed or old message\n");
+       build_and_send_error_pdu(session,
+                                pdu,
+@@ -1059,10 +1114,10 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+                                0);
+       goto error_no_ack;
+     }
+-    if (rcp_ctx->initial_state == 1) {
++    if (request_replay.initial_state == 1) {
+       incoming_seq =
+           coap_decode_var_bytes8(cose->partial_iv.s, cose->partial_iv.length);
+-      rcp_ctx->last_seq = incoming_seq;
++      request_replay.last_seq = incoming_seq;
+     }
+   } else { /* !coap_request */
+     /*
+@@ -1202,39 +1257,6 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
      nonce.length = 13;
      oscore_generate_nonce(cose, osc_ctx, nonce_buffer, 13);
      cose_encrypt0_set_nonce(cose, &nonce);
@@ -612,7 +642,15 @@ index a1d4592..0e975ad 100644
    } else { /* ! coap_request */
      /* Need to do nonce before AAD because of different partial_iv */
      /*
-@@ -1409,42 +1426,6 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+@@ -1397,7 +1419,6 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+                                NULL,
+                                NULL,
+                                0);
+-      oscore_roll_back_seq(rcp_ctx);
+       goto error_no_ack;
+     } else {
+       coap_handle_event_lkd(session->context,
+@@ -1409,42 +1430,6 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
 
    assert((size_t)pltxt_size < pdu->alloc_size + pdu->max_hdr_size);
 
@@ -655,7 +693,7 @@ index a1d4592..0e975ad 100644
  #if COAP_CLIENT_SUPPORT
    if (session->b_2_step == COAP_OSCORE_B_2_STEP_3) {
      coap_log_oscore("Appendix B.2 client step 3 (R2 || R3)\n");
-@@ -1498,55 +1479,19 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+@@ -1498,55 +1483,19 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
    }
  #endif /* COAP_CLIENT_SUPPORT */
 
@@ -718,7 +756,7 @@ index a1d4592..0e975ad 100644
    /* PDU code is pseudo plain_pdu token */
    decrypt_pdu->code = plain_pdu->token[0];
 
-@@ -1577,11 +1522,7 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+@@ -1577,11 +1526,7 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
          doing_resp_observe = 1;
          break;
        }
@@ -731,7 +769,7 @@ index a1d4592..0e975ad 100644
      /* Fall Through */
      default:
        if (!coap_insert_option(decrypt_pdu,
-@@ -1629,6 +1570,105 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+@@ -1629,6 +1574,112 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
      goto error;
    }
 
@@ -749,6 +787,13 @@ index a1d4592..0e975ad 100644
 +      goto error;
 +    fresh = oscore_find_association(session, &pdu_token);
 +    assert(fresh && fresh != previous);
++    /* Commit only after the full inner decode and every association allocation.
++     * Failed MAC/decoding/allocation cannot consume a receive sequence. */
++    rcp_ctx->last_seq = request_replay.last_seq;
++    rcp_ctx->sliding_window = request_replay.sliding_window;
++    rcp_ctx->initial_state = request_replay.initial_state;
++    rcp_ctx->rollback_last_seq = request_replay.rollback_last_seq;
++    rcp_ctx->rollback_sliding_window = request_replay.rollback_sliding_window;
 +    fresh->request_generation = ++session->oscore_request_generation;
 +    decrypt_pdu->oscore_request_generation = fresh->request_generation;
 +    if (previous)
@@ -837,7 +882,7 @@ index a1d4592..0e975ad 100644
    if (session->b_2_step != COAP_OSCORE_B_2_NONE) {
      session->b_2_step = COAP_OSCORE_B_2_NONE;
      coap_log_oscore("Appendix B.2 client finished\n");
-@@ -2092,8 +2132,79 @@ error:
+@@ -2092,8 +2143,79 @@ error:
    return NULL;
  }
 
@@ -917,7 +962,7 @@ index a1d4592..0e975ad 100644
    oscore_free_contexts(c_context);
  }
 
-@@ -2205,6 +2316,11 @@ coap_delete_oscore_recipient_lkd(coap_context_t *context,
+@@ -2205,6 +2327,11 @@ coap_delete_oscore_recipient_lkd(coap_context_t *context,
    coap_lock_check_locked(context);
    if (context->p_osc_ctx == NULL)
      return 0;

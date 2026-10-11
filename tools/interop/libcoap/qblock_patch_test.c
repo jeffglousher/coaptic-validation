@@ -17,7 +17,15 @@ void *__wrap_coap_malloc_type(coap_memory_tag_t t, size_t n) {
 static uint8_t wire[32][2048];
 static size_t lengths[32], writes;
 static coap_lg_xmit_t *retire_on_write;
+static const oscore_recipient_ctx_t *replay_expected_on_write;
+static unsigned replay_write_checks;
 static ssize_t capture(coap_session_t *s, const uint8_t *data, size_t n) {
+  if(replay_expected_on_write) {
+    CHECK(s->recipient_ctx->last_seq==replay_expected_on_write->last_seq&&
+          s->recipient_ctx->sliding_window==replay_expected_on_write->sliding_window&&
+          s->recipient_ctx->initial_state==replay_expected_on_write->initial_state);
+    replay_write_checks++;
+  }
   CHECK(writes < 32 && n <= sizeof(wire[0]));
   memcpy(wire[writes],data,n); lengths[writes++]=n;
   if (retire_on_write) {
@@ -297,7 +305,8 @@ static void cached_fresh_request(void) {
  * socket writes. Optional malformed inner input exercises decoder refusal; it
  * is constructed offline with the request's allocated nonce; neither version
  * is sent to a socket. This is a decoder test, not a wire qualification. */
-static coap_pdu_t *authenticated_request(unsigned malformed, unsigned b2) {
+static coap_pdu_t *authenticated_request_at(unsigned malformed, unsigned b2, uint64_t seq,
+                                          const uint8_t *echo) {
   static const char config[]="master_secret,hex,\"0102030405060708090a0b0c0d0e0f10\"\n"
     "master_salt,hex,\"9e7ca92223786340\"\nsender_id,hex,\"\"\nrecipient_id,hex,\"01\"\n";
   coap_str_const_t text={sizeof(config)-1,(const uint8_t *)config};
@@ -305,7 +314,7 @@ static coap_pdu_t *authenticated_request(unsigned malformed, unsigned b2) {
   coap_oscore_conf_t *conf;
   coap_address_t addr;coap_pdu_t *plain,*protected;
   coap_lock_unlock(ctx); /* libcoap uses one global lock across contexts. */
-  c=coap_new_context(NULL);conf=coap_new_oscore_conf(text,NULL,NULL,20);
+  c=coap_new_context(NULL);conf=coap_new_oscore_conf(text,NULL,NULL,seq);
   CHECK(c&&conf&&coap_context_oscore_server(c,conf));
   coap_address_init(&addr);addr.addr.sin.sin_family=AF_INET;
   addr.addr.sin.sin_addr.s_addr=htonl(INADDR_LOOPBACK);addr.addr.sin.sin_port=htons(5685);
@@ -321,6 +330,7 @@ static coap_pdu_t *authenticated_request(unsigned malformed, unsigned b2) {
   CHECK(coap_add_token(plain,token.length,token.s));
   CHECK(coap_add_option(plain,COAP_OPTION_URI_PATH,5,(const uint8_t *)"large"));
   { uint8_t q=8;CHECK(coap_add_option(plain,COAP_OPTION_Q_BLOCK2,1,&q)); }
+  if(echo) CHECK(coap_add_option(plain,COAP_OPTION_ECHO,8,echo));
   protected=coap_oscore_new_pdu_encrypted_lkd(client,plain,NULL,0);CHECK(protected);
   if(malformed) {
     /* Both are authenticated but malformed: CF has forbidden length3; query
@@ -339,14 +349,28 @@ static coap_pdu_t *authenticated_request(unsigned malformed, unsigned b2) {
   coap_delete_pdu_lkd(plain);coap_lock_unlock(c);coap_session_release(client);coap_free_context(c);
   coap_lock_lock(ctx,exit(1));return protected;
 }
+static coap_pdu_t *authenticated_request(unsigned malformed, unsigned b2) {
+  return authenticated_request_at(malformed,b2,20,NULL);
+}
+static void replay_unchanged(const oscore_recipient_ctx_t *expected) {
+  const oscore_recipient_ctx_t *actual=ctx->p_osc_ctx->recipient_chain;
+  CHECK(actual->last_seq==expected->last_seq&&actual->sliding_window==expected->sliding_window);
+  CHECK(actual->initial_state==expected->initial_state);
+  CHECK(actual->rollback_last_seq==expected->rollback_last_seq&&
+        actual->rollback_sliding_window==expected->rollback_sliding_window);
+}
 static void authenticated_commit_failures(void) {
   coap_pdu_t *input,*decoded;oscore_association_t *old;uint64_t generation;unsigned i,failures=0,successes=0;
+  oscore_recipient_ctx_t before;
   setup();ctx->p_osc_ctx->rfc8613_b_1_2=0;ctx->p_osc_ctx->recipient_chain->initial_state=0;
   association(9);old=oscore_find_association(session,&token);generation=session->oscore_request_generation;
+  before=*ctx->p_osc_ctx->recipient_chain;
   input=authenticated_request(0,0);input->data[0]^=1;
+  replay_expected_on_write=&before;replay_write_checks=0;
   CHECK(!coap_oscore_decrypt_pdu(session,input));
+  replay_expected_on_write=NULL;CHECK(replay_write_checks>0);
   CHECK(oscore_find_association(session,&token)==old&&old->partial_iv->s[0]==9);
-  CHECK(session->oscore_request_generation==generation);
+  CHECK(session->oscore_request_generation==generation);replay_unchanged(&before);
   input->data[0]^=1;decoded=coap_oscore_decrypt_pdu(session,input);CHECK(decoded);
   CHECK(decoded->oscore_request_generation>generation);
   CHECK(oscore_find_association(session,&token)->request_generation==decoded->oscore_request_generation);
@@ -354,7 +378,9 @@ static void authenticated_commit_failures(void) {
   for(i=1;i<=2;i++) {
     setup();ctx->p_osc_ctx->rfc8613_b_1_2=0;ctx->p_osc_ctx->recipient_chain->initial_state=0;
     association(9);old=oscore_find_association(session,&token);generation=session->oscore_request_generation;
+    before=*ctx->p_osc_ctx->recipient_chain;
     input=authenticated_request(i,0);CHECK(!coap_oscore_decrypt_pdu(session,input));
+    replay_unchanged(&before);
     CHECK(oscore_find_association(session,&token)==old&&old->partial_iv->s[0]==9);
     CHECK(session->oscore_request_generation==generation);
     coap_delete_pdu_lkd(input);teardown();
@@ -364,11 +390,12 @@ static void authenticated_commit_failures(void) {
   for(i=0;i<32;i++) {
     setup();ctx->p_osc_ctx->rfc8613_b_1_2=0;ctx->p_osc_ctx->recipient_chain->initial_state=0;
     association(9);old=oscore_find_association(session,&token);generation=session->oscore_request_generation;
+    before=*ctx->p_osc_ctx->recipient_chain;
     input=authenticated_request(0,0);fail_after=(long)i;
     decoded=coap_oscore_decrypt_pdu(session,input);fail_after=-1;
     if(!decoded) {
       failures++;CHECK(oscore_find_association(session,&token)==old&&old->partial_iv->s[0]==9);
-      CHECK(session->oscore_request_generation==generation);
+      CHECK(session->oscore_request_generation==generation);replay_unchanged(&before);
     } else {successes++;CHECK(decoded->oscore_request_generation>generation);}
     coap_delete_pdu_lkd(decoded);coap_delete_pdu_lkd(input);teardown();
   }
@@ -378,6 +405,32 @@ static void authenticated_commit_failures(void) {
   input=authenticated_request(0,0);CHECK(!coap_oscore_decrypt_pdu(session,input));
   CHECK(session->oscore_request_generation==UINT64_MAX&&oscore_find_association(session,&token)==old);
   coap_delete_pdu_lkd(input);teardown();
+}
+static void accepted_zero_bad_mac_recovery(void) {
+  coap_pdu_t *input,*decoded;oscore_association_t *old;uint64_t generation;
+  oscore_recipient_ctx_t before;
+  setup();ctx->p_osc_ctx->rfc8613_b_1_2=1;
+  /* An outstanding server Echo is a fixture precondition. The incoming request
+   * itself is authenticated and accepted through the actual B.1.2 path. */
+  memset(ctx->p_osc_ctx->recipient_chain->echo_value,0x4b,8);
+  ctx->p_osc_ctx->recipient_chain->initial_state=1;
+  input=authenticated_request_at(0,0,0,ctx->p_osc_ctx->recipient_chain->echo_value);
+  decoded=coap_oscore_decrypt_pdu(session,input);CHECK(decoded);
+  CHECK(ctx->p_osc_ctx->recipient_chain->initial_state==0&&
+        ctx->p_osc_ctx->recipient_chain->last_seq==0&&
+        ctx->p_osc_ctx->recipient_chain->sliding_window==1);
+  old=oscore_find_association(session,&token);CHECK(old&&old->partial_iv->s[0]==0);
+  generation=decoded->oscore_request_generation;before=*ctx->p_osc_ctx->recipient_chain;
+  coap_delete_pdu_lkd(decoded);coap_delete_pdu_lkd(input);
+  input=authenticated_request_at(0,0,21,NULL);input->data[0]^=1;
+  replay_expected_on_write=&before;replay_write_checks=0;
+  CHECK(!coap_oscore_decrypt_pdu(session,input));replay_unchanged(&before);
+  replay_expected_on_write=NULL;CHECK(replay_write_checks>0);
+  CHECK(oscore_find_association(session,&token)==old&&old->partial_iv->s[0]==0&&
+        session->oscore_request_generation==generation);
+  input->data[0]^=1;decoded=coap_oscore_decrypt_pdu(session,input);CHECK(decoded);
+  CHECK(decoded->oscore_request_generation>generation&&ctx->p_osc_ctx->recipient_chain->last_seq==21);
+  coap_delete_pdu_lkd(decoded);coap_delete_pdu_lkd(input);teardown();
 }
 static void authenticated_server_challenges(void) {
   unsigned b2;coap_pdu_t *input,*out;coap_opt_iterator_t it;
@@ -493,6 +546,6 @@ int main(void) {
   coap_startup();coap_set_log_level(COAP_LOG_EMERG);
   ownership();crypto_and_errors();queue_expiry_and_context();transport_and_allocation();
   ack_retry_and_final_cleanup();cached_fresh_request();context_isolation_and_real_teardown();delete_before_bind_and_recreate();stale_prebind_request();
-  authenticated_commit_failures();authenticated_server_challenges();callback_request_replacement();
+  authenticated_commit_failures();accepted_zero_bad_mac_recovery();authenticated_server_challenges();callback_request_replacement();
   coap_cleanup();puts("PASS protected Q2 owned binding, generation, rollback, nonce, dynamic teardown and callback retirement");return 0;
 }
