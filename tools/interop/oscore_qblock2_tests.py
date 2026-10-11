@@ -234,7 +234,7 @@ class CampaignTests(unittest.TestCase):
             for message in ("subprocess deadline", "unrelated elapsed", "deadline has elapsed", "crash", "", None):
                 data = wrong_evidence() if mode == "wrong-key" else loss_evidence(mode)
                 data[1]["message"] = message
-                with self.subTest(mode=mode, message=message), self.assertRaises((AssertionError, AttributeError)):
+                with self.subTest(mode=mode, message=message), self.assertRaises(AssertionError):
                     campaign_grade(*data, mode)
 
     def test_wrong_key_exact_diagnostic_no_authenticated_progress(self):
