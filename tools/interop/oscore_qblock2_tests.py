@@ -73,6 +73,44 @@ class BaselineTests(unittest.TestCase):
         self.assertNotIn("proof", record)
         self.assertNotIn("result", record)
 
+    def test_opposite_senders_may_choose_same_mid_in_both_families(self):
+        def rewrite(data, old, new):
+            for row in data[0]:
+                wire = bytes.fromhex(row["hex"])
+                if wire[2:4] == old.to_bytes(2, "big"):
+                    wire = wire[:2] + new.to_bytes(2, "big") + wire[4:]
+                    row.update(hex=wire.hex(), forwarded_hex=wire.hex())
+        for family in ("ipv4", "ipv6"):
+            for response_mid in (20, 21):
+                data = evidence(True)
+                rewrite(data, response_mid, 10)
+                if family == "ipv6": data = ipv6_evidence(data)
+                self.assertEqual(baseline_grade(*data, family=family)["body_bytes"], 2000)
+            for mode in ("drop-once", "drop-permanent"):
+                data = loss_evidence(mode)
+                rewrite(data, 21, 10)
+                if family == "ipv6": data = ipv6_evidence(data)
+                self.assertEqual(campaign_grade(*data, mode, family=family)["delivered_body_bytes"],
+                                 2000 if mode == "drop-once" else 1024)
+
+    def test_same_sender_mid_reuse_and_wrong_ack_still_refuse(self):
+        for family in ("ipv4", "ipv6"):
+            for mode in ("baseline", "drop-once", "drop-permanent"):
+                data = evidence(True) if mode == "baseline" else loss_evidence(mode)
+                if mode == "baseline": data[1]["host_total_ns"] = 10_000_000
+                for row in data[0]:
+                    wire = bytes.fromhex(row["hex"])
+                    if wire[2:4] == b"\x00\x15":
+                        wire = wire[:2] + b"\x00\x14" + wire[4:]
+                        row.update(hex=wire.hex(), forwarded_hex=wire.hex())
+                if family == "ipv6": data = ipv6_evidence(data)
+                with self.assertRaises(AssertionError): campaign_grade(*data, mode, family=family)
+            data = evidence(True)
+            data[0][3].update(hex="6000000a", forwarded_hex="6000000a")
+            if family == "ipv6": data = ipv6_evidence(data)
+            with self.assertRaisesRegex(AssertionError, "ACK"):
+                baseline_grade(*data, family=family)
+
     def test_authenticated_baseline_shapes(self):
         for separate in (False, True):
             proof=baseline_grade(*evidence(separate))
