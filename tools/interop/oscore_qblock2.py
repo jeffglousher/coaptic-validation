@@ -163,6 +163,7 @@ def campaign_grade(trace, result, endpoints, mode):
     require(trace[-1]["time_ns"] - trace[0]["time_ns"] <= host_ns, "trace exceeds observed process lifetime")
     if timeout:
         expect_refusal(result)
+        require(result.get("message") == "request timed out", "not pinned peer protocol timeout")
         require(not result.get("payload_hex") and "code" not in result, "partial data claimed complete")
         require(host_ns >= (650_000_000 if mode == "wrong-key" else 6_450_000_000), "premature timeout")
     if mode == "wrong-key":
@@ -258,7 +259,8 @@ def campaign_grade(trace, result, endpoints, mode):
              ["empty request ACK", "separate CON content", "separate CON content"]), "changed CON form")
     return {"mode": mode, "delivered_body_bytes": proof["body_bytes"], "etag_hex": proof["etag_hex"],
             "dropped_later_responses": drops, "exact_ciphertext_retries": retries,
-            "retry_intervals_ns": intervals, "outcome": "protocol timeout after authenticated partial body" if timeout else "complete 2000-byte response"}
+            "retry_intervals_ns": intervals,
+            "partial_evidence_scope": "authenticated forwarded prefix plus exact first-block ACK; not client-buffer instrumentation", "outcome": "protocol timeout after authenticated partial body" if timeout else "complete 2000-byte response"}
 
 
 def campaign(client, server, record, patch):
