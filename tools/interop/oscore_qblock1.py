@@ -82,7 +82,7 @@ def _counts(event):
 
 
 def grade(trace, result, endpoints, before, after, mode):
-    from run import LARGE, decoded_options, packet_token, block1_fields, expect, expect_refusal
+    from run import LARGE, decoded_options, packet_token, block1_fields, coap_payload, expect, expect_refusal
     require(mode in ("baseline", "drop-request", "drop-once", "drop-permanent", "wrong-key"), "unknown schedule")
     wrong = mode == "wrong-key"
     timeout = mode in ("drop-permanent", "wrong-key")
@@ -118,6 +118,7 @@ def grade(trace, result, endpoints, before, after, mode):
     response_wire = None
     response_first_at = None
     response_retries = client_acks = 0
+    decryption_refusals = 0
     first_time = {}
     for row in trace:
         direction, action = row["direction"], row["action"]
@@ -199,7 +200,18 @@ def grade(trace, result, endpoints, before, after, mode):
             acknowledged = False
         else:
             require(latest is not None, "response without a forwarded request")
-            require(not wrong, "wrong-key request received a response")
+            if wrong:
+                # RFC8613 section8.2 step6 permits an unprotected Bad Request.
+                # This pinned fixture emits exactly this diagnostic; it is not
+                # authentication or an ACK that advances the protected upload.
+                require(decryption_refusals == 0 and action == "forward"
+                        and (wire[0] >> 4) & 3 == 2 and wire[1] == 128
+                        and wire[2:4] == latest[2:4] and packet_token(wire) == token
+                        and decoded_options(wire) == {14: [b""]}
+                        and coap_payload(wire) == b"Decryption failed",
+                        "unexpected unauthenticated rejection response")
+                decryption_refusals += 1
+                continue
             if wire[1] == 0:
                 require(wire == b"\x60\x00" + latest[2:4] and action == "forward",
                         "invalid or dropped exact-owner empty ACK")
@@ -225,7 +237,8 @@ def grade(trace, result, endpoints, before, after, mode):
             else:
                 final_forwarded += 1
     if wrong:
-        require(len(unique) == 1 and len(body) < len(LARGE) and not final_seen,
+        require(len(unique) == 1 and len(body) < len(LARGE) and not final_seen
+                and decryption_refusals == 1,
                 "wrong-key request advanced upload")
     else:
         require(bytes(body) == LARGE and len(unique) >= 2 and final_seen >= 1,
@@ -242,7 +255,7 @@ def grade(trace, result, endpoints, before, after, mode):
                 "permanent loss/timeout not exercised")
     return {"authenticated_inner_blocks": len(unique), "body_bytes_observed": len(body),
             "exact_request_retries": request_retries, "request_loss_retries": request_loss_retries, "exact_response_retries": response_retries,
-            "exact_client_acks": client_acks, "retry_intervals_ns": retry_intervals,
+            "exact_client_acks": client_acks, "unprotected_decryption_refusals": decryption_refusals, "retry_intervals_ns": retry_intervals,
             "dropped_authenticated_created": dropped, "effect_before": prior, "effect_after": current,
             "client_outcome": "timeout; independently observed one application effect" if mode == "drop-permanent"
                               else "wrong-key refusal" if wrong else "complete Created",

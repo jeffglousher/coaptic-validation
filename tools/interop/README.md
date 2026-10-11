@@ -200,3 +200,13 @@ oracle authenticates against the same exact final request binding and separately
 checks server response retransmission and client ACK ownership. Offline baseline
 re-evaluation does not establish the subsequent loss schedules; those require a
 new hosted campaign.
+
+The second hosted campaign (`38130677875`) passed baseline, request-loss,
+response-loss and permanent-loss checks, then its silence-only wrong-key oracle
+refused libcoap's unprotected ACK 4.00 diagnostic. RFC 8613 section 8.2 step 6
+permits that decryption-failure response. The fixture-specific oracle now requires
+its exact endpoint/MID/token, Max-Age zero and `Decryption failed` payload, while
+still requiring client timeout, no authenticated upload progress and unchanged
+handler counts. This diagnostic establishes no authenticated success. The failed
+campaign remains retained; the final fresh-recovery schedule still needs a new
+hosted execution.

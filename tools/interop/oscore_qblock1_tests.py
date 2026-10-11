@@ -47,6 +47,9 @@ def evidence(mode="baseline", option=19, body=LARGE):
         else:
             append("request", "forward", request)
         if mode == "wrong-key":
+            error = coap_message(128, 10, b"q", [(14, b"")], b"Decryption failed")
+            error = bytes([error[0] | 0x20]) + error[1:]
+            append("response", "forward", error)
             break
         append("response", "forward", b"\x60\x00\x00" + bytes([10 + num]))
         if num == 1:
@@ -171,6 +174,31 @@ class ProtectedQBlockTests(unittest.TestCase):
             mutate(data)
             with self.subTest(mode=mode), self.assertRaises(AssertionError):
                 grade(*data)
+
+    def test_wrong_key_diagnostic_is_not_authenticated_progress(self):
+        originals = evidence("wrong-key")
+        invalid = [
+            coap_message(65, 10, b"q", [(14, b"")], b"Decryption failed"),
+            coap_message(128, 11, b"q", [(14, b"")], b"Decryption failed"),
+            coap_message(128, 10, b"r", [(14, b"")], b"Decryption failed"),
+            coap_message(128, 10, b"q", [(9, b"")], b"Decryption failed"),
+            coap_message(128, 10, b"q", [(14, b"\x01")], b"Decryption failed"),
+            coap_message(128, 10, b"q", [(14, b"")], b"changed diagnostic"),
+        ]
+        for wire in invalid:
+            data = copy.deepcopy(originals)
+            wire = bytes([wire[0] | 0x20]) + wire[1:]
+            data[0][-1].update(hex=wire.hex(), forwarded_hex=wire.hex())
+            with self.subTest(wire=wire.hex()), self.assertRaises(AssertionError):
+                grade(*data)
+        missing = copy.deepcopy(originals)
+        missing[0].pop()
+        with self.assertRaises(AssertionError):
+            grade(*missing)
+        advanced = copy.deepcopy(originals)
+        advanced[1] = SUCCESS.copy()
+        with self.assertRaises(AssertionError):
+            grade(*advanced)
 
     def test_loss_and_timeout_mutations_refuse(self):
         for mode, mutate in [
