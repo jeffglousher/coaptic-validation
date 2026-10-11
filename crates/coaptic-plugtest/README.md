@@ -126,7 +126,8 @@ Tracking: [#419](https://github.com/jeffglousher/coaptic/issues/419).
 ### Observed resource mutation and read-back
 
 `cargo test --locked -p coaptic-plugtest --test interop observed_resource_updates_are_delivered_and_read_back`
-executes literal TD_COAP_OBS_09 with Coaptic on both ends. Two accepted local
+executes literal TD_COAP_OBS_09 with either Coaptic or coap-rs as client and
+Coaptic as server. Two accepted local
 updates select one of two fixed representations before sending the corresponding
 CON notification. The GET handler and retransmission snapshot read that same
 state; same-owner GETs confirm both changed representations while notifications
@@ -137,11 +138,18 @@ lock and resets it for each server. The strict fourteen-datagram oracle checks
 complete notification/read-back bodies and ownership; sixteen mutated traces
 must fail. Live tests refuse invalid paths/payloads without traffic or state
 changes, recover with valid updates, and verify the next fixture starts clean.
-Unsupported backends refuse updates by default; both coap-rs directions remain
-SKIP. `COAPTIC_OBSERVE_CAPTURE_DIR` retains `obs-09-coaptic.pcap`. This is volatile
+Unsupported server backends refuse updates by default; Coaptic-to-coap-rs remains
+SKIP. The coap-rs adapter retains the same UDP client for ordinary read-back GETs,
+with finite non-reused tokens. Wrong endpoint/path, Observe refresh/cancellation,
+non-GET requests and exhausted token space refuse before I/O; valid read-back
+and notification delivery recover without replacing the subscription. A fresh
+registration recovers after token exhaustion. The wrapper notification queue is
+bounded; this does not qualify the dependency runtime memory usage.
+`COAPTIC_OBSERVE_CAPTURE_DIR` retains `obs-09-coaptic.pcap` and `obs-09-coap-rs.pcap`. This is volatile
 in-memory resource state and plaintext loopback evidence, not durable effects,
 authenticated ownership or hardware qualification.
-Tracking: [#423](https://github.com/jeffglousher/coaptic/issues/423).
+Tracking: [#423](https://github.com/jeffglousher/coaptic/issues/423) and
+[#473](https://github.com/jeffglousher/coaptic/issues/473).
 
 ### Observed resource deletion and format change
 
