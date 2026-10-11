@@ -92,6 +92,12 @@ static void association(unsigned value) {
   oscore_association_t *old=oscore_find_association(session,&token);
   if(old) oscore_delete_association(session,old);
   CHECK(oscore_new_association(session,NULL,&token,ctx->p_osc_ctx->recipient_chain,&a,&n,&v,0));
+  oscore_find_association(session,&token)->request_generation=++session->oscore_request_generation;
+}
+/* Test analogue of the pre-handler response stamp, never a production fallback. */
+static void stamp(coap_pdu_t *p) {
+  oscore_association_t *a=oscore_find_association(session,&token);
+  CHECK(a&&a->request_generation);p->oscore_request_generation=a->request_generation;
 }
 static void drop_transfer(coap_lg_xmit_t *lg) {
   LL_DELETE(session->lg_xmit,lg);coap_block_delete_lg_xmit(session,lg);
@@ -107,15 +113,15 @@ static void stale_timer(coap_lg_xmit_t *lg) {
 }
 static void ownership(void) {
   unsigned i; coap_pdu_t *p,*stale;coap_lg_xmit_t *lg;uint64_t gen;
-  setup();lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(1);
+  setup();lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(1);stamp(p);
   CHECK(coap_q_bind_response(session,lg,p));gen=lg->oscore_generation;
   CHECK(!oscore_find_association(session,&token));
   CHECK(coap_q_response_binding(session,p)==lg->oscore_binding);
   CHECK(!coap_q_response_binding(other,p));
   stale=coap_pdu_duplicate_lkd(p,session,1,token.s,NULL);CHECK(stale);
-  CHECK(!stale->oscore_q_generation&&!stale->oscore_q_block2);
+  CHECK(!stale->oscore_q_generation&&!stale->oscore_q_block2&&!stale->oscore_request_generation);
   stale->oscore_q_generation=gen;stale->lg_xmit=lg;
-  association(2);
+  association(2);stamp(p);
   CHECK(lg->oscore_binding->partial_iv->s[0]==1);
   for(i=0;i<5;i++) {
     oscore_association_t *before=lg->oscore_binding;
@@ -130,10 +136,10 @@ static void ownership(void) {
   CHECK(!coap_q_response_binding(session,stale));
   /* Retirement plus a newer same-token association cannot be resurrected by
    * timer scheduling, even before a legitimate fresh bind. */
-  coap_q_revoke_binding(session,lg);association(3);
+  coap_q_revoke_binding(session,lg);association(3);stamp(p);
   stale_timer(lg);CHECK(writes==0);
   CHECK(coap_q_bind_response(session,lg,p));
-  association(4);session->oscore_q_generation=UINT64_MAX;
+  association(4);stamp(p);session->oscore_q_generation=UINT64_MAX;
   CHECK(!coap_q_bind_response(session,lg,p));
   CHECK(lg->oscore_binding->partial_iv->s[0]==3);
   session->oscore_q_generation=lg->oscore_generation;
@@ -143,7 +149,7 @@ static void ownership(void) {
 static void crypto_and_errors(void) {
   coap_lg_xmit_t *lg;coap_pdu_t *p,*a,*b;coap_opt_iterator_t it;
   coap_opt_t *oa,*ob;uint8_t old_opt[16];size_t old_len;uint64_t seq;unsigned i;
-  setup();lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(1);
+  setup();lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(1);stamp(p);
   CHECK(coap_q_bind_response(session,lg,p));
   ctx->p_osc_ctx->save_seq_num_func=save_sequence;
   ctx->p_osc_ctx->save_seq_num_func_param=session;
@@ -190,7 +196,7 @@ static void crypto_and_errors(void) {
 }
 static void queue_expiry_and_context(void) {
   coap_lg_xmit_t *lg;coap_pdu_t *p,*queued,*delayed;coap_queue_t q={0},d={0};coap_tick_t remaining;
-  setup();lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(1);
+  setup();lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(1);stamp(p);
   CHECK(coap_q_bind_response(session,lg,p));
   queued=response(COAP_MESSAGE_CON,0,1);delayed=response(COAP_MESSAGE_CON,0,1);
   queued->lg_xmit=delayed->lg_xmit=lg;
@@ -205,14 +211,14 @@ static void queue_expiry_and_context(void) {
   ctx->sendqueue=NULL;session->delayqueue=NULL;
   CHECK(!coap_q_response_binding(session,p));
   coap_delete_pdu_lkd(p);coap_delete_pdu_lkd(queued);coap_delete_pdu_lkd(delayed);
-  lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(2);CHECK(coap_q_bind_response(session,lg,p));
+  lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(2);stamp(p);CHECK(coap_q_bind_response(session,lg,p));
   coap_delete_all_oscore(ctx);CHECK(!lg->oscore_binding);
   CHECK(!coap_q_response_binding(session,p));coap_delete_pdu_lkd(p);
   teardown();
 }
 static void transport_and_allocation(void) {
   coap_lg_xmit_t *lg;coap_pdu_t *p;coap_block_b_t block={0};uint64_t gen;
-  setup();lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(1);
+  setup();lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(1);stamp(p);
   CHECK(coap_q_bind_response(session,lg,p));gen=lg->oscore_generation;block.m=1;
   session->con_active=1;
   CHECK(COAP_NSTART(session)==1);
@@ -236,7 +242,7 @@ static void ack(coap_session_t *s, coap_mid_t mid) {
 static void ack_retry_and_final_cleanup(void) {
   coap_lg_xmit_t *lg;coap_pdu_t *p;coap_mid_t mid;coap_queue_t *q;
   size_t n;
-  setup();lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(1);
+  setup();lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(1);stamp(p);
   CHECK(coap_q_bind_response(session,lg,p));
   mid=coap_send_internal(session,p);CHECK(mid!=COAP_INVALID_MID&&writes==1);
   CHECK(ctx->sendqueue&&ctx->sendqueue->pdu->oscore_q_block2);
@@ -253,7 +259,7 @@ static void ack_retry_and_final_cleanup(void) {
   CHECK(lg->pdu.oscore_q_generation&&lg->last_payload==0);
   stale_timer(lg);
   CHECK(writes==n&&oscore_find_association(session,&token));
-  p=response(COAP_MESSAGE_CON,0,1);CHECK(coap_q_bind_response(session,lg,p));
+  p=response(COAP_MESSAGE_CON,0,1);stamp(p);CHECK(coap_q_bind_response(session,lg,p));
   CHECK(coap_send_internal(session,p)!=COAP_INVALID_MID&&writes==n+1);
   teardown();
 }
@@ -262,11 +268,11 @@ static void cached_fresh_request(void) {
   coap_resource_t *resource;uint8_t selector=0x10;uint64_t oldgen;
   setup();lg=transfer();resource=coap_resource_init(coap_make_str_const("large"),0);CHECK(resource);
   coap_add_resource_lkd(ctx,resource);lg->b.b2.resource=resource;lg->b.b2.request_method=COAP_REQUEST_CODE_GET;
-  stale=response(COAP_MESSAGE_CON,0,1);association(1);CHECK(coap_q_bind_response(session,lg,stale));oldgen=lg->oscore_generation;
+  stale=response(COAP_MESSAGE_CON,0,1);association(1);stamp(stale);CHECK(coap_q_bind_response(session,lg,stale));oldgen=lg->oscore_generation;
   request=coap_pdu_init(COAP_MESSAGE_CON,COAP_REQUEST_CODE_GET,500,128);CHECK(request);
   CHECK(coap_add_token(request,1,token.s)&&coap_add_option(request,COAP_OPTION_Q_BLOCK2,1,&selector));
   reply=coap_pdu_init(COAP_MESSAGE_ACK,COAP_EMPTY_CODE,500,256);CHECK(reply&&coap_add_token(reply,1,token.s));
-  association(2);
+  association(2);stamp(reply);
   CHECK(coap_handle_request_send_block(session,request,reply,resource,NULL));
   CHECK(reply->code==COAP_RESPONSE_CODE_CONTENT&&lg->oscore_generation>oldgen);
   CHECK(lg->oscore_binding->partial_iv->s[0]==2&&!oscore_find_association(session,&token));
@@ -281,15 +287,154 @@ static void cached_fresh_request(void) {
   CHECK(coap_add_token(request,1,token.s)&&coap_add_option(request,COAP_OPTION_Q_BLOCK2,1,&selector));
   selector=0x20;CHECK(coap_add_option(request,COAP_OPTION_Q_BLOCK2,1,&selector));
   reply=coap_pdu_init(COAP_MESSAGE_ACK,COAP_EMPTY_CODE,501,256);CHECK(reply&&coap_add_token(reply,1,token.s));
-  association(3);oldgen=lg->oscore_generation;
+  association(3);stamp(reply);oldgen=lg->oscore_generation;
   CHECK(coap_handle_request_send_block(session,request,reply,resource,NULL));
   CHECK(COAP_RESPONSE_CLASS(reply->code)==5&&writes==2&&!lg->oscore_binding);
   CHECK(lg->oscore_generation==oldgen&&oscore_find_association(session,&token));
   coap_delete_pdu_lkd(request);coap_delete_pdu_lkd(reply);teardown();
 }
+/* Construct ordinary authenticated requests using the same backend, with no
+ * socket writes. Optional malformed inner input exercises decoder refusal; it
+ * is constructed offline with the request's allocated nonce; neither version
+ * is sent to a socket. This is a decoder test, not a wire qualification. */
+static coap_pdu_t *authenticated_request(unsigned malformed, unsigned b2) {
+  static const char config[]="master_secret,hex,\"0102030405060708090a0b0c0d0e0f10\"\n"
+    "master_salt,hex,\"9e7ca92223786340\"\nsender_id,hex,\"\"\nrecipient_id,hex,\"01\"\n";
+  coap_str_const_t text={sizeof(config)-1,(const uint8_t *)config};
+  coap_context_t *c;coap_session_t *client;
+  coap_oscore_conf_t *conf;
+  coap_address_t addr;coap_pdu_t *plain,*protected;
+  coap_lock_unlock(ctx); /* libcoap uses one global lock across contexts. */
+  c=coap_new_context(NULL);conf=coap_new_oscore_conf(text,NULL,NULL,20);
+  CHECK(c&&conf&&coap_context_oscore_server(c,conf));
+  coap_address_init(&addr);addr.addr.sin.sin_family=AF_INET;
+  addr.addr.sin.sin_addr.s_addr=htonl(INADDR_LOOPBACK);addr.addr.sin.sin_port=htons(5685);
+  addr.size=sizeof(addr.addr.sin);client=coap_new_client_session(c,NULL,&addr,COAP_PROTO_UDP);CHECK(client);
+  coap_lock_lock(c,exit(1));client->oscore_encryption=1;client->recipient_ctx=c->p_osc_ctx->recipient_chain;
+  if(b2) {
+    static const uint8_t id[]={0x71,0x72};
+    c->p_osc_ctx->rfc8613_b_2=1;
+    oscore_update_ctx(c->p_osc_ctx,coap_new_bin_const(id,sizeof(id)));
+    client->b_2_step=COAP_OSCORE_B_2_STEP_1;
+  }
+  plain=coap_pdu_init(COAP_MESSAGE_CON,COAP_REQUEST_CODE_GET,700,256);CHECK(plain);
+  CHECK(coap_add_token(plain,token.length,token.s));
+  CHECK(coap_add_option(plain,COAP_OPTION_URI_PATH,5,(const uint8_t *)"large"));
+  { uint8_t q=8;CHECK(coap_add_option(plain,COAP_OPTION_Q_BLOCK2,1,&q)); }
+  protected=coap_oscore_new_pdu_encrypted_lkd(client,plain,NULL,0);CHECK(protected);
+  if(malformed) {
+    /* Both are authenticated but malformed: CF has forbidden length3; query
+     * declares 13 bytes but provides only one. Neither may commit ownership. */
+    uint8_t cf[]={1,0xc3,0,0,0},query[]={1,0xdd,2,0,0};
+    uint8_t encrypted[64];cose_encrypt0_t cose[1];int n;
+    oscore_association_t *a=oscore_find_association(client,&token);CHECK(a);
+    cose_encrypt0_init(cose);cose_encrypt0_set_alg(cose,c->p_osc_ctx->aead_alg);
+    CHECK(cose_encrypt0_set_key(cose,c->p_osc_ctx->sender_context->sender_key));
+    cose_encrypt0_set_aad(cose,a->aad);cose_encrypt0_set_nonce(cose,a->nonce);
+    cose_encrypt0_set_plaintext(cose,malformed==1?cf:query,sizeof(cf));
+    n=cose_encrypt0_encrypt(cose,encrypted,sizeof(encrypted));CHECK(n>0);
+    protected->used_size=(size_t)(protected->data-protected->token)-1;protected->data=NULL;
+    CHECK(coap_add_data(protected,(size_t)n,encrypted));
+  }
+  coap_delete_pdu_lkd(plain);coap_lock_unlock(c);coap_session_release(client);coap_free_context(c);
+  coap_lock_lock(ctx,exit(1));return protected;
+}
+static void authenticated_commit_failures(void) {
+  coap_pdu_t *input,*decoded;oscore_association_t *old;uint64_t generation;unsigned i,failures=0,successes=0;
+  setup();ctx->p_osc_ctx->rfc8613_b_1_2=0;ctx->p_osc_ctx->recipient_chain->initial_state=0;
+  association(9);old=oscore_find_association(session,&token);generation=session->oscore_request_generation;
+  input=authenticated_request(0,0);input->data[0]^=1;
+  CHECK(!coap_oscore_decrypt_pdu(session,input));
+  CHECK(oscore_find_association(session,&token)==old&&old->partial_iv->s[0]==9);
+  CHECK(session->oscore_request_generation==generation);
+  input->data[0]^=1;decoded=coap_oscore_decrypt_pdu(session,input);CHECK(decoded);
+  CHECK(decoded->oscore_request_generation>generation);
+  CHECK(oscore_find_association(session,&token)->request_generation==decoded->oscore_request_generation);
+  coap_delete_pdu_lkd(decoded);coap_delete_pdu_lkd(input);teardown();
+  for(i=1;i<=2;i++) {
+    setup();ctx->p_osc_ctx->rfc8613_b_1_2=0;ctx->p_osc_ctx->recipient_chain->initial_state=0;
+    association(9);old=oscore_find_association(session,&token);generation=session->oscore_request_generation;
+    input=authenticated_request(i,0);CHECK(!coap_oscore_decrypt_pdu(session,input));
+    CHECK(oscore_find_association(session,&token)==old&&old->partial_iv->s[0]==9);
+    CHECK(session->oscore_request_generation==generation);
+    coap_delete_pdu_lkd(input);teardown();
+  }
+  /* Exercise actual decrypt + transactional association allocation failures,
+   * retaining a previous request on every unsuccessful decode. */
+  for(i=0;i<32;i++) {
+    setup();ctx->p_osc_ctx->rfc8613_b_1_2=0;ctx->p_osc_ctx->recipient_chain->initial_state=0;
+    association(9);old=oscore_find_association(session,&token);generation=session->oscore_request_generation;
+    input=authenticated_request(0,0);fail_after=(long)i;
+    decoded=coap_oscore_decrypt_pdu(session,input);fail_after=-1;
+    if(!decoded) {
+      failures++;CHECK(oscore_find_association(session,&token)==old&&old->partial_iv->s[0]==9);
+      CHECK(session->oscore_request_generation==generation);
+    } else {successes++;CHECK(decoded->oscore_request_generation>generation);}
+    coap_delete_pdu_lkd(decoded);coap_delete_pdu_lkd(input);teardown();
+  }
+  CHECK(failures>=5&&successes>0);
+  setup();ctx->p_osc_ctx->rfc8613_b_1_2=0;ctx->p_osc_ctx->recipient_chain->initial_state=0;
+  association(9);old=oscore_find_association(session,&token);session->oscore_request_generation=UINT64_MAX;
+  input=authenticated_request(0,0);CHECK(!coap_oscore_decrypt_pdu(session,input));
+  CHECK(session->oscore_request_generation==UINT64_MAX&&oscore_find_association(session,&token)==old);
+  coap_delete_pdu_lkd(input);teardown();
+}
+static void authenticated_server_challenges(void) {
+  unsigned b2;coap_pdu_t *input,*out;coap_opt_iterator_t it;
+  for(b2=0;b2<=1;b2++) {
+    setup();ctx->p_osc_ctx->rfc8613_b_1_2=!b2;ctx->p_osc_ctx->rfc8613_b_2=b2;
+    ctx->p_osc_ctx->recipient_chain->initial_state=1;
+    input=authenticated_request(0,b2);
+    CHECK(!coap_oscore_decrypt_pdu(session,input));
+    CHECK(session->oscore_request_generation==1&&writes>0);
+    out=coap_pdu_init(0,0,0,2048);CHECK(out);
+    CHECK(coap_pdu_parse(COAP_PROTO_UDP,wire[writes-1],lengths[writes-1],out));
+    CHECK(coap_check_option(out,COAP_OPTION_OSCORE,&it));
+    CHECK(COAP_RESPONSE_CLASS(out->code)==2&&out->data);
+    coap_delete_pdu_lkd(out);coap_delete_pdu_lkd(input);teardown();
+  }
+}
+static unsigned replace_in_handler, handler_calls;
+static void origin_handler(coap_resource_t *r,coap_session_t *s,const coap_pdu_t *request,
+                           const coap_string_t *query,coap_pdu_t *reply) {
+  (void)r;(void)s;(void)query;
+  CHECK(request->oscore_request_generation&&
+        request->oscore_request_generation==reply->oscore_request_generation);
+  handler_calls++;
+  if(replace_in_handler) {
+    coap_lock_lock(ctx,exit(1));association(7);coap_lock_unlock(ctx);
+  }
+  reply->code=COAP_RESPONSE_CODE(500);
+}
+static void callback_request_replacement(void) {
+  unsigned replaced;coap_pdu_t *input;coap_resource_t *r;
+  for(replaced=0;replaced<=1;replaced++) {
+    setup();ctx->p_osc_ctx->rfc8613_b_1_2=0;ctx->p_osc_ctx->recipient_chain->initial_state=0;
+    r=coap_resource_init(coap_make_str_const("large"),COAP_RESOURCE_SAFE_REQUEST_HANDLER);CHECK(r);
+    coap_register_handler(r,COAP_REQUEST_GET,origin_handler);coap_add_resource_lkd(ctx,r);
+    replace_in_handler=replaced;handler_calls=0;
+    input=authenticated_request(0,0);coap_dispatch(ctx,session,input);
+    CHECK(handler_calls==1);CHECK(replaced ? writes==0 : writes>0);
+    coap_delete_pdu_lkd(input);teardown();
+  }
+}
+static void stale_prebind_request(void) {
+  coap_lg_xmit_t *lg;coap_pdu_t *old,*fresh;uint64_t first;
+  setup();lg=transfer();association(7);old=response(COAP_MESSAGE_CON,0,1);stamp(old);
+  first=old->oscore_request_generation;
+  association(7); /* Even identical token/PIV bytes are a different authenticated instance. */
+  CHECK(session->oscore_request_generation>first);
+  CHECK(!coap_q_bind_response(session,lg,old));
+  CHECK(!lg->oscore_binding&&writes==0);
+  fresh=response(COAP_MESSAGE_CON,0,1);
+  CHECK(!coap_q_bind_response(session,lg,fresh)); /* Unknown/async provenance. */
+  stamp(fresh);CHECK(coap_q_bind_response(session,lg,fresh));
+  CHECK(lg->oscore_binding->request_generation==fresh->oscore_request_generation);
+  coap_delete_pdu_lkd(old);coap_delete_pdu_lkd(fresh);teardown();
+}
 static void delete_before_bind_and_recreate(void) {
   coap_lg_xmit_t *lg;coap_pdu_t *old_response,*fresh;
-  setup();lg=transfer();old_response=response(COAP_MESSAGE_CON,0,1);association(1);
+  setup();lg=transfer();old_response=response(COAP_MESSAGE_CON,0,1);association(1);stamp(old_response);
   CHECK(oscore_find_association(session,&token)&&session->recipient_ctx);
   CHECK(coap_delete_oscore_recipient_lkd(ctx,&rid));
   CHECK(!oscore_find_association(session,&token)&&!session->recipient_ctx);
@@ -299,10 +444,12 @@ static void delete_before_bind_and_recreate(void) {
   /* Re-adding an ID cannot revive deleted request evidence by itself. */
   CHECK(!coap_q_bind_response(session,lg,old_response));
   CHECK(!session->recipient_ctx&&!oscore_find_association(session,&token));
-  association(2);fresh=response(COAP_MESSAGE_CON,0,1);
+  association(1); /* Same PIV bytes after recipient recreation cannot reuse identity. */
+  CHECK(!coap_q_bind_response(session,lg,old_response));
+  fresh=response(COAP_MESSAGE_CON,0,1);stamp(fresh);
   CHECK(coap_q_bind_response(session,lg,fresh));
   CHECK(lg->oscore_binding->recipient_ctx==ctx->p_osc_ctx->recipient_chain);
-  CHECK(lg->oscore_binding->partial_iv->s[0]==2);
+  CHECK(lg->oscore_binding->partial_iv->s[0]==1);
   CHECK(coap_send_internal(session,fresh)!=COAP_INVALID_MID&&writes==1);
   coap_delete_pdu_lkd(old_response);teardown();
 }
@@ -310,8 +457,8 @@ static void context_isolation_and_real_teardown(void) {
   coap_lg_xmit_t *lg,*unrelated;coap_pdu_t *p,*q;
   oscore_ctx_t distinct_context={0};oscore_recipient_ctx_t distinct_recipient={0};
   coap_queue_t *node;
-  setup();lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(1);CHECK(coap_q_bind_response(session,lg,p));
-  unrelated=transfer();q=response(COAP_MESSAGE_CON,0,1);association(2);CHECK(coap_q_bind_response(session,unrelated,q));
+  setup();lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(1);stamp(p);CHECK(coap_q_bind_response(session,lg,p));
+  unrelated=transfer();q=response(COAP_MESSAGE_CON,0,1);association(2);stamp(q);CHECK(coap_q_bind_response(session,unrelated,q));
   distinct_recipient.osc_ctx=&distinct_context;distinct_recipient.recipient_id=&rid;
   unrelated->oscore_binding->recipient_ctx=&distinct_recipient;
   association(3);oscore_find_association(session,&token)->recipient_ctx=&distinct_recipient;
@@ -323,18 +470,19 @@ static void context_isolation_and_real_teardown(void) {
   CHECK(coap_q_response_binding(session,q));
   coap_delete_pdu_lkd(p);coap_delete_pdu_lkd(q);drop_transfer(unrelated);drop_transfer(lg);teardown();
   /* Real delayed-node/session destructor ordering, not a synthetic queue scan. */
-  setup();lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(1);CHECK(coap_q_bind_response(session,lg,p));
+  setup();lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(1);stamp(p);CHECK(coap_q_bind_response(session,lg,p));
   node=coap_new_node();CHECK(node);node->pdu=p;node->id=p->mid;session->delayqueue=node;
   teardown();
   /* Real context destructor detaches sendqueue before node-release callbacks can
    * trigger session destruction and transfer invalidation. */
-  setup();lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(1);CHECK(coap_q_bind_response(session,lg,p));
+  setup();lg=transfer();p=response(COAP_MESSAGE_CON,0,1);association(1);stamp(p);CHECK(coap_q_bind_response(session,lg,p));
   CHECK(coap_send_internal(session,p)!=COAP_INVALID_MID);CHECK(ctx->sendqueue);
   teardown();
 }
 int main(void) {
   coap_startup();coap_set_log_level(COAP_LOG_EMERG);
   ownership();crypto_and_errors();queue_expiry_and_context();transport_and_allocation();
-  ack_retry_and_final_cleanup();cached_fresh_request();context_isolation_and_real_teardown();delete_before_bind_and_recreate();
+  ack_retry_and_final_cleanup();cached_fresh_request();context_isolation_and_real_teardown();delete_before_bind_and_recreate();stale_prebind_request();
+  authenticated_commit_failures();authenticated_server_challenges();callback_request_replacement();
   coap_cleanup();puts("PASS protected Q2 owned binding, generation, rollback, nonce, dynamic teardown and callback retirement");return 0;
 }

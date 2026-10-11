@@ -229,7 +229,13 @@ not establish independent-peer interoperability.
 The companion-owned prerequisite patch for [#477](https://github.com/jeffglousher/coaptic/issues/477)
 retains an immutable request binding per protected UDP Q-Block2 transfer, separate
 from libcoap's mutable token association. Session-monotonic generations revoke
-superseded queued and timer continuations. Distinct response blocks use fresh
+superseded queued and timer continuations. A separate authenticated-request
+generation is committed only after successful authentication and complete inner
+decoding, then stamped on the response before the application callback. Missing
+or stale stamps (including unsupported asynchronous copies) refuse transfer
+binding; same-token replacement and recipient recreation cannot retarget an old
+response. Failed decoding or replacement allocation preserves the prior request
+association. Distinct response blocks use fresh
 server PIVs; ciphertext retransmissions remain unchanged. The exact upstream,
 patch and modified-source hashes are checked before building and reported with
 the binary identity; this is a patched peer, not unmodified libcoap qualification.
