@@ -169,3 +169,23 @@ adaptive block shrinking, continuation of the timed-out Call, protected traffic,
 routed/scoped networking, hardware or sustained availability. The original RFC
 7252 section 4.6 and RFC 7959 block-size rules remain separate from this finite
 fault schedule.
+
+The `oscore-qblock1-recovery:coaptic->libcoap` case uses the pinned libcoap
+OpenSSL/OSCORE build over IPv4 loopback. Its offline aiocoap oracle authenticates
+inner Q-Block1 options and every slice of the 2000-byte upload; it rejects a
+classic-Block1 substitution. Intact protected Created replies are lost once or
+permanently. The latter records a client timeout alongside the independently
+observed application effect, then exercises fresh recovery. Wrong-key traffic
+must leave handler counts unchanged. Captures retain exact endpoints, ciphertext
+retries and source identities. Native NoSec-only libcoap builds explicitly
+exclude this case; synthetic tests do not establish peer interoperability.
+
+Run the focused oracle tests in an isolated environment populated from the
+existing pinned `tools/security-interop/requirements.txt`:
+
+```sh
+python -m unittest discover -s tools/interop -p 'oscore_qblock1_tests.py'
+```
+
+This finite fixture uses public RFC 8613 test keys, not production credentials,
+enrollment or a sustained-availability qualification.

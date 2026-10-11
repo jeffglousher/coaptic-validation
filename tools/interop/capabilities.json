@@ -3059,6 +3059,39 @@
       "executable": "tools/interop/run.py:oscore_qblock1_upload"
     },
     {
+      "id": "oscore-qblock1-recovery:coaptic->libcoap",
+      "client": "coaptic",
+      "server": "libcoap",
+      "transport": "udp",
+      "security": "oscore",
+      "address_family": "ipv4-loopback",
+      "execution_platforms": [
+        "linux",
+        "windows"
+      ],
+      "requires": [
+        "libcoap-oscore"
+      ],
+      "features": [
+        "oscore",
+        "q-block1",
+        "upload",
+        "handler-effect",
+        "lost-protected-reply"
+      ],
+      "positive_proof": [
+        "aiocoap authenticates inner Q-Block1 and exact complete 2000-byte upload",
+        "lost protected Created recovers through byte-identical request retry and one handler effect",
+        "fresh protected upload completes after wrong-key refusal and permanent reply loss"
+      ],
+      "failure_proof": [
+        "wrong-key requests cannot change handler effects",
+        "permanent Created loss times out while readback independently records the application effect",
+        "missing authentication, changed body/owner/retry, false zero effect and process failure cannot pass"
+      ],
+      "executable": "tools/interop/oscore_qblock1.py:workflow"
+    },
+    {
       "id": "oscore-qblock1-faults:coaptic",
       "client": "coaptic",
       "server": "coaptic",
