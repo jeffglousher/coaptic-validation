@@ -162,8 +162,8 @@ def campaign_grade(trace, result, endpoints, mode):
     require(type(host_ns) is int and 0 <= host_ns <= 10_500_000_000, "missing bounded host duration")
     require(trace[-1]["time_ns"] - trace[0]["time_ns"] <= host_ns, "trace exceeds observed process lifetime")
     if timeout:
-        expect_refusal(result)
         require(result.get("message") == "request timed out", "not pinned peer protocol timeout")
+        expect_refusal(result)
         require(not result.get("payload_hex") and "code" not in result, "partial data claimed complete")
         require(host_ns >= (650_000_000 if mode == "wrong-key" else 6_450_000_000), "premature timeout")
     if mode == "wrong-key":
