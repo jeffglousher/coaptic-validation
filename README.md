@@ -138,6 +138,39 @@ that result to durable device recovery, independently observe the restart and
 allow no intervening protected traffic. Silence alone is not a passing result.
 This finite driver is a qualification tool, not an unbounded host service.
 
+`raw-udp ADDRESS CREDENTIALS STATE REPORT RUN_ID` uses the same exclusive
+private state, with a new report path instead of a saved request. In protected
+service mode it checks identity, complete 2000-byte delivery, 128-byte echo and
+an authenticated timer before and after four finite 64-packet UDP groups
+(1153, 2047, 2048 and 4096 bytes, all `0xa5`, 2 ms pacing). It never provisions
+or switches firmware. A completed host report explicitly leaves device
+qualification false: [the offline grader](tools/qualification/raw_udp.py)
+requires independent encrypted-API counter capture and verified build/install
+records. [Synthetic fixtures](tools/qualification/test_raw_udp.py) exercise
+refusal grading and do not qualify hardware or sustained availability.
+
+The grader's `--help` lists the required retained artifacts. Its manifest binds
+40-character core/suite revisions, host binary and OTA hashes, protected mode
+1, run ID, installation time/receipt hash, capture-tool hash and SHA-256 hashes
+of `host_build`, `firmware_preparation`, `component_archive` and `installation`.
+The firmware preparation retains `images` with build success, run ID and OTA
+hash; the upload receipt records `exit_code: 0`, `mode: "protected"`, run ID,
+OTA hash and host `observed_at_ms`. Existing static-archive build metadata is
+checked inside the component archive. This is build/install attribution, not
+cryptographic firmware attestation.
+
+Capture input is JSONL: `capture_begin` records `at_ms`,
+`clock: "host_utc_receipt"`, `transport: "encrypted_esphome_api"` and
+`device_ipv4`; each `log` records host receipt `at_ms` and `message`;
+`capture_end` records `at_ms`. Use the same host UTC clock as the campaign,
+start after the verified service is ready, and retain counter samples within
+10 seconds before and after the campaign. Device timestamps are not substituted.
+All 256 actual socket drops must be accounted for; unrelated oversize traffic,
+missing counters, counter resets, stopped tasks or partial bodies refuse the
+result. The task may yield zero times under paced traffic; this campaign does
+not establish scheduling fairness. Telemetry mode 3 requires a separately
+reviewed service-mode transition before this demonstration.
+
 The optional Rust `telemetry` feature provides
 [`pending_telemetry`](tools/esphome/rust/src/pending_telemetry.rs): one
 authenticated 1,214-byte caller-owned record for a complete pending operation
