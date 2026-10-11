@@ -4312,6 +4312,36 @@
         "a missing follow-up datagram or unexercised fault fails"
       ],
       "executable": "tools/interop/run.py:oscore_upload_fault_workflow"
+    },
+    {
+      "id": "relay-cap-256:coaptic->libcoap",
+      "client": "coaptic",
+      "server": "libcoap",
+      "transport": "udp",
+      "security": "none",
+      "address_family": "ipv4-loopback",
+      "execution_platforms": [
+        "linux",
+        "windows"
+      ],
+      "requires": [],
+      "features": [
+        "block2",
+        "relay-datagram-cap",
+        "bounded-timeout",
+        "fresh-client-recovery"
+      ],
+      "positive_proof": [
+        "exact 2000-byte baseline and fresh recovery on same server",
+        "exact small response through active 256-byte wire-datagram cap",
+        "exact endpoint and unchanged forwarded-byte ownership"
+      ],
+      "failure_proof": [
+        "all over-cap responses dropped with complete first-block metadata and exact bytes",
+        "identical CON request retry then bounded protocol timeout without application response",
+        "not ICMP PMTU discovery or adaptive block shrinking"
+      ],
+      "executable": "tools/interop/relay_cap.py:workflow"
     }
   ],
   "gaps": [
@@ -4439,7 +4469,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "Scoped IPv6 zone identifiers are not a loopback case. MTU cases are absent: a relay that refuses datagrams above 256 bytes drops the 1024-byte blocks, and Coaptic, coap-rs, and libcoap retransmit that size until timeout instead of shrinking.",
+      "reason": "Scoped IPv6 zone identifiers are not a loopback case. Coaptic-to-libcoap IPv4 UDP now qualifies a silent 256-byte relay datagram cap: small-response success, oversized Block2 loss with bounded timeout and fresh complete recovery after removing the cap. This is not ICMP path-MTU discovery or adaptive shrinking; other peers, protected transports, IPv6, scoped/routed and compound-fault cases remain unqualified.",
       "issue": 200,
       "executable_cases": []
     },

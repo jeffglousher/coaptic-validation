@@ -318,6 +318,8 @@ class Proxy:
                         action = "corrupt"
                     elif self.mode == "blackhole":
                         action = "drop"
+                    elif self.mode == "cap-256" and len(data) > 256:
+                        action = "drop"
                     elif (self.mode in ("drop-separate", "drop-separate-permanent") and not incoming
                           and (not dropped or self.mode == "drop-separate-permanent")
                           and len(data) >= 4 and data[0] >> 6 == 1
@@ -2622,6 +2624,9 @@ def main():
          lambda: separate_client(peers["coaptic"], peers["libcoap"], timeout=8000))
     case("con-qblock1-loss:coaptic->libcoap",
          lambda: qblock1_con_loss(peers["coaptic"], peers["libcoap"]))
+    from relay_cap import workflow as relay_cap_workflow
+    case("relay-cap-256:coaptic->libcoap",
+         lambda: relay_cap_workflow(peers["coaptic"], peers["libcoap"]))
     case("ipv6-con-qblock1-loss:coaptic->libcoap",
          lambda: qblock1_con_loss(peers["coaptic"], peers["libcoap"], family="ipv6"))
     for client, server in [("coaptic", "coaptic"), ("coaptic", "libcoap"), ("libcoap", "coaptic")]:
