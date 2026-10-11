@@ -1196,6 +1196,8 @@ fn observe_pumping_covers_both_initial_sizes_and_complete_notifications() {
     for (target, fault) in [
         (0, "path"),
         (1, "body"),
+        (1, "malformed-block"),
+        (6, "malformed-block"),
         (2, "body"),
         (2, "token"),
         (2, "endpoint"),
@@ -1241,6 +1243,28 @@ fn observe_pumping_covers_both_initial_sizes_and_complete_notifications() {
                     "token" => bytes[4] ^= 1,
                     "mid" => bytes[3] ^= 1,
                     "endpoint" => src = packet.dst,
+                    "malformed-block" => {
+                        let original = decode(&bytes).unwrap();
+                        let seq = encode_uint(original.observe().unwrap().unwrap());
+                        let format = encode_uint(0);
+                        let age = encode_uint(5);
+                        let malformed = [0u8; 4];
+                        let opts = [
+                            Opt::etag(if index == 1 { b"P0" } else { b"P2" }),
+                            Opt::observe(&seq),
+                            Opt::content_format(&format),
+                            Opt::max_age(&age),
+                            Opt::opaque(OptionNumber::BLOCK2, &malformed),
+                        ];
+                        let msg =
+                            Message::new(original.ty(), original.code(), original.message_id())
+                                .with_token(original.token())
+                                .with_options(&opts)
+                                .with_payload(original.payload());
+                        let mut buf = [0; 2048];
+                        let n = encode(&msg, &mut buf).unwrap();
+                        bytes = buf[..n].to_vec();
+                    }
                     _ => {
                         let original = decode(&bytes).unwrap();
                         let seq = encode_uint(if fault == "sequence" { 0 } else { 1 });

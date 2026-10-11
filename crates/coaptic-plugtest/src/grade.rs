@@ -379,6 +379,7 @@ fn grade_observe_pumping(packets: &[Packet]) -> Result<(), String> {
                 || first.etag().collect::<Vec<_>>() != [etag]
                 || first.max_age() != Some(Ok(5))
                 || first.payload() != if large { &body[..1024] } else { body }
+                || (!large && first.block2().is_some())
                 || first
                     .block2()
                     .and_then(Result::ok)

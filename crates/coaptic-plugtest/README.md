@@ -273,7 +273,7 @@ command completion confirms the selected initial state before registration.
 
 The eighteen-datagram grader checks both initial forms, complete small and Block2
 bodies, ETag consistency, Observe progression, endpoint/path/token/MID ownership
-and exact empty ACKs. Twenty-eight trace mutations must fail. Two adapter tests
+and exact empty ACKs. Thirty trace mutations must fail, including malformed Block2 on small bodies. Two adapter tests
 cover invalid path/version, missing server, occupied command preservation,
 unchanged state/no traffic on refusal, valid delivery recovery and server reset.
 Unsupported directions remain SKIP. `COAPTIC_OBSERVE_CAPTURE_DIR` retains
