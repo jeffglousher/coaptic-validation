@@ -16,7 +16,7 @@ class ContractEvidenceTests(unittest.TestCase):
         self.assertEqual(result["manifest_sha256"], hashlib.sha256(raw).hexdigest())
         contracts = {row["id"]: row for row in result["requirements"]}
         for identity in ("conditional-upload-refusal", "fragmented-if-match", "classic-block1-if-none-match",
-                         "classic-block1-error-no-response", "qblock1-if-none-match", "fragmented-fetch-etag", "qblock1-server-error-no-response", "deferred-fetch-validator", "bounded-dedup-history", "qblock1-fetch-etag", "qblock1-con-success-no-response", "deferred-qblock2-snapshot", "deferred-qblock2-repeated-selection", "oscore-context-replacement-lifecycle", "deferred-qblock2-initial-selectors"):
+                         "classic-block1-error-no-response", "qblock1-if-none-match", "fragmented-fetch-etag", "qblock1-server-error-no-response", "deferred-fetch-validator", "bounded-dedup-history", "qblock1-fetch-etag", "qblock1-con-success-no-response", "deferred-qblock2-snapshot", "deferred-qblock2-repeated-selection", "oscore-context-replacement-lifecycle", "deferred-qblock2-initial-selectors", "qblock1-non-success-pacing"):
             self.assertIn(identity, contracts)
             for name in contracts[identity]["tests"]:
                 for replacement in ("", f"test {name} ... ignored", f"test {name} ... FAILED"):
