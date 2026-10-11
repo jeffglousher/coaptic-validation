@@ -1,6 +1,6 @@
 //! Plugtest resource catalog shared by both peer backends.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use coaptic::app::MethodRouter;
@@ -44,6 +44,23 @@ static VALIDATE_ETAG: OnceLock<Mutex<Vec<u8>>> = OnceLock::new();
 static LARGE_UPDATE: OnceLock<Mutex<Option<Vec<u8>>>> = OnceLock::new();
 static TEST_EXISTS: AtomicBool = AtomicBool::new(true);
 static OBS_SEQ: AtomicU32 = AtomicU32::new(0);
+// Serialized TD ownership is enforced by runner::harness_lock. Zero preserves
+// the original fixed snapshot fixture; 1/2 select the two updated representations.
+static OBS_REPRESENTATION: AtomicU8 = AtomicU8::new(0);
+
+pub(crate) fn observe_update_body(payload: &[u8]) -> Option<&'static [u8]> {
+    if payload == OBS_BODY { Some(OBS_BODY) }
+    else if payload == OBS_BODY_2 { Some(OBS_BODY_2) }
+    else { None }
+}
+
+pub(crate) fn commit_observe_update(body: &'static [u8]) {
+    OBS_REPRESENTATION.store(if body == OBS_BODY_2 { 1 } else { 2 }, Ordering::SeqCst);
+}
+
+fn current_observe_body() -> &'static [u8] {
+    if OBS_REPRESENTATION.load(Ordering::SeqCst) == 1 { OBS_BODY_2 } else { OBS_BODY }
+}
 
 fn validate_body() -> &'static Mutex<Vec<u8>> {
     VALIDATE_BODY.get_or_init(|| Mutex::new(TEST_BODY.to_vec()))
@@ -75,6 +92,7 @@ pub fn reset() {
     *large_update_slot().lock().expect("large-update") = None;
     TEST_EXISTS.store(true, Ordering::SeqCst);
     OBS_SEQ.store(0, Ordering::SeqCst);
+    OBS_REPRESENTATION.store(0, Ordering::SeqCst);
 }
 
 fn get_test(_req: Request<'_>) -> Response<'static> {
@@ -182,14 +200,19 @@ fn post_large_post(req: Request<'_>) -> Response<'static> {
 }
 
 fn get_obs(_req: Request<'_>) -> Response<'static> {
-    Response::content(OBS_BODY)
+    Response::content(current_observe_body())
         .content_format(ContentFormat::TEXT_PLAIN)
         .observe(0)
         .max_age(5)
 }
 
 fn obs_snapshot() -> Response<'static> {
-    Response::content(OBS_BODY_2)
+    let body = if OBS_REPRESENTATION.load(Ordering::SeqCst) == 0 {
+        OBS_BODY_2
+    } else {
+        current_observe_body()
+    };
+    Response::content(body)
         .content_format(ContentFormat::TEXT_PLAIN)
         .observe(OBS_SEQ.fetch_add(1, Ordering::SeqCst).saturating_add(1))
 }

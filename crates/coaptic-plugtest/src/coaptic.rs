@@ -38,7 +38,11 @@ struct ServerCtl {
     join: Option<JoinHandle<()>>,
 }
 
-type NotifyMailbox = Arc<Mutex<Option<(Vec<String>, Vec<u8>, bool)>>>;
+enum NotifyCommand {
+    Notification { path: Vec<String>, payload: Vec<u8>, confirmable: bool },
+    UpdateObserved { body: &'static [u8] },
+}
+type NotifyMailbox = Arc<Mutex<Option<NotifyCommand>>>;
 
 impl Default for CoapticPeer {
     fn default() -> Self {
@@ -194,21 +198,33 @@ impl Peer for CoapticPeer {
 
     fn notify(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
         let srv = self.server.as_ref().ok_or("no server")?;
-        *srv.notify.lock().expect("notify") = Some((
-            path.iter().map(|s| (*s).to_owned()).collect(),
-            payload.to_vec(),
-            false,
-        ));
+        *srv.notify.lock().expect("notify") = Some(NotifyCommand::Notification {
+            path: path.iter().map(|s| (*s).to_owned()).collect(),
+            payload: payload.to_vec(),
+            confirmable: false,
+        });
+        Ok(())
+    }
+
+    fn update_observed(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
+        if path != ["obs"] {
+            return Err(PeerError("update requires /obs".into()));
+        }
+        let body = site::observe_update_body(payload).ok_or("unsupported bounded representation")?;
+        let server = self.server.as_ref().ok_or("no server")?;
+        let mut command = server.notify.lock().expect("update");
+        if command.is_some() { return Err(PeerError("notification command occupied".into())); }
+        *command = Some(NotifyCommand::UpdateObserved { body });
         Ok(())
     }
 
     fn notify_confirmable(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
         let srv = self.server.as_ref().ok_or("no server")?;
-        *srv.notify.lock().expect("notify") = Some((
-            path.iter().map(|s| (*s).to_owned()).collect(),
-            payload.to_vec(),
-            true,
-        ));
+        *srv.notify.lock().expect("notify") = Some(NotifyCommand::Notification {
+            path: path.iter().map(|s| (*s).to_owned()).collect(),
+            payload: payload.to_vec(),
+            confirmable: true,
+        });
         Ok(())
     }
 
@@ -236,21 +252,23 @@ fn server_loop(
     while !stop.load(Ordering::SeqCst) {
         let now = u64::try_from(origin.elapsed().as_millis()).unwrap_or(u64::MAX);
         let _ = app.poll(now);
-        if let Some((path, payload, confirmable)) = notify.lock().expect("n").take() {
-            let segs: Vec<&str> = path.iter().map(String::as_str).collect();
-            let body: &'static [u8] = if payload == site::OBS_BODY_2 {
-                site::OBS_BODY_2
-            } else if payload == site::OBS_BODY {
-                site::OBS_BODY
-            } else {
-                site::OBS_BODY_2
-            };
-            let response = Response::content(body).content_format(ContentFormat::TEXT_PLAIN);
-            let _ = if confirmable {
-                app.notify_confirmable(now, &segs, response)
-            } else {
-                app.notify(now, &segs, response)
-            };
+        if let Some(command) = notify.lock().expect("n").take() {
+            match command {
+                NotifyCommand::Notification { path, payload, confirmable } => {
+                    let segs: Vec<&str> = path.iter().map(String::as_str).collect();
+                    let body = site::observe_update_body(&payload).unwrap_or(site::OBS_BODY_2);
+                    let response = Response::content(body).content_format(ContentFormat::TEXT_PLAIN);
+                    let _ = if confirmable { app.notify_confirmable(now, &segs, response) }
+                        else { app.notify(now, &segs, response) };
+                }
+                NotifyCommand::UpdateObserved { body } => {
+                    // The GET handler and retransmission snapshot see the new
+                    // representation before its notification can reach a client.
+                    site::commit_observe_update(body);
+                    let response = Response::content(body).content_format(ContentFormat::TEXT_PLAIN);
+                    let _ = app.notify_confirmable(now, &["obs"], response);
+                }
+            }
         }
         thread::sleep(Duration::from_millis(2));
     }

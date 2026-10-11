@@ -534,6 +534,9 @@ fn observe(
     client: &mut dyn Peer,
     server: &mut dyn Peer,
 ) -> Result<(), PeerError> {
+    if id == "TD_COAP_OBS_09" {
+        return observe_resource_update(dest, client, server);
+    }
     if matches!(id, "TD_COAP_OBS_10" | "TD_COAP_OBS_12") {
         return observe_owner_request(id, dest, client, server);
     }
@@ -578,6 +581,36 @@ fn observe(
             Ok(())
         }
     }
+}
+
+fn observe_resource_update(
+    dest: SocketAddr,
+    client: &mut dyn Peer,
+    server: &mut dyn Peer,
+) -> Result<(), PeerError> {
+    if client.name() != "coaptic" || server.name() != "coaptic" {
+        return Err(PeerError("SKIP: coverage gap #199: OBS_09 needs controlled resource mutation and same-owner readback".into()));
+    }
+    observe_con(dest, client, server)?;
+    let endpoint = client.local_addr();
+    for body in [site::OBS_BODY_2, site::OBS_BODY] {
+        server.update_observed(&["obs"], body)?;
+        let notification = client.take_notification(Duration::from_secs(1))?;
+        if notification.ty != Type::Confirmable || notification.code != Code::CONTENT
+            || notification.content_format != Some(0) || notification.payload != body
+            || notification.observe.is_none()
+        {
+            return Err(PeerError("OBS_09 complete updated notification".into()));
+        }
+        let readback = client.request_on_observe(dest, &ClientRequest::get(&["obs"]))?;
+        if readback.ty != Type::Acknowledgement || readback.code != Code::CONTENT
+            || readback.content_format != Some(0) || readback.payload != body
+            || readback.observe.is_some() || client.local_addr() != endpoint
+        {
+            return Err(PeerError("OBS_09 actual resource readback".into()));
+        }
+    }
+    Ok(())
 }
 
 fn observe_owner_request(
