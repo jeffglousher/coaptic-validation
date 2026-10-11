@@ -80,6 +80,11 @@ class ConRecoveryTests(unittest.TestCase):
         changed[3]["forwarded_hex"] = wire(2).hex()
         with self.assertRaises(AssertionError):
             grade(changed, SUCCESS, ENDPOINTS, complete=True)
+        changed = evidence()
+        changed[3]["forwarded_hex"] = changed[3]["hex"]
+        changed[3]["hex"] = wire(2).hex()
+        with self.assertRaises(AssertionError):
+            grade(changed, SUCCESS, ENDPOINTS, complete=True)
 
     def test_nstart_bypass_and_wrong_ack_order_refuse(self):
         for left, right in [(2, 3), (3, 4), (4, 5), (5, 6)]:

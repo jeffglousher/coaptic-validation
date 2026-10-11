@@ -44,6 +44,8 @@ def grade(trace, result, endpoints, *, complete):
         if type(timestamp) is not int or timestamp < previous_time:
             raise AssertionError("missing or unordered capture time")
         previous_time = timestamp
+        if index > 0 and action == "forward" and row.get("forwarded_hex", row["hex"]) != row["hex"]:
+            raise AssertionError("response or ACK bytes changed in relay")
         wire = bytes.fromhex(row.get("forwarded_hex", row["hex"]) if action == "forward" else row["hex"])
         if len(wire) < 4 or wire[0] >> 6 != 1 or wire[0] & 15 > 8 or len(wire) < 4 + (wire[0] & 15):
             raise AssertionError("malformed CON trace packet")
