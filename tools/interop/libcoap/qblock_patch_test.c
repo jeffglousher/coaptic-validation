@@ -434,13 +434,16 @@ static void stale_prebind_request(void) {
 }
 static void delete_before_bind_and_recreate(void) {
   coap_lg_xmit_t *lg;coap_pdu_t *old_response,*fresh,*input,*decoded;
+  coap_bin_const_t *owned_rid;
   setup();lg=transfer();old_response=response(COAP_MESSAGE_CON,0,1);association(1);stamp(old_response);
   CHECK(oscore_find_association(session,&token)&&session->recipient_ctx);
   CHECK(coap_delete_oscore_recipient_lkd(ctx,&rid));
   CHECK(!oscore_find_association(session,&token)&&!session->recipient_ctx);
   CHECK(!coap_q_bind_response(session,lg,old_response));
   CHECK(!lg->oscore_binding&&lg->oscore_generation==0&&writes==0);
-  CHECK(coap_new_oscore_recipient_lkd(ctx,&rid));
+  /* Recipient creation takes ownership; deletion/lookups only borrow rid. */
+  owned_rid=coap_new_bin_const(rid.s,rid.length);CHECK(owned_rid);
+  CHECK(coap_new_oscore_recipient_lkd(ctx,owned_rid));
   /* Re-adding an ID cannot revive deleted request evidence by itself. */
   CHECK(!coap_q_bind_response(session,lg,old_response));
   CHECK(!session->recipient_ctx&&!oscore_find_association(session,&token));
