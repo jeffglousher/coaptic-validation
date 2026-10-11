@@ -73,8 +73,9 @@ def authenticated_notifications(trace):
     return values
 
 
-def observer_grade(trace, result, endpoints, start, replay):
-    expected = [str(n).encode() for n in range(start,start+3)]
+def observer_grade(trace, result, endpoints, start, replay, count=3):
+    require(type(count) is int and count in (2,3), "unsupported observation count")
+    expected = [str(n).encode() for n in range(start,start+count)]
     expect(result, 69, b",".join(expected))
     require(4 <= len(trace) <= 128, "observer trace outside bound")
     endpoint = lambda x: loopback_endpoint(x,"ipv4")
@@ -138,7 +139,7 @@ def observer_grade(trace, result, endpoints, start, replay):
         plain=response_plain(wire,registration)
         options=opts(plain)
         require(int(plain.code)==69 and set(options)<={4,6,12,14} and len(options.get(6,[]))==1
-                and len(bodies)<3 and plain.payload==expected[len(bodies)],"wrong complete authenticated observation")
+                and len(bodies)<count and plain.payload==expected[len(bodies)],"wrong complete authenticated observation")
         sequence=plain.opt.observe
         require(type(sequence) is int and 0<=sequence<2**24,"invalid Observe serial")
         if sequences:require(0<(sequence-sequences[-1])%(2**24)<2**23,"notification not newer")
@@ -149,8 +150,8 @@ def observer_grade(trace, result, endpoints, start, replay):
             require(piv not in pivs,"distinct notification reused PIV")
             pivs.append(piv)
         bodies.append(plain.payload);sequences.append(sequence);wire_responses.append(wire);notification_times.append(at)
-        if len(bodies)==3:final_at=at
-    require(len(bodies)==3 and not waiting and pending is None and bool(replay_at is not None)==replay,"incomplete observer/replay evidence")
+        if len(bodies)==count:final_at=at
+    require(len(bodies)==count and not waiting and pending is None and bool(replay_at is not None)==replay,"incomplete observer/replay evidence")
     if replay:require(replay_at<final_at,"replay was after client completion")
     _,binding=request_plain(registration)
     return {"bodies":[b.decode() for b in bodies],"request_piv":bytes(binding.partial_iv).hex(),
