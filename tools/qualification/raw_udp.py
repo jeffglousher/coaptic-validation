@@ -1,6 +1,8 @@
 """Offline finite UDP refusal grading; no network, provisioning or device operations."""
 import argparse
 import hashlib
+import gzip
+import io
 import ipaddress
 import json
 from pathlib import Path
@@ -8,6 +10,8 @@ import re
 import tarfile
 
 LENGTHS = (1153, 2047, 2048, 4096)
+MAX_EXPANDED_ARCHIVE = 32 * 1024 * 1024
+MAX_ARCHIVE_HEADERS = 64
 COUNTERS = ("rx", "tx", "dropped", "polls", "idle_waits", "scheduler_yields", "wait_errors")
 
 
@@ -150,6 +154,43 @@ def load_lines(path):
     return [json.loads(line) for line in raw.decode("utf-8").splitlines() if line.strip()], hashlib.sha256(raw).hexdigest()
 
 
+def archive_proofs(raw):
+    # Bound decompression before tarfile can scan/cache members. Count physical
+    # headers as well as logical members, including otherwise hidden PAX records.
+    with gzip.GzipFile(fileobj=io.BytesIO(raw)) as compressed:
+        expanded = compressed.read(MAX_EXPANDED_ARCHIVE + 1)
+    require(len(expanded) <= MAX_EXPANDED_ARCHIVE, "expanded component archive bound")
+    offset, headers = 0, 0
+    while offset < len(expanded):
+        header = expanded[offset:offset + 512]
+        require(len(header) == 512, "incomplete archive header")
+        if header == bytes(512):
+            require(not any(expanded[offset:]), "unexpected bytes after archive end")
+            break
+        headers += 1
+        require(headers <= MAX_ARCHIVE_HEADERS, "archive header count bound")
+        require(header[156:157] in (b"0", b"\0", b"5", b"x", b"g"), "unsupported archive link/member type")
+        size_field = header[124:136].strip(b" \0")
+        require(size_field and all(byte in b"01234567" for byte in size_field), "archive size encoding")
+        size = int(size_field, 8)
+        require(size <= 16_000_000, "archive member bound")
+        offset += 512 + ((size + 511) // 512) * 512
+        require(offset <= len(expanded), "truncated archive member")
+    proofs, names = {}, set()
+    with tarfile.open(fileobj=io.BytesIO(expanded), mode="r:") as archive:
+        for count, info in enumerate(archive, 1):
+            require(count <= MAX_ARCHIVE_HEADERS, "archive member count bound")
+            require(info.name not in names, "duplicate archive member")
+            names.add(info.name)
+            require((info.isfile() or info.isdir()) and info.size <= 16_000_000, "archive link/member refusal")
+            for name in ("build.json", "libcoaptic_esphome_probe.a"):
+                if info.name == "components/coaptic_network/lib/" + name:
+                    require(info.isfile(), "proof member must be regular file")
+                    proofs[name] = archive.extractfile(info).read()
+    require(set(proofs) == {"build.json", "libcoaptic_esphome_probe.a"}, "missing archive proofs")
+    return json.loads(proofs["build.json"]), hashlib.sha256(proofs["libcoaptic_esphome_probe.a"]).hexdigest()
+
+
 def load_artifacts(args):
     hashes, records = {}, {}
     for key in ("host_build", "firmware_preparation", "installation"):
@@ -160,13 +201,7 @@ def load_artifacts(args):
     require(args.component_archive.stat().st_size <= 16_000_000, "component archive bound")
     raw = args.component_archive.read_bytes()
     hashes["component_archive"] = hashlib.sha256(raw).hexdigest()
-    with tarfile.open(args.component_archive, "r:gz") as archive:
-        def member(name):
-            info = archive.getmember("components/coaptic_network/lib/" + name)
-            require(info.isfile() and info.size <= 16_000_000, "archive member bound")
-            return archive.extractfile(info).read()
-        build = json.loads(member("build.json"))
-        static_hash = hashlib.sha256(member("libcoaptic_esphome_probe.a")).hexdigest()
+    build, static_hash = archive_proofs(raw)
     byte_hashes = {}
     for key in ("host_binary", "ota", "capture_tool"):
         path = getattr(args, key)
@@ -191,7 +226,7 @@ def main():
         raw = args.manifest.read_bytes()
         report = grade(host, capture, json.loads(raw), load_artifacts(args))
         report["input_sha256"] = {"host": host_hash, "capture": capture_hash, "manifest": hashlib.sha256(raw).hexdigest()}
-    except (OSError, ValueError, KeyError, TypeError, IndexError, tarfile.TarError) as error:
+    except (OSError, ValueError, KeyError, TypeError, IndexError, EOFError, tarfile.TarError) as error:
         report["error"] = str(error)
     with args.output.open("x", encoding="utf-8") as stream:
         json.dump(report, stream, indent=2)

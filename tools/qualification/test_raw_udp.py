@@ -2,12 +2,13 @@ import hashlib
 import json
 import unittest
 import io
+import gzip
 import tarfile
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
-from raw_udp import grade, load_artifacts, LENGTHS
+from raw_udp import grade, load_artifacts, archive_proofs, LENGTHS, MAX_EXPANDED_ARCHIVE, MAX_ARCHIVE_HEADERS
 
 
 def fixture():
@@ -133,6 +134,35 @@ class RawUdpGraderTests(unittest.TestCase):
             paths["host_build"].write_text("{}", encoding="utf-8")
             with self.assertRaises(ValueError):
                 grade(host, capture, manifest, load_artifacts(args))
+
+    def test_archive_expansion_headers_duplicate_and_link_refuse(self):
+        def packed(entries):
+            out = io.BytesIO()
+            with tarfile.open(fileobj=out, mode="w:gz") as archive:
+                for name, value, link in entries:
+                    item = tarfile.TarInfo(name)
+                    if link:
+                        item.type = tarfile.SYMTYPE
+                        item.linkname = "somewhere"
+                    else:
+                        item.size = len(value)
+                    archive.addfile(item, None if link else io.BytesIO(value))
+            return out.getvalue()
+        proof = [("components/coaptic_network/lib/build.json", b"{}", False),
+                 ("components/coaptic_network/lib/libcoaptic_esphome_probe.a", b"static", False)]
+        self.assertEqual(archive_proofs(packed(proof))[0], {})
+        for entries in (proof + [proof[0]], proof + [("link", b"", True)],
+                        proof + [(str(index), b"", False) for index in range(MAX_ARCHIVE_HEADERS)]):
+            with self.assertRaises(ValueError):
+                archive_proofs(packed(entries))
+        # Tiny compressed input with expansion just above the explicit bound.
+        out = io.BytesIO()
+        with gzip.GzipFile(fileobj=out, mode="wb") as stream:
+            for _ in range(MAX_EXPANDED_ARCHIVE // 65536 + 1):
+                stream.write(bytes(65536))
+        self.assertLess(len(out.getvalue()), 100000)
+        with self.assertRaisesRegex(ValueError, "expanded component archive bound"):
+            archive_proofs(out.getvalue())
 
     def test_provenance_changes_refuse(self):
         mutations = [lambda m,a: m["firmware"].update(mode=3),

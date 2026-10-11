@@ -156,7 +156,9 @@ of `host_build`, `firmware_preparation`, `component_archive` and `installation`.
 The firmware preparation retains `images` with build success, run ID and OTA
 hash; the upload receipt records `exit_code: 0`, `mode: "protected"`, run ID,
 OTA hash and host `observed_at_ms`. Existing static-archive build metadata is
-checked inside the component archive. This is build/install attribution, not
+checked inside the component archive without filesystem extraction. Compressed
+input is limited to 16 MB, expansion to 32 MiB and physical/logical TAR headers
+to 64; duplicate members and links refuse. This is build/install attribution, not
 cryptographic firmware attestation.
 
 Capture input is JSONL: `capture_begin` records `at_ms`,
