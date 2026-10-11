@@ -15,7 +15,8 @@ class ContractEvidenceTests(unittest.TestCase):
         self.assertTrue(result["passed"])
         self.assertEqual(result["manifest_sha256"], hashlib.sha256(raw).hexdigest())
         contracts = {row["id"]: row for row in result["requirements"]}
-        for identity in ("conditional-upload-refusal", "fragmented-if-match", "classic-block1-if-none-match"):
+        for identity in ("conditional-upload-refusal", "fragmented-if-match", "classic-block1-if-none-match",
+                         "classic-block1-error-no-response"):
             self.assertIn(identity, contracts)
             for name in contracts[identity]["tests"]:
                 for replacement in ("", f"test {name} ... ignored", f"test {name} ... FAILED"):
