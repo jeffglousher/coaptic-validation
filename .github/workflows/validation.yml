@@ -470,6 +470,8 @@ jobs:
           echo "$RUNNER_TEMP/oscore-qblock1/bin" >> "$GITHUB_PATH"
       - name: Authenticated Q-Block1 oracle tests
         run: python3 -m unittest discover -s tools/interop -p 'oscore_qblock1_tests.py'
+      - name: Authenticated protected relay-cap oracle tests
+        run: python3 -m unittest discover -s tools/interop -p 'oscore_relay_cap_tests.py'
       - name: Authenticated Q-Block2 baseline and loss oracle tests
         run: python3 -m unittest discover -s tools/interop -p 'oscore_qblock2_tests.py'
       - name: Supervisor and fault-injection tests
@@ -482,6 +484,10 @@ jobs:
         run: python3 tools/interop/oscore_qblock2.py --campaign --coaptic target/release/peer-coaptic --libcoap target/libcoap-peer/peer-libcoap --output target/oscore-qblock2-campaign.json --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json
       - name: Protected IPv6 Q-Block2 finite loss, refusal and recovery
         run: python3 tools/interop/oscore_qblock2.py --campaign --family ipv6 --coaptic target/release/peer-coaptic --libcoap target/libcoap-peer/peer-libcoap --output target/oscore-qblock2-ipv6-campaign.json --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json
+      - name: Protected IPv6 Q-Block1 finite loss, refusal and recovery
+        run: python3 tools/interop/oscore_qblock1.py --family ipv6 --coaptic target/release/peer-coaptic --libcoap target/libcoap-peer/peer-libcoap --output target/oscore-qblock1-ipv6-campaign.json --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json
+      - name: Protected silent datagram-cap refusal and recovery
+        run: python3 tools/interop/oscore_relay_cap.py --coaptic target/release/peer-coaptic --libcoap target/libcoap-peer/peer-libcoap --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json --output target/oscore-relay-cap-campaign.json
       - name: Retain measurements and fault evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -492,6 +498,8 @@ jobs:
             target/oscore-qblock2-baseline.json
             target/oscore-qblock2-campaign.json
             target/oscore-qblock2-ipv6-campaign.json
+            target/oscore-qblock1-ipv6-campaign.json
+            target/oscore-relay-cap-campaign.json
             target/qblock-patch-test.txt
             ${{ runner.temp }}/validation-source.json
           if-no-files-found: warn

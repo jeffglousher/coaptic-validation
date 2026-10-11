@@ -175,6 +175,21 @@ routed/scoped networking, hardware or sustained availability. The original RFC
 7252 section 4.6 and RFC 7959 block-size rules remain separate from this finite
 fault schedule.
 
+A separate protected IPv4 classic Block2 campaign uses a 256-byte unchanged
+UDP datagram cap: complete 2000-byte baseline, a small protected control under
+the cap, oversized-response loss with exact server retransmission and protocol
+timeout, then complete fresh-client recovery on the same server after removing
+the cap. Run:
+
+```sh
+python tools/interop/oscore_relay_cap.py --coaptic PATH --libcoap PATH --output REPORT.json --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json
+```
+
+The maintained aiocoap decoder checks request binding, inner options and body,
+ACK ownership and unchanged retries. These finite schedules require their own
+exact-source hosted report; they do not qualify adaptive PMTU, ICMP, routed
+networks or sustained availability. See [#495](https://github.com/jeffglousher/coaptic/issues/495).
+
 The `oscore-qblock1-recovery:coaptic->libcoap` case uses the pinned libcoap
 OpenSSL/OSCORE build over IPv4 loopback. Its offline aiocoap oracle authenticates
 inner Q-Block1 options and every slice of the 2000-byte upload; it rejects a
@@ -197,6 +212,19 @@ python -m unittest discover -s tools/interop -p 'oscore_qblock1_tests.py'
 
 This finite fixture uses public RFC 8613 test keys, not production credentials,
 enrollment or a sustained-availability qualification.
+
+The separate `oscore_qblock1.py --family ipv6` campaign checks the same six
+schedules over `::1`. Supply `--coaptic PATH --libcoap PATH --output REPORT.json`
+and `--libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json`.
+The CLI defaults to IPv4; the existing IPv4 process case remains enabled.
+Reports retain exact source and binary identities, the dependency patch, IPv6-only
+socket settings and complete endpoint tuples. The authenticated grader checks
+request bindings, unchanged retries, five application effects and fresh recovery.
+A timeout after permanent reply loss remains an unknown client outcome despite
+an independently observed fixture effect; these counters are not durable receipts.
+Exact-source hosted reports are required for qualification. Synthetic tests do
+not establish peer interoperability, and loopback results do not qualify routed
+networks, scoped addresses, hardware or sustained availability. See [#494](https://github.com/jeffglousher/coaptic/issues/494).
 
 The first hosted campaign (run `38129603008`, artifact `11698328540`) completed
 the baseline upload but the original piggyback-only oracle refused libcoap's
