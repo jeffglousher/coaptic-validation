@@ -46,7 +46,7 @@ index 07dedd5..0d5c7f7 100644
      coap_lock_callback(session->context, lg_xmit->release_func(session, lg_xmit->app_ptr));
    }
 diff --git a/src/coap_net.c b/src/coap_net.c
-index 18e61c8..d000dca 100644
+index 18e61c8..5bb1800 100644
 --- a/src/coap_net.c
 +++ b/src/coap_net.c
 @@ -1845,14 +1845,35 @@ coap_send_internal(coap_session_t *session, coap_pdu_t *pdu) {
@@ -75,7 +75,7 @@ index 18e61c8..d000dca 100644
 +    /* Retransmit ciphertext unchanged, but retain the inner continuation.
 +     * The large-transfer template already owns the plaintext options/body.
 +     * Only UDP server CON Q-Block2 needs this ACK-driven continuation. */
-+    if (session->proto == COAP_PROTO_UDP && pdu->type == COAP_MESSAGE_CON &&
++    if (session->proto == COAP_PROTO_UDP && osc_pdu->type == COAP_MESSAGE_CON &&
 +        COAP_PDU_IS_RESPONSE(pdu) && pdu->lg_xmit) {
 +      coap_block_b_t q;
 +      if (coap_get_block_b(session, pdu, COAP_OPTION_Q_BLOCK2, &q) && q.m) {

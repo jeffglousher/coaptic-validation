@@ -2,11 +2,11 @@
   "schema": "coaptic-libcoap-patch/1",
   "upstream": "851533c3cf63d16984d370ce39d586ecb3694971",
   "patch": "oscore-qblock2-continuation.patch",
-  "patch_sha256": "6c088c3bcc20ffdb9beebbf36ed6ae63c79a8e293382897ed3b6f99d9ddab64b",
+  "patch_sha256": "51c0df4ab86f3366345d2be584f0f374bd3f04496614957998b6da818267d089",
   "files": {
     "include/coap3/coap_pdu_internal.h": "60a45f28359cfceb4c854297904cf60d1b4c788320c3fec005b43b0f164b5ab8",
     "src/coap_block.c": "06a87e2790854d150451ffb15cfad265fd7f4e0ce8ff87538fa35a59c8c30c6e",
-    "src/coap_net.c": "aeeecf248c07d1b2d4f95965a13a51a83f74e97d650f6769562736b688908c2b",
+    "src/coap_net.c": "03b4d9bee90047469deab38d0667ea3b5e584d722a220b8e117256ddfaae09f1",
     "src/coap_pdu.c": "e2a56441422cf6ca88b19b9edf9f6bd7ac8493c9573e78010d0f6d5dcd4d6f78"
   }
 }
