@@ -271,7 +271,20 @@ async fn run() -> Result<(), Error> {
     let mut echo_retried = false;
     // Observe prints the registration reply and two notifications, comma-separated.
     let mut observed: Vec<Vec<u8>> = Vec::new();
+    let mut cancellation_sent = false;
+    let mut quiet_until = None;
+    let mut fresh_registration = false;
     while start.elapsed() < Duration::from_millis(a.timeout) {
+        if quiet_until.is_some_and(|until| start.elapsed() >= until) {
+            call = app
+                .request(method, path)
+                .to(Endpoint::from(a.address()))
+                .observe()
+                .send(start.elapsed().as_millis() as u64 + 1)
+                .map_err(|e| format!("fresh Observe registration: {e}"))?;
+            quiet_until = None;
+            fresh_registration = true;
+        }
         app.poll(start.elapsed().as_millis() as u64 + 1)
             .map_err(|e| format!("poll: {e}"))?;
         let response = app.take_response(call).transpose()?.map(|r| {
@@ -327,6 +340,32 @@ async fn run() -> Result<(), Error> {
                 continue;
             }
             if a.observe {
+                if a.observe_cancel {
+                    if quiet_until.is_some() {
+                        return Err("unexpected response during cancellation hold".into());
+                    }
+                    if code != 69 {
+                        return Err("Observe lifecycle requires Content responses".into());
+                    }
+                    observed.push(body);
+                    if !cancellation_sent && observed.len() == 2 {
+                        call = app
+                            .request(method, path)
+                            .to(Endpoint::from(a.address()))
+                            .deregister_call(call)
+                            .send(start.elapsed().as_millis() as u64 + 1)
+                            .map_err(|e| format!("Observe cancellation: {e}"))?;
+                        cancellation_sent = true;
+                    } else if cancellation_sent && !fresh_registration && observed.len() == 3 {
+                        // Keep polling the same App/socket through the bounded
+                        // supervisor-controlled write and authenticated readback.
+                        quiet_until = Some(start.elapsed() + Duration::from_secs(3));
+                    } else if fresh_registration && observed.len() == 6 {
+                        support::response(code, &observed.join(&b","[..]), elapsed, None);
+                        return Ok(());
+                    }
+                    continue;
+                }
                 observed.push(body);
                 if observed.len() < 3 {
                     continue;

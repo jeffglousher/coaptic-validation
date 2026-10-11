@@ -48,6 +48,9 @@ fn config(key: &str) -> Config {
 }
 async fn run() -> Result<(), Error> {
     let a = Args::parse()?;
+    if a.observe_cancel {
+        return Err("observe-cancel is supported only by the Coaptic qualification peer".into());
+    }
     if a.q_block1 {
         return Err("Q-Block1 is not implemented by this peer".into());
     }
