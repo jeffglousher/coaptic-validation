@@ -451,6 +451,13 @@ jobs:
           cargo build --locked --release -p peer-coaptic -p peer-coap-rs
           cmake -S tools/interop/libcoap -B target/libcoap-peer -G Ninja -DLIBCOAP_SOURCE="$RUNNER_TEMP/libcoap" -DCMAKE_BUILD_TYPE=Release -DENABLE_DTLS=ON -DDTLS_BACKEND=openssl -DENABLE_OSCORE=ON
           cmake --build target/libcoap-peer --parallel 2
+      - name: Isolated pinned protected-trace decoder
+        run: |
+          python3 -m venv "$RUNNER_TEMP/oscore-qblock1"
+          "$RUNNER_TEMP/oscore-qblock1/bin/python" -m pip install -r tools/security-interop/requirements.txt
+          echo "$RUNNER_TEMP/oscore-qblock1/bin" >> "$GITHUB_PATH"
+      - name: Authenticated Q-Block1 oracle tests
+        run: python3 -m unittest discover -s tools/interop -p 'oscore_qblock1_tests.py'
       - name: Supervisor and fault-injection tests
         run: python3 -m unittest discover -s tools/interop -p 'test_*.py'
       - name: Wire interoperability, reliability and timing

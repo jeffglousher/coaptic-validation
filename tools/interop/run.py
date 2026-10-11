@@ -325,6 +325,15 @@ class Proxy:
                           and len(data) >= 4 and data[0] >> 6 == 1
                           and (data[0] >> 4) & 3 == 0 and data[1] == 69):
                         action, dropped = "drop", True
+                    elif self.mode == "drop-oscore-request-once" and incoming and not dropped:
+                        from oscore_qblock1 import request_plain
+                        plain, _ = request_plain(data)
+                        if any(int(option.number) == 19 for option in plain.opt.option_list()):
+                            action, dropped = "drop", True
+                    elif self.mode in ("drop-oscore-final-once", "drop-oscore-final-permanent") and not incoming:
+                        from oscore_qblock1 import final_response
+                        if (not dropped or self.mode == "drop-oscore-final-permanent") and final_response(data, self.trace):
+                            action, dropped = "drop", True
                     elif self.mode == "drop-reply" and not incoming and not dropped:
                         action, dropped = "drop", True
                     elif self.mode == "delay-reply" and not incoming and not dropped:
@@ -1042,7 +1051,7 @@ def qblock1_window(server):
 
 
 def oscore_qblock1_upload(client, server):
-    """Protected Q-Block1 creates. libcoap has no Q-Block peer in this suite."""
+    """Protected Coaptic-pair Q-Block1 creates; independent recovery has its own oracle."""
     changed = bytearray(LARGE)
     changed[-1] ^= 1
     with Server(server, "oscore") as service:
@@ -2586,6 +2595,11 @@ def main():
     case("qblock1-window:coaptic", lambda: qblock1_window(peers["coaptic"]))
     case("oscore-qblock1:coaptic", lambda: oscore_qblock1_upload(peers["coaptic"], peers["coaptic"]))
     case("oscore-qblock1-faults:coaptic", lambda: oscore_qblock1_faults(peers["coaptic"], peers["coaptic"]))
+    if not (args.libcoap_udp_only or args.libcoap_oscore_unavailable):
+        def protected_qblock1():
+            from oscore_qblock1 import workflow
+            return workflow(peers["coaptic"], peers["libcoap"])
+        case("oscore-qblock1-recovery:coaptic->libcoap", protected_qblock1)
     case("no-response:coaptic", lambda: no_response_counter(peers["coaptic"]))
     case("no-response-4:coaptic", lambda: no_response_not_found(peers["coaptic"]))
     case("discovery:coaptic", lambda: discovery(peers["coaptic"]))
