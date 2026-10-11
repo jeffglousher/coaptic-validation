@@ -228,6 +228,12 @@ pub trait Peer {
         Err(PeerError("notify not supported".into()))
     }
 
+    /// Change the bounded fixture resource and notify observers with CON.
+    fn update_observed(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
+        let _ = (path, payload);
+        Err(PeerError("observed resource update not supported".into()))
+    }
+
     /// Ask a running server to use CON for this notification.
     fn notify_confirmable(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
         let _ = (path, payload);

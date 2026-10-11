@@ -29,7 +29,7 @@ This crate is the **App SUT**. The in-crate `cargo test --test plugtest` harness
 - [`Peer`](src/peer.rs) — start/stop server, client request, local UDP addr. Backends: `coaptic`, `coap-rs`. Add a library by implementing the trait.
 - Pcap writer + golden JSON grader (`expectations/catalog.json`). CORE goldens assert type, token echo, and CON↔ACK MID, and omit `allow_extra`. OBS / BLOCK / LINK / DTLS keep `allow_extra` (notifications, block trains, mixed-peer extras). Ports / time are wildcards.
 - DTLS: feature `dtls` uses webrtc-dtls 0.12 via explicit transport adapters as a **harness** `DatagramIo` adapter. The library has no DTLS dependency. Mixed pairs (`coap-rs→coaptic`, `coaptic→coap-rs`, `coaptic→coaptic`) run handshake + GET `/secure` with coaptic as SUT.
-- `TD_6LoWPAN_*` stay skipped (`future/backlog` — contributor opportunity).
+- `TD_6LoWPAN_*` remain skipped; 6LoWPAN transport qualification is not implemented.
 
 ### Qualification boundary
 
@@ -122,6 +122,26 @@ backends refuse the new hook by default; both coap-rs directions remain SKIP.
 `COAPTIC_OBSERVE_CAPTURE_DIR` retains each scenario's PCAP. These plaintext
 loopback tests do not qualify authenticated ownership or sustained availability.
 Tracking: [#419](https://github.com/jeffglousher/coaptic/issues/419).
+
+### Observed resource mutation and read-back
+
+`cargo test --locked -p coaptic-plugtest --test interop observed_resource_updates_are_delivered_and_read_back`
+executes literal TD_COAP_OBS_09 with Coaptic on both ends. Two accepted local
+updates select one of two fixed representations before sending the corresponding
+CON notification. The GET handler and retransmission snapshot read that same
+state; same-owner GETs confirm both changed representations while notifications
+retain their original token, content format and increasing Observe sequence.
+
+The fixture uses a bounded atomic selector under the existing serialized harness
+lock and resets it for each server. The strict fourteen-datagram oracle checks
+complete notification/read-back bodies and ownership; sixteen mutated traces
+must fail. Live tests refuse invalid paths/payloads without traffic or state
+changes, recover with valid updates, and verify the next fixture starts clean.
+Unsupported backends refuse updates by default; both coap-rs directions remain
+SKIP. `COAPTIC_OBSERVE_CAPTURE_DIR` retains `obs-09-coaptic.pcap`. This is volatile
+in-memory resource state and plaintext loopback evidence, not durable effects,
+authenticated ownership or hardware qualification.
+Tracking: [#423](https://github.com/jeffglousher/coaptic/issues/423).
 
 ### Observe reset socket qualification
 

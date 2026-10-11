@@ -38,7 +38,17 @@ struct ServerCtl {
     join: Option<JoinHandle<()>>,
 }
 
-type NotifyMailbox = Arc<Mutex<Option<(Vec<String>, Vec<u8>, bool)>>>;
+enum NotifyCommand {
+    Notification {
+        path: Vec<String>,
+        payload: Vec<u8>,
+        confirmable: bool,
+    },
+    UpdateObserved {
+        body: &'static [u8],
+    },
+}
+type NotifyMailbox = Arc<Mutex<Option<NotifyCommand>>>;
 
 impl Default for CoapticPeer {
     fn default() -> Self {
@@ -194,21 +204,36 @@ impl Peer for CoapticPeer {
 
     fn notify(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
         let srv = self.server.as_ref().ok_or("no server")?;
-        *srv.notify.lock().expect("notify") = Some((
-            path.iter().map(|s| (*s).to_owned()).collect(),
-            payload.to_vec(),
-            false,
-        ));
+        *srv.notify.lock().expect("notify") = Some(NotifyCommand::Notification {
+            path: path.iter().map(|s| (*s).to_owned()).collect(),
+            payload: payload.to_vec(),
+            confirmable: false,
+        });
+        Ok(())
+    }
+
+    fn update_observed(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
+        if path != ["obs"] {
+            return Err(PeerError("update requires /obs".into()));
+        }
+        let body =
+            site::observe_update_body(payload).ok_or("unsupported bounded representation")?;
+        let server = self.server.as_ref().ok_or("no server")?;
+        let mut command = server.notify.lock().expect("update");
+        if command.is_some() {
+            return Err(PeerError("notification command occupied".into()));
+        }
+        *command = Some(NotifyCommand::UpdateObserved { body });
         Ok(())
     }
 
     fn notify_confirmable(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
         let srv = self.server.as_ref().ok_or("no server")?;
-        *srv.notify.lock().expect("notify") = Some((
-            path.iter().map(|s| (*s).to_owned()).collect(),
-            payload.to_vec(),
-            true,
-        ));
+        *srv.notify.lock().expect("notify") = Some(NotifyCommand::Notification {
+            path: path.iter().map(|s| (*s).to_owned()).collect(),
+            payload: payload.to_vec(),
+            confirmable: true,
+        });
         Ok(())
     }
 
@@ -236,21 +261,32 @@ fn server_loop(
     while !stop.load(Ordering::SeqCst) {
         let now = u64::try_from(origin.elapsed().as_millis()).unwrap_or(u64::MAX);
         let _ = app.poll(now);
-        if let Some((path, payload, confirmable)) = notify.lock().expect("n").take() {
-            let segs: Vec<&str> = path.iter().map(String::as_str).collect();
-            let body: &'static [u8] = if payload == site::OBS_BODY_2 {
-                site::OBS_BODY_2
-            } else if payload == site::OBS_BODY {
-                site::OBS_BODY
-            } else {
-                site::OBS_BODY_2
-            };
-            let response = Response::content(body).content_format(ContentFormat::TEXT_PLAIN);
-            let _ = if confirmable {
-                app.notify_confirmable(now, &segs, response)
-            } else {
-                app.notify(now, &segs, response)
-            };
+        if let Some(command) = notify.lock().expect("n").take() {
+            match command {
+                NotifyCommand::Notification {
+                    path,
+                    payload,
+                    confirmable,
+                } => {
+                    let segs: Vec<&str> = path.iter().map(String::as_str).collect();
+                    let body = site::observe_update_body(&payload).unwrap_or(site::OBS_BODY_2);
+                    let response =
+                        Response::content(body).content_format(ContentFormat::TEXT_PLAIN);
+                    let _ = if confirmable {
+                        app.notify_confirmable(now, &segs, response)
+                    } else {
+                        app.notify(now, &segs, response)
+                    };
+                }
+                NotifyCommand::UpdateObserved { body } => {
+                    // The GET handler and retransmission snapshot see the new
+                    // representation before its notification can reach a client.
+                    site::commit_observe_update(body);
+                    let response =
+                        Response::content(body).content_format(ContentFormat::TEXT_PLAIN);
+                    let _ = app.notify_confirmable(now, &["obs"], response);
+                }
+            }
         }
         thread::sleep(Duration::from_millis(2));
     }
@@ -671,5 +707,130 @@ mod observe_owner_tests {
             .unwrap_err();
         assert!(error.0.contains("not supported"));
         assert!(peer.take_capture().snapshot().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod observe_update_tests {
+    use super::*;
+
+    #[test]
+    fn occupied_update_command_refuses_without_replacing_owner() {
+        let mut server = CoapticPeer::new();
+        let command = Arc::new(Mutex::new(Some(NotifyCommand::Notification {
+            path: vec!["obs".into()],
+            payload: site::OBS_BODY.to_vec(),
+            confirmable: true,
+        })));
+        server.server = Some(ServerCtl {
+            addr: "127.0.0.1:5683".parse().unwrap(),
+            stop: Arc::new(AtomicBool::new(false)),
+            notify: Arc::clone(&command),
+            join: None,
+        });
+        assert!(
+            server
+                .update_observed(&["obs"], site::OBS_BODY_2)
+                .unwrap_err()
+                .0
+                .contains("occupied")
+        );
+        assert!(
+            matches!(&*command.lock().unwrap(), Some(NotifyCommand::Notification { path, payload, confirmable: true }) if path == &["obs"] && payload == site::OBS_BODY)
+        );
+        assert!(server.take_capture().snapshot().is_empty());
+        *command.lock().unwrap() = None;
+        server.update_observed(&["obs"], site::OBS_BODY_2).unwrap();
+        assert!(
+            matches!(&*command.lock().unwrap(), Some(NotifyCommand::UpdateObserved { body }) if *body == site::OBS_BODY_2)
+        );
+    }
+
+    #[test]
+    fn invalid_updates_preserve_state_and_next_server_starts_clean() {
+        let _guard = crate::runner::harness_lock();
+        let mut server = CoapticPeer::new();
+        let dest = server.start_server().unwrap();
+        let mut client = CoapticPeer::new();
+        let mut registration = ClientRequest::get(&["obs"]);
+        registration.observe = Some(0);
+        assert_eq!(
+            client.begin_observe(dest, &registration).unwrap().payload,
+            site::OBS_BODY
+        );
+        for body in [site::OBS_BODY_2, site::OBS_BODY] {
+            let before = server.take_capture().snapshot().len();
+            for (path, payload) in [
+                (&["test"][..], site::OBS_BODY_2),
+                (&["obs"][..], &b"invalid"[..]),
+                (&["obs"][..], &[0u8; 1025][..]),
+            ] {
+                assert!(server.update_observed(path, payload).is_err());
+            }
+            client.observe_quiet_for(Duration::from_millis(30)).unwrap();
+            assert_eq!(
+                server.take_capture().snapshot().len(),
+                before,
+                "invalid update emitted traffic"
+            );
+            let previous = if body == site::OBS_BODY_2 {
+                site::OBS_BODY
+            } else {
+                site::OBS_BODY_2
+            };
+            assert_eq!(
+                client
+                    .request_on_observe(dest, &ClientRequest::get(&["obs"]))
+                    .unwrap()
+                    .payload,
+                previous
+            );
+            server.update_observed(&["obs"], body).unwrap();
+            assert_eq!(
+                client
+                    .take_notification(Duration::from_secs(1))
+                    .unwrap()
+                    .payload,
+                body
+            );
+            assert_eq!(
+                client
+                    .request_on_observe(dest, &ClientRequest::get(&["obs"]))
+                    .unwrap()
+                    .payload,
+                body
+            );
+        }
+        // Leave a changed value behind, then verify the next serialized fixture
+        // resets both GET state and the snapshot mode, with no cross-TD leakage.
+        server.update_observed(&["obs"], site::OBS_BODY_2).unwrap();
+        assert_eq!(
+            client
+                .take_notification(Duration::from_secs(1))
+                .unwrap()
+                .payload,
+            site::OBS_BODY_2
+        );
+        drop(client);
+        drop(server);
+        let mut fresh_server = CoapticPeer::new();
+        let dest = fresh_server.start_server().unwrap();
+        let mut fresh_client = CoapticPeer::new();
+        assert_eq!(
+            fresh_client
+                .begin_observe(dest, &registration)
+                .unwrap()
+                .payload,
+            site::OBS_BODY
+        );
+        let mut unsupported = crate::runner::peer_by_name("coap-rs").unwrap();
+        assert!(
+            unsupported
+                .update_observed(&["obs"], site::OBS_BODY_2)
+                .unwrap_err()
+                .0
+                .contains("not supported")
+        );
+        assert!(unsupported.take_capture().snapshot().is_empty());
     }
 }
