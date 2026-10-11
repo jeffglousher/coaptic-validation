@@ -346,6 +346,10 @@ fn grade_observe_client_off(packets: &[Packet]) -> Result<(), String> {
         .observe()
         .and_then(Result::ok)
         .ok_or("OBS05 initial sequence")?;
+    let first_interval = ordered[7].t_ns.saturating_sub(ordered[6].t_ns);
+    // Bound capture/poll scheduling uncertainty explicitly: 25ms in the first
+    // measured interval, scaled with backoff, plus 100ms at each later capture.
+    let timing_slack = |multiple: u128| 25_000_000 * multiple + 100_000_000;
     for attempt in 0..5 {
         let index = 6 + attempt;
         let message = parse(index)?;
@@ -380,10 +384,17 @@ fn grade_observe_client_off(packets: &[Packet]) -> Result<(), String> {
             if elapsed + 5_000_000 < lower || elapsed > upper {
                 return Err("OBS05 retry outside retained real backoff bounds".into());
             }
+            let multiple = 1u128 << (attempt - 1);
+            if elapsed.abs_diff(first_interval * multiple) > timing_slack(multiple) {
+                return Err("OBS05 retry changed the retained randomized timeout".into());
+            }
         }
     }
     if ordered[11].t_ns.saturating_sub(ordered[10].t_ns) + 5_000_000 < 32_000_000_000 {
         return Err("OBS05 recovery before final timeout".into());
+    }
+    if ordered[11].t_ns.saturating_sub(ordered[10].t_ns) + timing_slack(16) < first_interval * 16 {
+        return Err("OBS05 recovery before retained final randomized timeout".into());
     }
     Ok(())
 }
@@ -2211,6 +2222,25 @@ mod observe_off_tests {
             assert!(
                 grade_observe_client_off(&changed).is_err(),
                 "accepted extra ACK/late notification"
+            );
+        }
+        // Preserve all bytes/order and alter only real-clock gaps. Independent
+        // nominal ranges would accept these lost-randomization regressions.
+        let first_interval = packets[7].t_ns - packets[6].t_ns;
+        for (target, interval) in [
+            (8, first_interval * 2 - 500_000_000),
+            (9, first_interval * 4 - 1_000_000_000),
+            (10, first_interval * 8 - 2_000_000_000),
+            (11, first_interval * 16 - 3_000_000_000),
+        ] {
+            let mut changed = packets.clone();
+            let delta = changed[target].t_ns - changed[target - 1].t_ns - interval;
+            for packet in &mut changed[target..] {
+                packet.t_ns -= delta;
+            }
+            assert!(
+                grade_observe_client_off(&changed).is_err(),
+                "accepted changed retained timer at {target}"
             );
         }
         for pair in [

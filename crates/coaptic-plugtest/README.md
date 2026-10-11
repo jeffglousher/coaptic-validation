@@ -321,7 +321,9 @@ notifications remain quiet for two 100-millisecond intervals. A fresh client the
 registers and receives two complete notifications. The server tap retains exactly
 seventeen packets; its grader checks full bodies, ownership, updated sequences,
 distinct MIDs, exponential timer bounds and the final-timeout interval before
-recovery. Twenty-four trace mutations cover malformed ownership/content,
+recovery. Later intervals retain the first captured randomized timeout, allowing
+25 milliseconds of first-interval uncertainty scaled by backoff plus 100
+milliseconds of capture/poll scheduling tolerance. Twenty-eight trace mutations cover malformed ownership/content,
 missing or extra packets, an inserted ACK and premature retry/recovery timing.
 Two short adapter tests cover invalid and occupied commands, unchanged state and
 no traffic on refusal, wrong-owner inspection and valid signal recovery.
