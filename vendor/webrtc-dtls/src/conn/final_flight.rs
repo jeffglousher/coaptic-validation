@@ -15,7 +15,10 @@ use crate::handshake::handshake_header::{HandshakeHeader, HANDSHAKE_HEADER_LENGT
 use crate::handshake::HandshakeType;
 
 // RFC 6347 section 4.2.4: at least twice RFC 793's two-minute default MSL.
-const RETENTION: Duration = Duration::from_secs(240);
+const ACCEPTANCE: Duration = Duration::from_secs(240);
+// A retry accepted at the end of that window may drain at its rate deadline.
+// Both deadlines are fixed at install; traffic never extends either one.
+const RETENTION: Duration = Duration::from_secs(300);
 const INITIAL_RETRY: Duration = Duration::from_secs(1);
 const MAX_RETRY: Duration = Duration::from_secs(60);
 const FINISHED_LEN: usize = 12;
@@ -32,6 +35,7 @@ struct FinalFlight {
     expected: [u8; FINISHED_LEN],
     covered: u16,
     packets: Option<Vec<Packet>>,
+    accepts_until: Instant,
     expires: Instant,
     next_retry: Instant,
     interval: Duration,
@@ -119,6 +123,7 @@ impl FinalFlightHandle {
             expected,
             covered: 0,
             packets: Some(packets),
+            accepts_until: now + ACCEPTANCE,
             expires: now + RETENTION,
             next_retry: now + INITIAL_RETRY,
             interval: INITIAL_RETRY,
@@ -166,6 +171,13 @@ impl FinalFlightHandle {
         }
         state.expire(now);
         if state.packets.is_none() {
+            return true;
+        }
+        if now >= state.accepts_until {
+            // Preserve only already accepted pending work during the fixed
+            // drain allowance. Late/partial retries cannot create more work.
+            state.expected.fill(0);
+            state.covered = 0;
             return true;
         }
         let mut remaining = payload;
@@ -335,6 +347,74 @@ mod tests {
         first.clear().await;
         assert!(second.state.lock().await.as_ref().unwrap().pending);
         assert_eq!(first.deadline().await, None);
+    }
+
+    #[tokio::test]
+    async fn retry_accepted_before_two_msl_drains_after_cutoff_without_extension() {
+        let handle = FinalFlightHandle::default();
+        handle.install(1, 4, [7; 12], Vec::new()).await;
+        let (cutoff, hard, due) = {
+            let mut guard = handle.state.lock().await;
+            let state = guard.as_mut().unwrap();
+            assert_eq!(state.expires - state.accepts_until, MAX_RETRY);
+            state.next_retry = state.accepts_until + Duration::from_secs(59);
+            (state.accepts_until, state.expires, state.next_retry)
+        };
+        assert!(
+            handle
+                .receive(
+                    1,
+                    &fragment(4, 0, &[7; 12]),
+                    cutoff - Duration::from_nanos(1)
+                )
+                .await
+        );
+        assert_eq!(handle.deadline().await, Some(due));
+        // A subsequent late retry cannot cancel the already accepted work.
+        assert!(handle.receive(1, &fragment(4, 0, &[7; 12]), cutoff).await);
+        assert!(handle.due(cutoff).await.is_none());
+        assert!(handle.due(due).await.is_some());
+        assert!(handle.receive(1, &fragment(4, 0, &[7; 12]), due).await);
+        assert!(handle.due(due).await.is_none());
+        assert_eq!(handle.deadline().await, Some(hard));
+        assert!(handle.due(hard).await.is_none());
+        assert_eq!(handle.deadline().await, None);
+    }
+
+    #[tokio::test]
+    async fn acceptance_cutoff_rejects_new_or_incomplete_retry_work() {
+        for partial in [false, true] {
+            let handle = FinalFlightHandle::default();
+            handle.install(1, 4, [7; 12], Vec::new()).await;
+            let cutoff = handle.state.lock().await.as_ref().unwrap().accepts_until;
+            if partial {
+                assert!(
+                    handle
+                        .receive(
+                            1,
+                            &fragment(4, 0, &[7; 6]),
+                            cutoff - Duration::from_nanos(1)
+                        )
+                        .await
+                );
+            }
+            assert!(handle.receive(1, &fragment(4, 0, &[7; 12]), cutoff).await);
+            assert!(
+                handle
+                    .receive(
+                        1,
+                        &fragment(4, 0, &[7; 12]),
+                        cutoff + Duration::from_secs(59)
+                    )
+                    .await
+            );
+            assert!(handle.due(cutoff + Duration::from_secs(59)).await.is_none());
+            let guard = handle.state.lock().await;
+            let state = guard.as_ref().unwrap();
+            assert!(!state.pending);
+            assert_eq!(state.covered, 0);
+            assert_eq!(state.expected, [0; 12]);
+        }
     }
 
     async fn blocked_writer_owner() -> (

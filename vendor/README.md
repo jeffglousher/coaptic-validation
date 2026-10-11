@@ -18,15 +18,19 @@ The retained upstream crate lockfile separately fixes the backend's private
 unit-test dependencies; it is not used by the companion production build.
 
 The ordinary server transfers its already generated final CCS/Finished packets
-into a private response owner before exposing handshake completion. A finite private responder task
-retains a fixed four-minute deadline (RFC6347 section4.2.4 and RFC793's two-minute
-MSL), coalesces intact authenticated peer retries, and rate-limits responses from
-one second with exponential backoff capped at sixty seconds. It submits through
-the existing connection writer, preserving fresh record sequence ownership.
-It never cancels a generic connection receive. Expiry and close also cancel a
-blocked queue reservation and release the pending packet clone. The deadline
-bounds queue handoff, not socket-write scheduling after admission by the writer.
-It does not alter handshake contents, encryption, verification or key derivation.
+into a private response owner before exposing handshake completion. A finite
+private task accepts intact authenticated retries for four minutes (RFC6347
+section4.2.4 and RFC793's two-minute MSL). It coalesces requests and rate-limits
+responses from one second with exponential backoff capped at sixty seconds.
+A fixed additional sixty-second drain allowance lets a retry accepted just
+before the acceptance cutoff reach its rate deadline. Neither deadline extends:
+new retries cannot add work at/after240 seconds, and retained packets and blocked
+queue reservations are released by the hard300-second deadline or close.
+
+The task submits through the existing connection writer, preserving fresh record
+sequence ownership, and never cancels a generic connection receive. Deadlines
+bound queue handoff, not socket-write scheduling after admission by the writer.
+Handshake contents, encryption, verification and key derivation are unchanged.
 
 Expiry clears retained packets, the expected Finished copy and coverage state.
 A small epoch/message-sequence filter remains to discard well-formed records

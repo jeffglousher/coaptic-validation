@@ -350,8 +350,8 @@ a fresh connection must then recover. Other application directions remain SKIP.
 The original backend returned from its handshake driver after sending the server's
 final CCS/Finished, leaving no active responder when that flight was lost. The
 [owned dependency patch](../../vendor/README.md) retains those already generated
-packets for four minutes and responds to intact peer retries through the original
-record writer. It changes neither cryptographic messages nor their verification.
+packets with a four-minute retry-acceptance window and at most a fixed sixty-second
+drain allowance, responding through the original record writer. It changes neither cryptographic messages nor their verification.
 The original failing diagnostic remains source-linked in
 [PR41](https://github.com/jeffglousher/coaptic-validation/pull/41).
 
