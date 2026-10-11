@@ -143,6 +143,26 @@ in-memory resource state and plaintext loopback evidence, not durable effects,
 authenticated ownership or hardware qualification.
 Tracking: [#423](https://github.com/jeffglousher/coaptic/issues/423).
 
+### Observed resource deletion and format change
+
+`observed_resource_terminal_errors_and_recovery` executes literal TD_COAP_OBS_07
+and TD_COAP_OBS_08 with Coaptic peers. The server persists local resource deletion
+or a changed content format before terminating the observation. A separate GET
+reads back 4.04 or the complete changed representation with format 42. The
+original relation receives CON 4.04 or 4.06 with its original token and no Observe
+option; the client acknowledges it. Three one-second attempted-update intervals
+remain quiet, then restoring the fixture and fresh registration recover complete
+CON delivery on the same client endpoint.
+
+The strict sixteen-datagram grader binds request paths, endpoints, tokens, MIDs,
+terminal options, complete read-back bodies, and recovery. Eighteen trace
+mutations per scenario must fail. A focused adapter test checks invalid path/state,
+occupied command refusal without replacement, valid recovery, fixture reset, and
+unsupported-backend refusal. Both coap-rs directions remain SKIP. Set
+`COAPTIC_OBSERVE_CAPTURE_DIR` to retain each scenario's PCAP. This is volatile,
+plaintext loopback protocol qualification, not durable deletion or authenticated
+access control. Tracked in [#425](https://github.com/jeffglousher/coaptic/issues/425).
+
 ### Observe reset socket qualification
 
 `cargo test --locked -p coaptic-plugtest --test observe_reset` checks RFC 7641

@@ -534,6 +534,9 @@ fn observe(
     client: &mut dyn Peer,
     server: &mut dyn Peer,
 ) -> Result<(), PeerError> {
+    if matches!(id, "TD_COAP_OBS_07" | "TD_COAP_OBS_08") {
+        return observe_resource_terminal(id, dest, client, server);
+    }
     if id == "TD_COAP_OBS_09" {
         return observe_resource_update(dest, client, server);
     }
@@ -581,6 +584,68 @@ fn observe(
             Ok(())
         }
     }
+}
+
+fn observe_resource_terminal(
+    id: &str,
+    dest: SocketAddr,
+    client: &mut dyn Peer,
+    server: &mut dyn Peer,
+) -> Result<(), PeerError> {
+    if client.name() != "coaptic" || server.name() != "coaptic" {
+        return Err(PeerError(
+            "SKIP: coverage gap #199: terminal resource fixture requires Coaptic peers".into(),
+        ));
+    }
+    observe_con(dest, client, server)?;
+    let endpoint = client.local_addr();
+    let deleted = id == "TD_COAP_OBS_07";
+    server.set_observed_state(&["obs"], if deleted { 1 } else { 2 })?;
+    let terminal = client.take_notification(Duration::from_secs(1))?;
+    if terminal.ty != Type::Confirmable
+        || terminal.code
+            != if deleted {
+                Code::NOT_FOUND
+            } else {
+                Code::NOT_ACCEPTABLE
+            }
+        || terminal.observe.is_some()
+        || !terminal.payload.is_empty()
+    {
+        return Err(PeerError("Observe terminal notification".into()));
+    }
+    let readback = client.request_on_observe(dest, &ClientRequest::get(&["obs"]))?;
+    if readback.ty != Type::Acknowledgement
+        || readback.code
+            != if deleted {
+                Code::NOT_FOUND
+            } else {
+                Code::CONTENT
+            }
+        || readback.observe.is_some()
+        || readback.content_format != if deleted { None } else { Some(42) }
+        || readback.payload != if deleted { &[][..] } else { site::OBS_BODY_2 }
+    {
+        return Err(PeerError("Observe terminal fixture readback".into()));
+    }
+    let before = server.take_capture().snapshot().len();
+    for body in [site::OBS_BODY, site::OBS_BODY_2, site::OBS_BODY] {
+        server.notify_confirmable(&["obs"], body)?;
+        client.observe_quiet_for(Duration::from_secs(1))?;
+    }
+    if server.take_capture().snapshot().len() != before {
+        return Err(PeerError("Observe traffic after terminal response".into()));
+    }
+    server.set_observed_state(&["obs"], 0)?;
+    // Wait for the owned mailbox command before the fresh registration.
+    client.observe_quiet_for(Duration::from_millis(30))?;
+    observe_con(dest, client, server)?;
+    if client.local_addr() != endpoint {
+        return Err(PeerError(
+            "Observe terminal recovery changed endpoint".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn observe_resource_update(

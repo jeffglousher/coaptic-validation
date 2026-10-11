@@ -307,22 +307,8 @@
     ]
   },
   "TD_COAP_OBS_06": { "allow_extra": true, "coap": [] },
-  "TD_COAP_OBS_07": {
-    "allow_extra": true,
-    "coap": [
-      {"code": "0.01", "uri_path": ["obs"], "observe": "register"},
-      {"code": "2.05"},
-      {"code": "0.04", "uri_path": ["obs"]},
-      {"code": "2.02"}
-    ]
-  },
-  "TD_COAP_OBS_08": {
-    "allow_extra": true,
-    "coap": [
-      {"code": "0.01", "observe": "register"},
-      {"code": "2.05"}
-    ]
-  },
+  "TD_COAP_OBS_07": { "allow_extra": true, "coap": [] },
+  "TD_COAP_OBS_08": { "allow_extra": true, "coap": [] },
   "TD_COAP_OBS_09": { "allow_extra": true, "coap": [] },
   "TD_COAP_OBS_10": { "allow_extra": true, "coap": [] },
   "TD_COAP_OBS_11": {

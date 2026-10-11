@@ -203,6 +203,9 @@ impl Catalog {
 /// Grade one TD.
 pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), String> {
     let packets = capture.snapshot();
+    if matches!(td, "TD_COAP_OBS_07" | "TD_COAP_OBS_08") {
+        grade_observe_terminal(&packets, td == "TD_COAP_OBS_07")?;
+    }
     if td == "TD_COAP_OBS_09" {
         grade_observe_update(&packets)?;
     }
@@ -297,6 +300,98 @@ pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), St
                 n = leftover.len()
             ));
         }
+    }
+    Ok(())
+}
+
+/// Terminal notification, persisted resource read-back, and fresh recovery.
+/// The runner separately checks timed silence and application non-delivery.
+fn grade_observe_terminal(packets: &[Packet], deleted: bool) -> Result<(), String> {
+    let mut ordered = packets.to_vec();
+    ordered.sort_by_key(|p| p.t_ns);
+    let mut seen = HashSet::new();
+    ordered.retain(|p| seen.insert((p.src, p.dst, p.bytes.clone())));
+    if ordered.len() != 16 {
+        return Err("Observe terminal requires sixteen unique datagrams".into());
+    }
+    grade_confirmable_observe(&ordered[..6])?;
+    grade_confirmable_observe(&ordered[10..])?;
+    let parse = |i: usize| decode(&ordered[i].bytes).map_err(|e| format!("terminal {i}: {e:?}"));
+    let registration = parse(0)?;
+    let terminal = parse(6)?;
+    let ack = parse(7)?;
+    let request = parse(8)?;
+    let reply = parse(9)?;
+    let client = ordered[0].src;
+    let server = ordered[0].dst;
+    if ordered[6].src != server
+        || ordered[6].dst != client
+        || terminal.ty() != Type::Confirmable
+        || terminal.code()
+            != if deleted {
+                Code::NOT_FOUND
+            } else {
+                Code::NOT_ACCEPTABLE
+            }
+        || terminal.token() != registration.token()
+        || terminal.observe().is_some()
+        || terminal.content_format().is_some()
+        || !terminal.payload().is_empty()
+        || terminal.message_id() == parse(2)?.message_id()
+        || terminal.message_id() == parse(4)?.message_id()
+    {
+        return Err("Observe terminal ownership/code/options".into());
+    }
+    if ordered[7].src != client
+        || ordered[7].dst != server
+        || ack.ty() != Type::Acknowledgement
+        || !ack.code().is_empty()
+        || ack.message_id() != terminal.message_id()
+        || ordered[7].bytes.len() != 4
+    {
+        return Err("Observe terminal ACK".into());
+    }
+    if ordered[8].src != client
+        || ordered[8].dst != server
+        || request.ty() != Type::Confirmable
+        || request.code() != Code::GET
+        || request.uri_path().collect::<Vec<_>>() != [Ok("obs")]
+        || request.observe().is_some()
+        || request.token().is_empty()
+        || request.token() == registration.token()
+        || request.message_id() == registration.message_id()
+        || ordered[9].src != server
+        || ordered[9].dst != client
+        || reply.ty() != Type::Acknowledgement
+        || reply.message_id() != request.message_id()
+        || reply.token() != request.token()
+        || reply.code()
+            != if deleted {
+                Code::NOT_FOUND
+            } else {
+                Code::CONTENT
+            }
+        || reply.observe().is_some()
+        || reply.content_format()
+            != if deleted {
+                None
+            } else {
+                Some(Ok(coaptic::message::ContentFormat::OCTET_STREAM))
+            }
+        || reply.payload()
+            != if deleted {
+                &[][..]
+            } else {
+                crate::site::OBS_BODY_2
+            }
+    {
+        return Err("Observe persisted resource readback".into());
+    }
+    if ordered[10].src != client
+        || ordered[10].dst != server
+        || parse(10)?.token() == registration.token()
+    {
+        return Err("Observe fresh same-endpoint recovery".into());
     }
     Ok(())
 }
