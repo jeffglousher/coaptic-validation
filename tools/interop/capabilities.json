@@ -4536,7 +4536,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "Scoped IPv6 zone identifiers are not a loopback case. Coaptic-to-libcoap IPv4 and IPv6 loopback UDP now qualify a silent 256-byte relay datagram cap: small-response success, oversized Block2 loss with bounded timeout and fresh complete recovery after removing the cap. This is not ICMP path-MTU discovery or adaptive shrinking; a separate protected IPv4 classic Block2 campaign in #495 requires its own authenticated exact-source report. Other peers, protected modes/directions/address families, scoped/routed and compound-fault cases remain unqualified.",
+      "reason": "Scoped IPv6 zone identifiers are not a loopback case. Coaptic-to-libcoap IPv4 and IPv6 loopback UDP now qualify a silent 256-byte relay datagram cap: small-response success, oversized Block2 loss with bounded timeout and fresh complete recovery after removing the cap. This is not ICMP path-MTU discovery or adaptive shrinking; separate protected IPv4 (#495) and IPv6 (#499) classic Block2 campaigns require their own authenticated exact-source reports. Other peers, protected modes/directions, scoped/routed and compound-fault cases remain unqualified.",
       "issue": 200,
       "executable_cases": []
     },
