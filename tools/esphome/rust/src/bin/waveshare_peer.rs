@@ -6,78 +6,15 @@ use coaptic::message::{Message, MessageId, Opt, Token, Type, decode};
 use coaptic::oscore::SecurityContext;
 use coaptic::storage::{DatagramIo, UdpSocketIo};
 use coaptic::{App, Code, Endpoint, profiles};
-use coaptic_esphome_probe::security_state::{
-    Credentials, Error, RECORD_BYTES, State, Store, provision,
-};
-use std::fs::{File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
+use coaptic_esphome_probe::host_state::{FileStore, credentials};
+use coaptic_esphome_probe::security_state::{Credentials, State, provision};
+use std::fs::File;
+use std::io::{Read, Write};
 use std::net::{SocketAddr, UdpSocket};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 type Result<T> = std::result::Result<T, &'static str>;
-
-struct FileStore {
-    file: File,
-    initializing: bool,
-}
-impl FileStore {
-    fn open(path: &Path, initializing: bool) -> Result<Self> {
-        let mut options = OpenOptions::new();
-        options.read(true).write(true).create_new(initializing);
-        let file = options.open(path).map_err(|_| "state open refused")?;
-        file.try_lock()
-            .map_err(|_| "state exclusively owned elsewhere")?;
-        Ok(Self { file, initializing })
-    }
-}
-impl Store for FileStore {
-    fn read(&mut self) -> std::result::Result<Option<[u8; RECORD_BYTES]>, Error> {
-        let length = self.file.metadata().map_err(|_| Error::Unavailable)?.len();
-        if self.initializing && length == 0 {
-            return Ok(None);
-        }
-        if length != RECORD_BYTES as u64 {
-            return Err(Error::Corrupt);
-        }
-        let mut bytes = [0; RECORD_BYTES];
-        self.file
-            .seek(SeekFrom::Start(0))
-            .map_err(|_| Error::Unavailable)?;
-        self.file
-            .read_exact(&mut bytes)
-            .map_err(|_| Error::Unavailable)?;
-        Ok(Some(bytes))
-    }
-    fn commit(&mut self, bytes: &[u8; RECORD_BYTES]) -> std::result::Result<(), Error> {
-        self.file
-            .seek(SeekFrom::Start(0))
-            .map_err(|_| Error::Unavailable)?;
-        self.file.write_all(bytes).map_err(|_| Error::Unavailable)?;
-        self.file.sync_all().map_err(|_| Error::Unavailable)?;
-        self.initializing = false;
-        Ok(())
-    }
-}
-
-fn credentials(path: &Path) -> Result<Credentials> {
-    let mut file = File::open(path).map_err(|_| "credentials unavailable")?;
-    if file.metadata().map_err(|_| "credential metadata")?.len() != 66 {
-        return Err("credential length");
-    }
-    let mut bytes = [0; 66];
-    file.read_exact(&mut bytes)
-        .map_err(|_| "credentials read")?;
-    let c = Credentials {
-        secret: bytes[..32].try_into().unwrap(),
-        salt: bytes[32..48].try_into().unwrap(),
-        context: bytes[48..64].try_into().unwrap(),
-        sender: bytes[64],
-        recipient: bytes[65],
-    };
-    bytes.fill(0);
-    Ok(c)
-}
 
 struct CaptureIo {
     io: UdpSocketIo<[u8; 1153]>,
@@ -490,27 +427,5 @@ mod tests {
             Err("refused probe received a datagram")
         );
         responder.join().unwrap();
-    }
-
-    #[test]
-    fn file_store_refuses_concurrent_owner_truncation_and_implicit_creation() {
-        let root = std::env::temp_dir().join(format!("coaptic-state-proof-{}", std::process::id()));
-        std::fs::create_dir(&root).unwrap();
-        let path = root.join("state");
-        assert!(FileStore::open(&path, false).is_err());
-        let mut first = FileStore::open(&path, true).unwrap();
-        assert!(FileStore::open(&path, false).is_err());
-        assert!(first.read().unwrap().is_none());
-        first.commit(&[0x39; RECORD_BYTES]).unwrap();
-        assert_eq!(first.read().unwrap(), Some([0x39; RECORD_BYTES]));
-        assert!(FileStore::open(&path, true).is_err());
-        first.file.set_len(99).unwrap();
-        assert_eq!(first.read(), Err(Error::Corrupt));
-        drop(first);
-        let mut reopened = FileStore::open(&path, false).unwrap();
-        assert_eq!(reopened.read(), Err(Error::Corrupt));
-        drop(reopened);
-        std::fs::remove_file(&path).unwrap();
-        std::fs::remove_dir(&root).unwrap();
     }
 }

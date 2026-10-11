@@ -3171,6 +3171,30 @@
       "executable": "tools/interop/run.py:separate_client"
     },
     {
+      "id": "separate-loss:coaptic->coap-rs",
+      "client": "coaptic",
+      "server": "coap-rs",
+      "transport": "udp",
+      "security": "none",
+      "address_family": "ipv4-loopback",
+      "execution_platforms": [
+        "linux",
+        "windows"
+      ],
+      "requires": [],
+      "features": [
+        "separate-response"
+      ],
+      "positive_proof": [
+        "empty request ACK, exactly one dropped separate CON, identical complete retransmission and subsequent client ACK",
+        "fresh Coaptic client completes after the loss schedule against the same standalone fixture"
+      ],
+      "failure_proof": [
+        "missing drop, changed retransmission, wrong bindings or an absent/early client ACK fails"
+      ],
+      "executable": "tools/interop/run.py:separate_loss_client"
+    },
+    {
       "id": "separate-loss:coaptic->coaptic",
       "client": "coaptic",
       "server": "coaptic",
@@ -3844,6 +3868,15 @@
       "executable": "tools/interop/run.py:qblock2_missing"
     },
     {
+      "id": "ipv6-qblock2-loss:coaptic->libcoap",
+      "client": "coaptic", "server": "libcoap", "transport": "udp", "security": "none",
+      "address_family": "ipv6-loopback", "execution_platforms": ["linux", "windows"], "requires": [],
+      "features": ["qblock2", "non", "missing-block", "ipv6", "partial-timeout"],
+      "positive_proof": ["exact IPv6-only endpoint ownership and independent ::1 probe", "2000-byte complete NON Q-Block2 recovery after selective missing-block request", "fresh complete IPv6 transfer after partial timeout against the same server"],
+      "failure_proof": ["permanent block1 loss delivers partial data then protocol timeout without complete response", "wrong-family, endpoint, missing-loss, partial-body and changed-representation evidence refuse"],
+      "executable": "tools/interop/run.py:qblock2_ipv6_loss"
+    },
+    {
       "id": "qblock2-missing:coaptic->libcoap",
       "client": "coaptic",
       "server": "libcoap",
@@ -4281,7 +4314,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "Coaptic NON Q-Block2 recovery against libcoap is an IPv4 UDP process case. CON loss recovery against libcoap, protected and other addressing modes remain unqualified. coap-rs has no Q-Block.",
+      "reason": "Coaptic NON Q-Block2 recovery against libcoap is qualified over IPv4 and IPv6 loopback UDP, including IPv6 permanent-loss partial timeout and fresh recovery. CON loss recovery against libcoap, protected, scoped and routed addressing remain unqualified. coap-rs has no Q-Block.",
       "issue": 200,
       "executable_cases": []
     },
@@ -4297,7 +4330,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "The standalone coap-rs separate-response fixture is exercised over IPv4 UDP only. DTLS, lossy response retransmission, other address families and embedded execution remain unqualified.",
+      "reason": "The bounded standalone coap-rs fixture qualifies IPv4 UDP separate-response loss recovery. DTLS, other address families and embedded execution remain unqualified; this does not establish upstream coap-rs retransmission behavior.",
       "issue": 200,
       "executable_cases": []
     },
