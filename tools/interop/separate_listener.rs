@@ -118,7 +118,8 @@ impl Listener for SeparateListener {
                         if size > MAX_DATAGRAM { continue; }
                         if pending.control(source, &buffer[..size]) { continue; }
                         let Ok(packet) = Packet::from_bytes(&buffer[..size]) else { continue; };
-                        // Empty ACK/RST messages do not occupy backend request slots.
+                        // Unmatched or malformed controls never enter the backend.
+                        if matches!(packet.header.get_type(), MessageType::Acknowledgement | MessageType::Reset) { continue; }
                         if !matches!(packet.header.code, MessageClass::Request(_)) { continue; }
                         let Ok(permit) = Arc::clone(&self.admission).try_acquire_owned() else { continue; };
                         let separate = packet.get_option(CoapOption::UriPath)
@@ -236,6 +237,10 @@ mod tests {
             .unwrap();
         assert_eq!(&buffer[..size], response);
         // Wrong MID and a matching MID from another endpoint cannot free NSTART.
+        // A malformed ACK carrying GET is still a control, never a new request.
+        let mut malformed_control = another;
+        malformed_control[0] = 0x61;
+        socket.send_to(&malformed_control, address).await.unwrap();
         socket.send_to(&[0x60, 0, 0, 99], address).await.unwrap();
         let stranger = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
         stranger.send_to(&[0x70, 0, 0, 4], address).await.unwrap();
