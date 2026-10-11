@@ -153,6 +153,16 @@ class CampaignTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "RTO"):
             campaign_grade(*data, "drop-permanent")
 
+    def test_later_backoff_is_bound_to_first_actual_interval(self):
+        data = loss_evidence("drop-permanent")
+        data[0][-1]["time_ns"] = data[0][4]["time_ns"] + 2_100_000_000
+        retry = copy.deepcopy(data[0][-1]); retry["time_ns"] += 3_950_000_000
+        data[0].append(retry)
+        # 3.95s meets the generic second-RTO floor but improperly shortens
+        # the observed 2.1s initial interval's 4.2s exponential backoff.
+        with self.assertRaisesRegex(AssertionError, "observed exponential"):
+            campaign_grade(*data, "drop-permanent")
+
     def test_loss_schedule_owner_ack_and_timer_mutations_refuse(self):
         mutations = (
             lambda d: d[0].pop(1),  # initial request ACK
