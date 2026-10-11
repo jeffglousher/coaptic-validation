@@ -56,3 +56,20 @@ The coap-rs client can repeat the original GET despite its empty ACK. The trace
 retains those retries and matching repeated ACKs; every delivered separate
 response must still match the dropped bytes exactly. This checks recovery and
 bindings, not a complete retransmission-timer conformance schedule.
+
+The Coaptic-to-libcoap Q-Block2 missing-block case uses explicit NON requests
+(`qblock2-non` in the Coaptic peer). The fixture knows that both peers support
+Q-Block; this case does not qualify capability discovery. RFC 9177 sections 7.1
+and 7.2 distinguish NON transfer recovery from CON congestion control: with
+libcoap's default NSTART of one, dropping a CON payload prevents a higher block
+from arriving. Existing CON cases retain their original request type.
+
+The relay selects 256-byte blocks, withholds block 1 until the client requests
+it, and requires a higher block to arrive before that selective recovery. The
+20-second deadline and 256-datagram trace bound apply. Delivered payloads must
+reassemble the exact 2000-byte pattern with stable ETag, Size2 and block size,
+contiguous numbers and a final block. The report retains the full trace,
+including original and forwarded bytes. Mutation tests reject absent loss,
+wrong recovery options, CON fallback and incomplete or changed body evidence.
+This case covers IPv4 loopback UDP; protected recovery, other address families,
+CON loss recovery against libcoap and hardware remain unqualified.

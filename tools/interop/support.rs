@@ -25,6 +25,7 @@ pub struct Args {
     pub timeout: u64,
     pub q_block1: bool,
     pub q_block2: bool,
+    pub q_block2_non: bool,
     pub observe: bool,
     pub echo: bool,
     pub replay: Option<(u64, u32)>,
@@ -36,10 +37,15 @@ impl Args {
         let (mut q_block1, mut q_block2, mut observe, mut echo, mut jsonpatch) =
             (false, false, false, false, false);
         let mut replay = None;
+        let mut q_block2_non = false;
         while let Some(flag) = a.last().cloned() {
             match flag.as_str() {
                 "qblock1" => q_block1 = true,
                 "qblock2" => q_block2 = true,
+                "qblock2-non" => {
+                    q_block2 = true;
+                    q_block2_non = true;
+                }
                 "observe" => observe = true,
                 "echo" => echo = true,
                 "jsonpatch" => jsonpatch = true,
@@ -134,6 +140,7 @@ impl Args {
             timeout,
             q_block1,
             q_block2,
+            q_block2_non,
             observe,
             echo,
             replay,
