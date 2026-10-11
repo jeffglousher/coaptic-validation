@@ -260,3 +260,27 @@ datagram slots before duplicate-cache expiry; an exploratory extra round returne
 `Saturated`. It does not establish sustained update cadence, multi-client
 capacity, protected interoperability, or OBS14 variable-size behavior. Tracked in
 [#432](https://github.com/jeffglousher/coaptic/issues/432).
+
+### Variable-size Observe representations
+
+`observe_pumping_covers_both_initial_sizes_and_complete_notifications` executes
+literal TD_COAP_OBS_14 with Coaptic peers. The bounded `/obs-pumping` fixture uses
+static 32-, 2000- and 64-byte representations with distinct ETags and one content
+format. One run starts small and delivers large then small CON notifications;
+a fresh server and registration start large and deliver small then large. Both
+runs obtain and check every byte before scheduling the next update. A bounded
+command completion confirms the selected initial state before registration.
+
+The eighteen-datagram grader checks both initial forms, complete small and Block2
+bodies, ETag consistency, Observe progression, endpoint/path/token/MID ownership
+and exact empty ACKs. Thirty trace mutations must fail, including malformed Block2 on small bodies. Two adapter tests
+cover invalid path/version, missing server, occupied command preservation,
+unchanged state/no traffic on refusal, valid delivery recovery and server reset.
+Unsupported directions remain SKIP. `COAPTIC_OBSERVE_CAPTURE_DIR` retains
+`obs-14-coaptic.pcap`.
+
+This is plaintext loopback qualification of one observer and two subsequent
+notifications per fresh run. It does not establish sustained cadence, resource
+capacity across additional owners, or protected interoperability. The original
+TD requirements and RFC7959 section 2.6 are tracked in
+[#435](https://github.com/jeffglousher/coaptic/issues/435).
