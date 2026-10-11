@@ -660,7 +660,8 @@ fn spawn_coaptic_server_cfg(attach_oscore: bool) -> Result<CoapticServer, PeerEr
             let mut app = bind_site(sock);
             #[cfg(feature = "oscore")]
             if attach_oscore {
-                app.set_oscore(oscore_server_ctx());
+                app.set_oscore(&mut Some(oscore_server_ctx()))
+                    .expect("fresh dogfood server has no protocol state");
             }
             #[cfg(not(feature = "oscore"))]
             let _ = attach_oscore;

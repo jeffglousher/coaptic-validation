@@ -668,152 +668,154 @@ fn observed_resource_updates_are_delivered_and_read_back() {
     use coaptic::message::{Code, Message, Opt, Type, decode, encode, encode_uint};
     use coaptic_plugtest::pcap::Capture;
     let catalog = Catalog::load().unwrap();
-    let result = runner::run_td(
-        "TD_COAP_OBS_09",
-        Pair {
-            client: "coaptic",
-            server: "coaptic",
-        },
-    );
-    assert!(result.error.is_none(), "{:?}", result.error);
-    let packets = result.capture.snapshot();
-    let mut unique = packets.clone();
-    let mut seen = std::collections::HashSet::new();
-    unique.sort_by_key(|p| p.t_ns);
-    unique.retain(|p| seen.insert((p.src, p.dst, p.bytes.clone())));
-    for fault in [
-        "notification-body",
-        "notification-token",
-        "notification-format",
-        "notification-sequence",
-        "non-notification",
-        "missing-notification",
-        "ack-mid",
-        "ack-endpoint",
-        "request-path",
-        "request-token",
-        "request-observe",
-        "reply-body",
-        "reply-format",
-        "reply-token",
-        "reply-endpoint",
-        "missing-readback",
-    ] {
-        let changed = Capture::new();
-        for packet in &packets {
-            let index = unique
-                .iter()
-                .position(|p| p.src == packet.src && p.dst == packet.dst && p.bytes == packet.bytes)
-                .unwrap();
-            let p = decode(&packet.bytes).unwrap();
-            let mut bytes = packet.bytes.clone();
-            let mut src = packet.src;
-            if index == 6 {
-                match fault {
-                    "notification-body" => *bytes.last_mut().unwrap() ^= 1,
-                    "notification-token" => bytes[4] ^= 1,
-                    "non-notification" => bytes[0] |= 0x10,
-                    "missing-notification" => continue,
-                    "notification-format" | "notification-sequence" => {
-                        let seq = encode_uint(if fault == "notification-sequence" {
-                            1
-                        } else {
-                            p.observe().unwrap().unwrap()
-                        });
-                        let format = encode_uint(if fault == "notification-format" {
-                            42
-                        } else {
-                            0
-                        });
-                        let opts = [Opt::observe(&seq), Opt::content_format(&format)];
-                        let msg = Message::new(Type::Confirmable, Code::CONTENT, p.message_id())
-                            .with_token(p.token())
-                            .with_options(&opts)
-                            .with_payload(p.payload());
-                        let mut buf = [0; 128];
-                        let n = encode(&msg, &mut buf).unwrap();
-                        bytes = buf[..n].to_vec();
-                    }
-                    _ => {}
-                }
-            }
-            if index == 7 {
-                if fault == "ack-mid" {
-                    bytes[3] ^= 1;
-                }
-                if fault == "ack-endpoint" {
-                    src = packet.dst;
-                }
-            }
-            if index == 8 {
-                if fault == "request-token" {
-                    let token = decode(&unique[0].bytes).unwrap().token();
-                    bytes[4..4 + token.len()].copy_from_slice(token.as_bytes());
-                }
-                if matches!(fault, "request-path" | "request-observe") {
-                    let mut opts = Vec::new();
-                    if fault == "request-observe" {
-                        opts.push(Opt::observe_register());
-                    }
-                    opts.push(Opt::uri_path(if fault == "request-path" {
-                        "test"
-                    } else {
-                        "obs"
-                    }));
-                    let msg = Message::new(Type::Confirmable, Code::GET, p.message_id())
-                        .with_token(p.token())
-                        .with_options(&opts);
-                    let mut buf = [0; 128];
-                    let n = encode(&msg, &mut buf).unwrap();
-                    bytes = buf[..n].to_vec();
-                }
-            }
-            if index == 9 {
-                match fault {
-                    "reply-body" => *bytes.last_mut().unwrap() ^= 1,
-                    "reply-token" => bytes[4] ^= 1,
-                    "reply-endpoint" => src = packet.dst,
-                    "missing-readback" => continue,
-                    "reply-format" => {
-                        let format = encode_uint(42);
-                        let opts = [Opt::content_format(&format)];
-                        let msg =
-                            Message::new(Type::Acknowledgement, Code::CONTENT, p.message_id())
-                                .with_token(p.token())
-                                .with_options(&opts)
-                                .with_payload(p.payload());
-                        let mut buf = [0; 128];
-                        let n = encode(&msg, &mut buf).unwrap();
-                        bytes = buf[..n].to_vec();
-                    }
-                    _ => {}
-                }
-            }
-            changed.push(src, packet.dst, &bytes, packet.decrypted);
-        }
-        assert!(
-            catalog.grade("TD_COAP_OBS_09", &changed).is_err(),
-            "accepted {fault}"
+    for client in ["coaptic", "coap-rs"] {
+        let result = runner::run_td(
+            "TD_COAP_OBS_09",
+            Pair {
+                client,
+                server: "coaptic",
+            },
         );
+        assert!(result.error.is_none(), "{:?}", result.error);
+        let packets = result.capture.snapshot();
+        let mut unique = packets.clone();
+        let mut seen = std::collections::HashSet::new();
+        unique.sort_by_key(|p| p.t_ns);
+        unique.retain(|p| seen.insert((p.src, p.dst, p.bytes.clone())));
+        for fault in [
+            "notification-body",
+            "notification-token",
+            "notification-format",
+            "notification-sequence",
+            "non-notification",
+            "missing-notification",
+            "ack-mid",
+            "ack-endpoint",
+            "request-path",
+            "request-token",
+            "request-observe",
+            "reply-body",
+            "reply-format",
+            "reply-token",
+            "reply-endpoint",
+            "missing-readback",
+        ] {
+            let changed = Capture::new();
+            for packet in &packets {
+                let index = unique
+                    .iter()
+                    .position(|p| {
+                        p.src == packet.src && p.dst == packet.dst && p.bytes == packet.bytes
+                    })
+                    .unwrap();
+                let p = decode(&packet.bytes).unwrap();
+                let mut bytes = packet.bytes.clone();
+                let mut src = packet.src;
+                if index == 6 {
+                    match fault {
+                        "notification-body" => *bytes.last_mut().unwrap() ^= 1,
+                        "notification-token" => bytes[4] ^= 1,
+                        "non-notification" => bytes[0] |= 0x10,
+                        "missing-notification" => continue,
+                        "notification-format" | "notification-sequence" => {
+                            let seq = encode_uint(if fault == "notification-sequence" {
+                                1
+                            } else {
+                                p.observe().unwrap().unwrap()
+                            });
+                            let format = encode_uint(if fault == "notification-format" {
+                                42
+                            } else {
+                                0
+                            });
+                            let opts = [Opt::observe(&seq), Opt::content_format(&format)];
+                            let msg =
+                                Message::new(Type::Confirmable, Code::CONTENT, p.message_id())
+                                    .with_token(p.token())
+                                    .with_options(&opts)
+                                    .with_payload(p.payload());
+                            let mut buf = [0; 128];
+                            let n = encode(&msg, &mut buf).unwrap();
+                            bytes = buf[..n].to_vec();
+                        }
+                        _ => {}
+                    }
+                }
+                if index == 7 {
+                    if fault == "ack-mid" {
+                        bytes[3] ^= 1;
+                    }
+                    if fault == "ack-endpoint" {
+                        src = packet.dst;
+                    }
+                }
+                if index == 8 {
+                    if fault == "request-token" {
+                        let token = decode(&unique[0].bytes).unwrap().token();
+                        bytes[4..4 + token.len()].copy_from_slice(token.as_bytes());
+                    }
+                    if matches!(fault, "request-path" | "request-observe") {
+                        let mut opts = Vec::new();
+                        if fault == "request-observe" {
+                            opts.push(Opt::observe_register());
+                        }
+                        opts.push(Opt::uri_path(if fault == "request-path" {
+                            "test"
+                        } else {
+                            "obs"
+                        }));
+                        let msg = Message::new(Type::Confirmable, Code::GET, p.message_id())
+                            .with_token(p.token())
+                            .with_options(&opts);
+                        let mut buf = [0; 128];
+                        let n = encode(&msg, &mut buf).unwrap();
+                        bytes = buf[..n].to_vec();
+                    }
+                }
+                if index == 9 {
+                    match fault {
+                        "reply-body" => *bytes.last_mut().unwrap() ^= 1,
+                        "reply-token" => bytes[4] ^= 1,
+                        "reply-endpoint" => src = packet.dst,
+                        "missing-readback" => continue,
+                        "reply-format" => {
+                            let format = encode_uint(42);
+                            let opts = [Opt::content_format(&format)];
+                            let msg =
+                                Message::new(Type::Acknowledgement, Code::CONTENT, p.message_id())
+                                    .with_token(p.token())
+                                    .with_options(&opts)
+                                    .with_payload(p.payload());
+                            let mut buf = [0; 128];
+                            let n = encode(&msg, &mut buf).unwrap();
+                            bytes = buf[..n].to_vec();
+                        }
+                        _ => {}
+                    }
+                }
+                changed.push(src, packet.dst, &bytes, packet.decrypted);
+            }
+            assert!(
+                catalog.grade("TD_COAP_OBS_09", &changed).is_err(),
+                "accepted {fault}"
+            );
+        }
+        if let Some(directory) = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            result
+                .capture
+                .write_pcap(
+                    std::fs::File::create(directory.join(format!("obs-09-{client}.pcap"))).unwrap(),
+                )
+                .unwrap();
+        }
     }
-    if let Some(directory) = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR") {
-        let directory = std::path::PathBuf::from(directory);
-        std::fs::create_dir_all(&directory).unwrap();
-        result
-            .capture
-            .write_pcap(std::fs::File::create(directory.join("obs-09-coaptic.pcap")).unwrap())
-            .unwrap();
-    }
-    for pair in [
-        Pair {
-            client: "coap-rs",
-            server: "coaptic",
-        },
-        Pair {
+    {
+        let pair = Pair {
             client: "coaptic",
             server: "coap-rs",
-        },
-    ] {
+        };
         assert!(
             runner::run_td("TD_COAP_OBS_09", pair)
                 .error
