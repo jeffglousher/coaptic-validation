@@ -19,6 +19,8 @@
 mod coap_dtls;
 
 mod loss;
+#[cfg(test)]
+mod record_policy;
 
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
