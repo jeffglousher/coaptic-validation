@@ -2,6 +2,9 @@
 //! Credentials/state live in an operator-private directory. State is exclusively
 //! locked; every update uses sync_all and authenticated readback. This qualifies
 //! normal process/device restart separately from flash/power-loss/rollback.
+#[path = "waveshare_peer/raw_udp.rs"]
+mod raw_udp;
+
 use coaptic::message::{Message, MessageId, Opt, Token, Type, decode};
 use coaptic::oscore::SecurityContext;
 use coaptic::storage::{DatagramIo, UdpSocketIo};
@@ -154,7 +157,7 @@ fn run() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
     if args.len() != 7 {
         return Err(
-            "usage: waveshare-peer provision|check|replay ADDRESS CREDENTIALS STATE SAVED_WIRE RUN_ID",
+            "usage: waveshare-peer provision|check|replay|raw-udp ADDRESS CREDENTIALS STATE SAVED_WIRE RUN_ID",
         );
     }
     let c = credentials(Path::new(&args[3]))?;
@@ -172,7 +175,7 @@ fn run() -> Result<()> {
     probe
         .set_read_timeout(Some(Duration::from_millis(500)))
         .map_err(|_| "probe timeout")?;
-    if !["check", "replay"].contains(&args[1].as_str())
+    if !["check", "replay", "raw-udp"].contains(&args[1].as_str())
         || args[6].len() != 32
         || !args[6].bytes().all(|b| b.is_ascii_hexdigit())
     {
@@ -196,6 +199,17 @@ fn run() -> Result<()> {
         .map_err(|_| "app bind")?;
     let clock = Instant::now();
     let mut output = [0; 4096];
+    if args[1] == "raw-udp" {
+        return raw_udp::campaign(
+            &mut client,
+            &mut state,
+            &clock,
+            &probe,
+            peer,
+            &args[6],
+            Path::new(&args[5]),
+        );
+    }
     if args[1] == "replay" {
         let mut f = File::open(&args[5]).map_err(|_| "saved wire unavailable")?;
         let len = f.metadata().map_err(|_| "wire metadata")?.len() as usize;
