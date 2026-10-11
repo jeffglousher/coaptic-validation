@@ -39,6 +39,7 @@ pub enum Error {
     Clock,
     Security(security_state::Error),
     Bind,
+    Ready,
     Checkpoint,
     Poll,
     Journal(crate::Error),
@@ -58,10 +59,46 @@ pub enum Error {
 pub fn run<T: DatagramIo, S: Store>(
     io: T,
     random: fn(&mut [u8]) -> bool,
+    clock: impl FnMut() -> Option<u64>,
+    binding: Binding<'_>,
+    security: S,
+    journal: &mut Journal,
+) -> Result<Report, Error> {
+    run_inner(
+        io,
+        random,
+        clock,
+        binding,
+        security,
+        journal,
+        None::<fn() -> bool>,
+    )
+}
+
+/// Like [`run`], with a bounded readiness callback after security recovery and
+/// application binding, before network polling. The original deadline includes
+/// initialization: expired or stopped initialization never announces readiness.
+/// Returning false from `ready` refuses service without network I/O.
+pub fn run_with_ready<T: DatagramIo, S: Store>(
+    io: T,
+    random: fn(&mut [u8]) -> bool,
+    clock: impl FnMut() -> Option<u64>,
+    binding: Binding<'_>,
+    security: S,
+    journal: &mut Journal,
+    ready: impl FnOnce() -> bool,
+) -> Result<Report, Error> {
+    run_inner(io, random, clock, binding, security, journal, Some(ready))
+}
+
+fn run_inner<T: DatagramIo, S: Store>(
+    io: T,
+    random: fn(&mut [u8]) -> bool,
     mut clock: impl FnMut() -> Option<u64>,
     binding: Binding<'_>,
     security: S,
     journal: &mut Journal,
+    ready: Option<impl FnOnce() -> bool>,
 ) -> Result<Report, Error> {
     if binding.timeout_ms == 0 || binding.max_polls == 0 {
         return Err(Error::Bounds);
@@ -87,6 +124,20 @@ pub fn run<T: DatagramIo, S: Store>(
         .require_oscore_checkpoint()
         .bind(io)
         .map_err(|_| Error::Bind)?;
+    if let Some(ready) = ready {
+        let now = match clock.now_ms() {
+            Ok(now) => Some(now),
+            Err(coaptic::platform::ClockError::Source(())) => None,
+            Err(_) => return Err(Error::Clock),
+        };
+        if now.is_none_or(|now| now >= deadline) {
+            report.effects = journal.effects().map_err(Error::Journal)?;
+            return Ok(report);
+        }
+        if !ready() {
+            return Err(Error::Ready);
+        }
+    }
     let mut failures = 0;
     while report.polls < binding.max_polls {
         let now = match clock.now_ms() {

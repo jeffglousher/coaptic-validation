@@ -508,3 +508,95 @@ fn hostile_datagrams_do_not_prevent_fresh_valid_dispatch_in_same_session() {
     drop(journal);
     std::fs::remove_file(path).unwrap();
 }
+
+#[test]
+fn readiness_requires_restored_security_and_unexpired_initialization() {
+    let path = std::env::temp_dir().join(format!(
+        "coaptic-host-service-readiness-{}",
+        std::process::id()
+    ));
+    let policy = support::policy(1);
+    let mut journal = Journal::create(&path, Authority::new(policy), 1).unwrap();
+    let credentials = credentials(true);
+    let mut state = Memory::default();
+    security::provision(&mut state, &credentials).unwrap();
+    let mut ready = false;
+    let corrupt = Memory::default();
+    *corrupt.0.borrow_mut() = Some([0; security::RECORD_BYTES]);
+    assert!(matches!(
+        telemetry::run_with_ready(
+            NoIo,
+            random,
+            || Some(0),
+            max_binding(&credentials, policy, 100),
+            corrupt,
+            &mut journal,
+            || {
+                ready = true;
+                true
+            },
+        ),
+        Err(telemetry::Error::Security(_))
+    ));
+    assert!(!ready);
+    // Initialization used the whole original budget, or the source stopped.
+    // Neither case may reset the deadline or announce socket-only readiness.
+    for next in [Some(100), None] {
+        let mut times = [Some(0), next].into_iter();
+        let report = telemetry::run_with_ready(
+            NoIo,
+            random,
+            || times.next().unwrap(),
+            max_binding(&credentials, policy, 100),
+            state.clone(),
+            &mut journal,
+            || {
+                ready = true;
+                true
+            },
+        )
+        .unwrap();
+        assert!(!ready);
+        assert_eq!(report.polls, 0);
+        assert_eq!(report.effects, 0);
+    }
+    // A failed readiness report must also stop before any socket operation.
+    assert!(matches!(
+        telemetry::run_with_ready(
+            NoIo,
+            random,
+            || Some(0),
+            max_binding(&credentials, policy, 100),
+            state.clone(),
+            &mut journal,
+            || false,
+        ),
+        Err(telemetry::Error::Ready)
+    ));
+    let before = *state.0.borrow();
+    let observed = state.clone();
+    let mut times = [Some(0), Some(1), None].into_iter();
+    let report = telemetry::run_with_ready(
+        NoIo,
+        random,
+        || times.next().unwrap(),
+        max_binding(&credentials, policy, 100),
+        state,
+        &mut journal,
+        || {
+            assert_ne!(
+                *observed.0.borrow(),
+                before,
+                "reservation must be durable before readiness"
+            );
+            ready = true;
+            true
+        },
+    )
+    .unwrap();
+    assert!(ready);
+    assert_eq!(report.polls, 0);
+    assert_eq!(report.effects, 0);
+    drop(journal);
+    std::fs::remove_file(path).unwrap();
+}

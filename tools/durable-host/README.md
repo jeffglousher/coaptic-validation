@@ -84,3 +84,18 @@ be recognized as stale by this journal alone. The evidence concerns ordinary
 host process termination, not flash power loss, malicious rollback, production
 key custody or the complete device/HA flow. Real network integration must also
 bound queues and run blocking persistence outside the CoAP polling path.
+
+The finite `telemetry-service serve` driver announces readiness only after
+recovering durable security and binding the protected application. Its original
+service deadline includes initialization; expiry or failed recovery emits no
+readiness announcement. `telemetry::run_with_ready` exposes the same bounded
+callback to other callers; callback failure stops before network polling.
+
+The child-process lost-receipt test prepares client security before starting the
+host. It observes the intentionally withheld reply for 500 ms, then stops client
+polling before the minimum 2 s CoAP retransmission. The restarted recovery leg
+allows 4 s for a normal initial retransmission and durable I/O; each host has a
+6 s deadline and 10,000-poll bound. Terminal reports must prove one dropped reply,
+zero first-process receipts, and exactly one journal effect across recovery, and
+the returned receipt must match the original operation. These are finite test
+budgets, not latency guarantees or performance measurements.
