@@ -118,7 +118,7 @@ def loss_evidence(mode="drop-once", **kwargs):
     trace[6]["time_ns"] = retry["time_ns"] + 1_000_000
     if mode == "drop-permanent":
         trace.pop()
-        data[1] = dict(event="error", exit_code=1, message="request timeout", host_total_ns=6_600_000_000)
+        data[1] = dict(event="error", exit_code=1, message="request timed out", host_total_ns=6_600_000_000)
     return data
 
 
@@ -130,7 +130,7 @@ def wrong_evidence(sequence=0):
     trace = evidence(True)[0][:2]
     for row, wire in zip(trace, (req, reply)):
         row.update(hex=wire.hex(), forwarded_hex=wire.hex())
-    return [trace, dict(event="error", exit_code=1, message="request timeout", host_total_ns=710_000_000), copy.deepcopy(ENDPOINTS)]
+    return [trace, dict(event="error", exit_code=1, message="request timed out", host_total_ns=710_000_000), copy.deepcopy(ENDPOINTS)]
 
 
 class CampaignTests(unittest.TestCase):
@@ -228,6 +228,14 @@ class CampaignTests(unittest.TestCase):
         ):
             data = loss_evidence("drop-permanent"); mutate(data)
             with self.assertRaises(AssertionError): campaign_grade(*data, "drop-permanent")
+
+    def test_nonprotocol_error_messages_cannot_qualify_timeout(self):
+        for mode in ("drop-permanent", "wrong-key"):
+            for message in ("subprocess deadline", "unrelated elapsed", "deadline has elapsed", "crash", "", None):
+                data = wrong_evidence() if mode == "wrong-key" else loss_evidence(mode)
+                data[1]["message"] = message
+                with self.subTest(mode=mode, message=message), self.assertRaises((AssertionError, AttributeError)):
+                    campaign_grade(*data, mode)
 
     def test_wrong_key_exact_diagnostic_no_authenticated_progress(self):
         for mutate in (

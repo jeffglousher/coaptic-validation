@@ -281,8 +281,10 @@ The maintained aiocoap decoder binds every response to the exact current request
 The grader requires the full 2,000-byte body, stable ETag and Size2, distinct
 explicit response PIVs, and exact ciphertext/MID/PIV retransmission after the
 original exponential RTO. Permanent loss must end in the peer's protocol timeout
-with an authenticated 1,024-byte forwarded prefix and no complete application
-response; a subprocess deadline or crash fails qualification. The wrong-key case
+with an authenticated 1,024-byte forwarded prefix, its exact ACK and no complete
+application response. This is wire evidence, not instrumentation of the client's
+internal buffer. Only the pinned peer's exact `request timed out` error qualifies;
+a subprocess deadline or crash fails qualification. The wrong-key case
 requires the pinned peer's exact unprotected 4.00 diagnostic (RFC 8613 section
 8.2 step 6), with no authenticated response. Fresh request bindings and distinct
 server PIVs across the five exchanges establish fresh same-server recovery.
