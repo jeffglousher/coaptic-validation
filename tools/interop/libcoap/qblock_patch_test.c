@@ -433,7 +433,7 @@ static void stale_prebind_request(void) {
   coap_delete_pdu_lkd(old);coap_delete_pdu_lkd(fresh);teardown();
 }
 static void delete_before_bind_and_recreate(void) {
-  coap_lg_xmit_t *lg;coap_pdu_t *old_response,*fresh;
+  coap_lg_xmit_t *lg;coap_pdu_t *old_response,*fresh,*input,*decoded;
   setup();lg=transfer();old_response=response(COAP_MESSAGE_CON,0,1);association(1);stamp(old_response);
   CHECK(oscore_find_association(session,&token)&&session->recipient_ctx);
   CHECK(coap_delete_oscore_recipient_lkd(ctx,&rid));
@@ -446,11 +446,18 @@ static void delete_before_bind_and_recreate(void) {
   CHECK(!session->recipient_ctx&&!oscore_find_association(session,&token));
   association(1); /* Same PIV bytes after recipient recreation cannot reuse identity. */
   CHECK(!coap_q_bind_response(session,lg,old_response));
-  fresh=response(COAP_MESSAGE_CON,0,1);stamp(fresh);
+  /* A real new request restores the session recipient and owns a fresh stamp.
+   * Merely inserting a synthetic association does not perform that receive path. */
+  ctx->p_osc_ctx->rfc8613_b_1_2=0;ctx->p_osc_ctx->recipient_chain->initial_state=0;
+  input=authenticated_request(0,0);decoded=coap_oscore_decrypt_pdu(session,input);CHECK(decoded);
+  CHECK(session->recipient_ctx==ctx->p_osc_ctx->recipient_chain);
+  fresh=response(COAP_MESSAGE_CON,0,1);
+  fresh->oscore_request_generation=decoded->oscore_request_generation;
   CHECK(coap_q_bind_response(session,lg,fresh));
   CHECK(lg->oscore_binding->recipient_ctx==ctx->p_osc_ctx->recipient_chain);
-  CHECK(lg->oscore_binding->partial_iv->s[0]==1);
+  CHECK(lg->oscore_binding->partial_iv->length==1&&lg->oscore_binding->partial_iv->s[0]==20);
   CHECK(coap_send_internal(session,fresh)!=COAP_INVALID_MID&&writes==1);
+  coap_delete_pdu_lkd(decoded);coap_delete_pdu_lkd(input);
   coap_delete_pdu_lkd(old_response);teardown();
 }
 static void context_isolation_and_real_teardown(void) {
