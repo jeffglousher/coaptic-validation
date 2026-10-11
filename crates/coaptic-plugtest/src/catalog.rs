@@ -152,9 +152,13 @@ pub fn skip_reason(id: &str) -> Option<&'static str> {
         "TD_COAP_DTLS_04" | "TD_COAP_DTLS_05" | "TD_COAP_DTLS_06" | "TD_COAP_DTLS_07" => Some(
             "coverage gap #199: DTLS backend has no RFC 7250 raw public key; an X.509 run is a different test",
         ),
-        _ if OBS.contains(&id) && !matches!(id, "TD_COAP_OBS_01" | "TD_COAP_OBS_02") => Some(
-            "coverage gap #199: Observe cancel, Max-Age, re-registration, restart, loss, or large notifications are not qualified",
-        ),
+        _ if OBS.contains(&id)
+            && !matches!(id, "TD_COAP_OBS_01" | "TD_COAP_OBS_02" | "TD_COAP_OBS_06") =>
+        {
+            Some(
+                "coverage gap #199: Observe cancel, Max-Age, re-registration, restart, loss, or large notifications are not qualified",
+            )
+        }
         _ => None,
     }
 }

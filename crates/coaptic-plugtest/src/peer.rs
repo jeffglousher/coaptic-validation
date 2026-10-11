@@ -200,6 +200,17 @@ pub trait Peer {
         Err(PeerError("observe collect not supported".into()))
     }
 
+    /// Lose client protocol state while preserving the registered UDP endpoint.
+    fn restart_observe_client(&mut self) -> Result<(), PeerError> {
+        Err(PeerError("observe client restart not supported".into()))
+    }
+
+    /// Poll the retained client and refuse any delivered response during `duration`.
+    fn observe_quiet_for(&mut self, duration: Duration) -> Result<(), PeerError> {
+        let _ = duration;
+        Err(PeerError("observe quiet check not supported".into()))
+    }
+
     /// Ask a running server to emit an Observe notification for `path`.
     fn notify(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
         let _ = (path, payload);

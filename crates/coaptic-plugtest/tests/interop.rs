@@ -366,5 +366,119 @@ fn confirmable_observe_notifications_reach_each_client_backend() {
         },
     );
     assert!(reverse.error.as_deref().unwrap().starts_with("SKIP:"));
-    assert!(catalog::skip_reason("TD_COAP_OBS_06").is_some());
+}
+
+#[test]
+fn observe_client_restart_resets_on_same_endpoint_and_recovers() {
+    use coaptic::message::{Code, Type, decode};
+    use coaptic_plugtest::pcap::Capture;
+    let catalog = Catalog::load().unwrap();
+    let result = runner::run_td(
+        "TD_COAP_OBS_06",
+        Pair {
+            client: "coaptic",
+            server: "coaptic",
+        },
+    );
+    assert!(result.error.is_none(), "{:?}", result.error);
+    let packets = result.capture.snapshot();
+    let reset_mid = packets
+        .iter()
+        .find_map(|packet| {
+            let p = decode(&packet.bytes).ok()?;
+            (p.ty() == Type::Reset).then_some(p.message_id())
+        })
+        .unwrap();
+    for fault in [
+        "missing-rst",
+        "rst-mid",
+        "rst-endpoint",
+        "ack-instead-rst",
+        "missing-rejected-con",
+        "non-instead-con",
+        "rejected-body",
+        "rejected-token",
+        "rejected-endpoint",
+        "registration-body",
+        "missing-recovery",
+        "extra-traffic",
+    ] {
+        let changed = Capture::new();
+        let mut registrations = std::collections::HashSet::new();
+        let mut recovery_token = None;
+        for packet in &packets {
+            let p = decode(&packet.bytes).unwrap();
+            if p.code() == Code::GET {
+                registrations.insert(p.token());
+                if registrations.len() == 2 {
+                    recovery_token = Some(p.token());
+                }
+            }
+            let mut bytes = packet.bytes.clone();
+            let mut src = packet.src;
+            if p.ty() == Type::Reset {
+                match fault {
+                    "missing-rst" => continue,
+                    "rst-mid" => bytes[3] ^= 1,
+                    "rst-endpoint" => src = packet.dst,
+                    "ack-instead-rst" => bytes[0] = (bytes[0] & !0x30) | 0x20,
+                    _ => {}
+                }
+            }
+            if p.ty() == Type::Confirmable
+                && p.code() == Code::CONTENT
+                && p.message_id() == reset_mid
+            {
+                match fault {
+                    "missing-rejected-con" => continue,
+                    "non-instead-con" => bytes[0] |= 0x10,
+                    "rejected-body" => *bytes.last_mut().unwrap() ^= 1,
+                    "rejected-token" => bytes[4] ^= 1,
+                    "rejected-endpoint" => src = packet.dst,
+                    _ => {}
+                }
+            }
+            if fault == "registration-body"
+                && p.ty() == Type::Acknowledgement
+                && p.code() == Code::CONTENT
+            {
+                *bytes.last_mut().unwrap() ^= 1;
+            }
+            if fault == "missing-recovery" && recovery_token == Some(p.token()) {
+                continue;
+            }
+            changed.push(src, packet.dst, &bytes, packet.decrypted);
+        }
+        if fault == "extra-traffic" {
+            let packet = &packets[0];
+            let mut bytes = packet.bytes.clone();
+            bytes[3] ^= 0x80;
+            changed.push(packet.src, packet.dst, &bytes, packet.decrypted);
+        }
+        assert!(
+            catalog.grade("TD_COAP_OBS_06", &changed).is_err(),
+            "accepted {fault}"
+        );
+    }
+    if let Some(directory) = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR") {
+        let directory = std::path::PathBuf::from(directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        result
+            .capture
+            .write_pcap(std::fs::File::create(directory.join("obs-06-coaptic.pcap")).unwrap())
+            .unwrap();
+    }
+    for pair in [
+        Pair {
+            client: "coap-rs",
+            server: "coaptic",
+        },
+        Pair {
+            client: "coaptic",
+            server: "coap-rs",
+        },
+    ] {
+        let unsupported = runner::run_td("TD_COAP_OBS_06", pair);
+        assert!(unsupported.error.as_deref().unwrap().starts_with("SKIP:"));
+    }
 }

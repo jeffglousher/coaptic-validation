@@ -81,8 +81,27 @@ only the six prescribed unique datagrams are accepted.
 
 This plaintext socket proof is separate from protected interoperability and
 sustained-loss qualification. The coap-rs server wrapper has no controlled CON
-notification source and stays SKIP. OBS_06 and all other incomplete literal
-Observe scenarios remain SKIP; see [#410](https://github.com/jeffglousher/coaptic/issues/410).
+notification source and stays SKIP. Other incomplete literal Observe scenarios
+remain SKIP; see [#410](https://github.com/jeffglousher/coaptic/issues/410).
+
+### Literal Observe client restart qualification
+
+`cargo test --locked -p coaptic-plugtest --test interop observe_client_restart_resets_on_same_endpoint_and_recovers`
+executes TD_COAP_OBS_06 with a Coaptic client and server. After two acknowledged
+CON notifications, the client consumes its App and binds fresh protocol state
+around the same UDP transport. The next CON is discarded and receives matching
+RST. Three attempted updates during three one-second quiet intervals produce no
+traffic or application delivery. Fresh registration on that same endpoint then
+receives two complete CON notifications and acknowledges them.
+
+Strict grading requires the fourteen-datagram registration/reset/recovery trace;
+twelve altered traces are refused. A separate live socket test sends wrong-peer
+and wrong-MID resets and verifies the legitimate observation still delivers.
+`COAPTIC_OBSERVE_CAPTURE_DIR` retains `obs-06-coaptic.pcap`. Quiet duration and
+application non-delivery are runner assertions; the packet grader validates the
+wire sequence. This is protocol-state restart on loopback, not physical reboot,
+protected peer authentication, or sustained availability. Both coap-rs directions
+remain SKIP. See [#416](https://github.com/jeffglousher/coaptic/issues/416).
 
 ### Observe reset socket qualification
 
@@ -100,8 +119,8 @@ Set `COAPTIC_OBSERVE_CAPTURE_DIR` to retain `rfc7641-non-reset.pcap`.
 This plaintext fixture qualifies message/endpoint matching, not authenticated
 peer identity or protected interoperability. It is not TD_COAP_OBS_06: that TD
 requires CON notifications, while this fixture exercises NON notifications.
-The literal TD remains skipped; finite silence is not sustained availability
-qualification. Tracking: [#402](https://github.com/jeffglousher/coaptic/issues/402),
+The separate literal restart scenario above supplies the CON evidence; finite
+silence is not sustained availability qualification. Tracking: [#402](https://github.com/jeffglousher/coaptic/issues/402),
 [#199](https://github.com/jeffglousher/coaptic/issues/199), and
 [#202](https://github.com/jeffglousher/coaptic/issues/202).
 
