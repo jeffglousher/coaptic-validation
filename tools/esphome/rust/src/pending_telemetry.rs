@@ -340,6 +340,114 @@ mod tests {
     use coaptic::provisioning::PinnedPeer;
     use std::{cell::RefCell, rc::Rc};
 
+    #[test]
+    fn telemetry_poll_fault_bound_and_clock_stop_preserve_complete_pending_work() {
+        use crate::{protected_telemetry as runner, security_state as security};
+        use coaptic::{Endpoint, storage::DatagramIo};
+        use std::cell::Cell;
+
+        #[derive(Default)]
+        struct Security(Option<[u8; security::RECORD_BYTES]>);
+        impl security::Store for Security {
+            fn read(&mut self) -> Result<Option<[u8; security::RECORD_BYTES]>, security::Error> {
+                Ok(self.0)
+            }
+            fn commit(
+                &mut self,
+                bytes: &[u8; security::RECORD_BYTES],
+            ) -> Result<(), security::Error> {
+                self.0 = Some(*bytes);
+                Ok(())
+            }
+        }
+        struct Faults {
+            reads: Rc<Cell<usize>>,
+            sends: Rc<Cell<usize>>,
+            reset: bool,
+        }
+        impl DatagramIo for Faults {
+            type Error = ();
+            fn recv(&mut self, _: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
+                let count = self.reads.get() + 1;
+                self.reads.set(count);
+                if self.reset && count == 32 {
+                    Ok(None)
+                } else {
+                    Err(())
+                }
+            }
+            fn send(&mut self, _: Endpoint, bytes: &[u8]) -> Result<usize, ()> {
+                self.sends.set(self.sends.get() + 1);
+                Ok(bytes.len())
+            }
+        }
+        for mode in 0..4 {
+            let credentials = credentials();
+            let backend = initialized(&credentials);
+            let mut pending =
+                Pending::recover(backend.clone(), &credentials, principal(1)).unwrap();
+            pending
+                .begin(OperationId::new([7; 16]), [3; 32], Some(42), &[0x5a; 128])
+                .unwrap();
+            drop(pending);
+            let original = backend.0.borrow().record;
+            let writes = backend.0.borrow().commits;
+            let mut security = Security::default();
+            if mode != 3 {
+                security::provision(&mut security, &credentials).unwrap();
+            }
+            let reads = Rc::new(Cell::new(0));
+            let sends = Rc::new(Cell::new(0));
+            let mut times = 0;
+            let result = runner::run(
+                Faults {
+                    reads: reads.clone(),
+                    sends: sends.clone(),
+                    reset: mode == 1,
+                },
+                |b| {
+                    b.fill(42);
+                    true
+                },
+                || {
+                    times += 1;
+                    if mode == 2 {
+                        Some(if times == 1 { 100 } else { 99 })
+                    } else {
+                        (times <= 64).then_some(times)
+                    }
+                },
+                runner::Service {
+                    endpoint: Endpoint::v4([192, 0, 2, 1], 5683),
+                    principal: principal(1),
+                    resource: [3; 32],
+                    credentials: &credentials,
+                    timeout_ms: 1000,
+                },
+                security,
+                backend.clone(),
+            );
+            let (error, received, sent) = match mode {
+                0 => (runner::Error::Poll, 32, 1),
+                1 => (runner::Error::Stopped, 63, 1),
+                2 => (runner::Error::Clock, 0, 1),
+                _ => (runner::Error::Security(security::Error::Missing), 0, 0),
+            };
+            assert_eq!(result, Err(error));
+            assert_eq!((reads.get(), sends.get()), (received, sent));
+            assert_eq!(backend.0.borrow().record, original);
+            // Recovery reaffirms exactly the existing journal; no completion/new ID.
+            assert_eq!(backend.0.borrow().commits, writes + 1);
+            let recovered = Pending::recover(backend, &credentials, principal(1)).unwrap();
+            assert!(recovered.completion().unwrap().is_none());
+            let op = recovered.pending().unwrap().unwrap();
+            assert_eq!(op.id(), OperationId::new([7; 16]));
+            assert_eq!(op.resource(), &[3; 32]);
+            assert_eq!(op.content_format(), Some(42));
+            assert_eq!(op.payload(), &[0x5a; 128]);
+        }
+    }
+
     #[derive(Clone, Copy, Default)]
     enum Fault {
         #[default]
