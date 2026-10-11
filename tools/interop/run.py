@@ -2443,6 +2443,7 @@ def main():
     parser.add_argument("--libcoap-udp-only", action="store_true", help="Explicit local build limitation, recorded in results; CI requires DTLS")
     parser.add_argument("--iterations", type=int, default=100)
     parser.add_argument("--build-note", default="")
+    parser.add_argument("--libcoap-patch-manifest", type=Path)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     if not 1 <= args.iterations <= 10000:
@@ -2454,6 +2455,8 @@ def main():
               "iterations": args.iterations, "build_note": args.build_note, "timing_scope": "request_us excludes process startup; host_total_us includes it",
               "host_clock": {"name": time.get_clock_info("perf_counter").implementation, "resolution_ns": math.ceil(time.get_clock_info("perf_counter").resolution * 1e9)},
               "libcoap_source": "851533c3cf63d16984d370ce39d586ecb3694971",
+              "libcoap_patch": (json.loads(args.libcoap_patch_manifest.read_text(encoding="utf-8"))
+                                  if args.libcoap_patch_manifest else None),
               "limitations": [],
               "executables": {n: {"path": str(p), "sha256": hashlib.sha256(p.read_bytes()).hexdigest()} for n,p in peers.items()},
               "capability_manifest": {"path": "tools/interop/capabilities.json", "sha256": manifest_hash},
