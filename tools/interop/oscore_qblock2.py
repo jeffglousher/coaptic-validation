@@ -232,6 +232,12 @@ def campaign_grade(trace, result, endpoints, mode):
                 gap = row["time_ns"] - last_at
                 require(1_950_000_000 * (2 ** retries) <= gap <= 3_250_000_000 * (2 ** retries),
                         "retry outside original exponential RTO")
+                if intervals:
+                    # Bind later backoff to the first observed retry, not merely
+                    # to independent 2..3 second randomization windows.
+                    scale = 2 ** retries
+                    require(abs(gap - intervals[0] * scale) <= 25_000_000 * scale + 100_000_000,
+                            "retry reset or shortened the observed exponential backoff")
                 intervals.append(gap)
                 retries += 1
             last_at = row["time_ns"]
