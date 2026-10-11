@@ -260,6 +260,9 @@ async fn run() -> Result<(), Error> {
     if a.q_block2 {
         outgoing = outgoing.q_block2();
     }
+    if a.q_block2_non {
+        outgoing = outgoing.non();
+    }
     if a.observe {
         outgoing = outgoing.observe();
     }
@@ -309,6 +312,9 @@ async fn run() -> Result<(), Error> {
                 }
                 if a.q_block2 {
                     retry = retry.q_block2();
+                }
+                if a.q_block2_non {
+                    retry = retry.non();
                 }
                 if a.observe {
                     retry = retry.observe();

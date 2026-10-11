@@ -3844,6 +3844,24 @@
       "executable": "tools/interop/run.py:qblock2_missing"
     },
     {
+      "id": "qblock2-missing:coaptic->libcoap",
+      "client": "coaptic",
+      "server": "libcoap",
+      "transport": "udp",
+      "security": "none",
+      "address_family": "ipv4-loopback",
+      "execution_platforms": ["linux", "windows"],
+      "requires": [],
+      "features": ["q-block2", "missing-block", "non-confirmable"],
+      "positive_proof": [
+        "NON Q-Block2 requests and responses; block 1 is dropped while a higher block arrives",
+        "a later NON recovery request selects only block 1 with M unset",
+        "eight 256-byte-or-smaller blocks complete the 2000-byte body under one ETag and Size2"
+      ],
+      "failure_proof": ["absent loss, premature recovery, CON fallback, changed ETag/Size2/SZX or incomplete body fails"],
+      "executable": "tools/interop/run.py:qblock2_missing"
+    },
+    {
       "id": "qblock2-missing:libcoap->coaptic",
       "client": "libcoap",
       "server": "coaptic",
@@ -4263,7 +4281,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "Q-Block2 recovery against a libcoap server is not a process case. coap-rs has no Q-Block.",
+      "reason": "Coaptic NON Q-Block2 recovery against libcoap is an IPv4 UDP process case. CON loss recovery against libcoap, protected and other addressing modes remain unqualified. coap-rs has no Q-Block.",
       "issue": 200,
       "executable_cases": []
     },

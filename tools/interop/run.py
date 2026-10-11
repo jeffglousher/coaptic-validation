@@ -47,13 +47,15 @@ def ipv6_probe(number):
     return {"sender": sender, "request_hex": wire.hex(), "response_hex": reply.hex()}
 
 
-def command(exe, role, transport, number, key="sesame", path="test", method="GET", timeout=6000, family="ipv4", payload=b"", sequence=None, qblock1=False, qblock2=False, observe=False, echo=False, replay=None, jsonpatch=False):
+def command(exe, role, transport, number, key="sesame", path="test", method="GET", timeout=6000, family="ipv4", payload=b"", sequence=None, qblock1=False, qblock2=False, observe=False, echo=False, replay=None, jsonpatch=False, qblock2_non=False):
     result = [str(exe), role, transport, str(number), key, path, method, str(timeout), family, payload.hex()]
-    if sequence is not None or qblock1 or qblock2 or observe or echo or replay is not None or jsonpatch:
+    if sequence is not None or qblock1 or qblock2 or observe or echo or replay is not None or jsonpatch or qblock2_non:
         result.append("0" if sequence is None else str(sequence))
     if qblock1:
         result.append("qblock1")
-    if qblock2:
+    if qblock2_non:
+        result.append("qblock2-non")
+    elif qblock2:
         result.append("qblock2")
     if observe:
         result.append("observe")
@@ -1832,18 +1834,33 @@ def qblock2_reorder(client, server):
     return {"order": nums}
 
 
-def qblock2_missing(client, server):
+def qblock2_missing(client, server, *, non=False):
     """Drop one later Q-Block2 payload. The client asks for that block and the body completes."""
     with Server(server, "udp") as service:
         with Proxy(service.number, "drop-qblock2") as relay:
-            result = request(client, "udp", relay.number, path="large", timeout=20000, qblock2=True)
+            result = request(client, "udp", relay.number, path="large", timeout=20000,
+                             qblock2=True, qblock2_non=non)
         trace = relay.trace
     expect(result, 69, LARGE)
+    return grade_qblock2_missing(trace, require_ack=not non and "peer-coaptic" in Path(server).name,
+                                require_non=non)
+
+
+def grade_qblock2_missing(trace, *, require_ack=False, require_non=False):
+    """Require actual loss, a later selective request, and a complete delivered body."""
+    raw_trace = trace
+    trace = [dict(row, hex=row.get("forwarded_hex", row["hex"]))
+             if row["action"] == "forward" else row for row in trace]
+    for row in trace:
+        packet = bytes.fromhex(row["hex"])
+        if (len(packet) < 4 or packet[0] >> 6 != 1 or packet[0] & 15 > 8
+                or len(packet) < 4 + (packet[0] & 15)):
+            raise AssertionError("malformed Q-Block2 trace packet")
     dropped = [row for row in trace if row["action"] == "drop"]
     nums = []
     for row in dropped:
         num = qblock2_content_num(bytes.fromhex(row["hex"]))
-        if num != 1:
+        if row["direction"] != "response" or num != 1:
             raise AssertionError(f"dropped datagram was not Q-Block2 block 1: {row['hex']}")
         nums.append(num)
     if len(set(nums)) != 1:
@@ -1851,7 +1868,7 @@ def qblock2_missing(client, server):
     missing = nums[0]
     downloads = []
     for row in trace:
-        if row["direction"] != "request":
+        if row["direction"] != "request" or row["action"] != "forward":
             continue
         packet = bytes.fromhex(row["hex"])
         if len(packet) > 4 and packet[1] == 1 and b"large" in decoded_options(packet).get(11, []):
@@ -1860,11 +1877,15 @@ def qblock2_missing(client, server):
         raise AssertionError("the download did not use Q-Block2 on every /large GET")
     if any(23 in decoded_options(packet) for packet in downloads):
         raise AssertionError("the download fell back to Block2")
+    if require_non and any((packet[0] >> 4) & 3 != 1 for packet in downloads):
+        raise AssertionError("the NON recovery case sent a confirmable request")
     large_tokens = {packet_token(packet) for packet in downloads}
+    if any(packet_token(bytes.fromhex(row["hex"])) not in large_tokens for row in dropped):
+        raise AssertionError("dropped block did not belong to the download")
     recovers = []
     recover_at = None
     for index, row in enumerate(trace):
-        if row["direction"] != "request":
+        if row["direction"] != "request" or row["action"] != "forward":
             continue
         packet = bytes.fromhex(row["hex"])
         if packet_token(packet) not in large_tokens or not qblock2_requests_num(packet, missing):
@@ -1882,31 +1903,57 @@ def qblock2_missing(client, server):
         if any(more for _, more, _ in parsed):
             raise AssertionError("recovery set the M bit")
     drop_at = next(i for i, row in enumerate(trace) if row["action"] == "drop")
+    if not any(row["direction"] == "request"
+               and row["action"] == "forward"
+               and b"large" in decoded_options(bytes.fromhex(row["hex"])).get(11, [])
+               and any(block1_fields(value)[0] == 0 for value in
+                       decoded_options(bytes.fromhex(row["hex"])).get(31, []))
+               for row in trace[:drop_at]):
+        raise AssertionError("no initial Q-Block2 request preceded the loss")
     if drop_at > recover_at:
         raise AssertionError("recovery request was not after the dropped payload")
     if not any(
         qblock2_content_num(bytes.fromhex(row["hex"])) not in (None, 0, missing)
         and packet_token(bytes.fromhex(row["hex"])) in large_tokens
         for row in trace[:recover_at]
-        if row["direction"] == "response" and row["action"] != "drop"
+        if row["direction"] == "response" and row["action"] == "forward"
     ):
         raise AssertionError("no higher Q-Block2 block arrived before the recovery request")
     parts = {}
     etag = None
+    szx = None
+    terminal = None
     resent = False
     for index, row in enumerate(trace):
-        if row["direction"] != "response" or row["action"] == "drop":
+        if row["direction"] != "response" or row["action"] != "forward":
             continue
         packet = bytes.fromhex(row["hex"])
         if packet_token(packet) not in large_tokens or packet[1:2] != b"\x45":
             continue
+        if require_non and (packet[0] >> 4) & 3 != 1:
+            raise AssertionError("the NON recovery case received a confirmable payload")
         if 23 in decoded_options(packet):
             raise AssertionError("a response used Block2")
         values = decoded_options(packet).get(31, [])
         if len(values) != 1:
-            continue
-        num, _, _ = block1_fields(values[0])
+            raise AssertionError("download response must carry exactly one Q-Block2")
+        sizes = decoded_options(packet).get(28, [])
+        if len(sizes) != 1 or int.from_bytes(sizes[0], "big") != len(LARGE):
+            raise AssertionError("Q-Block2 Size2 must describe the complete body")
+        num, more, this_szx = block1_fields(values[0])
+        if this_szx > 6 or (szx is not None and szx != this_szx):
+            raise AssertionError("invalid or changing Q-Block2 SZX")
+        szx = this_szx
         payload = coap_payload(packet)
+        size = 1 << (szx + 4)
+        if (more and len(payload) != size) or not 0 < len(payload) <= size:
+            raise AssertionError("Q-Block2 payload length does not match SZX")
+        if not more:
+            if terminal is not None and terminal != num:
+                raise AssertionError("Q-Block2 terminal block changed")
+            terminal = num
+        if num == missing and index <= recover_at:
+            raise AssertionError("missing block was delivered before recovery request")
         previous = parts.get(num)
         if previous is not None and previous != payload:
             raise AssertionError(f"duplicate Q-Block2 {num} differed")
@@ -1922,16 +1969,31 @@ def qblock2_missing(client, server):
             resent = True
     if not resent:
         raise AssertionError("the missing block was not delivered after the recovery request")
-    if sorted(parts) != list(range(max(parts) + 1)):
+    if any(request_szx != szx for parsed in recovers for _, _, request_szx in parsed):
+        raise AssertionError("recovery SZX did not match the representation")
+    if terminal is None or not parts or terminal != max(parts):
+        raise AssertionError("no terminal Q-Block2 block completed the body")
+    if sorted(parts) != list(range(terminal + 1)):
         raise AssertionError(f"Q-Block2 numbers are not contiguous: {sorted(parts)}")
     if b"".join(parts[i] for i in range(max(parts) + 1)) != LARGE:
         raise AssertionError("forwarded Q-Block2 payloads are not the 2000-byte pattern")
-    if "peer-coaptic" in Path(server).name:
+    for row in dropped:
+        packet = bytes.fromhex(row["hex"])
+        options = decoded_options(packet)
+        sizes = options.get(28, [])
+        if (options.get(4) != [etag] or len(sizes) != 1 or int.from_bytes(sizes[0], "big") != len(LARGE)
+                or block1_fields(options[31][0]) != (missing, True, szx)
+                or coap_payload(packet) != parts[missing]):
+            raise AssertionError("dropped Q-Block2 payload did not match the recovered representation")
+        if require_non and (packet[0] >> 4) & 3 != 1:
+            raise AssertionError("the NON recovery case dropped a confirmable payload")
+    if require_ack:
         acks = [bytes.fromhex(row["hex"]) for row in trace
                 if row["direction"] == "response" and row["action"] == "forward"]
         if not any(len(p) == 4 and p[1] == 0 and (p[0] >> 4) & 3 == 2 for p in acks):
             raise AssertionError("confirmable Q-Block2 did not get an empty ACK")
-    return {"missing": missing, "drops": len(dropped), "length": len(LARGE)}
+    return {"missing": missing, "drops": len(dropped), "length": len(LARGE),
+            "blocks": len(parts), "szx": szx, "trace": raw_trace}
 
 
 def qblock2_window(client, server):
@@ -2414,6 +2476,8 @@ def main():
     for client, server in [("coaptic", "coaptic"), ("libcoap", "coaptic")]:
         case(f"qblock2-missing:{client}->{server}",
              lambda client=client, server=server: qblock2_missing(peers[client], peers[server]))
+    case("qblock2-missing:coaptic->libcoap",
+         lambda: qblock2_missing(peers["coaptic"], peers["libcoap"], non=True))
     case("qblock2-reorder:coaptic->coaptic",
          lambda: qblock2_reorder(peers["coaptic"], peers["coaptic"]))
     for client, server in [("coaptic", "coaptic"), ("coaptic", "libcoap"), ("libcoap", "coaptic")]:
