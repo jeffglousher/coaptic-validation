@@ -119,8 +119,8 @@ Set `COAPTIC_OBSERVE_CAPTURE_DIR` to retain `rfc7641-non-reset.pcap`.
 This plaintext fixture qualifies message/endpoint matching, not authenticated
 peer identity or protected interoperability. It is not TD_COAP_OBS_06: that TD
 requires CON notifications, while this fixture exercises NON notifications.
-The literal TD remains skipped; finite silence is not sustained availability
-qualification. Tracking: [#402](https://github.com/jeffglousher/coaptic/issues/402),
+The separate literal restart scenario above supplies the CON evidence; finite
+silence is not sustained availability qualification. Tracking: [#402](https://github.com/jeffglousher/coaptic/issues/402),
 [#199](https://github.com/jeffglousher/coaptic/issues/199), and
 [#202](https://github.com/jeffglousher/coaptic/issues/202).
 
