@@ -8,7 +8,7 @@ from oscore_relay_cap import grade, review, campaign, SCHEDULES
 from run import LARGE, BODY, coap_message
 
 
-def evidence(path="large", capped=False, sequence=100, server_sequence=1000, *, tag=b"tag", size=b"\x07\xd0", changed_body=False, wrong_binding=False, reused_piv=False, reuse_request_nonce=False):
+def evidence(path="large", capped=False, sequence=100, server_sequence=1000, *, tag=b"tag", size=b"\x07\xd0", changed_body=False, wrong_binding=False, reused_piv=False, reuse_request_nonce=False, response_mid_base=20, duplicate_response_mid=False):
     client, server = FixtureContext(server=False, sequence=sequence), FixtureContext(server=True, sequence=server_sequence)
     token = b"r"
     packets = []
@@ -29,12 +29,13 @@ def evidence(path="large", capped=False, sequence=100, server_sequence=1000, *, 
             body = LARGE[num*1024:(num+1)*1024]
         if changed_body:body = bytes([body[0]^1])+body[1:]
         if reused_piv:server.sender_sequence_number = server_sequence
-        response = protected(server, coap_message(69,20+num,token,sorted(opts),body),binding, not reuse_request_nonce)
+        response_mid = response_mid_base + (0 if duplicate_response_mid else num)
+        response = protected(server, coap_message(69,response_mid,token,sorted(opts),body),binding, not reuse_request_nonce)
         packets.append(("response",response))
         if refusal:
             packets.append(("response",response))
         else:
-            packets.append(("request",b"\x60\x00"+(20+num).to_bytes(2,"big")))
+            packets.append(("request",b"\x60\x00"+response_mid.to_bytes(2,"big")))
     trace = []
     for i,(direction,wire) in enumerate(packets):
         trace.append(dict(direction=direction, action="drop" if capped and len(wire)>256 else "forward",
@@ -58,6 +59,16 @@ def complete_record():
 
 
 class RelayCapTests(unittest.TestCase):
+    def test_direction_owned_mid_namespaces(self):
+        for path,capped in (("large",False),("test",True),("large",True)):
+            grade(*evidence(path,capped,response_mid_base=10),path=path,capped=capped)
+        with self.assertRaisesRegex(AssertionError,"response sender reused MID"):
+            grade(*evidence(duplicate_response_mid=True),path="large",capped=False)
+        x=evidence(response_mid_base=10)
+        x[0][7].update(hex="6000000a",forwarded_hex="6000000a")
+        with self.assertRaisesRegex(AssertionError,"client ACK ownership"):
+            grade(*x,path="large",capped=False)
+
     def test_complete_campaign(self):
         proof=review(complete_record(),{"patch_sha256":"patch"})
         self.assertEqual(proof["fresh_recovery_bytes"],2000)
