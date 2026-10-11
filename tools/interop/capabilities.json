@@ -4456,7 +4456,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "Coaptic-to-libcoap Q-Block2 loss/refusal/fresh recovery is qualified over IPv4 and IPv6 plaintext loopback UDP. Protected IPv4 Q-Block1 recovery is qualified in #468; protected IPv4 CON Q-Block2 loss/refusal/fresh recovery is qualified in #472 against the explicitly patched peer. These finite schedules do not qualify post-MAX_TRANSMIT_SPAN selective recovery, other protected modes or directions, scoped/routed addressing, or hardware. coap-rs has no Q-Block.",
+      "reason": "Coaptic-to-libcoap Q-Block2 loss/refusal/fresh recovery is qualified over IPv4 and IPv6 plaintext loopback UDP. Protected IPv4 Q-Block1 recovery is qualified in #468; protected IPv4 CON Q-Block2 loss/refusal/fresh recovery is qualified in #472 against the explicitly patched peer. The corresponding finite IPv6 loopback campaign is tracked separately in #492 and requires its own exact-source hosted report. These finite schedules do not qualify post-MAX_TRANSMIT_SPAN selective recovery, other protected modes or directions, scoped/routed addressing, or hardware. coap-rs has no Q-Block.",
       "issue": 200,
       "executable_cases": []
     },

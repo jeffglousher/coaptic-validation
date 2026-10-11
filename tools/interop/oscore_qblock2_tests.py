@@ -305,7 +305,7 @@ class CampaignTests(unittest.TestCase):
             manifest.write_text('{"patch_sha256":"test-only"}')
             args = ["observer", "--campaign", "--coaptic", str(executable), "--libcoap", str(executable),
                     "--output", str(report), "--libcoap-patch-manifest", str(manifest)]
-            def failed(_client, _server, record, _patch):
+            def failed(_client, _server, record, _patch, *, family="ipv4"):
                 record["schedules"] = [{"retained": "actual failed schedule would be here"}]
                 raise AssertionError("strict campaign refused")
             with patch("sys.argv", args), patch("run.source_identity", return_value={"source": "test-only"}), \
@@ -339,5 +339,193 @@ class CampaignTests(unittest.TestCase):
         server.assert_called_once()
         self.assertEqual(record["schedules"][0]["trace"], relay.trace)
         self.assertNotIn("complete", record)
+
+
+def ipv6_evidence(data):
+    """Change only synthetic endpoint evidence; ciphertext remains authenticated."""
+    data = copy.deepcopy(data)
+    for row in data[0]:
+        for key in ("source", "destination", "relay"):
+            row[key] = ["::1", row[key][1], 0, 0]
+    for key in ("front", "back", "server"):
+        data[2][key] = ["::1", data[2][key][1], 0, 0]
+    data[2].update(family="AF_INET6", v6only=[1, 1])
+    return data
+
+
+def ipv6_campaign():
+    from run import BODY
+    record = {"family": "ipv6", "setup": dict(event="response", code=69, payload_hex=BODY.hex(), exit_code=0),
+              "server_ready": {"port": 1003, "transport": "oscore"}, "schedules": []}
+    for index, mode in enumerate(("baseline", "drop-once", "drop-permanent", "wrong-key", "baseline"), 1):
+        kwargs = dict(sequence=index*100, server_sequence=index*10)
+        data = (wrong_evidence(index*100) if mode == "wrong-key" else
+                loss_evidence(mode, **kwargs) if mode.startswith("drop") else evidence(True, **kwargs))
+        if mode == "baseline": data[1]["host_total_ns"] = 10_000_000
+        data = ipv6_evidence(data)
+        record["schedules"].append(dict(mode=mode, sequence_start=index*100, trace=data[0], result=data[1],
+                                         endpoints=data[2], proof=campaign_grade(*data, mode, family="ipv6")))
+    return record
+
+
+class IPv6Tests(unittest.TestCase):
+    def test_authenticated_complete_loss_refusal_and_fresh_recovery(self):
+        for separate in (False, True):
+            self.assertEqual(baseline_grade(*ipv6_evidence(evidence(separate)), family="ipv6")["body_bytes"], 2000)
+        record = ipv6_campaign()
+        proof = campaign_review(record, family="ipv6")
+        self.assertEqual(proof["same_server"], ["::1", 1003, 0, 0])
+        self.assertEqual(proof["fresh_request_bindings"], 5)
+        self.assertEqual(proof["distinct_server_pivs"], 8)
+        self.assertEqual(proof["final_recovery_bytes"], 2000)
+        self.assertEqual([case["proof"]["delivered_body_bytes"] for case in record["schedules"]],
+                         [2000, 2000, 1024, 0, 2000])
+        import json
+        self.assertEqual(campaign_review(json.loads(json.dumps(record)), family="ipv6"), proof)
+
+    def test_family_selection_refuses_fallback_and_unknown_family(self):
+        for data, family in ((evidence(True), "ipv6"), (ipv6_evidence(evidence(True)), "ipv4"),
+                             (evidence(True), "unknown")):
+            data[1]["host_total_ns"] = 10_000_000
+            with self.subTest(family=family), self.assertRaises(AssertionError):
+                campaign_grade(*data, "baseline", family=family)
+        with self.assertRaisesRegex(AssertionError, "family changed"):
+            campaign_review(ipv6_campaign())
+
+    def test_exact_endpoint_shape_owner_flow_scope_and_socket_evidence(self):
+        invalid = (["127.0.0.1", 1004], ["::ffff:127.0.0.1", 1004, 0, 0], ["::1", 1004],
+                   ["::1", 1004, 0], ["::1", 1004, 0, 0, 0], ["::2", 1004, 0, 0],
+                   ["::1", True, 0, 0], ["::1", 0, 0, 0], ["::1", 65536, 0, 0],
+                   ["::1", 1004.0, 0, 0], ["::1", 1004, 1, 0], ["::1", 1004, 0, 1],
+                   ["::1", 1004, False, 0], ["::1", 1004, 0, False], ["::1", 1004, 0.0, 0],
+                   ["::1", 1004, 0, 0.0], ["::1", 9999, 0, 0])
+        for field in ("source", "destination", "relay"):
+            for endpoint in invalid:
+                data = ipv6_evidence(loss_evidence())
+                data[0][-1][field] = endpoint
+                with self.subTest(field=field, endpoint=endpoint), self.assertRaises(AssertionError):
+                    campaign_grade(*data, "drop-once", family="ipv6")
+        for changes in ({"family": "AF_INET"}, {"v6only": None}, {"v6only": [1, 0]},
+                        {"v6only": [True, 1]}, {"v6only": [1, 1.0]}, {"v6only": [1]}):
+            data = ipv6_evidence(loss_evidence()); data[2].update(changes)
+            with self.subTest(changes=changes), self.assertRaises(AssertionError):
+                campaign_grade(*data, "drop-once", family="ipv6")
+        data = ipv6_evidence(loss_evidence()); data[2].pop("family")
+        with self.assertRaises(AssertionError): campaign_grade(*data, "drop-once", family="ipv6")
+
+    def test_ipv6_loss_retry_owner_ciphertext_and_false_timeout_mutations(self):
+        for mutate in (lambda d: d[0].pop(5), lambda d: d[0].pop(3), lambda d: d[0].pop(),
+                       lambda d: d[0][5].update(time_ns=10_000_000),
+                       lambda d: d[0][5].update(action="drop"),
+                       lambda d: d[0][5].update(hex=d[0][2]["hex"], forwarded_hex=d[0][2]["hex"]),
+                       lambda d: d[0][4].update(forwarded_hex=d[0][2]["hex"]),
+                       lambda d: d[1].update(payload_hex=LARGE[:-1].hex())):
+            data = ipv6_evidence(loss_evidence()); mutate(data)
+            with self.assertRaises(AssertionError): campaign_grade(*data, "drop-once", family="ipv6")
+        for mode in ("drop-permanent", "wrong-key"):
+            for mutate in (lambda d: d[1].update(message="subprocess deadline"),
+                           lambda d: d[1].update(host_total_ns=100_000_000),
+                           lambda d: d[1].update(code=69), lambda d: d[1].update(exit_code=-9),
+                           lambda d: d[1].update(payload_hex=LARGE[:1024].hex())):
+                data = ipv6_evidence(wrong_evidence() if mode == "wrong-key" else loss_evidence(mode)); mutate(data)
+                with self.subTest(mode=mode), self.assertRaises(AssertionError):
+                    campaign_grade(*data, mode, family="ipv6")
+
+    def test_ipv6_authenticated_representation_binding_and_nonce_refusals(self):
+        for changes in ({"tag": b"changed"}, {"size": b"\x07\xd1"}, {"body": LARGE[:-1]+b"\xff"},
+                        {"wrong_binding": True}, {"missing_piv": True}, {"reused_piv": True}):
+            with self.subTest(changes=changes), self.assertRaises(AssertionError):
+                campaign_grade(*ipv6_evidence(loss_evidence("drop-permanent", **changes)),
+                               "drop-permanent", family="ipv6")
+
+    def test_missing_reordered_changed_or_stale_recovery_refuses(self):
+        record = ipv6_campaign()
+        for mutate in (lambda r: r["schedules"].pop(),
+                       lambda r: r["schedules"].reverse(),
+                       lambda r: r["schedules"][-1]["result"].update(payload_hex=LARGE[:-1].hex()),
+                       lambda r: r["schedules"][-1]["endpoints"].update(server=["::1", 9999, 0, 0]),
+                       lambda r: r["schedules"][-1].update(trace=r["schedules"][0]["trace"]),
+                       lambda r: r["schedules"][-1]["proof"].update(body_bytes=1999),
+                       lambda r: r["server_ready"].update(port=True)):
+            changed = copy.deepcopy(record); mutate(changed)
+            with self.assertRaises(AssertionError): campaign_review(changed, family="ipv6")
+        data = ipv6_evidence(evidence(True, sequence=500, server_sequence=10))
+        data[1]["host_total_ns"] = 10_000_000
+        record["schedules"][-1].update(trace=data[0], result=data[1],
+                                       proof=campaign_grade(*data, "baseline", family="ipv6"))
+        with self.assertRaisesRegex(AssertionError, "PIV reused between schedules"):
+            campaign_review(record, family="ipv6")
+
+    def test_actual_loopback_relay_records_ipv6_only_socket_metadata(self):
+        from run import Proxy
+        from oscore_qblock2 import relay_endpoints, require_relay_family, loopback_endpoint
+        with Proxy(9, "pass", family="ipv6") as relay:
+            endpoints = relay_endpoints(relay, "ipv6")
+            require_relay_family(endpoints, "ipv6")
+            for key in ("front", "back", "server"):
+                loopback_endpoint(endpoints[key], "ipv6")
+            self.assertEqual(endpoints["server"], ("::1", 9, 0, 0))
+
+    def test_ipv6_cli_retains_failed_campaign_and_selected_family(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from oscore_qblock2 import main
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            executable, manifest, report = (root / name for name in ("peer", "manifest.json", "report.json"))
+            executable.write_bytes(b"test-only executable identity")
+            manifest.write_text('{"patch_sha256":"test-only"}')
+            args = ["observer", "--campaign", "--family", "ipv6", "--coaptic", str(executable),
+                    "--libcoap", str(executable), "--output", str(report), "--libcoap-patch-manifest", str(manifest)]
+            def failed(_client, _server, record, _patch, *, family):
+                self.assertEqual(family, "ipv6")
+                record["schedules"] = [{"retained": "test-only failed schedule"}]
+                raise AssertionError("strict IPv6 campaign refused")
+            with patch("sys.argv", args), patch("run.source_identity", return_value={"source": "test-only"}), \
+                 patch("oscore_qblock2.baseline") as baseline_runner, \
+                 patch("oscore_qblock2.campaign", side_effect=failed), patch("builtins.print"):
+                self.assertEqual(main(), 1)
+            self.assertEqual(baseline_runner.call_args.kwargs, {"family": "ipv6"})
+            value = json.loads(report.read_text())
+            self.assertEqual(value["family"], "ipv6")
+            self.assertTrue(value["baseline_passed"])
+            self.assertFalse(value["campaign_passed"])
+            self.assertFalse(value["qualification_complete"])
+            self.assertEqual(len(value["campaign"]["schedules"]), 1)
+            self.assertIn("strict IPv6 campaign refused", value["error"])
+
+    def test_runner_threads_ipv6_to_every_socket_and_request_and_retains_failure(self):
+        import socket
+        from unittest.mock import MagicMock, patch
+        service, relay = MagicMock(), MagicMock()
+        service.__enter__.return_value = service; service.number = 1003
+        service.ready = {"libcoap_patch_sha256": "patch"}
+        relay.__enter__.return_value = relay; relay.number = 1001
+        relay.dest = ("::1", 1003, 0, 0)
+        for sock, port in ((relay.front, 1001), (relay.back, 1002)):
+            sock.getsockname.return_value = ("::1", port, 0, 0)
+            sock.family = socket.AF_INET6; sock.getsockopt.return_value = 1
+        def joined(*_):
+            relay.trace = [{"retained": "joined IPv6 failure"}]
+            return False
+        relay.__exit__.side_effect = joined
+        for runner in (baseline, campaign):
+            record = {}
+            with patch("run.Server", return_value=service) as server, patch("run.Proxy", return_value=relay) as proxy, \
+                 patch("run.expect"), patch("run.request", side_effect=[{}, RuntimeError("subprocess deadline")]) as request:
+                with self.assertRaisesRegex(RuntimeError, "subprocess deadline"):
+                    runner("client", "server", record, {"patch_sha256": "patch"}, family="ipv6")
+            server.assert_called_once_with("server", "oscore", family="ipv6")
+            proxy.assert_called_once_with(1003, "pass", family="ipv6")
+            self.assertTrue(all(call.kwargs["family"] == "ipv6" for call in request.call_args_list))
+            saved = record["schedules"][0] if runner is campaign else record
+            self.assertEqual(saved["trace"], [{"retained": "joined IPv6 failure"}])
+            self.assertEqual(saved["endpoints"]["v6only"], [1, 1])
+            self.assertEqual(saved["endpoints"]["server"], ("::1", 1003, 0, 0))
+            self.assertNotIn("complete", record)
+            self.assertNotIn("proof", saved)
+
 
 if __name__ == "__main__": unittest.main()

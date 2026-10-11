@@ -295,10 +295,23 @@ requires the pinned peer's exact unprotected 4.00 diagnostic (RFC 8613 section
 server PIVs across the five exchanges establish fresh same-server recovery.
 Different relay ports mean this is not a same-endpoint stale-transfer expiry test.
 
-Hosted execution is required before claiming this campaign passed. The existing
-180-case inventory remains unchanged. The separate retained campaign report is
-limited to IPv4 loopback, CON, SZX 1,024 and this explicitly patched peer; it does
-not qualify NON, other peers, routed networks, sustained availability, or all
-OSCORE/Q-Block combinations. The mandatory lifetime sanitizer gate remains before
-all patched traffic. Original unpatched failure evidence remains applicable to
+Use `--family ipv6` for the corresponding `::1` loopback campaign tracked in
+[#492](https://github.com/jeffglousher/coaptic/issues/492); the default remains
+`--family ipv4`. Every server, relay and request uses the selected family. The
+IPv6 report requires AF_INET6 and IPV6_V6ONLY on both relay sockets, exact
+four-field `::1` endpoint ownership, and integer zero flow and scope fields.
+Mapped IPv4 addresses and family fallback refuse qualification. The protected
+setup GET and five captured exchanges exercise the selected server; no plaintext
+reachability probe is substituted for protected traffic.
+
+Hosted execution and independent authentication of the exact-source capture are
+required before claiming either family passed. The existing 181-case inventory
+remains unchanged. The separate `oscore-qblock2-campaign.json` and
+`oscore-qblock2-ipv6-campaign.json` reports retain their own sources, executable
+hashes, selected family, traces and outcome, including failures. Synthetic tests
+qualify the evidence oracle, not peer interoperability. These finite campaigns
+are limited to loopback, CON, SZX 1,024 and this explicitly patched peer; they do
+not qualify NON, other peers, nonzero IPv6 zones, routed networks, sustained
+availability, or all OSCORE/Q-Block combinations. The mandatory lifetime sanitizer
+gate remains before all patched traffic. Original unpatched failure evidence remains applicable to
 the unmodified upstream revision.
