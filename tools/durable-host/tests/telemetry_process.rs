@@ -12,32 +12,55 @@ use std::{
     time::{Duration, Instant},
 };
 mod support;
+// The initial CoAP retransmission is at least 2 s. Observe the deliberately
+// withheld receipt for less than that, then stop polling until process restart.
+const LOST_REPLY_MS: u64 = 500;
+// Recovery permits the normal 2--3 s initial retransmission plus scheduling and
+// durable I/O. The host has an additional 2 s margin; all work stays finite.
+const RECOVERY_MS: u64 = 4_000;
+const HOST_MS: u64 = 6_000;
 const RUN: &str = "0123456789abcdef0123456789abcdef";
 struct Process {
     child: Child,
     output: mpsc::Receiver<String>,
+    started: Instant,
+    ready: String,
 }
 impl Drop for Process {
     fn drop(&mut self) {
         let _ = self.child.kill();
-        let _ = self.child.wait();
+        let status = self.child.wait();
+        if std::thread::panicking() {
+            eprintln!(
+                "host elapsed={:?} status={status:?} ready={} terminal={:?}",
+                self.started.elapsed(),
+                self.ready,
+                self.output.recv_timeout(Duration::from_secs(2))
+            );
+        }
     }
 }
 impl Process {
     fn finish(mut self) -> String {
-        let started = Instant::now();
-        loop {
+        let status = loop {
             if let Some(status) = self.child.try_wait().unwrap() {
-                assert!(status.success());
-                break;
+                break status;
             }
             assert!(
-                started.elapsed() < Duration::from_secs(5),
-                "host service did not stop within its finite budget"
+                self.started.elapsed() < Duration::from_secs(15),
+                "host service exceeded watchdog after readiness: {}",
+                self.ready
             );
             std::thread::sleep(Duration::from_millis(5));
-        }
-        self.output.recv_timeout(Duration::from_secs(2)).unwrap()
+        };
+        let report = self.output.recv_timeout(Duration::from_secs(2)).unwrap();
+        let diagnostic = format!(
+            "elapsed={:?} status={status} ready={} terminal={report}",
+            self.started.elapsed(),
+            self.ready
+        );
+        assert!(status.success(), "{diagnostic}");
+        diagnostic
     }
 }
 fn args(root: &Path, mode: &str, address: &str, peer: &str) -> Command {
@@ -50,7 +73,7 @@ fn args(root: &Path, mode: &str, address: &str, peer: &str) -> Command {
         .arg(root.join("security"))
         .arg(root.join("journal"))
         .arg(root.join("binding"))
-        .args(["400", "600", RUN]);
+        .args([&HOST_MS.to_string(), "10000", RUN]);
     command
 }
 fn start(root: &Path, address: &str, peer: &str, drop_reply: bool) -> Process {
@@ -58,6 +81,7 @@ fn start(root: &Path, address: &str, peer: &str, drop_reply: bool) -> Process {
     if drop_reply {
         command.arg("drop-first-receipt");
     }
+    let started = Instant::now();
     let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -69,14 +93,26 @@ fn start(root: &Path, address: &str, peer: &str, drop_reply: bool) -> Process {
         let mut reader = std::io::BufReader::new(stdout);
         let mut line = String::new();
         reader.read_line(&mut line).unwrap();
-        tx.send(line).unwrap();
+        let _ = tx.send(line);
         let mut rest = String::new();
         reader.read_to_string(&mut rest).unwrap();
         let _ = tx.send(rest);
     });
-    let process = Process { child, output: rx };
-    let ready = process.output.recv_timeout(Duration::from_secs(5)).unwrap();
-    assert!(ready.contains("\"ready\":true"), "{ready}");
+    let mut process = Process {
+        child,
+        output: rx,
+        started,
+        ready: String::new(),
+    };
+    process.ready = process
+        .output
+        .recv_timeout(Duration::from_secs(10))
+        .unwrap();
+    assert!(
+        process.ready.contains("\"ready\":true"),
+        "{}",
+        process.ready
+    );
     process
 }
 fn credentials() -> security::Credentials {
@@ -88,15 +124,13 @@ fn credentials() -> security::Credentials {
         recipient: 2,
     }
 }
-fn request(
+fn prepare<'a>(
     root: &Path,
     socket: UdpSocket,
-    peer: std::net::SocketAddr,
-    expect_reply: bool,
-) -> Option<Receipt> {
-    let c = credentials();
+    c: &'a security::Credentials,
+) -> impl FnOnce(std::net::SocketAddr, bool) -> Result<Option<Receipt>, String> + 'a {
     let store = FileStore::open(&root.join("client-security"), false).unwrap();
-    let (mut security, context) = security::State::recover(store, &c).unwrap();
+    let (mut security, context) = security::State::recover(store, c).unwrap();
     socket.set_nonblocking(true).unwrap();
     let io = UdpSocketIo::new(socket, [0; 1153]).unwrap();
     let mut client = App::profile::<profiles::Constrained>()
@@ -106,34 +140,53 @@ fn request(
         .require_oscore_checkpoint()
         .bind(io)
         .unwrap();
-    let mut wire = [0x37; 16 + 1024];
-    wire[..16].fill(0x29);
-    let call = client
-        .post("telemetry")
-        .to(peer.into())
-        .content_format(ContentFormat::new(42))
-        .payload(&wire)
-        .deadline(300)
-        .send(0)
-        .unwrap();
-    let clock = Instant::now();
-    let mut bytes = [0; 56];
-    loop {
-        let now = clock.elapsed().as_millis() as u64;
-        if now >= 250 {
-            assert!(!expect_reply, "protected receipt missing");
-            return None;
+    move |peer, expect_reply| {
+        let limit = if expect_reply {
+            RECOVERY_MS
+        } else {
+            LOST_REPLY_MS
+        };
+        let mut wire = [0x37; 16 + 1024];
+        wire[..16].fill(0x29);
+        let call = client
+            .post("telemetry")
+            .to(peer.into())
+            .content_format(ContentFormat::new(42))
+            .payload(&wire)
+            .deadline(RECOVERY_MS + 500)
+            .send(0)
+            .map_err(|e| format!("request send: {e:?}"))?;
+        let clock = Instant::now();
+        let mut bytes = [0; 56];
+        loop {
+            let now = clock.elapsed().as_millis() as u64;
+            if now >= limit {
+                return if expect_reply {
+                    Err(format!("protected receipt missing after {now} ms"))
+                } else {
+                    Ok(None)
+                };
+            }
+            client
+                .poll_with_oscore_checkpoint(now, |c| security.checkpoint(c).is_ok())
+                .map_err(|e| format!("client poll at {now} ms: {e:?}"))?;
+            if let Some(response) = client
+                .take_response_into(call, &mut bytes)
+                .map_err(|e| format!("response lookup at {now} ms: {e:?}"))?
+            {
+                let response = response.map_err(|e| format!("response at {now} ms: {e:?}"))?;
+                if !expect_reply || response.code() != Code::CHANGED {
+                    return Err(format!(
+                        "unexpected response at {now} ms: {:?}",
+                        response.code()
+                    ));
+                }
+                return Receipt::decode(response.payload())
+                    .map(Some)
+                    .ok_or_else(|| "receipt decode failed".to_owned());
+            }
+            std::thread::sleep(Duration::from_millis(1));
         }
-        client
-            .poll_with_oscore_checkpoint(now, |c| security.checkpoint(c).is_ok())
-            .unwrap();
-        if let Some(response) = client.take_response_into(call, &mut bytes).unwrap() {
-            let response = response.unwrap();
-            assert!(expect_reply);
-            assert_eq!(response.code(), Code::CHANGED);
-            return Some(Receipt::decode(response.payload()).unwrap());
-        }
-        std::thread::sleep(Duration::from_millis(1));
     }
 }
 #[test]
@@ -208,13 +261,24 @@ fn child_service_lost_reply_then_restart_recovers_exact_durable_receipt() {
             .status
             .success()
     );
+    let request = prepare(&root, client.try_clone().unwrap(), &c);
     let first = start(&root, &address.to_string(), &peer.to_string(), true);
-    assert!(request(&root, client.try_clone().unwrap(), address, false).is_none());
+    let result = request(address, false);
     let report = first.finish();
+    assert!(matches!(result, Ok(None)), "{result:?}; {report}");
+    assert!(report.contains("\"receipts\":0"), "{report}");
     assert!(report.contains("\"effects\":1"), "{report}");
     assert!(report.contains("\"dropped_receipts\":1"), "{report}");
+    let request = prepare(&root, client, &c);
+    // Controlled preparation longer than the former 400 ms host lifetime. This
+    // is deliberately before launching the child, so it cannot consume service.
+    std::thread::sleep(Duration::from_millis(450));
     let second = start(&root, &address.to_string(), &peer.to_string(), false);
-    let receipt = request(&root, client, address, true).unwrap();
+    let result = request(address, true);
+    let report = second.finish();
+    let receipt = result
+        .unwrap_or_else(|error| panic!("{error}; {report}"))
+        .unwrap();
     assert_eq!(receipt.sequence(), 1);
     let payload = [0x37; 1024];
     let operation = TelemetryOperation::new(
@@ -226,7 +290,6 @@ fn child_service_lost_reply_then_restart_recovers_exact_durable_receipt() {
     .unwrap();
     assert_eq!(receipt.id(), operation.id());
     assert_eq!(receipt.digest(), operation.digest());
-    let report = second.finish();
     assert!(report.contains("\"effects\":1"), "{report}");
     assert!(report.contains("\"receipts\":1"), "{report}");
     for name in [

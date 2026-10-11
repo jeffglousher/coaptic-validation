@@ -111,10 +111,8 @@ fn run() -> Result<(), &'static str> {
         .set_nonblocking(true)
         .map_err(|_| "nonblocking socket")?;
     let io = UdpSocketIo::new(socket, [0; 1153]).map_err(|_| "UDP adapter")?;
-    println!("{{\"ready\":true,\"run_id\":\"{run_id}\"}}");
-    std::io::stdout().flush().map_err(|_| "ready report")?;
     let clock = Instant::now();
-    let report = telemetry::run(
+    let report = telemetry::run_with_ready(
         io,
         |bytes| getrandom::fill(bytes).is_ok(),
         || {
@@ -132,6 +130,10 @@ fn run() -> Result<(), &'static str> {
         },
         security,
         &mut journal,
+        || {
+            println!("{{\"ready\":true,\"run_id\":\"{run_id}\"}}");
+            std::io::stdout().flush().is_ok()
+        },
     )
     .map_err(|_| "service stopped on failure; recover retained records")?;
     println!(

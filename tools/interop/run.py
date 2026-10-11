@@ -318,7 +318,8 @@ class Proxy:
                         action = "corrupt"
                     elif self.mode == "blackhole":
                         action = "drop"
-                    elif (self.mode == "drop-separate" and not incoming and not dropped
+                    elif (self.mode in ("drop-separate", "drop-separate-permanent") and not incoming
+                          and (not dropped or self.mode == "drop-separate-permanent")
                           and len(data) >= 4 and data[0] >> 6 == 1
                           and (data[0] >> 4) & 3 == 0 and data[1] == 69):
                         action, dropped = "drop", True
@@ -1664,6 +1665,26 @@ def separate_loss_client(client, server):
     return proof
 
 
+def separate_ipv6_loss(client, server):
+    """Existing standalone fixture reliability over IPv6, not upstream coap-rs reliability."""
+    from separate_ipv6 import grade
+    proofs = {}
+    with Server(server, "udp", family="ipv6") as service:
+        probe = ipv6_probe(service.number)
+        for mode, relay_mode, deadline in [("loss", "drop-separate", 12000),
+                                          ("permanent", "drop-separate-permanent", 6000),
+                                          ("fresh", "forward", 6000)]:
+            with Proxy(service.number, relay_mode, family="ipv6") as relay:
+                endpoints = {"family": "AF_INET6" if relay.front.family == relay.back.family == socket.AF_INET6 else "wrong",
+                             "v6only": [sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) for sock in (relay.front, relay.back)],
+                             "front": relay.front.getsockname(), "back": relay.back.getsockname(), "server": relay.dest}
+                result = request(client, "udp", relay.number, family="ipv6", path="separate", timeout=deadline)
+            if len(relay.trace) > 256:
+                raise AssertionError("IPv6 separate-response trace exceeded its finite bound")
+            proofs[mode] = dict(proof=grade(relay.trace, result, endpoints, mode=mode), result=result, deadline_ms=deadline)
+    return dict(probe=probe, schedules=proofs)
+
+
 def grade_separate_loss(trace):
     forwarded = [row for row in trace if row["action"] == "forward"]
     result = grade_separate_trace(forwarded)
@@ -2532,6 +2553,7 @@ def main():
     case("separate:coap-rs", lambda: separate_response(peers["coap-rs"]))
     case("separate-client:coaptic->coap-rs", lambda: separate_client(peers["coaptic"], peers["coap-rs"]))
     case("separate-loss:coaptic->coap-rs", lambda: separate_loss_client(peers["coaptic"], peers["coap-rs"]))
+    case("ipv6-separate-loss:coaptic->coap-rs", lambda: separate_ipv6_loss(peers["coaptic"], peers["coap-rs"]))
     for client in ("coaptic", "coap-rs"):
         case(f"separate-loss:{client}->coaptic",
              lambda client=client: separate_loss_client(peers[client], peers["coaptic"]))
