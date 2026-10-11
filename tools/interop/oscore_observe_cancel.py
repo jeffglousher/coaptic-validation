@@ -7,7 +7,7 @@ from oscore_observe import (ObserveRelay, authenticated_notifications, observer_
                             exchange_grade, opts)
 from oscore_qblock1 import require, request_plain, response_plain, FixtureContext, incoming
 from oscore_qblock2 import loopback_endpoint, relay_endpoints
-from run import Proxy, Server, command, decode, expect, packet_token, decoded_options
+from run import Proxy, Server, command, decode, expect, packet_token, decoded_options, request
 
 
 def cancellation_plain(wire):
@@ -95,6 +95,7 @@ def cancellation_grade(trace, endpoints, original):
 
 
 def review(record, patch):
+    expect(record["setup"], 69, b"0")
     ready = record["server_ready"]
     require(ready.get("transport") == "oscore" and ready.get("libcoap_patch_sha256") == patch["patch_sha256"], "peer provenance changed")
     trace, endpoints = record["trace"], record["endpoints"]
@@ -109,6 +110,13 @@ def review(record, patch):
     expect(record["result"], 69, b"0,1,1,2,3,4")
     reqs = requests(trace)
     require(len(reqs) == 3 and reqs[0][0] == 0, "missing/extra lifecycle request")
+    require(len({wire[2:4] for _, wire in reqs}) == 3, "lifecycle client request MID reused")
+    server_mids = set()
+    for row in trace:
+        wire = bytes.fromhex(row["hex"])
+        if row["direction"] == "response" and wire[1] != 0 and wire[0] >> 4 & 3 in (0, 1):
+            require(wire[2:4] not in server_mids, "lifecycle server MID reused")
+            server_mids.add(wire[2:4])
     cancel_at, cancel = reqs[1]
     fresh_at, fresh = reqs[2]
     before, cancelled, after = trace[:cancel_at], trace[cancel_at:fresh_at], trace[fresh_at:]
@@ -163,6 +171,10 @@ def campaign(client, server, record, patch):
     with Server(server, "oscore") as service:
         record["server_ready"] = service.ready
         require(service.ready.get("libcoap_patch_sha256") == patch["patch_sha256"], "peer patch mismatch")
+        # Establish the fixture's replay window before the measured Observe
+        # exchange, including any authenticated Echo recovery challenge.
+        record["setup"] = request(client, "oscore", service.number, sequence=0, path="counter")
+        expect(record["setup"], 69, b"0")
         relay = ObserveRelay(service.number)
         proc = None
 
@@ -176,7 +188,6 @@ def campaign(client, server, record, patch):
             raise AssertionError("lifecycle wait exceeded finite deadline")
 
         def ordinary(record, method, sequence):
-            from run import request
             r = Proxy(service.number, "pass")
             try:
                 with r:

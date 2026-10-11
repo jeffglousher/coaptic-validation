@@ -25,9 +25,11 @@ def evidence(*, cancel_token=b"o", cancel_observe=b"\x01", wrong_binding=False,
     # Tokens are outer fields: use a fresh value without changing authentication.
     for row in after:
         wire = bytes.fromhex(row["hex"])
+        old_mid = int.from_bytes(wire[2:4], "big")
+        wire = wire[:2] + (40 if old_mid == 10 else old_mid + 40).to_bytes(2, "big") + wire[4:]
         if wire[0] & 15:
             wire = wire[:4] + fresh_token + wire[5:]
-            row.update(hex=wire.hex(), forwarded_hex=wire.hex())
+        row.update(hex=wire.hex(), forwarded_hex=wire.hex())
         row["time_ns"] += 3_100_000_000
     def ordinary(method, body, sequence, offset):
         record = exchange(method, body, sequence, offset)
@@ -36,6 +38,7 @@ def evidence(*, cancel_token=b"o", cancel_observe=b"\x01", wrong_binding=False,
         return record
 
     return dict(server_ready=dict(transport="oscore", port=1003, libcoap_patch_sha256="patch"),
+                setup=dict(event="response", exit_code=0, code=69, payload_hex=b"0".hex()),
                 trace=before + cancel + after, endpoints=endpoints,
                 result=dict(event="response", exit_code=0, code=69, payload_hex=b"0,1,1,2,3,4".hex()),
                 writes=[ordinary(2, b"", 200, 3_100_000), ordinary(2, b"", 300, 100_000_000),
@@ -88,6 +91,24 @@ class CancellationTests(unittest.TestCase):
             with self.subTest(begin=begin), self.assertRaisesRegex(AssertionError, "client endpoint changed"):
                 review(r, {"patch_sha256": "patch"})
 
+    def test_client_request_mid_reuse_across_phases_refuses(self):
+        r = evidence(fresh_token=b"n")
+        for index in (10, 11):
+            wire = bytes.fromhex(r["trace"][index]["hex"])
+            wire = wire[:2] + b"\x00\x0a" + wire[4:]
+            r["trace"][index].update(hex=wire.hex(), forwarded_hex=wire.hex())
+        with self.assertRaisesRegex(AssertionError, "client request MID reused"):
+            review(r, {"patch_sha256": "patch"})
+
+    def test_server_mid_reuse_across_phases_refuses(self):
+        r = evidence(fresh_token=b"n")
+        for index in (12, 13):
+            wire = bytes.fromhex(r["trace"][index]["hex"])
+            wire = wire[:2] + b"\x00\x14" + wire[4:]
+            r["trace"][index].update(hex=wire.hex(), forwarded_hex=wire.hex())
+        with self.assertRaisesRegex(AssertionError, "server MID reused"):
+            review(r, {"patch_sha256": "patch"})
+
     def test_hold_update_readback_and_fresh_recovery_are_required(self):
         mutations = [lambda r: r["writes"].pop(),
                      lambda r: r["quiet_readback"]["result"].update(payload_hex=b"1".hex()),
@@ -124,6 +145,7 @@ class CancellationTests(unittest.TestCase):
              patch("oscore_observe_cancel.Proxy", return_value=writer), \
              patch("oscore_observe_cancel.subprocess.Popen", return_value=proc), \
              patch("oscore_observe_cancel.command", return_value=[]), \
+             patch("oscore_observe_cancel.request", return_value=dict(exit_code=0, code=69, payload_hex=b"0".hex())), \
              patch("oscore_observe_cancel.authenticated_notifications", return_value=[(b"wire", b"0")]):
             with self.assertRaisesRegex(RuntimeError, "supervisor failure"):
                 campaign(None, None, r, {"patch_sha256": "patch"})
