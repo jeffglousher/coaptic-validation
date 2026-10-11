@@ -534,6 +534,15 @@ fn observe(
     client: &mut dyn Peer,
     server: &mut dyn Peer,
 ) -> Result<(), PeerError> {
+    if matches!(id, "TD_COAP_OBS_10" | "TD_COAP_OBS_12") {
+        return observe_owner_request(id, dest, client, server);
+    }
+    if id == "TD_COAP_OBS_06" {
+        return observe_restart(dest, client, server);
+    }
+    if id == "TD_COAP_OBS_01" {
+        return observe_con(dest, client, server);
+    }
     if id == "TD_COAP_OBS_02" {
         return observe_non(dest, client, server);
     }
@@ -569,6 +578,181 @@ fn observe(
             Ok(())
         }
     }
+}
+
+fn observe_owner_request(
+    id: &str,
+    dest: SocketAddr,
+    client: &mut dyn Peer,
+    server: &mut dyn Peer,
+) -> Result<(), PeerError> {
+    if client.name() != "coaptic" || server.name() != "coaptic" {
+        return Err(PeerError("SKIP: coverage gap #199: same-owner Observe requests need the Coaptic client and controlled CON server".into()));
+    }
+    observe_con(dest, client, server)?;
+    let endpoint = client
+        .local_addr()
+        .ok_or("Observe client endpoint missing")?;
+    let cancel = id == "TD_COAP_OBS_12";
+    let mut request = ClientRequest::get(&["obs"]);
+    if cancel {
+        request.observe = Some(1);
+    }
+    let response = client.request_on_observe(dest, &request)?;
+    if response.ty != Type::Acknowledgement
+        || response.code != Code::CONTENT
+        || response.payload != site::OBS_BODY
+        || response.content_format != Some(0)
+        || response.observe.is_some()
+    {
+        return Err(PeerError(format!(
+            "{id} complete unrelated/cancellation response"
+        )));
+    }
+    if client.local_addr() != Some(endpoint) {
+        return Err(PeerError(format!("{id} request replaced client endpoint")));
+    }
+    if cancel {
+        let before = server.take_capture().snapshot().len();
+        for payload in [site::OBS_BODY, site::OBS_BODY_2, site::OBS_BODY] {
+            server.notify_confirmable(&["obs"], payload)?;
+            client.observe_quiet_for(Duration::from_secs(1))?;
+        }
+        if server.take_capture().snapshot().len() != before {
+            return Err(PeerError(
+                "OBS_12 server sent traffic after cancellation".into(),
+            ));
+        }
+        observe_con(dest, client, server)?;
+        if client.local_addr() != Some(endpoint) {
+            return Err(PeerError("OBS_12 recovery changed endpoint".into()));
+        }
+    } else {
+        observe_con_notifications(dest, client, server)?;
+    }
+    Ok(())
+}
+
+fn observe_restart(
+    dest: SocketAddr,
+    client: &mut dyn Peer,
+    server: &mut dyn Peer,
+) -> Result<(), PeerError> {
+    if client.name() != "coaptic" || server.name() != "coaptic" {
+        return Err(PeerError("SKIP: coverage gap #199: OBS_06 needs controlled same-endpoint client restart and CON server".into()));
+    }
+    observe_con(dest, client, server)?;
+    let endpoint = client
+        .local_addr()
+        .ok_or("OBS_06 missing client endpoint")?;
+    client.restart_observe_client()?;
+    if client.local_addr() != Some(endpoint) {
+        return Err(PeerError("OBS_06 restart changed endpoint".into()));
+    }
+    server.notify_confirmable(&["obs"], site::OBS_BODY_2)?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(1);
+    loop {
+        client.observe_quiet_for(Duration::from_millis(20))?;
+        let reset = server.take_capture().snapshot().iter().any(|packet| {
+            packet.src == endpoint
+                && packet.dst == dest
+                && coaptic::message::decode(&packet.bytes).is_ok_and(|p| p.ty() == Type::Reset)
+        });
+        if reset {
+            break;
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(PeerError(
+                "OBS_06 restarted client did not reset notification".into(),
+            ));
+        }
+    }
+    let before = server.take_capture().snapshot().len();
+    // Three independently scheduled updates after RST; each quiet interval exceeds
+    // the server loop period. Recovery below proves the server remains responsive.
+    for payload in [site::OBS_BODY, site::OBS_BODY_2, site::OBS_BODY] {
+        server.notify_confirmable(&["obs"], payload)?;
+        client.observe_quiet_for(Duration::from_secs(1))?;
+    }
+    if server.take_capture().snapshot().len() != before {
+        return Err(PeerError("OBS_06 server sent traffic after reset".into()));
+    }
+    observe_con(dest, client, server)?;
+    if client.local_addr() != Some(endpoint) {
+        return Err(PeerError("OBS_06 recovery changed endpoint".into()));
+    }
+    Ok(())
+}
+
+fn observe_con(
+    dest: SocketAddr,
+    client: &mut dyn Peer,
+    server: &mut dyn Peer,
+) -> Result<(), PeerError> {
+    if server.name() != "coaptic" {
+        return Err(PeerError("SKIP: coverage gap #199: coap-rs server wrapper has no controlled CON notification source".into()));
+    }
+    let mut reg = ClientRequest::get(&["obs"]);
+    reg.observe = Some(0);
+    let first = client.begin_observe(dest, &reg)?;
+    if first.ty != Type::Acknowledgement
+        || first.code != Code::CONTENT
+        || first.payload != site::OBS_BODY
+        || first.content_format != Some(0)
+        || first.observe.is_none()
+    {
+        return Err(PeerError("OBS_01 initial representation".into()));
+    }
+    observe_con_notifications(dest, client, server)
+}
+
+fn observe_con_notifications(
+    dest: SocketAddr,
+    client: &mut dyn Peer,
+    server: &mut dyn Peer,
+) -> Result<(), PeerError> {
+    for payload in [site::OBS_BODY_2, site::OBS_BODY] {
+        // Separate periodic state changes without accelerating caller time.
+        thread::sleep(Duration::from_millis(20));
+        server.notify_confirmable(&["obs"], payload)?;
+        let next = client.take_notification(Duration::from_secs(3))?;
+        if next.ty != Type::Confirmable
+            || next.code != Code::CONTENT
+            || next.payload != payload
+            || next.content_format != Some(0)
+            || next.observe.is_none()
+        {
+            return Err(PeerError("OBS_01 complete CON notification".into()));
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        loop {
+            // The last server-sent CON must be settled before the next update.
+            let packets = server.take_capture().snapshot();
+            let notification = packets.iter().rev().find_map(|packet| {
+                let p = coaptic::message::decode(&packet.bytes).ok()?;
+                (packet.src == dest && p.ty() == Type::Confirmable && p.code() == Code::CONTENT)
+                    .then_some(p.message_id())
+            });
+            if notification.is_some_and(|mid| {
+                packets.iter().any(|packet| {
+                    coaptic::message::decode(&packet.bytes).is_ok_and(|p| {
+                        packet.dst == dest
+                            && p.ty() == Type::Acknowledgement
+                            && p.code() == Code::EMPTY
+                            && p.message_id() == mid
+                    })
+                })
+            }) {
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(PeerError("OBS_01 notification ACK missing".into()));
+            }
+            client.poll(0)?;
+            thread::sleep(Duration::from_millis(2));
+        }
+    }
+    Ok(())
 }
 
 fn observe_non(

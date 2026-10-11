@@ -200,10 +200,38 @@ pub trait Peer {
         Err(PeerError("observe collect not supported".into()))
     }
 
+    /// Issue an unrelated GET or explicit cancellation on the retained client owner.
+    /// Unsupported backends refuse instead of replacing the client/socket.
+    fn request_on_observe(
+        &mut self,
+        dest: SocketAddr,
+        req: &ClientRequest,
+    ) -> Result<ClientResponse, PeerError> {
+        let _ = (dest, req);
+        Err(PeerError("same-owner Observe request not supported".into()))
+    }
+
+    /// Lose client protocol state while preserving the registered UDP endpoint.
+    fn restart_observe_client(&mut self) -> Result<(), PeerError> {
+        Err(PeerError("observe client restart not supported".into()))
+    }
+
+    /// Poll the retained client and refuse any delivered response during `duration`.
+    fn observe_quiet_for(&mut self, duration: Duration) -> Result<(), PeerError> {
+        let _ = duration;
+        Err(PeerError("observe quiet check not supported".into()))
+    }
+
     /// Ask a running server to emit an Observe notification for `path`.
     fn notify(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
         let _ = (path, payload);
         Err(PeerError("notify not supported".into()))
+    }
+
+    /// Ask a running server to use CON for this notification.
+    fn notify_confirmable(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
+        let _ = (path, payload);
+        Err(PeerError("confirmable notify not supported".into()))
     }
 
     /// Whether this peer can terminate DTLS (feature `dtls`).

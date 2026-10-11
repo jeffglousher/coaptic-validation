@@ -34,9 +34,9 @@ This crate is the **App SUT**. The in-crate `cargo test --test plugtest` harness
 ### Qualification boundary
 
 The App TD runner reports known incomplete scenarios as `SKIP: coverage gap #199`.
-Still unfinished, not conformance passes: OBS_01 (notifications stay NON until the
-24-hour confirm point); the rest of OBS except a coaptic↔coaptic OBS_02 NON
-notification (coap-rs does not collect notifications); DTLS_02 (no plaintext
+OBS_01 and OBS_02 pass for Coaptic and coap-rs clients against the Coaptic
+server; their coap-rs-server directions remain SKIP. Still unfinished, not
+conformance passes: the remaining Observe scenarios; DTLS_02 (no plaintext
 `decrypt_error` alert); DTLS_03 (each handshake flight is not dropped); and
 DTLS_04–07 (no RFC 7250 raw public key). An X.509 run is a different test.
 CORE separate responses, loss and retransmission, BLOCK trains, and DTLS_01
@@ -65,6 +65,64 @@ the two mixed directions and Coaptic self-pair, and require a certificate-verifi
 error for unrelated trust roots on either endpoint. They do not upgrade skipped
 RPK TDs to passes; independent DTLS-backend coverage remains libcoap/OpenSSL.
 
+### Literal confirmable Observe qualification
+
+`cargo test --locked -p coaptic-plugtest --test interop confirmable_observe_notifications_reach_each_client_backend`
+runs the original TD_COAP_OBS_01: CON registration for `/obs`, initial ACK
+representation, then two complete CON notifications with matching empty ACKs.
+The fixture requests CON explicitly through `App::notify_confirmable`; caller
+time is not accelerated and ordinary adaptive `notify` remains unchanged.
+Both clients collect the full expected bodies. The grader checks endpoint
+roles, token/MID ownership, content format and increasing Observe values;
+12 mutation cases per client reject incomplete or corrupted evidence.
+Set `COAPTIC_OBSERVE_CAPTURE_DIR` to retain `obs-01-coaptic.pcap` and
+`obs-01-coap-rs.pcap`. Duplicate client/server capture taps are deduplicated;
+only the six prescribed unique datagrams are accepted.
+
+This plaintext socket proof is separate from protected interoperability and
+sustained-loss qualification. The coap-rs server wrapper has no controlled CON
+notification source and stays SKIP. Other incomplete literal Observe scenarios
+remain SKIP; see [#410](https://github.com/jeffglousher/coaptic/issues/410).
+
+### Literal Observe client restart qualification
+
+`cargo test --locked -p coaptic-plugtest --test interop observe_client_restart_resets_on_same_endpoint_and_recovers`
+executes TD_COAP_OBS_06 with a Coaptic client and server. After two acknowledged
+CON notifications, the client consumes its App and binds fresh protocol state
+around the same UDP transport. The next CON is discarded and receives matching
+RST. Three attempted updates during three one-second quiet intervals produce no
+traffic or application delivery. Fresh registration on that same endpoint then
+receives two complete CON notifications and acknowledges them.
+
+Strict grading requires the fourteen-datagram registration/reset/recovery trace;
+twelve altered traces are refused. A separate live socket test sends wrong-peer
+and wrong-MID resets and verifies the legitimate observation still delivers.
+`COAPTIC_OBSERVE_CAPTURE_DIR` retains `obs-06-coaptic.pcap`. Quiet duration and
+application non-delivery are runner assertions; the packet grader validates the
+wire sequence. This is protocol-state restart on loopback, not physical reboot,
+protected peer authentication, or sustained availability. Both coap-rs directions
+remain SKIP. See [#416](https://github.com/jeffglousher/coaptic/issues/416).
+
+### Same-owner Observe GET and cancellation
+
+`cargo test --locked -p coaptic-plugtest --test interop same_owner_get_preserves_observation_and_explicit_cancel_stops_it`
+executes literal TD_COAP_OBS_10 and TD_COAP_OBS_12 with Coaptic on both ends.
+The client reuses its App, socket and clock origin. An unrelated GET uses a fresh
+token without Observe and leaves the original subscription delivering complete
+CON notifications. Explicit cancellation uses `deregister_call` to retain the
+original token and exact request identity; its complete ACK has no Observe.
+Three attempted updates across three one-second quiet intervals then produce no
+traffic or application delivery, followed by fresh same-endpoint registration.
+
+The strict twelve-/fourteen-datagram oracles bind paths, endpoints, tokens, MIDs,
+Observe values, content format and complete bodies. Sixteen trace mutations per
+scenario must fail. Separate live checks refuse wrong-path/wrong-peer cancellation
+before I/O, preserve the original observation, then cancel and recover. Other
+backends refuse the new hook by default; both coap-rs directions remain SKIP.
+`COAPTIC_OBSERVE_CAPTURE_DIR` retains each scenario's PCAP. These plaintext
+loopback tests do not qualify authenticated ownership or sustained availability.
+Tracking: [#419](https://github.com/jeffglousher/coaptic/issues/419).
+
 ### Observe reset socket qualification
 
 `cargo test --locked -p coaptic-plugtest --test observe_reset` checks RFC 7641
@@ -81,8 +139,8 @@ Set `COAPTIC_OBSERVE_CAPTURE_DIR` to retain `rfc7641-non-reset.pcap`.
 This plaintext fixture qualifies message/endpoint matching, not authenticated
 peer identity or protected interoperability. It is not TD_COAP_OBS_06: that TD
 requires CON notifications, while this fixture exercises NON notifications.
-The literal TD remains skipped; finite silence is not sustained availability
-qualification. Tracking: [#402](https://github.com/jeffglousher/coaptic/issues/402),
+The separate literal restart scenario above supplies the CON evidence; finite
+silence is not sustained availability qualification. Tracking: [#402](https://github.com/jeffglousher/coaptic/issues/402),
 [#199](https://github.com/jeffglousher/coaptic/issues/199), and
 [#202](https://github.com/jeffglousher/coaptic/issues/202).
 

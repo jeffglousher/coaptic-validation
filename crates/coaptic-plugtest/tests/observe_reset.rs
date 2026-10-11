@@ -274,5 +274,12 @@ fn non_reset_requires_matching_endpoint_and_mid_then_allows_fresh_registration()
             )
             .unwrap();
     }
-    assert!(coaptic_plugtest::catalog::skip_reason("TD_COAP_OBS_06").is_some());
+    // Literal OBS_06 now has its own CON/restart fixture. This NON-only proof
+    // must still never qualify as that different prescribed scenario.
+    assert!(
+        coaptic_plugtest::grade::Catalog::load()
+            .unwrap()
+            .grade("TD_COAP_OBS_06", &capture)
+            .is_err()
+    );
 }

@@ -34,9 +34,11 @@ struct ObserveHold {
 struct ServerCtl {
     addr: SocketAddr,
     stop: Arc<AtomicBool>,
-    notify: crate::peer::NotifyMailbox,
+    notify: NotifyMailbox,
     join: Option<JoinHandle<()>>,
 }
+
+type NotifyMailbox = Arc<Mutex<Option<(Vec<String>, Vec<u8>, bool)>>>;
 
 impl Default for CoapticPeer {
     fn default() -> Self {
@@ -112,10 +114,13 @@ impl Peer for CoapticPeer {
         dest: SocketAddr,
         req: &ClientRequest,
     ) -> Result<ClientResponse, PeerError> {
-        self.observe = None;
-        let (sock, local) = bind_loopback().map_err(|e| e.to_string())?;
-        self.client_addr = Some(local);
-        let io = CapturingIo::new(sock, local, self.capture.clone());
+        let io = if let Some(previous) = self.observe.take() {
+            previous.app.into_io()
+        } else {
+            let (sock, local) = bind_loopback().map_err(|e| e.to_string())?;
+            self.client_addr = Some(local);
+            CapturingIo::new(sock, local, self.capture.clone())
+        };
         let (mut app, call) = start_client(io, dest, req)?;
         let origin = Instant::now();
         let response = wait_response(&mut app, call, origin, req.timeout)?;
@@ -126,6 +131,53 @@ impl Peer for CoapticPeer {
     fn take_notification(&mut self, timeout: Duration) -> Result<ClientResponse, PeerError> {
         let hold = self.observe.as_mut().ok_or("no observe client")?;
         wait_response(&mut hold.app, hold.call, hold.origin, timeout)
+    }
+
+    fn request_on_observe(
+        &mut self,
+        dest: SocketAddr,
+        req: &ClientRequest,
+    ) -> Result<ClientResponse, PeerError> {
+        if req.code != Code::GET || !matches!(req.observe, None | Some(1)) {
+            return Err(PeerError(
+                "same-owner request must be GET or cancellation".into(),
+            ));
+        }
+        let hold = self.observe.as_mut().ok_or("no observe client")?;
+        let now = u64::try_from(hold.origin.elapsed().as_millis())
+            .unwrap_or(u64::MAX)
+            .saturating_add(1);
+        let call = send_client(&mut hold.app, dest, req, now, Some(hold.call))?;
+        wait_response(&mut hold.app, call, hold.origin, req.timeout)
+    }
+
+    fn restart_observe_client(&mut self) -> Result<(), PeerError> {
+        let previous = self.observe.take().ok_or("no observe client")?;
+        let app = bind_client(previous.app.into_io())?;
+        self.observe = Some(ObserveHold {
+            app,
+            call: previous.call,
+            origin: Instant::now(),
+        });
+        Ok(())
+    }
+
+    fn observe_quiet_for(&mut self, duration: Duration) -> Result<(), PeerError> {
+        let hold = self.observe.as_mut().ok_or("no observe client")?;
+        let deadline = Instant::now() + duration;
+        while Instant::now() < deadline {
+            let now = u64::try_from(hold.origin.elapsed().as_millis())
+                .unwrap_or(u64::MAX)
+                .saturating_add(1);
+            hold.app.poll(now).map_err(|e| format!("quiet poll: {e}"))?;
+            if hold.app.take_response(hold.call).is_some() {
+                return Err(PeerError(
+                    "restarted client delivered an old observation".into(),
+                ));
+            }
+            thread::sleep(Duration::from_millis(2));
+        }
+        Ok(())
     }
 
     fn poll(&mut self, _now_ms: u64) -> Result<(), PeerError> {
@@ -145,6 +197,17 @@ impl Peer for CoapticPeer {
         *srv.notify.lock().expect("notify") = Some((
             path.iter().map(|s| (*s).to_owned()).collect(),
             payload.to_vec(),
+            false,
+        ));
+        Ok(())
+    }
+
+    fn notify_confirmable(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
+        let srv = self.server.as_ref().ok_or("no server")?;
+        *srv.notify.lock().expect("notify") = Some((
+            path.iter().map(|s| (*s).to_owned()).collect(),
+            payload.to_vec(),
+            true,
         ));
         Ok(())
     }
@@ -165,7 +228,7 @@ fn server_loop(
     addr: SocketAddr,
     capture: Capture,
     stop: Arc<AtomicBool>,
-    notify: crate::peer::NotifyMailbox,
+    notify: NotifyMailbox,
 ) {
     let io = CapturingIo::new(sock, addr, capture);
     let mut app = bind_site(io);
@@ -173,7 +236,7 @@ fn server_loop(
     while !stop.load(Ordering::SeqCst) {
         let now = u64::try_from(origin.elapsed().as_millis()).unwrap_or(u64::MAX);
         let _ = app.poll(now);
-        if let Some((path, payload)) = notify.lock().expect("n").take() {
+        if let Some((path, payload, confirmable)) = notify.lock().expect("n").take() {
             let segs: Vec<&str> = path.iter().map(String::as_str).collect();
             let body: &'static [u8] = if payload == site::OBS_BODY_2 {
                 site::OBS_BODY_2
@@ -182,11 +245,12 @@ fn server_loop(
             } else {
                 site::OBS_BODY_2
             };
-            let _ = app.notify(
-                now,
-                &segs,
-                Response::content(body).content_format(ContentFormat::TEXT_PLAIN),
-            );
+            let response = Response::content(body).content_format(ContentFormat::TEXT_PLAIN);
+            let _ = if confirmable {
+                app.notify_confirmable(now, &segs, response)
+            } else {
+                app.notify(now, &segs, response)
+            };
         }
         thread::sleep(Duration::from_millis(2));
     }
@@ -230,18 +294,33 @@ pub(crate) fn app_exchange<T: DatagramIo<Error = std::io::Error>>(
     wait_response(&mut app, call, origin, req.timeout)
 }
 
+fn bind_client<T: DatagramIo<Error = std::io::Error>>(io: T) -> Result<ClientApp<T>, PeerError> {
+    App::profile::<profiles::Default>()
+        .randomness(|bytes| getrandom::fill(bytes).is_ok())
+        .block_wise::<true>()
+        .allow_plaintext()
+        .bind(io)
+        .map_err(|e| PeerError(format!("bind: {e}")))
+}
+
 fn start_client<T: DatagramIo<Error = std::io::Error>>(
     io: T,
     dest: SocketAddr,
     req: &ClientRequest,
 ) -> Result<(ClientApp<T>, Call), PeerError> {
+    let mut app = bind_client(io)?;
+    let call = send_client(&mut app, dest, req, 1, None)?;
+    Ok((app, call))
+}
+
+fn send_client<T: DatagramIo<Error = std::io::Error>>(
+    app: &mut ClientApp<T>,
+    dest: SocketAddr,
+    req: &ClientRequest,
+    now: u64,
+    observe_call: Option<Call>,
+) -> Result<Call, PeerError> {
     let dest_ep = Endpoint::from(dest);
-    let mut app = App::profile::<profiles::Default>()
-        .randomness(|bytes| getrandom::fill(bytes).is_ok())
-        .block_wise::<true>()
-        .allow_plaintext()
-        .bind(io)
-        .map_err(|e| format!("bind: {e}"))?;
     let path = intern_path(&req.path)?;
     let method = Method::from_code(req.code).ok_or_else(|| {
         PeerError(format!(
@@ -277,17 +356,22 @@ fn start_client<T: DatagramIo<Error = std::io::Error>>(
     }
     match req.observe {
         Some(0) => outgoing = outgoing.observe(),
-        Some(1) => outgoing = outgoing.deregister(),
+        Some(1) => {
+            outgoing = if let Some(call) = observe_call {
+                outgoing.deregister_call(call)
+            } else {
+                outgoing.deregister()
+            };
+        }
         _ => {}
     }
     if let Some((num, more, size)) = req.block2 {
         let block = BlockValue::from_size(num, more, size).map_err(|e| format!("block2: {e:?}"))?;
         outgoing = outgoing.block2(block);
     }
-    let call = outgoing
-        .send(1)
-        .map_err(|e| format!("send {} {}: {e}", req.code, req.path.join("/")))?;
-    Ok((app, call))
+    outgoing
+        .send(now)
+        .map_err(|e| PeerError(format!("send {} {}: {e}", req.code, req.path.join("/"))))
 }
 
 fn wait_response<T: DatagramIo<Error = std::io::Error>>(
@@ -415,4 +499,177 @@ pub fn build_engine()
             .build(Memory::<profiles::Default>::with_block_wise())
             .expect("engine"),
     )
+}
+
+#[cfg(test)]
+mod observe_restart_tests {
+    use super::*;
+
+    #[test]
+    fn wrong_endpoint_and_mid_resets_preserve_live_con_observation() {
+        let _guard = crate::runner::harness_lock();
+        let mut server = CoapticPeer::new();
+        let dest = server.start_server().unwrap();
+        let mut client = CoapticPeer::new();
+        let mut request = ClientRequest::get(&["obs"]);
+        request.observe = Some(0);
+        assert_eq!(
+            client.begin_observe(dest, &request).unwrap().payload,
+            site::OBS_BODY
+        );
+        server
+            .notify_confirmable(&["obs"], site::OBS_BODY_2)
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(1);
+        let mid = loop {
+            if let Some(mid) = server.take_capture().snapshot().iter().find_map(|packet| {
+                let p = decode(&packet.bytes).ok()?;
+                (packet.src == dest && p.ty() == Type::Confirmable && p.code() == Code::CONTENT)
+                    .then_some(p.message_id())
+            }) {
+                break mid;
+            }
+            assert!(Instant::now() < deadline, "notification missing");
+            thread::sleep(Duration::from_millis(2));
+        };
+        let (attacker, _) = bind_loopback().unwrap();
+        let mut wire = [0; 4];
+        let n = encode(&Message::new(Type::Reset, Code::EMPTY, mid), &mut wire).unwrap();
+        attacker.send_to(&wire[..n], dest).unwrap();
+        let wrong = MessageId::new(mid.get() ^ 1);
+        let n = encode(&Message::new(Type::Reset, Code::EMPTY, wrong), &mut wire).unwrap();
+        client
+            .observe
+            .as_mut()
+            .unwrap()
+            .app
+            .transport_mut()
+            .send(Endpoint::from(dest), &wire[..n])
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            let received = server
+                .take_capture()
+                .snapshot()
+                .iter()
+                .filter(|packet| {
+                    packet.dst == dest && decode(&packet.bytes).is_ok_and(|p| p.ty() == Type::Reset)
+                })
+                .count();
+            if received == 2 {
+                break;
+            }
+            assert!(Instant::now() < deadline, "reset controls not received");
+            thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(
+            client
+                .take_notification(Duration::from_secs(1))
+                .unwrap()
+                .payload,
+            site::OBS_BODY_2
+        );
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            let settled = server.take_capture().snapshot().iter().any(|packet| {
+                packet.dst == dest
+                    && decode(&packet.bytes)
+                        .is_ok_and(|p| p.is_empty_ack() && p.message_id() == mid)
+            });
+            if settled {
+                break;
+            }
+            assert!(Instant::now() < deadline, "valid ACK not received");
+            thread::sleep(Duration::from_millis(2));
+        }
+        server.notify_confirmable(&["obs"], site::OBS_BODY).unwrap();
+        assert_eq!(
+            client
+                .take_notification(Duration::from_secs(1))
+                .unwrap()
+                .payload,
+            site::OBS_BODY
+        );
+    }
+}
+
+#[cfg(test)]
+mod observe_owner_tests {
+    use super::*;
+
+    #[test]
+    fn cancellation_identity_refuses_before_io_then_valid_cancel_recovers() {
+        let _guard = crate::runner::harness_lock();
+        let mut server = CoapticPeer::new();
+        let dest = server.start_server().unwrap();
+        let mut client = CoapticPeer::new();
+        let mut registration = ClientRequest::get(&["obs"]);
+        registration.observe = Some(0);
+        assert_eq!(
+            client.begin_observe(dest, &registration).unwrap().payload,
+            site::OBS_BODY
+        );
+        let endpoint = client.local_addr();
+        let before = client.take_capture().snapshot().len();
+        let (other_socket, other) = bind_loopback().unwrap();
+        let mut cancel = ClientRequest::get(&["obs"]);
+        cancel.observe = Some(1);
+        let mut wrong_path = cancel.clone();
+        wrong_path.path = vec!["test".into()];
+        for (target, request) in [(dest, &wrong_path), (other, &cancel), (dest, &registration)] {
+            assert!(client.request_on_observe(target, request).is_err());
+            assert_eq!(
+                client.take_capture().snapshot().len(),
+                before,
+                "refusal performed I/O"
+            );
+            assert_eq!(client.local_addr(), endpoint);
+        }
+        drop(other_socket);
+        server
+            .notify_confirmable(&["obs"], site::OBS_BODY_2)
+            .unwrap();
+        assert_eq!(
+            client
+                .take_notification(Duration::from_secs(1))
+                .unwrap()
+                .payload,
+            site::OBS_BODY_2
+        );
+        let response = client.request_on_observe(dest, &cancel).unwrap();
+        assert_eq!(response.payload, site::OBS_BODY);
+        assert!(response.observe.is_none());
+        let before = server.take_capture().snapshot().len();
+        server.notify_confirmable(&["obs"], site::OBS_BODY).unwrap();
+        client
+            .observe_quiet_for(Duration::from_millis(100))
+            .unwrap();
+        assert_eq!(server.take_capture().snapshot().len(), before);
+        assert_eq!(
+            client.begin_observe(dest, &registration).unwrap().payload,
+            site::OBS_BODY
+        );
+        assert_eq!(client.local_addr(), endpoint);
+        server
+            .notify_confirmable(&["obs"], site::OBS_BODY_2)
+            .unwrap();
+        assert_eq!(
+            client
+                .take_notification(Duration::from_secs(1))
+                .unwrap()
+                .payload,
+            site::OBS_BODY_2
+        );
+    }
+
+    #[test]
+    fn unsupported_same_owner_request_refuses_without_io() {
+        let mut peer = crate::runner::peer_by_name("coap-rs").unwrap();
+        let request = ClientRequest::get(&["obs"]);
+        let error = peer
+            .request_on_observe("127.0.0.1:5683".parse().unwrap(), &request)
+            .unwrap_err();
+        assert!(error.0.contains("not supported"));
+        assert!(peer.take_capture().snapshot().is_empty());
+    }
 }

@@ -274,8 +274,12 @@
   "TD_COAP_OBS_01": {
     "allow_extra": true,
     "coap": [
-      {"code": "0.01", "uri_path": ["obs"], "observe": "register"},
-      {"code": "2.05"}
+      {"type": "CON", "code": "0.01", "uri_path": ["obs"], "observe": "register", "token_len": {"min": 1, "max": 8}},
+      {"type": "ACK", "code": "2.05", "mid": "echo", "token": "echo", "observe": "present", "content_format": 0, "payload": "obs-0"},
+      {"type": "CON", "code": "2.05", "mid": "fresh", "token": "echo", "observe": "increase", "content_format": 0, "payload": "obs-1"},
+      {"type": "ACK", "code": "0.00", "mid": "prev", "token_len": {"min": 0, "max": 0}, "payload": "empty"},
+      {"type": "CON", "code": "2.05", "mid": "fresh", "token": "echo", "observe": "increase", "content_format": 0, "payload": "obs-0"},
+      {"type": "ACK", "code": "0.00", "mid": "prev", "token_len": {"min": 0, "max": 0}, "payload": "empty"}
     ]
   },
   "TD_COAP_OBS_02": {
@@ -302,13 +306,7 @@
       {"code": "2.05"}
     ]
   },
-  "TD_COAP_OBS_06": {
-    "allow_extra": true,
-    "coap": [
-      {"code": "0.01", "observe": "register"},
-      {"code": "2.05"}
-    ]
-  },
+  "TD_COAP_OBS_06": { "allow_extra": true, "coap": [] },
   "TD_COAP_OBS_07": {
     "allow_extra": true,
     "coap": [
@@ -332,13 +330,7 @@
       {"code": "2.05"}
     ]
   },
-  "TD_COAP_OBS_10": {
-    "allow_extra": true,
-    "coap": [
-      {"code": "0.01", "observe": "register"},
-      {"code": "2.05"}
-    ]
-  },
+  "TD_COAP_OBS_10": { "allow_extra": true, "coap": [] },
   "TD_COAP_OBS_11": {
     "allow_extra": true,
     "coap": [
@@ -346,14 +338,7 @@
       {"code": "2.05"}
     ]
   },
-  "TD_COAP_OBS_12": {
-    "allow_extra": true,
-    "coap": [
-      {"code": "0.01", "observe": "register"},
-      {"code": "2.05"},
-      {"code": "0.01", "observe": "deregister"}
-    ]
-  },
+  "TD_COAP_OBS_12": { "allow_extra": true, "coap": [] },
   "TD_COAP_OBS_13": {
     "allow_extra": true,
     "coap": [
