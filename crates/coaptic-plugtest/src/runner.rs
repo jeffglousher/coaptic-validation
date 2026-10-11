@@ -141,7 +141,11 @@ pub fn run_td(id: &str, pair: Pair) -> TdResult {
         }
     }
     let capture = Capture::new();
-    capture.extend_from(&client.take_capture());
+    // A single transport tap preserves literal retransmissions in OBS11;
+    // merged send/receive taps would make retries ambiguous with duplicate taps.
+    if id != "TD_COAP_OBS_11" {
+        capture.extend_from(&client.take_capture());
+    }
     capture.extend_from(&server.take_capture());
     server.stop_server();
     let error = match run {
@@ -534,6 +538,9 @@ fn observe(
     client: &mut dyn Peer,
     server: &mut dyn Peer,
 ) -> Result<(), PeerError> {
+    if id == "TD_COAP_OBS_11" {
+        return observe_con_loss(dest, client, server);
+    }
     if matches!(id, "TD_COAP_OBS_07" | "TD_COAP_OBS_08") {
         return observe_resource_terminal(id, dest, client, server);
     }
@@ -584,6 +591,98 @@ fn observe(
             Ok(())
         }
     }
+}
+
+fn observe_con_loss(
+    dest: SocketAddr,
+    client: &mut dyn Peer,
+    server: &mut dyn Peer,
+) -> Result<(), PeerError> {
+    if client.name() != "coaptic" || server.name() != "coaptic" {
+        return Err(PeerError(
+            "SKIP: coverage gap #199: controlled Observe loss requires Coaptic peers".into(),
+        ));
+    }
+    observe_con(dest, client, server)?;
+    let endpoint = client.local_addr().ok_or("missing loss client endpoint")?;
+    let initial = server.take_capture().snapshot();
+    let registration =
+        coaptic::message::decode(&initial[0].bytes).map_err(|e| format!("registration: {e:?}"))?;
+    let token = registration.token().as_bytes().to_vec();
+    for (ack_loss, payload) in [(false, site::OBS_BODY_2), (true, site::OBS_BODY)] {
+        if ack_loss {
+            server.arm_observe_loss(endpoint, &token, true)?;
+        } else {
+            client.arm_observe_loss(dest, &token, false)?;
+        }
+        let before = server.take_capture().snapshot().len();
+        server.notify_confirmable(&["obs"], payload)?;
+        if !ack_loss {
+            client.observe_quiet_for(Duration::from_millis(100))?;
+            if client.observe_losses() != 1 {
+                return Err(PeerError("CON loss was not consumed".into()));
+            }
+        }
+        if ack_loss {
+            let first = client.take_notification(Duration::from_secs(1))?;
+            if first.payload != payload
+                || first.ty != Type::Confirmable
+                || first.code != Code::CONTENT
+                || first.content_format != Some(0)
+                || first.observe.is_none()
+            {
+                return Err(PeerError(
+                    "ACK-loss original notification incomplete".into(),
+                ));
+            }
+            client.observe_quiet_for(Duration::from_millis(100))?;
+            if server.observe_losses() != 1 {
+                return Err(PeerError("ACK loss was not consumed".into()));
+            }
+        }
+        // Attempt another notification without changing stored resource state.
+        // While the first CON remains outstanding, it must not bypass NSTART.
+        server.notify_confirmable(
+            &["obs"],
+            if payload == site::OBS_BODY {
+                site::OBS_BODY_2
+            } else {
+                site::OBS_BODY
+            },
+        )?;
+        if !ack_loss {
+            let recovered = client.take_notification(Duration::from_secs(4))?;
+            if recovered.payload != payload
+                || recovered.ty != Type::Confirmable
+                || recovered.code != Code::CONTENT
+                || recovered.content_format != Some(0)
+                || recovered.observe.is_none()
+            {
+                return Err(PeerError(
+                    "CON-loss recovered notification incomplete".into(),
+                ));
+            }
+        }
+        let expected = if ack_loss { 4 } else { 3 };
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            client.observe_quiet_for(Duration::from_millis(20))?;
+            if server.take_capture().snapshot().len() >= before + expected {
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(PeerError("Observe loss retry/ACK timeout".into()));
+            }
+        }
+    }
+    observe_con_notifications(dest, client, server)?;
+    if client.local_addr() != Some(endpoint)
+        || client.observe_losses() != 1
+        || server.observe_losses() != 1
+    {
+        return Err(PeerError("Observe loss ownership/count changed".into()));
+    }
+    Ok(())
 }
 
 fn observe_resource_terminal(

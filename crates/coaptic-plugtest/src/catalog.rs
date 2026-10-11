@@ -162,6 +162,7 @@ pub fn skip_reason(id: &str) -> Option<&'static str> {
                     | "TD_COAP_OBS_08"
                     | "TD_COAP_OBS_09"
                     | "TD_COAP_OBS_10"
+                    | "TD_COAP_OBS_11"
                     | "TD_COAP_OBS_12"
             ) =>
         {

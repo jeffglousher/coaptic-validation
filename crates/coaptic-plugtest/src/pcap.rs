@@ -210,6 +210,7 @@ pub struct CapturingIo<T> {
     local: SocketAddr,
     capture: Capture,
     decrypted: bool,
+    observe_loss: crate::observe_loss::ObserveLoss,
 }
 
 impl<T> CapturingIo<T> {
@@ -220,6 +221,7 @@ impl<T> CapturingIo<T> {
             local,
             capture,
             decrypted: false,
+            observe_loss: crate::observe_loss::ObserveLoss::default(),
         }
     }
 
@@ -228,6 +230,14 @@ impl<T> CapturingIo<T> {
     pub fn decrypted(mut self) -> Self {
         self.decrypted = true;
         self
+    }
+
+    pub(crate) fn with_observe_loss(mut self, loss: crate::observe_loss::ObserveLoss) -> Self {
+        self.observe_loss = loss;
+        self
+    }
+    pub(crate) fn observe_loss(&self) -> crate::observe_loss::ObserveLoss {
+        self.observe_loss.clone()
     }
 
     /// Shared capture log.
@@ -251,7 +261,7 @@ impl<T: DatagramIo> DatagramIo for CapturingIo<T> {
                 let src = SocketAddr::from(ep);
                 self.capture
                     .push(src, self.local, &buf[..n], self.decrypted);
-                if take_request_drop(&buf[..n]) {
+                if self.observe_loss.received(src, &buf[..n]) || take_request_drop(&buf[..n]) {
                     return Ok(None);
                 }
                 Ok(Some((n, ep)))
@@ -269,6 +279,7 @@ impl<T: DatagramIo> DatagramIo for CapturingIo<T> {
         if take_request_drop(bytes) {
             return Ok(bytes.len());
         }
+        self.observe_loss.sent(SocketAddr::from(dest), bytes);
         self.inner.send(dest, bytes)
     }
 }

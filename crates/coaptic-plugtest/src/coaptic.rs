@@ -35,6 +35,7 @@ struct ServerCtl {
     addr: SocketAddr,
     stop: Arc<AtomicBool>,
     notify: NotifyMailbox,
+    loss: crate::observe_loss::ObserveLoss,
     join: Option<JoinHandle<()>>,
 }
 
@@ -84,9 +85,11 @@ impl Peer for CoapticPeer {
         let capture = self.capture.clone();
         let stop_t = Arc::clone(&stop);
         let notify_t = Arc::clone(&notify);
+        let loss = crate::observe_loss::ObserveLoss::default();
+        let loss_t = loss.clone();
         let join = thread::Builder::new()
             .name("coaptic-plugtest-server".into())
-            .spawn(move || server_loop(sock, addr, capture, stop_t, notify_t))
+            .spawn(move || server_loop(sock, addr, capture, stop_t, notify_t, loss_t))
             .map_err(|e| e.to_string())?;
         // Let the thread bind the App.
         thread::sleep(Duration::from_millis(20));
@@ -94,6 +97,7 @@ impl Peer for CoapticPeer {
             addr,
             stop,
             notify,
+            loss,
             join: Some(join),
         });
         Ok(addr)
@@ -213,6 +217,50 @@ impl Peer for CoapticPeer {
         Ok(())
     }
 
+    fn arm_observe_loss(
+        &mut self,
+        peer: SocketAddr,
+        token: &[u8],
+        ack: bool,
+    ) -> Result<(), PeerError> {
+        let (loss, local) = if ack {
+            let server = self.server.as_ref().ok_or("ACK loss requires server")?;
+            (server.loss.clone(), server.addr)
+        } else {
+            let hold = self
+                .observe
+                .as_ref()
+                .ok_or("CON loss requires observation")?;
+            (
+                hold.app.transport().observe_loss(),
+                self.client_addr.ok_or("missing client endpoint")?,
+            )
+        };
+        let registered = self.capture.snapshot().iter().any(|packet| {
+            packet.src == if ack { peer } else { local }
+                && packet.dst == if ack { local } else { peer }
+                && decode(&packet.bytes).is_ok_and(|p| {
+                    p.code() == Code::GET
+                        && p.observe() == Some(Ok(0))
+                        && p.token().as_bytes() == token
+                        && p.uri_path().collect::<Vec<_>>() == [Ok("obs")]
+                })
+        });
+        if !registered {
+            return Err(PeerError("loss owner not registered".into()));
+        }
+        loss.arm(peer, token, ack).map_err(Into::into)
+    }
+    fn observe_losses(&self) -> usize {
+        if let Some(server) = &self.server {
+            server.loss.consumed()
+        } else {
+            self.observe
+                .as_ref()
+                .map_or(0, |hold| hold.app.transport().observe_loss().consumed())
+        }
+    }
+
     fn set_observed_state(&mut self, path: &[&str], state: u8) -> Result<(), PeerError> {
         if path != ["obs"] || state > 2 {
             return Err(PeerError("unsupported bounded observed state".into()));
@@ -268,8 +316,9 @@ fn server_loop(
     capture: Capture,
     stop: Arc<AtomicBool>,
     notify: NotifyMailbox,
+    loss: crate::observe_loss::ObserveLoss,
 ) {
-    let io = CapturingIo::new(sock, addr, capture);
+    let io = CapturingIo::new(sock, addr, capture).with_observe_loss(loss);
     let mut app = bind_site(io);
     let origin = Instant::now();
     while !stop.load(Ordering::SeqCst) {
@@ -746,6 +795,7 @@ mod observe_update_tests {
             addr: "127.0.0.1:5683".parse().unwrap(),
             stop: Arc::new(AtomicBool::new(false)),
             notify: Arc::clone(&command),
+            loss: crate::observe_loss::ObserveLoss::default(),
             join: None,
         });
         assert!(
@@ -904,6 +954,7 @@ mod observe_terminal_tests {
             addr: dest,
             stop: Arc::new(AtomicBool::new(false)),
             notify: Arc::clone(&command),
+            loss: crate::observe_loss::ObserveLoss::default(),
             join: None,
         });
         assert!(
@@ -933,5 +984,57 @@ mod observe_terminal_tests {
                 .contains("not supported")
         );
         assert!(unsupported.take_capture().snapshot().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod observe_loss_hook_tests {
+    use super::*;
+    #[test]
+    fn invalid_loss_owner_refuses_before_io_and_valid_owner_recovers() {
+        let _guard = crate::runner::harness_lock();
+        let mut server = CoapticPeer::new();
+        let dest = server.start_server().unwrap();
+        let mut client = CoapticPeer::new();
+        let mut registration = ClientRequest::get(&["obs"]);
+        registration.observe = Some(0);
+        client.begin_observe(dest, &registration).unwrap();
+        let packets = client.take_capture().snapshot();
+        let token = decode(&packets[0].bytes)
+            .unwrap()
+            .token()
+            .as_bytes()
+            .to_vec();
+        let before = server.take_capture().snapshot().len();
+        let mut wrong = token.clone();
+        wrong[0] ^= 1;
+        let mut other = dest;
+        other.set_port(if dest.port() == 1 { 2 } else { 1 });
+        assert!(client.arm_observe_loss(other, &token, false).is_err());
+        assert!(client.arm_observe_loss(dest, &wrong, false).is_err());
+        assert!(client.arm_observe_loss(dest, &token, true).is_err());
+        assert!(server.arm_observe_loss(dest, &token, false).is_err());
+        client.observe_quiet_for(Duration::from_millis(30)).unwrap();
+        assert_eq!(server.take_capture().snapshot().len(), before);
+        client.arm_observe_loss(dest, &token, false).unwrap();
+        assert!(
+            client
+                .arm_observe_loss(dest, &token, false)
+                .unwrap_err()
+                .0
+                .contains("occupied")
+        );
+        server
+            .notify_confirmable(&["obs"], site::OBS_BODY_2)
+            .unwrap();
+        assert_eq!(
+            client
+                .take_notification(Duration::from_secs(4))
+                .unwrap()
+                .payload,
+            site::OBS_BODY_2
+        );
+        assert_eq!(client.observe_losses(), 1);
+        assert_eq!(server.observe_losses(), 0);
     }
 }

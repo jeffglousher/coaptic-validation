@@ -203,6 +203,9 @@ impl Catalog {
 /// Grade one TD.
 pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), String> {
     let packets = capture.snapshot();
+    if td == "TD_COAP_OBS_11" {
+        grade_observe_loss(&packets)?;
+    }
     if matches!(td, "TD_COAP_OBS_07" | "TD_COAP_OBS_08") {
         grade_observe_terminal(&packets, td == "TD_COAP_OBS_07")?;
     }
@@ -300,6 +303,64 @@ pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), St
                 n = leftover.len()
             ));
         }
+    }
+    Ok(())
+}
+
+/// Single-server tap: retries remain repeated datagrams, never deduplicated.
+fn grade_observe_loss(packets: &[Packet]) -> Result<(), String> {
+    let mut ordered = packets.to_vec();
+    ordered.sort_by_key(|p| p.t_ns);
+    if ordered.len() != 17 {
+        return Err("OBS11 requires seventeen server-tap datagrams".into());
+    }
+    grade_confirmable_observe(&ordered[..6])?;
+    for indices in [[6, 8, 9, 12], [13, 14, 15, 16]] {
+        let mut segment = ordered[..2].to_vec();
+        for index in indices {
+            segment.push(ordered[index].clone());
+        }
+        grade_confirmable_observe(&segment)?;
+    }
+    for (original, retry, ack) in [(6, 7, 8), (9, 11, 12)] {
+        if ordered[original].bytes != ordered[retry].bytes
+            || ordered[original].src != ordered[retry].src
+            || ordered[original].dst != ordered[retry].dst
+            || ordered[retry].t_ns <= ordered[original].t_ns
+        {
+            return Err("OBS11 missing or changed retry".into());
+        }
+        if ack == 12
+            && (ordered[10].bytes != ordered[12].bytes
+                || ordered[10].src != ordered[12].src
+                || ordered[10].dst != ordered[12].dst)
+        {
+            return Err("OBS11 lost ACK/recovery ACK ownership".into());
+        }
+    }
+    for index in [3, 5, 8, 10, 12, 14, 16] {
+        if ordered[index].bytes.len() != 4 {
+            return Err("OBS11 ACK must be empty".into());
+        }
+    }
+    let mut mids = HashSet::new();
+    let mut previous = None;
+    for index in [2, 4, 6, 9, 13, 15] {
+        let p = decode(&ordered[index].bytes).map_err(|e| format!("OBS11 notification: {e:?}"))?;
+        if !mids.insert(p.message_id()) {
+            return Err("OBS11 distinct notification MID reused".into());
+        }
+        let seq = p
+            .observe()
+            .and_then(Result::ok)
+            .ok_or("OBS11 missing sequence")?;
+        if let Some(old) = previous {
+            let delta = seq.wrapping_sub(old) & 0x00ff_ffff;
+            if delta == 0 || delta >= 0x0080_0000 {
+                return Err("OBS11 new notification sequence progression".into());
+            }
+        }
+        previous = Some(seq);
     }
     Ok(())
 }

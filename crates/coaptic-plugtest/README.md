@@ -212,3 +212,29 @@ sockets, physical devices, sustained availability or throughput. Tracking:
 [#409](https://github.com/jeffglousher/coaptic/issues/409),
 [#340](https://github.com/jeffglousher/coaptic/issues/340), and
 [#202](https://github.com/jeffglousher/coaptic/issues/202).
+
+### Literal lossy CON Observe qualification
+
+`observe_con_and_ack_loss_preserve_nstart_and_recover` executes TD_COAP_OBS_11
+with Coaptic peers. One transport discards one received CON notification; the
+other discards one exact empty ACK. Each control is owned by its transport,
+bound to the registered endpoint/token, and consumed once. ACK loss additionally
+binds the MID of that owner's outgoing notification. Real UDP and real retry
+timers produce recovery; no clock acceleration is used.
+
+A competing notification attempt while each CON is outstanding is refused by
+NSTART; it does not commit a new resource representation. The client receives
+complete values, suppresses duplicate delivery after ACK loss,
+and receives two fresh updates after recovery. The seventeen-datagram grader
+uses the server tap only, preserving retransmissions without duplicate capture
+taps. It checks identical retransmitted bytes, ACK ownership, distinct new MIDs,
+sequence progression, and complete bodies. The live runner separately verifies
+both intended loss counters. The PCAP alone does not encode a receive-drop flag.
+
+Sixteen trace mutations and three focused control/adapter tests cover refusal,
+wrong peer/token/MID, occupied rules, one-shot consumption and recovery.
+Unsupported directions remain SKIP. `COAPTIC_OBSERVE_CAPTURE_DIR` retains
+`obs-11-coaptic.pcap`. This plaintext loopback qualification does not claim
+OBS05's separate updated-Observe retransmission requirement, sustained hostile
+traffic availability, or protected interoperability. See
+[#429](https://github.com/jeffglousher/coaptic/issues/429).
