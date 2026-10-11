@@ -329,6 +329,10 @@ class Proxy:
                         action, dropped = "delay", True
                     elif self.mode == "duplicate-request" and incoming and not duplicated:
                         action, duplicated = "duplicate", True
+                    elif self.mode in ("drop-qblock1-once", "drop-qblock1-permanent") and incoming:
+                        from qblock_upload import later_upload
+                        if later_upload(data) and (not dropped or self.mode == "drop-qblock1-permanent"):
+                            action, dropped = "drop", True
                     elif self.mode in ("drop-qblock2", "drop-qblock2-permanent", "drop-qblock2-once"):
                         # Shrink /large to 256-byte blocks. Lose block1 once,
                         # permanently, or until selective recovery, per schedule.
@@ -2220,6 +2224,26 @@ def qblock1_interop(client, server):
     return {"post_datagrams": len(uploads), "readback": "1:1"}
 
 
+def qblock1_con_loss(client, server):
+    """Independent CON upload retries, no partial handler effect, fresh-process recovery."""
+    from qblock_upload import grade
+    schedules = {}
+    with Server(server, "udp") as service:
+        for label, mode, deadline, accepted in [("recovery", "drop-qblock1-once", 12000, 0),
+                                               ("partial_refusal", "drop-qblock1-permanent", 6000, 1),
+                                               ("fresh_recovery", "drop-qblock1-once", 12000, 1)]:
+            before = request(client, "udp", service.number, path="upload")
+            expect(before, 69, f"{accepted}:{accepted}".encode())
+            with Proxy(service.number, mode) as relay:
+                endpoints = {"front": relay.front.getsockname(), "back": relay.back.getsockname(), "server": relay.dest}
+                result = request(client, "udp", relay.number, path="upload", method="POST",
+                                 payload=LARGE, timeout=deadline, qblock1=True)
+            after = request(client, "udp", service.number, path="upload")
+            proof = grade(relay.trace, result, endpoints, before, after, complete=label != "partial_refusal")
+            schedules[label] = dict(proof=proof, result=result, before=before, after=after, deadline_ms=deadline)
+    return {"schedules": schedules}
+
+
 def empty_request_tag(server):
     """A missing Request-Tag is 4.00. An empty Request-Tag is accepted and the handler runs once."""
     payload = bytes(range(16))
@@ -2589,6 +2613,8 @@ def main():
              lambda client_name=client_name: separate_client(peers[client_name], peers["coaptic"]))
     case("separate-client:coaptic->libcoap",
          lambda: separate_client(peers["coaptic"], peers["libcoap"], timeout=8000))
+    case("con-qblock1-loss:coaptic->libcoap",
+         lambda: qblock1_con_loss(peers["coaptic"], peers["libcoap"]))
     for client, server in [("coaptic", "coaptic"), ("coaptic", "libcoap"), ("libcoap", "coaptic")]:
         case(f"qblock1-interop:{client}->{server}",
              lambda client=client, server=server: qblock1_interop(peers[client], peers[server]))
