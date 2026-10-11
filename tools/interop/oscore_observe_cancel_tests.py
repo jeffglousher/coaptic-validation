@@ -19,6 +19,10 @@ def evidence(*, cancel_token=b"o", cancel_observe=b"\x01", wrong_binding=False,
     req = protected(client, coap_message(1, 30, cancel_token, [(6, cancel_observe), (11, b"counter")]))
     _, binding = request_plain(req if not wrong_binding else bytes.fromhex(before[0]["hex"]))
     response = protected(server, coap_message(69, 31, cancel_token, [(6, b"\x03")] if response_observe else [], b"1"), binding)
+    if not response_observe:
+        # aiocoap's extracted request binding still flags Outer Observe=1 as
+        # observational; model the RFC 8613 ordinary cancellation GET reply.
+        response = response[:1] + b"\x44" + response[2:]
     cancel = rows([("request", "forward", req), ("response", "forward", b"\x60\x00\x00\x1e"),
                    ("response", "forward", response), ("request", "forward", b"\x60\x00\x00\x1f")], 10_000_000)
     after, _, _ = observer(2, sequence=102, server_sequence=1200)
@@ -115,6 +119,14 @@ class CancellationTests(unittest.TestCase):
         for row in r["quiet_readback"]["trace"]:
             row["time_ns"] += shift
         with self.assertRaisesRegex(AssertionError, "after confirmed resource change"):
+            review(r, {"patch_sha256": "patch"})
+
+    def test_cancellation_response_requires_ordinary_outer_code(self):
+        r = evidence(fresh_token=b"n")
+        wire = bytes.fromhex(r["trace"][8]["hex"])
+        wire = wire[:1] + b"\x45" + wire[2:]
+        r["trace"][8].update(hex=wire.hex(), forwarded_hex=wire.hex())
+        with self.assertRaisesRegex(AssertionError, "response owner/options"):
             review(r, {"patch_sha256": "patch"})
 
     def test_hold_update_readback_and_fresh_recovery_are_required(self):

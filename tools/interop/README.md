@@ -376,7 +376,9 @@ the repeated `1` is the ordinary cancellation GET response.
 
 The oracle authenticates the Inner Observe=1 and counter target, checks matching
 registration/cancellation Tokens and distinct request bindings, and requires
-the cancellation response and its transport controls to settle. An independent
+the cancellation response and its transport controls to settle. The ordinary
+cancellation GET reply carries Outer Changed and authenticated Inner
+Content; an observational Outer Content reply refuses this proof. An independent
 protected POST and complete authenticated GET readback confirm the counter
 changes to `2` during the quiet interval, with no observer traffic before fresh
 registration and at least 500 milliseconds observed after the completed readback.

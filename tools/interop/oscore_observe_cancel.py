@@ -78,7 +78,9 @@ def cancellation_grade(trace, endpoints, original):
             require(waiting and wire == b"\x60\x00" + req[2:4], "wrong cancellation server ACK")
             waiting = False
         else:
-            require(response is None and wire[1] == 69 and packet_token(wire) == packet_token(req)
+            # Ordinary OSCORE responses use Outer Changed (2.04), even when
+            # the authenticated Inner GET response is Content (2.05).
+            require(response is None and wire[1] == 68 and packet_token(wire) == packet_token(req)
                     and set(decoded_options(wire)) == {9}, "wrong cancellation response owner/options")
             ty = wire[0] >> 4 & 3
             if ty == 2:
