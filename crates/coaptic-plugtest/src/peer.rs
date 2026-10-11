@@ -248,6 +248,12 @@ pub trait Peer {
         None
     }
 
+    /// Commit a bounded variable-size fixture before returning; notify current observers.
+    fn update_pumping_observed(&mut self, path: &[&str], version: u8) -> Result<(), PeerError> {
+        let _ = (path, version);
+        Err(PeerError("pumping Observe update not supported".into()))
+    }
+
     /// Persist one of three bounded large snapshots and notify with CON.
     fn update_large_observed(&mut self, path: &[&str], version: u8) -> Result<(), PeerError> {
         let _ = (path, version);

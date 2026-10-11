@@ -538,6 +538,9 @@ fn observe(
     client: &mut dyn Peer,
     server: &mut dyn Peer,
 ) -> Result<(), PeerError> {
+    if id == "TD_COAP_OBS_14" {
+        return observe_pumping(dest, client, server);
+    }
     if id == "TD_COAP_OBS_13" {
         return observe_large(dest, client, server);
     }
@@ -594,6 +597,49 @@ fn observe(
             Ok(())
         }
     }
+}
+
+fn observe_pumping(
+    mut dest: SocketAddr,
+    client: &mut dyn Peer,
+    server: &mut dyn Peer,
+) -> Result<(), PeerError> {
+    if client.name() != "coaptic" || server.name() != "coaptic" {
+        return Err(PeerError(
+            "SKIP: coverage gap #199: controlled pumping fixture requires Coaptic peers".into(),
+        ));
+    }
+    for (case, versions) in [[0, 1, 2], [1, 2, 1]].into_iter().enumerate() {
+        if case != 0 {
+            server.stop_server();
+            dest = server.start_server()?;
+        }
+        server.update_pumping_observed(&["obs-pumping"], versions[0])?;
+        let mut registration = ClientRequest::get(&["obs-pumping"]);
+        registration.observe = Some(0);
+        for (step, version) in versions.into_iter().enumerate() {
+            let response = if step == 0 {
+                client.begin_observe(dest, &registration)?
+            } else {
+                server.update_pumping_observed(&["obs-pumping"], version)?;
+                client.take_notification(Duration::from_secs(3))?
+            };
+            let (body, etag) = site::observe_pumping(version).ok_or("invalid pumping version")?;
+            if response.code != Code::CONTENT
+                || response.content_format != Some(0)
+                || response.body.as_deref().unwrap_or(&response.payload) != body
+                || response.etag != [etag.to_vec()]
+                || response.observe.is_none()
+            {
+                return Err(PeerError(format!(
+                    "OBS14 incomplete case {case} step {step}"
+                )));
+            }
+            // Observe complete application delivery before scheduling the next representation.
+            client.observe_quiet_for(Duration::from_millis(20))?;
+        }
+    }
+    Ok(())
 }
 
 fn observe_large(

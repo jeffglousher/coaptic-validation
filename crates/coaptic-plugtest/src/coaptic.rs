@@ -41,6 +41,10 @@ struct ServerCtl {
 }
 
 enum NotifyCommand {
+    UpdatePumpingObserved {
+        version: u8,
+        completion: std::sync::mpsc::SyncSender<Result<usize, String>>,
+    },
     UpdateLargeObserved(u8),
     SetObservedState(u8),
     Notification {
@@ -283,6 +287,31 @@ impl Peer for CoapticPeer {
             .clone()
     }
 
+    fn update_pumping_observed(&mut self, path: &[&str], version: u8) -> Result<(), PeerError> {
+        if path != ["obs-pumping"] || site::observe_pumping(version).is_none() {
+            return Err(PeerError(
+                "unsupported bounded pumping representation".into(),
+            ));
+        }
+        let server = self.server.as_ref().ok_or("no server")?;
+        let (completion, result) = std::sync::mpsc::sync_channel(1);
+        {
+            let mut command = server.notify.lock().expect("pumping update");
+            if command.is_some() {
+                return Err(PeerError("notification command occupied".into()));
+            }
+            *command = Some(NotifyCommand::UpdatePumpingObserved {
+                version,
+                completion,
+            });
+        }
+        result
+            .recv_timeout(Duration::from_secs(1))
+            .map_err(|error| PeerError(format!("pumping command completion: {error}")))?
+            .map(|_| ())
+            .map_err(PeerError)
+    }
+
     fn update_large_observed(&mut self, path: &[&str], version: u8) -> Result<(), PeerError> {
         if path != ["obs-large"] || site::observe_large(version).is_none() {
             return Err(PeerError("unsupported bounded large representation".into()));
@@ -362,6 +391,18 @@ fn server_loop(
         let _ = app.poll(now);
         if let Some(command) = notify.lock().expect("n").take() {
             match command {
+                NotifyCommand::UpdatePumpingObserved {
+                    version,
+                    completion,
+                } => {
+                    site::commit_observe_pumping(version);
+                    let result = app
+                        .notify_confirmable(now, &["obs-pumping"], site::observe_pumping_response())
+                        .map_err(|error| format!("{error:?}"));
+                    *notification_error.lock().expect("notification error") =
+                        result.as_ref().err().cloned();
+                    let _ = completion.send(result);
+                }
                 NotifyCommand::UpdateLargeObserved(version) => {
                     site::commit_observe_large(version);
                     let result =
@@ -562,6 +603,7 @@ fn intern_path(path: &[String]) -> Result<&'static str, PeerError> {
         ["obs"] => "obs",
         ["obs-non"] => "obs-non",
         ["obs-large"] => "obs-large",
+        ["obs-pumping"] => "obs-pumping",
         ["secure"] => "secure",
         other => {
             return Err(PeerError(format!(
@@ -1185,6 +1227,90 @@ mod observe_large_tests {
         assert!(matches!(
             *command.lock().unwrap(),
             Some(NotifyCommand::UpdateLargeObserved(2))
+        ));
+        assert!(server.take_capture().snapshot().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod observe_pumping_tests {
+    use super::*;
+    #[test]
+    fn pumping_refusal_preserves_state_and_valid_update_recovers() {
+        let _guard = crate::runner::harness_lock();
+        let mut server = CoapticPeer::new();
+        assert!(server.update_pumping_observed(&["obs-pumping"], 0).is_err());
+        let dest = server.start_server().unwrap();
+        let mut client = CoapticPeer::new();
+        let mut request = ClientRequest::get(&["obs-pumping"]);
+        request.observe = Some(0);
+        let initial = client.begin_observe(dest, &request).unwrap();
+        assert_eq!(initial.payload, site::observe_pumping(0).unwrap().0);
+        let before = server.take_capture().snapshot().len();
+        for (path, version) in [
+            (&["obs"][..], 1),
+            (&["obs-pumping"][..], 3),
+            (&["obs-pumping"][..], 255),
+        ] {
+            assert!(server.update_pumping_observed(path, version).is_err());
+        }
+        client.observe_quiet_for(Duration::from_millis(30)).unwrap();
+        assert_eq!(server.take_capture().snapshot().len(), before);
+        assert_eq!(
+            site::observe_pumping_response().payload(),
+            site::observe_pumping(0).unwrap().0
+        );
+        for version in [1, 2] {
+            server
+                .update_pumping_observed(&["obs-pumping"], version)
+                .unwrap();
+            let response = client.take_notification(Duration::from_secs(3)).unwrap();
+            let (body, etag) = site::observe_pumping(version).unwrap();
+            assert_eq!(response.body.as_deref().unwrap_or(&response.payload), body);
+            assert_eq!(response.etag, [etag.to_vec()]);
+            client.observe_quiet_for(Duration::from_millis(20)).unwrap();
+        }
+        drop(client);
+        drop(server);
+        let mut fresh = CoapticPeer::new();
+        let dest = fresh.start_server().unwrap();
+        let reset = CoapticPeer::new()
+            .send_request(dest, &ClientRequest::get(&["obs-pumping"]))
+            .unwrap();
+        assert_eq!(reset.payload, site::observe_pumping(0).unwrap().0);
+        let mut unsupported = crate::runner::peer_by_name("coap-rs").unwrap();
+        assert!(
+            unsupported
+                .update_pumping_observed(&["obs-pumping"], 1)
+                .is_err()
+        );
+        assert!(unsupported.take_capture().snapshot().is_empty());
+    }
+    #[test]
+    fn occupied_pumping_command_refuses_without_replacement() {
+        let mut server = CoapticPeer::new();
+        let (completion, _result) = std::sync::mpsc::sync_channel(1);
+        let command = Arc::new(Mutex::new(Some(NotifyCommand::UpdatePumpingObserved {
+            version: 1,
+            completion,
+        })));
+        server.server = Some(ServerCtl {
+            addr: "127.0.0.1:5683".parse().unwrap(),
+            stop: Arc::new(AtomicBool::new(false)),
+            notify: Arc::clone(&command),
+            loss: crate::observe_loss::ObserveLoss::default(),
+            join: None,
+        });
+        assert!(
+            server
+                .update_pumping_observed(&["obs-pumping"], 2)
+                .unwrap_err()
+                .0
+                .contains("occupied")
+        );
+        assert!(matches!(
+            *command.lock().unwrap(),
+            Some(NotifyCommand::UpdatePumpingObserved { version: 1, .. })
         ));
         assert!(server.take_capture().snapshot().is_empty());
     }
