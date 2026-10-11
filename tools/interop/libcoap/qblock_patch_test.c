@@ -287,6 +287,25 @@ static void cached_fresh_request(void) {
   CHECK(lg->oscore_generation==oldgen&&oscore_find_association(session,&token));
   coap_delete_pdu_lkd(request);coap_delete_pdu_lkd(reply);teardown();
 }
+static void delete_before_bind_and_recreate(void) {
+  coap_lg_xmit_t *lg;coap_pdu_t *old_response,*fresh;
+  setup();lg=transfer();old_response=response(COAP_MESSAGE_CON,0,1);association(1);
+  CHECK(oscore_find_association(session,&token)&&session->recipient_ctx);
+  CHECK(coap_delete_oscore_recipient_lkd(ctx,&rid));
+  CHECK(!oscore_find_association(session,&token)&&!session->recipient_ctx);
+  CHECK(!coap_q_bind_response(session,lg,old_response));
+  CHECK(!lg->oscore_binding&&lg->oscore_generation==0&&writes==0);
+  CHECK(coap_new_oscore_recipient_lkd(ctx,&rid));
+  /* Re-adding an ID cannot revive deleted request evidence by itself. */
+  CHECK(!coap_q_bind_response(session,lg,old_response));
+  CHECK(!session->recipient_ctx&&!oscore_find_association(session,&token));
+  association(2);fresh=response(COAP_MESSAGE_CON,0,1);
+  CHECK(coap_q_bind_response(session,lg,fresh));
+  CHECK(lg->oscore_binding->recipient_ctx==ctx->p_osc_ctx->recipient_chain);
+  CHECK(lg->oscore_binding->partial_iv->s[0]==2);
+  CHECK(coap_send_internal(session,fresh)!=COAP_INVALID_MID&&writes==1);
+  coap_delete_pdu_lkd(old_response);teardown();
+}
 static void context_isolation_and_real_teardown(void) {
   coap_lg_xmit_t *lg,*unrelated;coap_pdu_t *p,*q;
   oscore_ctx_t distinct_context={0};oscore_recipient_ctx_t distinct_recipient={0};
@@ -295,8 +314,12 @@ static void context_isolation_and_real_teardown(void) {
   unrelated=transfer();q=response(COAP_MESSAGE_CON,0,1);association(2);CHECK(coap_q_bind_response(session,unrelated,q));
   distinct_recipient.osc_ctx=&distinct_context;distinct_recipient.recipient_id=&rid;
   unrelated->oscore_binding->recipient_ctx=&distinct_recipient;
+  association(3);oscore_find_association(session,&token)->recipient_ctx=&distinct_recipient;
+  other->recipient_ctx=&distinct_recipient;
   CHECK(coap_delete_oscore_recipient_lkd(ctx,&rid));
   CHECK(!lg->oscore_binding&&unrelated->oscore_binding);
+  CHECK(oscore_find_association(session,&token)->recipient_ctx==&distinct_recipient);
+  CHECK(other->recipient_ctx==&distinct_recipient&&!session->recipient_ctx);
   CHECK(coap_q_response_binding(session,q));
   coap_delete_pdu_lkd(p);coap_delete_pdu_lkd(q);drop_transfer(unrelated);drop_transfer(lg);teardown();
   /* Real delayed-node/session destructor ordering, not a synthetic queue scan. */
@@ -312,6 +335,6 @@ static void context_isolation_and_real_teardown(void) {
 int main(void) {
   coap_startup();coap_set_log_level(COAP_LOG_EMERG);
   ownership();crypto_and_errors();queue_expiry_and_context();transport_and_allocation();
-  ack_retry_and_final_cleanup();cached_fresh_request();context_isolation_and_real_teardown();
+  ack_retry_and_final_cleanup();cached_fresh_request();context_isolation_and_real_teardown();delete_before_bind_and_recreate();
   coap_cleanup();puts("PASS protected Q2 owned binding, generation, rollback, nonce, dynamic teardown and callback retirement");return 0;
 }

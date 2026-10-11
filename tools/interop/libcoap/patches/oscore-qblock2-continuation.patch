@@ -411,7 +411,7 @@ index 18e61c8..826c71a 100644
          if (sent->pdu->type == COAP_MESSAGE_CON &&
              COAP_PROTO_NOT_RELIABLE(session->proto) &&
 diff --git a/src/coap_oscore.c b/src/coap_oscore.c
-index a1d4592..2f9f9e0 100644
+index a1d4592..a7e63a5 100644
 --- a/src/coap_oscore.c
 +++ b/src/coap_oscore.c
 @@ -22,6 +22,7 @@
@@ -501,7 +501,7 @@ index a1d4592..2f9f9e0 100644
    if (ciphertext_buffer)
      coap_free_type(COAP_OSCORE_BUF, ciphertext_buffer);
    coap_delete_pdu_lkd(osc_pdu);
-@@ -2092,8 +2137,64 @@ error:
+@@ -2092,8 +2137,79 @@ error:
    return NULL;
  }
  
@@ -510,6 +510,21 @@ index a1d4592..2f9f9e0 100644
 +revoke_q_session(coap_session_t *session, const oscore_ctx_t *owner,
 +                 const coap_bin_const_t *recipient_id) {
 +  coap_lg_xmit_t *lg;
++  oscore_association_t *association, *tmp;
++  /* Delete-before-bind must not leave an ordinary request association pointing
++   * at the recipient that is about to be freed. A recreated same-ID recipient
++   * requires a fresh authenticated association, never address-based revival. */
++  OSCORE_ASSOCIATIONS_ITER_SAFE(session->associations, association, tmp) {
++    oscore_recipient_ctx_t *recipient = association->recipient_ctx;
++    if (recipient && (!owner || recipient->osc_ctx == owner) &&
++        (!recipient_id || coap_binary_equal(recipient_id, recipient->recipient_id)))
++      oscore_delete_association(session, association);
++  }
++  if (session->recipient_ctx &&
++      (!owner || session->recipient_ctx->osc_ctx == owner) &&
++      (!recipient_id || coap_binary_equal(recipient_id,
++                                        session->recipient_ctx->recipient_id)))
++    session->recipient_ctx = NULL;
 +  LL_FOREACH(session->lg_xmit, lg) {
 +    if (lg->oscore_binding &&
 +        (!owner || lg->oscore_binding->recipient_ctx->osc_ctx == owner) &&
@@ -566,7 +581,7 @@ index a1d4592..2f9f9e0 100644
    oscore_free_contexts(c_context);
  }
  
-@@ -2205,6 +2306,11 @@ coap_delete_oscore_recipient_lkd(coap_context_t *context,
+@@ -2205,6 +2321,11 @@ coap_delete_oscore_recipient_lkd(coap_context_t *context,
    coap_lock_check_locked(context);
    if (context->p_osc_ctx == NULL)
      return 0;

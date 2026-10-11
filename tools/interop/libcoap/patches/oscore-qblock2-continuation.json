@@ -2,14 +2,14 @@
   "schema": "coaptic-libcoap-patch/1",
   "upstream": "851533c3cf63d16984d370ce39d586ecb3694971",
   "patch": "oscore-qblock2-continuation.patch",
-  "patch_sha256": "df0125b9825b356f77d4ca4fe45d4f5dd573201ea32479d10be2b22eff240a72",
+  "patch_sha256": "cd64f8f34d5e3f946ec698c94ff34ac4a5e3ddb98ab6ed13bef0b13f477b8406",
   "files": {
     "include/coap3/coap_block_internal.h": "c5f890117c9fa3a2f4e1294f219fa3593ab3405c57f86f00aa2d41311ae38d17",
     "include/coap3/coap_pdu_internal.h": "b8896a24e113f8f88803c20fc33b20ac0c733e2b1ed280177364d7ffb13d2682",
     "include/coap3/coap_session_internal.h": "1be7608459d6489148eb99f63f83f84906e523f2a13c5defe5cb12c1acf4d80b",
     "src/coap_block.c": "41538fb2034ad05fd98b93ad18cbe0114ae670fa770d81787151ff5207a14c53",
     "src/coap_net.c": "a3288eb8ec8e8824d34a9abc6835bcdac411d210ace307d8e090e2bfe4208187",
-    "src/coap_oscore.c": "ecbfa482b3649eb97abcac0f5ccade7a0346c18523ef544283629d6d3f106598",
+    "src/coap_oscore.c": "5f2540fb375559a1aacb33048002fef300d5117a78c95a58082c02c0c6674e98",
     "src/coap_pdu.c": "f29aa81a9eae8c33de232855b540d8c0502fcf9ea036d1864588ac421350930f",
     "src/coap_session.c": "a0023696e12768424df714a3b507416fa13129c00d503972b86b43afd2744530"
   }
