@@ -1,4 +1,7 @@
 [workspace]
 members = ["crates/coaptic-plugtest", "crates/peer-coaptic", "crates/peer-coap-rs", "crates/qualification-no-std"]
-exclude = ["coaptic"]
+exclude = ["coaptic", "vendor/webrtc-dtls"]
 resolver = "2"
+
+[patch.crates-io]
+webrtc-dtls = { path = "vendor/webrtc-dtls" }

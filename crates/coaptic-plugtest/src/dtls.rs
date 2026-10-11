@@ -9,17 +9,15 @@
 //! PSK TDs use identity `password` / key `sesame` and
 //! `TLS_PSK_WITH_AES_128_CCM_8` (ETSI CoAP#4).
 //!
-//! `TD_COAP_DTLS_01` records the handshake on the UDP socket (cipher offer,
-//! selection, and Finished) plus the decrypted GET. `TD_COAP_DTLS_02`–`03`
-//! and the raw-public-key TDs stay skipped: a plaintext `decrypt_error` is
-//! not graded, final-server-flight loss does not recover in this backend, and it has no
-//! RFC 7250 raw public key. X.509 qualification is a different test.
-//! A test-only intact-datagram diagnostic retains the DTLS03 backend limitation.
+//! `TD_COAP_DTLS_01` records the handshake and decrypted GET. `TD_COAP_DTLS_03`
+//! qualifies each intact handshake-datagram loss for Coaptic client/server using
+//! a bounded final-flight patch to the vendored test backend. Other directions
+//! remain skipped. DTLS02's prescribed alert and RFC7250 raw-public-key TDs
+//! remain unsupported; X.509 runs are a different qualification.
 
 #[path = "../../../tools/interop/coap_dtls.rs"]
 mod coap_dtls;
 
-#[cfg(test)]
 mod loss;
 
 use std::net::SocketAddr;
@@ -344,8 +342,20 @@ fn run_one(id: &str, pair: Pair) -> TdResult {
             capture: Capture::new(),
         };
     }
+    if id == "TD_COAP_DTLS_03" && (pair.client != "coaptic" || pair.server != "coaptic") {
+        return TdResult {
+            id: id.to_owned(),
+            pair,
+            error: Some(
+                "SKIP: DTLS03 intact-loss qualification currently covers only coaptic-to-coaptic"
+                    .into(),
+            ),
+            capture: Capture::new(),
+        };
+    }
     let err = match id {
         "TD_COAP_DTLS_01" => dtls_psk(pair, PSK_KEY, true),
+        "TD_COAP_DTLS_03" => loss::run(),
         "TD_COAP_DTLS_02" => dtls_psk(pair, b"wrong", false),
         other => Err(PeerError(format!("unknown DTLS id {other}"))),
     };
