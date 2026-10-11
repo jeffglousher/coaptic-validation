@@ -41,17 +41,25 @@ The standalone coap-rs UDP fixture also serves `/separate`: an empty request ACK
 then a complete CON response with the original token and a new MID. The relay
 checks both MID bindings, the full payload and the client's empty response ACK.
 Admission and queued responses are each bounded to eight, with a 2,048-byte
-datagram limit. Oversized or saturated input receives no ACK; releasing an owner
-restores admission. This fixture does not qualify separate responses over DTLS
-or retransmission after a lost separate response.
+datagram limit. Separate-CON state retains at most eight complete requests and
+responses, and permits only one outstanding separate response per endpoint.
+Oversized or saturated input receives no ACK. Matching empty ACK/RST releases
+the response slot; wrong endpoint/MID or malformed controls do not. A ten-second
+backend deadline rejects late replies by reservation identity. Response retries
+use randomized 2–3 second initial timeouts, exponential backoff and at most four
+retransmissions within the RFC 7252 transmission span; final expiry releases the
+slot. These are standalone fixture rules, not an upstream coap-rs reliability
+claim. DTLS remains unqualified.
 
 The separate-response loss cases use Coaptic and coap-rs clients against the
-Coaptic server over IPv4 loopback UDP. The relay forwards the empty request ACK,
+Coaptic server, and a Coaptic client against the standalone coap-rs fixture,
+over IPv4 loopback UDP. The relay forwards the empty request ACK,
 drops exactly the first separate CON 2.05, and requires an identical complete
 retransmission followed by the client's matching ACK. The request deadline is
 eight seconds; the relay retains at most 256 datagrams. Missing, changed or
-out-of-order evidence fails. These cases do not qualify the coap-rs server's
-retransmission, protected transports, other address families or hardware.
+out-of-order evidence fails. A fresh client must then complete against the same
+server. These cases do not qualify protected transports, other address families
+or hardware.
 The coap-rs client can repeat the original GET despite its empty ACK. The trace
 retains those retries and matching repeated ACKs; every delivered separate
 response must still match the dropped bytes exactly. This checks recovery and

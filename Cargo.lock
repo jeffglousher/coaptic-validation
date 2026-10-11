@@ -1175,6 +1175,7 @@ dependencies = [
  "async-trait",
  "coap",
  "coap-lite",
+ "rand 0.8.8",
  "serde_json",
  "tokio",
  "webrtc-dtls",
