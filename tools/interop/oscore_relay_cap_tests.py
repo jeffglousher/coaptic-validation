@@ -131,6 +131,12 @@ class RelayCapTests(unittest.TestCase):
             r=complete_record();mutate(r)
             with self.assertRaises(AssertionError):review(r,{"patch_sha256":"patch"})
 
+    def test_ready_port_requires_exact_integer_type(self):
+        for value in (True, 1003.0):
+            record=complete_record();record["server_ready"]["port"]=value
+            with self.subTest(value=value),self.assertRaisesRegex(AssertionError,"endpoint"):
+                review(record,{"patch_sha256":"patch"})
+
     def test_supervisor_failure_retains_joined_trace_without_pass(self):
         service,relay=MagicMock(),MagicMock()
         service.__enter__.return_value=service;relay.__enter__.return_value=relay
