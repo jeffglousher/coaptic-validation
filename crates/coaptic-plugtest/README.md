@@ -212,3 +212,96 @@ sockets, physical devices, sustained availability or throughput. Tracking:
 [#409](https://github.com/jeffglousher/coaptic/issues/409),
 [#340](https://github.com/jeffglousher/coaptic/issues/340), and
 [#202](https://github.com/jeffglousher/coaptic/issues/202).
+
+### Literal lossy CON Observe qualification
+
+`observe_con_and_ack_loss_preserve_nstart_and_recover` executes TD_COAP_OBS_11
+with Coaptic peers. One transport discards one received CON notification; the
+other discards one exact empty ACK. Each control is owned by its transport,
+bound to the registered endpoint/token, and consumed once. ACK loss additionally
+binds the MID of that owner's outgoing notification. Real UDP and real retry
+timers produce recovery; no clock acceleration is used.
+
+A competing notification attempt while each CON is outstanding is refused by
+NSTART; it does not commit a new resource representation. The client receives
+complete values, suppresses duplicate delivery after ACK loss,
+and receives two fresh updates after recovery. The seventeen-datagram grader
+uses the server tap only, preserving retransmissions without duplicate capture
+taps. It checks identical retransmitted bytes, ACK ownership, distinct new MIDs,
+sequence progression, and complete bodies. The live runner separately verifies
+both intended loss counters. The PCAP alone does not encode a receive-drop flag.
+
+Sixteen trace mutations and three focused control/adapter tests cover refusal,
+wrong peer/token/MID, occupied rules, one-shot consumption and recovery.
+Unsupported directions remain SKIP. `COAPTIC_OBSERVE_CAPTURE_DIR` retains
+`obs-11-coaptic.pcap`. This plaintext loopback qualification does not claim
+OBS05's separate updated-Observe retransmission requirement, sustained hostile
+traffic availability, or protected interoperability. See
+[#429](https://github.com/jeffglousher/coaptic/issues/429).
+
+### Complete large Observe representations
+
+`observe_large_complete_block2_snapshots` executes literal TD_COAP_OBS_13 with
+Coaptic peers. The bounded `/obs-large` fixture selects three static 2000-byte
+representations with distinct ETags. Initial registration and two subsequent CON
+notifications each deliver block zero, request the final block, and expose the
+complete expected body. GET and notification snapshots select the same version.
+
+The twelve-datagram grader binds endpoint/path/token/MID ownership, Observe
+progression, block number/size/M flag, content format, Max-Age, ETag and both body
+slices. Twenty trace mutations must fail. Two adapter tests check invalid path or
+version, occupied command preservation, unchanged fixture state, full-delivery
+recovery and reset. Both coap-rs directions remain SKIP; set
+`COAPTIC_OBSERVE_CAPTURE_DIR` to retain `obs-13-coaptic.pcap`.
+
+This is one-observer plaintext qualification with two subsequent notifications.
+Additional rapid Block2 rounds or response owners can exhaust retained TX
+datagram slots before duplicate-cache expiry; an exploratory extra round returned
+`Saturated`. It does not establish sustained update cadence, multi-client
+capacity, protected interoperability, or OBS14 variable-size behavior. Tracked in
+[#432](https://github.com/jeffglousher/coaptic/issues/432).
+
+### Variable-size Observe representations
+
+`observe_pumping_covers_both_initial_sizes_and_complete_notifications` executes
+literal TD_COAP_OBS_14 with Coaptic peers. The bounded `/obs-pumping` fixture uses
+static 32-, 2000- and 64-byte representations with distinct ETags and one content
+format. One run starts small and delivers large then small CON notifications;
+a fresh server and registration start large and deliver small then large. Both
+runs obtain and check every byte before scheduling the next update. A bounded
+command completion confirms the selected initial state before registration.
+
+The eighteen-datagram grader checks both initial forms, complete small and Block2
+bodies, ETag consistency, Observe progression, endpoint/path/token/MID ownership
+and exact empty ACKs. Thirty trace mutations must fail, including malformed Block2 on small bodies. Two adapter tests
+cover invalid path/version, missing server, occupied command preservation,
+unchanged state/no traffic on refusal, valid delivery recovery and server reset.
+Unsupported directions remain SKIP. `COAPTIC_OBSERVE_CAPTURE_DIR` retains
+`obs-14-coaptic.pcap`.
+
+This is plaintext loopback qualification of one observer and two subsequent
+notifications per fresh run. It does not establish sustained cadence, resource
+capacity across additional owners, or protected interoperability. The original
+TD requirements and RFC7959 section 2.6 are tracked in
+[#435](https://github.com/jeffglousher/coaptic/issues/435).
+
+### Observe recovery after server state loss
+
+Literal TD_COAP_OBS_04 uses a bounded control that rebuilds the server App while
+retaining the UDP socket, then confirms completion. After two acknowledged CON
+notifications, the server loses its observation state and cannot deliver another
+update. The consuming client fixture polls through 160 real seconds before using
+`reregister_call` with the same token and request identity. This is the existing
+notification's default Max-Age (60 seconds) plus MAX_LATENCY (100 seconds), without
+clock acceleration. It also exceeds RFC7641's 128-second ordering window so the
+reset server sequence can be accepted. The core does not schedule refresh itself.
+
+The twelve-datagram grader requires unchanged endpoints/token/request options,
+a distinct refresh MID, the elapsed capture interval, reset sequence zero, and
+two complete acknowledged CON notifications both before and after reset. Fifteen
+trace mutations refuse altered ownership, bodies, missing packets or early refresh.
+Short adapter tests cover identity mismatch without traffic, occupied/missing
+reset control, same-endpoint silence after reset and valid registration recovery.
+`COAPTIC_OBSERVE_CAPTURE_DIR` retains `obs-04-coaptic.pcap`. This is one plaintext
+loopback observer, not protected or cross-implementation qualification. Tracked in
+[#436](https://github.com/jeffglousher/coaptic/issues/436).

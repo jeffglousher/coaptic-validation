@@ -74,6 +74,7 @@ pub mod coap_rs;
 pub mod coaptic;
 pub mod dogfood;
 pub mod grade;
+mod observe_loss;
 pub mod pcap;
 pub mod peer;
 pub mod runner;

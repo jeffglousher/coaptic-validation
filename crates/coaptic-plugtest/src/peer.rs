@@ -200,7 +200,7 @@ pub trait Peer {
         Err(PeerError("observe collect not supported".into()))
     }
 
-    /// Issue an unrelated GET or explicit cancellation on the retained client owner.
+    /// Issue a GET, explicit refresh or cancellation on the retained client owner.
     /// Unsupported backends refuse instead of replacing the client/socket.
     fn request_on_observe(
         &mut self,
@@ -209,6 +209,11 @@ pub trait Peer {
     ) -> Result<ClientResponse, PeerError> {
         let _ = (dest, req);
         Err(PeerError("same-owner Observe request not supported".into()))
+    }
+
+    /// Lose server protocol state while preserving its UDP endpoint; wait for completion.
+    fn reset_observe_server(&mut self) -> Result<(), PeerError> {
+        Err(PeerError("same-endpoint server reset not supported".into()))
     }
 
     /// Lose client protocol state while preserving the registered UDP endpoint.
@@ -226,6 +231,38 @@ pub trait Peer {
     fn notify(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
         let _ = (path, payload);
         Err(PeerError("notify not supported".into()))
+    }
+
+    /// Arm one controlled receive loss for the exact owner; `ack` selects ACK loss.
+    fn arm_observe_loss(
+        &mut self,
+        peer: SocketAddr,
+        token: &[u8],
+        ack: bool,
+    ) -> Result<(), PeerError> {
+        let _ = (peer, token, ack);
+        Err(PeerError("Observe loss control not supported".into()))
+    }
+    /// Number of consumed controlled receive losses on this peer.
+    fn observe_losses(&self) -> usize {
+        0
+    }
+
+    /// Last controlled notification error, retained for qualification diagnostics.
+    fn notification_error(&self) -> Option<String> {
+        None
+    }
+
+    /// Commit a bounded variable-size fixture before returning; notify current observers.
+    fn update_pumping_observed(&mut self, path: &[&str], version: u8) -> Result<(), PeerError> {
+        let _ = (path, version);
+        Err(PeerError("pumping Observe update not supported".into()))
+    }
+
+    /// Persist one of three bounded large snapshots and notify with CON.
+    fn update_large_observed(&mut self, path: &[&str], version: u8) -> Result<(), PeerError> {
+        let _ = (path, version);
+        Err(PeerError("large Observe update not supported".into()))
     }
 
     /// Set the bounded fixture state: 0 restores, 1 deletes, 2 changes format.

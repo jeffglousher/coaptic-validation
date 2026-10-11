@@ -17,6 +17,70 @@ pub const SECURE_BODY: &[u8] = b"secure-payload";
 pub const OBS_BODY: &[u8] = b"obs-0";
 /// Later Observe representation.
 pub const OBS_BODY_2: &[u8] = b"obs-1";
+const fn observe_large_bytes(version: u8) -> [u8; 2000] {
+    let mut bytes = [0; 2000];
+    let mut i = 0;
+    while i < bytes.len() {
+        bytes[i] = ((i + version as usize * 17) % 251) as u8;
+        i += 1;
+    }
+    bytes
+}
+static OBS_LARGE_0: [u8; 2000] = observe_large_bytes(0);
+static OBS_LARGE_1: [u8; 2000] = observe_large_bytes(1);
+static OBS_LARGE_2: [u8; 2000] = observe_large_bytes(2);
+static OBS_LARGE_VERSION: AtomicU8 = AtomicU8::new(0);
+/// Fixed large representation and its stable version ETag.
+#[must_use]
+pub fn observe_large(version: u8) -> Option<(&'static [u8], &'static [u8])> {
+    match version {
+        0 => Some((&OBS_LARGE_0, b"L0")),
+        1 => Some((&OBS_LARGE_1, b"L1")),
+        2 => Some((&OBS_LARGE_2, b"L2")),
+        _ => None,
+    }
+}
+pub(crate) fn commit_observe_large(version: u8) {
+    OBS_LARGE_VERSION.store(version, Ordering::SeqCst);
+}
+pub(crate) fn observe_large_response() -> Response<'static> {
+    let (body, etag) =
+        observe_large(OBS_LARGE_VERSION.load(Ordering::SeqCst)).expect("bounded version");
+    Response::content(body)
+        .content_format(ContentFormat::TEXT_PLAIN)
+        .etag(etag)
+        .max_age(5)
+}
+fn get_obs_large(_: Request<'_>) -> Response<'static> {
+    observe_large_response()
+}
+
+static OBS_PUMPING_VERSION: AtomicU8 = AtomicU8::new(0);
+/// Finite variable-size representation and stable ETag.
+#[must_use]
+pub fn observe_pumping(version: u8) -> Option<(&'static [u8], &'static [u8])> {
+    match version {
+        0 => Some((&OBS_LARGE_0[..32], b"P0")),
+        1 => Some((&OBS_LARGE_1, b"P1")),
+        2 => Some((&OBS_LARGE_2[..64], b"P2")),
+        _ => None,
+    }
+}
+pub(crate) fn commit_observe_pumping(version: u8) {
+    OBS_PUMPING_VERSION.store(version, Ordering::SeqCst);
+}
+pub(crate) fn observe_pumping_response() -> Response<'static> {
+    let (body, etag) =
+        observe_pumping(OBS_PUMPING_VERSION.load(Ordering::SeqCst)).expect("bounded version");
+    Response::content(body)
+        .content_format(ContentFormat::TEXT_PLAIN)
+        .etag(etag)
+        .max_age(5)
+}
+fn get_obs_pumping(_: Request<'_>) -> Response<'static> {
+    observe_pumping_response()
+}
+
 /// `/path/sub1` payload.
 pub const PATH_SUB1: &[u8] = b"/path/sub1";
 /// `/path` link-format children.
@@ -116,6 +180,8 @@ pub fn reset() {
     *large_update_slot().lock().expect("large-update") = None;
     TEST_EXISTS.store(true, Ordering::SeqCst);
     OBS_SEQ.store(0, Ordering::SeqCst);
+    OBS_LARGE_VERSION.store(0, Ordering::SeqCst);
+    OBS_PUMPING_VERSION.store(0, Ordering::SeqCst);
     OBS_STATE.store(0, Ordering::SeqCst);
     OBS_REPRESENTATION.store(0, Ordering::SeqCst);
 }
@@ -384,7 +450,7 @@ fn attr_match(link: &str, attr: &str, value: &str) -> bool {
 }
 
 /// Method router table for the coaptic App server (24 slots).
-pub fn routers() -> [(&'static str, MethodRouter); 17] {
+pub fn routers() -> [(&'static str, MethodRouter); 19] {
     [
         (
             "test",
@@ -403,6 +469,14 @@ pub fn routers() -> [(&'static str, MethodRouter); 17] {
         ("large-post", post(post_large_post)),
         ("obs", get(get_obs).delete(delete_obs).observe(obs_snapshot)),
         ("obs-non", get(get_obs).observe(obs_snapshot)),
+        (
+            "obs-pumping",
+            get(get_obs_pumping).observe(observe_pumping_response),
+        ),
+        (
+            "obs-large",
+            get(get_obs_large).observe(observe_large_response),
+        ),
         ("link1", get(get_link1)),
         ("link2", get(get_link1)),
         ("link3", get(get_link1)),
