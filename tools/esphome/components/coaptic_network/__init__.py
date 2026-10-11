@@ -2,6 +2,7 @@ from pathlib import Path
 import hashlib
 import json
 import re
+import ipaddress
 
 import esphome.codegen as cg
 from esphome.components import esp32
@@ -50,7 +51,27 @@ def validate_security(config):
         raise cv.Invalid("select protected oscore or explicit allow_plaintext, never both")
     if "oscore" in config and config["oscore"]["sender_id"] == config["oscore"]["recipient_id"]:
         raise cv.Invalid("OSCORE Sender and Recipient IDs must differ")
+    if "telemetry" in config:
+        if "oscore" not in config or config["oscore"]["provision_only"]:
+            raise cv.Invalid("telemetry requires existing protected OSCORE state")
     return config
+
+
+def peer_address(value):
+    try:
+        address = ipaddress.IPv4Address(cv.string(value))
+    except ipaddress.AddressValueError as error:
+        raise cv.Invalid("telemetry peer must be an IPv4 address") from error
+    if address.is_unspecified or int(address) >> 24 >= 224:
+        raise cv.Invalid("telemetry requires one unicast peer")
+    return str(address)
+
+
+def bounded_payload(value):
+    value = cv.string(value)
+    if len(value) > 2048 or len(value) % 2 or not re.fullmatch(r"[0-9a-f]*", value):
+        raise cv.Invalid("telemetry payload must be 0..1024 bytes of lowercase hexadecimal")
+    return value
 
 
 def validate_runtime(config):
@@ -78,7 +99,9 @@ def validate_runtime(config):
                         for value in locks.values())):
                 raise cv.Invalid("Coaptic Rust archive lockfile provenance mismatch")
             if (report["target"] != "xtensa-esp32s3-none-elf" or
-                    report["features"] != ["network", "standalone"] + (["oscore"] if "oscore" in config else [])):
+                    report["features"] != ["network", "standalone"] +
+                    (["oscore"] if "oscore" in config else []) +
+                    (["telemetry"] if "telemetry" in config else [])):
                 raise cv.Invalid("Coaptic Rust archive target or features mismatch")
             if hashlib.sha256((root / "libcoaptic_esphome_probe.a").read_bytes()).hexdigest() != report["archive_sha256"]:
                 raise cv.Invalid("Coaptic Rust archive checksum mismatch")
@@ -105,6 +128,20 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional("provision_only", default=False): cv.boolean,
         }),
         cv.Optional("port", default=5683): cv.int_range(min=1, max=65535),
+        cv.Optional("telemetry"): cv.Schema({
+            cv.Required("principal_public_key"): fixed_hex(33),
+            cv.Required("principal_kid"): cv.int_range(min=0, max=255),
+            cv.Required("resource"): fixed_hex(32),
+            cv.Required("peer_address"): peer_address,
+            cv.Optional("peer_port", default=5683): cv.int_range(min=1, max=65535),
+            cv.Optional("timeout_ms", default=30000): cv.int_range(min=1, max=300000),
+            # Presence selects offline first provisioning; remove for transmission.
+            cv.Optional("provision_pending"): cv.Schema({
+                cv.Required("operation_id"): fixed_hex(16),
+                cv.Required("payload_hex"): bounded_payload,
+                cv.Optional("content_format"): cv.int_range(min=0, max=65535),
+            }),
+        }),
     }).extend(cv.COMPONENT_SCHEMA),
     cv.only_on_esp32,
     cv.only_with_framework("esp-idf"),
@@ -125,6 +162,14 @@ async def to_code(config):
         cg.add(component.set_oscore(security["master_secret"], security["master_salt"],
                                     security["context_id"], security["sender_id"],
                                     security["recipient_id"], security["provision_only"]))
+    if "telemetry" in config:
+        telemetry = config["telemetry"]
+        pending = telemetry.get("provision_pending", {})
+        cg.add(component.set_telemetry(telemetry["principal_public_key"], telemetry["principal_kid"],
+                                      telemetry["resource"], int(ipaddress.IPv4Address(telemetry["peer_address"])),
+                                      telemetry["peer_port"], telemetry["timeout_ms"],
+                                      pending.get("operation_id", ""), pending.get("content_format", -1),
+                                      pending.get("payload_hex", "")))
     if config["rust_runtime"] == "external":
         return
     if config["rust_runtime"] == "bundled":
@@ -139,3 +184,4 @@ async def to_code(config):
     cg.add_cmake_arg("COAPTIC_RUST_MANIFEST", str(root / "rust" / "Cargo.toml"))
     cg.add_cmake_arg("COAPTIC_NETWORK", "ON")
     cg.add_cmake_arg("COAPTIC_OSCORE", "ON" if "oscore" in config else "OFF")
+    cg.add_cmake_arg("COAPTIC_TELEMETRY", "ON" if "telemetry" in config else "OFF")

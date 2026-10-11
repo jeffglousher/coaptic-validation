@@ -143,9 +143,29 @@ The optional Rust `telemetry` feature provides
 authenticated 1,214-byte caller-owned record for a complete pending operation
 and its matching receipt. It requires separate storage from OSCORE counters,
 refuses uncertain writes until recovery, and compiles without `std` or `alloc`.
-It is an adapter building block; the live ESPHome service does not yet send
-durable application telemetry through it. Physical restart/power-loss evidence
-and the deployed device-to-host flow remain in the project issues.
+The optional `coaptic_network.telemetry` configuration runs one retained
+operation through the protected network adapter. It requires existing OSCORE
+state and an explicitly installed `principal_public_key`, `principal_kid`,
+32-byte hexadecimal `resource`, unicast IPv4 `peer_address`, and optional
+`peer_port` (5683) and `timeout_ms` (30000, at most 300000).
+This is a caller-installed pairwise qualification binding, not enrollment.
+
+First add `telemetry.provision_pending` with a unique hexadecimal `operation_id`
+(16 bytes), `payload_hex` (at most 1024 bytes), and optional `content_format`.
+This selects an offline task: it verifies existing security state and commits
+the complete pending operation before any socket opens. An existing pending
+record refuses replacement. Then remove `provision_pending` to transmit that
+saved operation. Normal operation never initializes missing records. Both modes
+use the same telemetry archive; `oscore.provision_only` cannot be combined with
+telemetry. The NVS keys `state_v1` and `pending_v1` are separate records in the
+owned `coaptic_sec` namespace. No key is erased by these modes.
+
+The task stops after one bounded attempt. A restart recovers the same operation
+and skips previously reserved sender sequences; an authenticated receipt must
+be durably saved before `COAPTIC_TELEMETRY_COMPLETE` is logged. A previously
+completed record returns its saved result without transmitting. Configuration
+generation and host tests do not qualify ESP flash or device restart behavior;
+source-verified physical execution remains in #333/#365.
 
 Build tooling requires clean library and suite checkouts after preparation:
 
@@ -153,6 +173,7 @@ Build tooling requires clean library and suite checkouts after preparation:
 python tools/qualification/esp32.py --chip esp32c3 --expected-library-revision LIBRARY_COMMIT_SHA --output target/c3/build.json
 python tools/qualification/esphome_probe.py --chip esp32s3 --compile --expected-library-revision LIBRARY_COMMIT_SHA --output target/s3/build.json
 python tools/esphome/build_archive.py --expected-library-revision LIBRARY_COMMIT_SHA --oscore
+# For the pending-telemetry modes, add --telemetry to the protected archive build.
 ```
 
 ESPHome tooling pins version 2026.9.1 and ESP-IDF 5.5.5. S3 compilation requires
@@ -165,8 +186,8 @@ Configuration-only tests use opaque archive bytes and do not establish linking.
 Capture recording requires both `--expected-library-revision` and
 `--expected-suite-revision`, unchanged firmware hashes and fresh run IDs. Build
 reports are not device results or authenticated attestation. These commands do
-not deploy firmware. Protected networking, platform entropy and durable flash
-recovery remain unqualified.
+not deploy firmware. Build success alone does not establish protected networking,
+platform entropy or durable flash recovery on a physical device.
 
 ## License
 
