@@ -233,7 +233,8 @@ superseded queued and timer continuations. A separate authenticated-request
 generation is committed only after successful authentication and complete inner
 decoding, then stamped on the response before the application callback. Missing
 or stale stamps (including unsupported asynchronous copies) refuse transfer
-binding; same-token replacement and recipient recreation cannot retarget an old
+binding. This does not qualify proxy/async behavior or preclude their earlier
+upstream empty ACK. Same-token replacement and recipient recreation cannot retarget an old
 response. Failed decoding or replacement allocation preserves the prior request
 association. Distinct response blocks use fresh
 server PIVs; ciphertext retransmissions remain unchanged. The exact upstream,
