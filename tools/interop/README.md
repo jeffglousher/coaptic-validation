@@ -169,3 +169,44 @@ adaptive block shrinking, continuation of the timed-out Call, protected traffic,
 routed/scoped networking, hardware or sustained availability. The original RFC
 7252 section 4.6 and RFC 7959 block-size rules remain separate from this finite
 fault schedule.
+
+The `oscore-qblock1-recovery:coaptic->libcoap` case uses the pinned libcoap
+OpenSSL/OSCORE build over IPv4 loopback. Its offline aiocoap oracle authenticates
+inner Q-Block1 options and every slice of the 2000-byte upload; it rejects a
+classic-Block1 substitution. One intact authenticated upload request is lost
+to exercise exact client retransmission. The server acknowledges each request
+then sends a separate protected CON Created; losing that reply once exercises
+exact server retransmission and the client ACK with the server's MID. Created
+replies are also lost permanently. The latter records a client timeout alongside the independently
+observed application effect, then exercises fresh recovery. Wrong-key traffic
+must leave handler counts unchanged. Captures retain exact endpoints, ciphertext
+retries and source identities. Native NoSec-only libcoap builds explicitly
+exclude this case; synthetic tests do not establish peer interoperability.
+
+Run the focused oracle tests in an isolated environment populated from the
+existing pinned `tools/security-interop/requirements.txt`:
+
+```sh
+python -m unittest discover -s tools/interop -p 'oscore_qblock1_tests.py'
+```
+
+This finite fixture uses public RFC 8613 test keys, not production credentials,
+enrollment or a sustained-availability qualification.
+
+The first hosted campaign (run `38129603008`, artifact `11698328540`) completed
+the baseline upload but the original piggyback-only oracle refused libcoap's
+legitimate separate CON response. That failed trace is retained. The revised
+oracle authenticates against the same exact final request binding and separately
+checks server response retransmission and client ACK ownership. Offline baseline
+re-evaluation does not establish the subsequent loss schedules; those require a
+new hosted campaign.
+
+The second hosted campaign (`38130677875`) passed baseline, request-loss,
+response-loss and permanent-loss checks, then its silence-only wrong-key oracle
+refused libcoap's unprotected ACK 4.00 diagnostic. RFC 8613 section 8.2 step 6
+permits that decryption-failure response. The fixture-specific oracle now requires
+its exact endpoint/MID/token, Max-Age zero and `Decryption failed` payload, while
+still requiring client timeout, no authenticated upload progress and unchanged
+handler counts. This diagnostic establishes no authenticated success. The failed
+campaign remains retained; the final fresh-recovery schedule still needs a new
+hosted execution.
