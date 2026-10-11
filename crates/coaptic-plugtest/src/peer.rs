@@ -206,6 +206,12 @@ pub trait Peer {
         Err(PeerError("notify not supported".into()))
     }
 
+    /// Ask a running server to use CON for this notification.
+    fn notify_confirmable(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
+        let _ = (path, payload);
+        Err(PeerError("confirmable notify not supported".into()))
+    }
+
     /// Whether this peer can terminate DTLS (feature `dtls`).
     fn supports_dtls(&self) -> bool {
         false
