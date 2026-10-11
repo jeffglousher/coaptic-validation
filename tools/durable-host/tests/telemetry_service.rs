@@ -465,3 +465,46 @@ fn checkpoint_and_ambiguous_journal_refuse_receipt_then_reopen_recovers() {
     drop(journal);
     std::fs::remove_file(path).unwrap();
 }
+#[test]
+fn hostile_datagrams_do_not_prevent_fresh_valid_dispatch_in_same_session() {
+    let path = std::env::temp_dir().join(format!(
+        "coaptic-host-service-recovery-{}",
+        std::process::id()
+    ));
+    let policy = support::policy(1);
+    let mut journal = Journal::create(&path, Authority::new(policy), 1).unwrap();
+    let credentials = credentials(true);
+    let mut state = Memory::default();
+    security::provision(&mut state, &credentials).unwrap();
+    let incoming = Packets::default();
+    let outgoing = Packets::default();
+    let valid = protected_request();
+    let mut tampered = valid.clone();
+    *tampered.last_mut().unwrap() ^= 1;
+    incoming.borrow_mut().push_back(tampered);
+    incoming.borrow_mut().push_back(vec![0x40, 1, 0, 1]); // Plaintext GET.
+    incoming.borrow_mut().push_back(valid);
+    let mut ticks = 0;
+    let report = telemetry::run(
+        Io {
+            peer: CLIENT,
+            incoming,
+            outgoing,
+        },
+        random,
+        || {
+            ticks += 1;
+            Some(ticks)
+        },
+        max_binding(&credentials, policy, 100),
+        state,
+        &mut journal,
+    )
+    .unwrap();
+    // Invalid authentication and plaintext are silently refused by App.
+    assert_eq!(report.admitted, 1);
+    assert_eq!(report.effects, 1);
+    assert_eq!(report.receipts, 1);
+    drop(journal);
+    std::fs::remove_file(path).unwrap();
+}
