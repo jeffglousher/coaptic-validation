@@ -65,6 +65,32 @@ class ObserveTests(unittest.TestCase):
         self.assertEqual(proof["complete_bodies"],[["0","1","2"],["2","3","4"],["4","5","6"]])
         self.assertEqual(proof["intact_stale_replays"],1)
 
+    def test_piggyback_ack_and_server_notifications_have_separate_mid_namespaces(self):
+        client=FixtureContext(server=False,sequence=100)
+        server=FixtureContext(server=True,sequence=1000)
+        req=protected(client,coap_message(1,10,b"o",[(6,b"") ,(11,b"counter")]))
+        _,binding=request_plain(req)
+        packets=[("request","forward",req)]
+        for i,mid in enumerate((10,10,11)):
+            plain=coap_message(69,mid,b"o",[(6,bytes([i+1]))],str(i).encode())
+            if i==0:plain=bytes([plain[0]|0x20])+plain[1:]
+            wire=protected(server,plain,binding)
+            packets.append(("response","forward",wire))
+            if i:packets.append(("request","forward",b"\x60\x00"+mid.to_bytes(2,"big")))
+        x=[rows(packets),observer()[1],copy.deepcopy(ENDPOINTS)]
+        self.assertEqual(observer_grade(*x,0,False)["bodies"],["0","1","2"])
+        # MID is not authenticated: mutate only this transport field and retain
+        # each authentic notification body/PIV, proving same-server reuse fails.
+        reused=copy.deepcopy(x)
+        for index in (4,5):
+            wire=bytes.fromhex(reused[0][index]["hex"])
+            wire=wire[:2]+b"\x00\x0a"+wire[4:]
+            reused[0][index].update(hex=wire.hex(),forwarded_hex=wire.hex())
+        with self.assertRaisesRegex(AssertionError,"reused server MID"):observer_grade(*reused,0,False)
+        wrong=copy.deepcopy(x)
+        wrong[0][3].update(hex="6000000b",forwarded_hex="6000000b")
+        with self.assertRaisesRegex(AssertionError,"ACK owner"):observer_grade(*wrong,0,False)
+
     def test_authenticated_body_binding_and_nonce_refusal(self):
         for kw in ({"wrong_binding":True},{"reused_piv":True},{"bad_body":True},{"missing_piv":True}):
             with self.subTest(kw=kw),self.assertRaises(AssertionError):observer_grade(*observer(**kw),0,False)

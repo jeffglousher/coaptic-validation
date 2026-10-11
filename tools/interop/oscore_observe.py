@@ -126,12 +126,14 @@ def observer_grade(trace, result, endpoints, start, replay):
             continue
         require(wire[1]==69 and packet_token(wire)==packet_token(registration)
                 and set(decoded_options(wire))<={6,9} and 9 in decoded_options(wire),"unprotected/wrong-token notification")
-        require(pending is None and mid not in response_mids,"overlapping/reused server MID")
+        require(pending is None,"overlapping server CON")
         if ty==2:
             require(waiting and not bodies and mid==registration[2:4],"invalid piggyback owner")
             waiting=False
         else:
             require(ty in (0,1) and not waiting,"notification before registration settlement")
+            require(mid not in response_mids,"reused server MID")
+            response_mids.add(mid)
             if ty==0:pending=mid
         plain=response_plain(wire,registration)
         options=opts(plain)
@@ -146,7 +148,7 @@ def observer_grade(trace, result, endpoints, start, replay):
         if piv is not None:
             require(piv not in pivs,"distinct notification reused PIV")
             pivs.append(piv)
-        bodies.append(plain.payload);sequences.append(sequence);wire_responses.append(wire);response_mids.add(mid);notification_times.append(at)
+        bodies.append(plain.payload);sequences.append(sequence);wire_responses.append(wire);notification_times.append(at)
         if len(bodies)==3:final_at=at
     require(len(bodies)==3 and not waiting and pending is None and bool(replay_at is not None)==replay,"incomplete observer/replay evidence")
     if replay:require(replay_at<final_at,"replay was after client completion")
