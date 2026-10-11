@@ -1037,14 +1037,115 @@ fn observe_con_and_ack_loss_preserve_nstart_and_recover() {
 
 #[test]
 fn observe_large_complete_block2_snapshots() {
+    use coaptic::message::{Message, Opt, OptionNumber, decode, encode, encode_uint};
+    use coaptic_plugtest::pcap::Capture;
+    let id = "TD_COAP_OBS_13";
     let result = runner::run_td(
-        "TD_COAP_OBS_13",
+        id,
         Pair {
             client: "coaptic",
             server: "coaptic",
         },
     );
     assert!(result.error.is_none(), "{:?}", result.error);
+    let catalog = Catalog::load().unwrap();
+    let packets = result.capture.snapshot();
+    let mut unique = packets.clone();
+    unique.sort_by_key(|p| p.t_ns);
+    let mut seen = std::collections::HashSet::new();
+    unique.retain(|p| seen.insert((p.src, p.dst, p.bytes.clone())));
+    for (target, fault) in [
+        (0, "path"),
+        (4, "body"),
+        (4, "token"),
+        (4, "endpoint"),
+        (4, "sequence"),
+        (4, "format"),
+        (4, "block"),
+        (4, "missing"),
+        (5, "mid"),
+        (5, "endpoint"),
+        (6, "path"),
+        (6, "observe"),
+        (6, "block"),
+        (7, "etag"),
+        (7, "short-body"),
+        (7, "more"),
+        (7, "missing"),
+        (7, "endpoint"),
+        (7, "token"),
+        (7, "mid"),
+    ] {
+        let changed = Capture::new();
+        for packet in &packets {
+            let index = unique
+                .iter()
+                .position(|p| p.src == packet.src && p.dst == packet.dst && p.bytes == packet.bytes)
+                .unwrap();
+            let mut bytes = packet.bytes.clone();
+            let mut src = packet.src;
+            if index == target {
+                match fault {
+                    "missing" => continue,
+                    "body" => *bytes.last_mut().unwrap() ^= 1,
+                    "short-body" => {
+                        bytes.pop();
+                    }
+                    "token" => bytes[4] ^= 1,
+                    "mid" => bytes[3] ^= 1,
+                    "endpoint" => src = packet.dst,
+                    _ => {
+                        let original = decode(&bytes).unwrap();
+                        let seq = encode_uint(if fault == "sequence" { 0 } else { 1 });
+                        let format = encode_uint(if fault == "format" { 42 } else { 0 });
+                        let age = encode_uint(5);
+                        let block = [if fault == "block" || fault == "more" {
+                            0x1e
+                        } else if index == 4 {
+                            0x0e
+                        } else {
+                            0x16
+                        }];
+                        let mut opts = Vec::new();
+                        if index == 0 || index == 6 {
+                            if index == 0 || fault == "observe" {
+                                opts.push(Opt::observe_register());
+                            }
+                            opts.push(Opt::uri_path(if fault == "path" {
+                                "wrong"
+                            } else {
+                                "obs-large"
+                            }));
+                            if index == 6 {
+                                opts.push(Opt::opaque(OptionNumber::BLOCK2, &block));
+                            }
+                        } else {
+                            opts.push(Opt::etag(if fault == "etag" { b"L0" } else { b"L1" }));
+                            if index == 4 {
+                                opts.push(Opt::observe(&seq));
+                            }
+                            opts.push(Opt::content_format(&format));
+                            opts.push(Opt::max_age(&age));
+                            opts.push(Opt::opaque(OptionNumber::BLOCK2, &block));
+                        }
+                        let msg =
+                            Message::new(original.ty(), original.code(), original.message_id())
+                                .with_token(original.token())
+                                .with_options(&opts)
+                                .with_payload(original.payload());
+                        let mut buf = [0; 2048];
+                        let n = encode(&msg, &mut buf).unwrap();
+                        bytes = buf[..n].to_vec();
+                    }
+                }
+            }
+            changed.push(src, packet.dst, &bytes, packet.decrypted);
+        }
+        assert!(
+            catalog.grade(id, &changed).is_err(),
+            "accepted {target} {fault}"
+        );
+    }
     if let Some(directory) = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR") {
         let directory = std::path::PathBuf::from(directory);
         std::fs::create_dir_all(&directory).unwrap();
@@ -1052,5 +1153,23 @@ fn observe_large_complete_block2_snapshots() {
             .capture
             .write_pcap(std::fs::File::create(directory.join("obs-13-coaptic.pcap")).unwrap())
             .unwrap();
+    }
+    for pair in [
+        Pair {
+            client: "coap-rs",
+            server: "coaptic",
+        },
+        Pair {
+            client: "coaptic",
+            server: "coap-rs",
+        },
+    ] {
+        assert!(
+            runner::run_td(id, pair)
+                .error
+                .as_deref()
+                .unwrap()
+                .starts_with("SKIP:")
+        );
     }
 }

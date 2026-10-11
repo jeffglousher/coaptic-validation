@@ -23,6 +23,7 @@ pub struct CoapticPeer {
     server: Option<ServerCtl>,
     client_addr: Option<SocketAddr>,
     observe: Option<ObserveHold>,
+    notification_error: Arc<Mutex<Option<String>>>,
 }
 
 struct ObserveHold {
@@ -68,6 +69,7 @@ impl CoapticPeer {
             server: None,
             client_addr: None,
             observe: None,
+            notification_error: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -88,9 +90,21 @@ impl Peer for CoapticPeer {
         let notify_t = Arc::clone(&notify);
         let loss = crate::observe_loss::ObserveLoss::default();
         let loss_t = loss.clone();
+        *self.notification_error.lock().expect("notification error") = None;
+        let notification_error = Arc::clone(&self.notification_error);
         let join = thread::Builder::new()
             .name("coaptic-plugtest-server".into())
-            .spawn(move || server_loop(sock, addr, capture, stop_t, notify_t, loss_t))
+            .spawn(move || {
+                server_loop(
+                    sock,
+                    addr,
+                    capture,
+                    stop_t,
+                    notify_t,
+                    loss_t,
+                    notification_error,
+                )
+            })
             .map_err(|e| e.to_string())?;
         // Let the thread bind the App.
         thread::sleep(Duration::from_millis(20));
@@ -262,6 +276,13 @@ impl Peer for CoapticPeer {
         }
     }
 
+    fn notification_error(&self) -> Option<String> {
+        self.notification_error
+            .lock()
+            .expect("notification error")
+            .clone()
+    }
+
     fn update_large_observed(&mut self, path: &[&str], version: u8) -> Result<(), PeerError> {
         if path != ["obs-large"] || site::observe_large(version).is_none() {
             return Err(PeerError("unsupported bounded large representation".into()));
@@ -331,6 +352,7 @@ fn server_loop(
     stop: Arc<AtomicBool>,
     notify: NotifyMailbox,
     loss: crate::observe_loss::ObserveLoss,
+    notification_error: Arc<Mutex<Option<String>>>,
 ) {
     let io = CapturingIo::new(sock, addr, capture).with_observe_loss(loss);
     let mut app = bind_site(io);
@@ -342,8 +364,10 @@ fn server_loop(
             match command {
                 NotifyCommand::UpdateLargeObserved(version) => {
                     site::commit_observe_large(version);
-                    let _ =
+                    let result =
                         app.notify_confirmable(now, &["obs-large"], site::observe_large_response());
+                    *notification_error.lock().expect("notification error") =
+                        result.err().map(|error| format!("{error:?}"));
                 }
                 NotifyCommand::SetObservedState(state) => {
                     site::set_observed_state(state);
@@ -1056,5 +1080,112 @@ mod observe_loss_hook_tests {
         );
         assert_eq!(client.observe_losses(), 1);
         assert_eq!(server.observe_losses(), 0);
+    }
+}
+
+#[cfg(test)]
+mod observe_large_tests {
+    use super::*;
+    #[test]
+    fn large_fixture_refusal_preserves_state_and_full_delivery_recovers() {
+        let _guard = crate::runner::harness_lock();
+        let mut server = CoapticPeer::new();
+        let dest = server.start_server().unwrap();
+        let mut client = CoapticPeer::new();
+        let mut registration = ClientRequest::get(&["obs-large"]);
+        registration.observe = Some(0);
+        let initial = client.begin_observe(dest, &registration).unwrap();
+        assert_eq!(
+            initial.body.as_deref(),
+            Some(site::observe_large(0).unwrap().0)
+        );
+        let before = server.take_capture().snapshot().len();
+        for (path, version) in [
+            (&["obs"][..], 1),
+            (&["obs-large"][..], 3),
+            (&["obs-large"][..], 255),
+        ] {
+            assert!(server.update_large_observed(path, version).is_err());
+        }
+        client.observe_quiet_for(Duration::from_millis(30)).unwrap();
+        assert_eq!(server.take_capture().snapshot().len(), before);
+        // Inspect the owned fixture without introducing another retained Block2
+        // response owner into this one-observer capacity qualification.
+        assert_eq!(
+            site::observe_large_response().payload(),
+            site::observe_large(0).unwrap().0
+        );
+        for version in [1, 2] {
+            server
+                .update_large_observed(&["obs-large"], version)
+                .unwrap();
+            let complete = client
+                .take_notification(Duration::from_secs(3))
+                .unwrap_or_else(|e| panic!("version {version}: {e:?}"));
+            let (body, etag) = site::observe_large(version).unwrap();
+            assert_eq!(complete.body.as_deref(), Some(body));
+            assert_eq!(complete.etag, [etag.to_vec()]);
+        }
+        // An exploratory third rapid round exceeds this default fixture's
+        // retained-TX budget. Keep its actual cause visible instead of reporting
+        // only a client timeout; this is not a sustained-cadence success claim.
+        server.update_large_observed(&["obs-large"], 1).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            if let Some(error) = server.notification_error() {
+                assert_eq!(error, "Saturated");
+                break;
+            }
+            assert!(Instant::now() < deadline, "missing saturation diagnostic");
+            thread::sleep(Duration::from_millis(2));
+        }
+        drop(client);
+        drop(server);
+        let mut fresh = CoapticPeer::new();
+        let dest = fresh.start_server().unwrap();
+        let clean = CoapticPeer::new()
+            .send_request(dest, &ClientRequest::get(&["obs-large"]))
+            .unwrap();
+        assert_eq!(
+            clean.body.as_deref(),
+            Some(site::observe_large(0).unwrap().0)
+        );
+        let mut unsupported = crate::runner::peer_by_name("coap-rs").unwrap();
+        assert!(
+            unsupported
+                .update_large_observed(&["obs-large"], 1)
+                .is_err()
+        );
+        assert!(unsupported.take_capture().snapshot().is_empty());
+    }
+    #[test]
+    fn occupied_large_update_refuses_without_replacing_snapshot() {
+        let mut server = CoapticPeer::new();
+        let command = Arc::new(Mutex::new(Some(NotifyCommand::UpdateLargeObserved(1))));
+        server.server = Some(ServerCtl {
+            addr: "127.0.0.1:5683".parse().unwrap(),
+            stop: Arc::new(AtomicBool::new(false)),
+            notify: Arc::clone(&command),
+            loss: crate::observe_loss::ObserveLoss::default(),
+            join: None,
+        });
+        assert!(
+            server
+                .update_large_observed(&["obs-large"], 2)
+                .unwrap_err()
+                .0
+                .contains("occupied")
+        );
+        assert!(matches!(
+            *command.lock().unwrap(),
+            Some(NotifyCommand::UpdateLargeObserved(1))
+        ));
+        *command.lock().unwrap() = None;
+        server.update_large_observed(&["obs-large"], 2).unwrap();
+        assert!(matches!(
+            *command.lock().unwrap(),
+            Some(NotifyCommand::UpdateLargeObserved(2))
+        ));
+        assert!(server.take_capture().snapshot().is_empty());
     }
 }

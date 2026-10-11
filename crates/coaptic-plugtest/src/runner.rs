@@ -613,7 +613,14 @@ fn observe_large(
             client.begin_observe(dest, &registration)?
         } else {
             server.update_large_observed(&["obs-large"], version)?;
-            client.take_notification(Duration::from_secs(3))?
+            client
+                .take_notification(Duration::from_secs(3))
+                .map_err(|error| {
+                    PeerError(format!(
+                        "{error}; server notification error: {:?}",
+                        server.notification_error()
+                    ))
+                })?
         };
         let (body, etag) = site::observe_large(version).ok_or("invalid fixture version")?;
         if response.code != Code::CONTENT

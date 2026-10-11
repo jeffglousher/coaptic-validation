@@ -243,6 +243,11 @@ pub trait Peer {
         0
     }
 
+    /// Last controlled notification error, retained for qualification diagnostics.
+    fn notification_error(&self) -> Option<String> {
+        None
+    }
+
     /// Persist one of three bounded large snapshots and notify with CON.
     fn update_large_observed(&mut self, path: &[&str], version: u8) -> Result<(), PeerError> {
         let _ = (path, version);

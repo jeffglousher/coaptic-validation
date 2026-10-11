@@ -238,3 +238,25 @@ Unsupported directions remain SKIP. `COAPTIC_OBSERVE_CAPTURE_DIR` retains
 OBS05's separate updated-Observe retransmission requirement, sustained hostile
 traffic availability, or protected interoperability. See
 [#429](https://github.com/jeffglousher/coaptic/issues/429).
+
+### Complete large Observe representations
+
+`observe_large_complete_block2_snapshots` executes literal TD_COAP_OBS_13 with
+Coaptic peers. The bounded `/obs-large` fixture selects three static 2000-byte
+representations with distinct ETags. Initial registration and two subsequent CON
+notifications each deliver block zero, request the final block, and expose the
+complete expected body. GET and notification snapshots select the same version.
+
+The twelve-datagram grader binds endpoint/path/token/MID ownership, Observe
+progression, block number/size/M flag, content format, Max-Age, ETag and both body
+slices. Twenty trace mutations must fail. Two adapter tests check invalid path or
+version, occupied command preservation, unchanged fixture state, full-delivery
+recovery and reset. Both coap-rs directions remain SKIP; set
+`COAPTIC_OBSERVE_CAPTURE_DIR` to retain `obs-13-coaptic.pcap`.
+
+This is one-observer plaintext qualification with two subsequent notifications.
+Additional rapid Block2 rounds or response owners can exhaust retained TX
+datagram slots before duplicate-cache expiry; an exploratory extra round returned
+`Saturated`. It does not establish sustained update cadence, multi-client
+capacity, protected interoperability, or OBS14 variable-size behavior. Tracked in
+[#432](https://github.com/jeffglousher/coaptic/issues/432).
