@@ -43,6 +43,19 @@ def library_artifact(output, manifest, features):
     return matches[0]
 
 
+
+def publish_provenance(run, checkouts, output, provenance):
+    """Recheck every source after measurement; never publish a stale clean claim."""
+    for variant, suite in checkouts:
+        for name, path, expected in (("suite", suite, SUITE),
+                                     ("core", suite / "coaptic", EXPECTED[variant])):
+            if run(["git", "status", "--porcelain"], path, variant + "-final-clean-" + name).strip():
+                raise ValueError("measurement source became dirty; provenance refused")
+            if run(["git", "rev-parse", "HEAD"], path, variant + "-final-revision-" + name).strip() != expected:
+                raise ValueError("measurement revision changed; provenance refused")
+    (output / "provenance.json").write_text(json.dumps(provenance, indent=2), encoding="utf-8")
+
+
 def measure(baseline, candidate, output, build_root):
     output.mkdir(parents=True, exist_ok=False)
     if os.environ.get("RUSTFLAGS") or os.environ.get("CARGO_ENCODED_RUSTFLAGS"):
@@ -108,7 +121,8 @@ def measure(baseline, candidate, output, build_root):
             run([str(binary), str(size), "3"], suite, variant + "-profile-" + str(size))
     provenance = dict(compiler=compiler, cargo=cargo, sources=sources,
                       probes={name: sha256(HERE / name) for name in ("app_size_probe.rs", "entropy_layout_probe.rs")})
-    (output / "provenance.json").write_text(json.dumps(provenance, indent=2), encoding="utf-8")
+    publish_provenance(run, [("baseline", baseline.resolve()), ("candidate", candidate.resolve())],
+                       output, provenance)
 
 
 def main():

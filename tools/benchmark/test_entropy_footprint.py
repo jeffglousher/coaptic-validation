@@ -1,7 +1,8 @@
 ﻿import json
 from pathlib import Path
 import unittest
-from entropy_footprint import library_artifact
+import tempfile
+from entropy_footprint import EXPECTED, SUITE, library_artifact, publish_provenance
 
 
 class ArtifactIdentity(unittest.TestCase):
@@ -24,3 +25,46 @@ class ArtifactIdentity(unittest.TestCase):
         for output in (self.record(filenames=[]), self.record() + "\n" + self.record()):
             with self.assertRaises(ValueError):
                 library_artifact(output, Path("coaptic/Cargo.toml"), ["std", "alloc"])
+
+
+class FinalSourceCheck(unittest.TestCase):
+    def check(self, changed):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            suite = output / "baseline"
+            calls = []
+            active_change = None
+
+            def run(args, cwd, label):
+                calls.append(label)
+                core = cwd.name == "coaptic"
+                value = (EXPECTED["baseline"] if core else SUITE) if args[1] == "rev-parse" else ""
+                if core and args[1] == "status" and active_change == "dirty":
+                    value = " M src/app/identity.rs"
+                if core and args[1] == "rev-parse" and active_change == "revision":
+                    value = "0" * 40
+                (output / (label + ".log")).write_text(value, encoding="utf-8")
+                return value
+
+            # Initial identity is accepted before the simulated measurement.
+            self.assertEqual(run(["git", "status", "--porcelain"], suite / "coaptic", "initial-clean"), "")
+            self.assertEqual(run(["git", "rev-parse", "HEAD"], suite / "coaptic", "initial-revision"), EXPECTED["baseline"])
+            calls.clear()
+            active_change = changed
+            if changed:
+                with self.assertRaisesRegex(ValueError, "provenance refused"):
+                    publish_provenance(run, [("baseline", suite)], output, {"clean": True})
+                self.assertFalse((output / "provenance.json").exists())
+                self.assertTrue((output / "baseline-final-clean-core.log").exists())
+            else:
+                publish_provenance(run, [("baseline", suite)], output, {"clean": True})
+                self.assertEqual(json.loads((output / "provenance.json").read_text()), {"clean": True})
+                self.assertEqual(len(calls), 4)
+
+    def test_clean_final_sources_publish(self):
+        self.check(None)
+
+    def test_changed_source_or_revision_refuses_final_publication(self):
+        for changed in ("dirty", "revision"):
+            with self.subTest(changed=changed):
+                self.check(changed)
