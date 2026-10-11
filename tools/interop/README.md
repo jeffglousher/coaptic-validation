@@ -226,6 +226,8 @@ A failed baseline retains its trace and failure; synthetic oracle tests do
 not establish independent-peer interoperability.
 
 
+The [original pinned libcoap license and notices](libcoap/LICENSE.libcoap) are retained with the dependency patch.
+
 The companion-owned prerequisite patch for [#477](https://github.com/jeffglousher/coaptic/issues/477)
 retains an immutable request binding per protected UDP Q-Block2 transfer, separate
 from libcoap's mutable token association. Session-monotonic generations revoke
