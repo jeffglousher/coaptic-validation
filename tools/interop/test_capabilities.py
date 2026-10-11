@@ -26,11 +26,11 @@ class CapabilityTests(unittest.TestCase):
     def test_full_and_explicitly_limited_inventory(self):
         full = self.check(self.outcomes)
         self.assertTrue(full["complete"])
-        self.assertEqual(full["enabled_cases"], 172)
+        self.assertEqual(full["enabled_cases"], 173)
         excluded = {row["id"] for row in self.manifest["cases"] if row["requires"]}
         limited = self.check([row for row in self.outcomes if row["name"] not in excluded], False, "windows")
         self.assertTrue(limited["complete"])
-        self.assertEqual(limited["enabled_cases"], 143)
+        self.assertEqual(limited["enabled_cases"], 144)
         self.assertEqual(sum(row["status"] == "build-excluded" for row in limited["cases"]), 29)
         self.assertEqual(limited["unqualified"], full["unqualified"])
         self.assertEqual(len(self.digest), 64)
@@ -40,7 +40,7 @@ class CapabilityTests(unittest.TestCase):
         result = evaluate(self.manifest, [row for row in self.outcomes if row["name"] not in excluded],
                           libcoap_dtls=True, libcoap_oscore=False, system="linux")
         self.assertTrue(result["complete"])
-        self.assertEqual(result["enabled_cases"], 160)
+        self.assertEqual(result["enabled_cases"], 161)
         self.assertFalse(evaluate(self.manifest, self.outcomes, libcoap_dtls=True,
                                   libcoap_oscore=False, system="linux")["complete"])
 
@@ -74,6 +74,7 @@ class CapabilityTests(unittest.TestCase):
         names = [row["name"] for row in report["cases"]]
         expected = {row["id"] for row in self.manifest["cases"] if not excluded.intersection(row["requires"])}
         self.assertIn("separate-loss:coaptic->coap-rs", names)
+        self.assertIn("ipv6-qblock2-loss:coaptic->libcoap", names)
         self.assertIn("observe-oscore:coaptic->coaptic", names)
         self.assertIn("observe-dtls:coaptic->coaptic", names)
         self.assertEqual(report["coverage"]["enabled_cases"], count)
@@ -83,19 +84,19 @@ class CapabilityTests(unittest.TestCase):
         return names
 
     def test_runner_full_security_inventory_is_unchanged(self):
-        self.check_runner_inventory([], set(), 172)
+        self.check_runner_inventory([], set(), 173)
 
     def test_runner_oscore_exclusion_preserves_c_dtls_observe(self):
-        names = self.check_runner_inventory(["--libcoap-oscore-unavailable"], {"libcoap-oscore"}, 160)
+        names = self.check_runner_inventory(["--libcoap-oscore-unavailable"], {"libcoap-oscore"}, 161)
         self.assertIn("observe-dtls:coaptic->libcoap", names)
         self.assertIn("observe-dtls:libcoap->coaptic", names)
 
     def test_runner_udp_only_excludes_c_secure_observe(self):
-        self.check_runner_inventory(["--libcoap-udp-only"], {"libcoap-dtls", "libcoap-oscore"}, 143)
+        self.check_runner_inventory(["--libcoap-udp-only"], {"libcoap-dtls", "libcoap-oscore"}, 144)
 
     def test_runner_combined_exclusions_preserve_enabled_inventory(self):
         self.check_runner_inventory(["--libcoap-udp-only", "--libcoap-oscore-unavailable"],
-                                    {"libcoap-dtls", "libcoap-oscore"}, 143)
+                                    {"libcoap-dtls", "libcoap-oscore"}, 144)
 
     def test_missing_empty_duplicate_and_undeclared_runs_fail(self):
         variants = [[], self.outcomes[1:], self.outcomes + [self.outcomes[0]],

@@ -72,6 +72,18 @@ and 7.2 distinguish NON transfer recovery from CON congestion control: with
 libcoap's default NSTART of one, dropping a CON payload prevents a higher block
 from arriving. Existing CON cases retain their original request type.
 
+The IPv6 variant also retains each datagram's exact source, destination and
+relay endpoints and requires AF_INET6 with IPV6_V6ONLY on both relay sockets.
+An independent `::1` GET verifies server reachability. Three schedules run
+against the same server: selective missing-block recovery to the full 2000-byte
+body, permanent block-1 loss with 1744 delivered bytes and a protocol timeout,
+then fresh full recovery. The refusal deadline is six seconds, allowing the
+RFC 9177 four-second NON_RECEIVE_TIMEOUT to trigger a selective retry. Complete
+transfers have a twenty-second deadline; each trace is bounded to 256 datagrams.
+Partial evidence cannot pass the complete-response oracle. Endpoint/family,
+loss, representation and timeout mutations are rejected. This is loopback UDP
+qualification, not scoped link-local, routed, protected or hardware evidence.
+
 The relay selects 256-byte blocks, withholds block 1 until the client requests
 it, and requires a higher block to arrive before that selective recovery. The
 20-second deadline and 256-datagram trace bound apply. Delivered payloads must
@@ -79,5 +91,5 @@ reassemble the exact 2000-byte pattern with stable ETag, Size2 and block size,
 contiguous numbers and a final block. The report retains the full trace,
 including original and forwarded bytes. Mutation tests reject absent loss,
 wrong recovery options, CON fallback and incomplete or changed body evidence.
-This case covers IPv4 loopback UDP; protected recovery, other address families,
-CON loss recovery against libcoap and hardware remain unqualified.
+These cases cover IPv4 and IPv6 loopback UDP; protected recovery, scoped/routed
+networks, CON loss recovery against libcoap and hardware remain unqualified.
