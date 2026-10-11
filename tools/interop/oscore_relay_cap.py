@@ -1,6 +1,6 @@
-"""Finite authenticated classic Block2 datagram-cap qualification (IPv4 loopback)."""
+"""Finite authenticated classic Block2 datagram-cap qualification (IPv4/IPv6 loopback)."""
 from oscore_qblock1 import request_plain, response_plain, require, incoming
-from oscore_qblock2 import loopback_endpoint, relay_endpoints
+from oscore_qblock2 import loopback_endpoint, relay_endpoints, require_relay_family
 from aiocoap import oscore
 
 
@@ -11,7 +11,7 @@ def options(message):
     return result
 
 
-def grade(trace, result, endpoints, *, path, capped):
+def grade(trace, result, endpoints, *, path, capped, family="ipv4"):
     from run import BODY, LARGE, expect, decoded_options, packet_token, block1_fields
     require(path in ("test", "large") and type(capped) is bool, "unknown schedule")
     refused = path == "large" and capped
@@ -26,7 +26,8 @@ def grade(trace, result, endpoints, *, path, capped):
         expect(result, 69, LARGE if path == "large" else BODY)
         require(result.get("exit_code") == 0, "unsuccessful client exit")
     require(2 <= len(trace) <= 64, "trace outside finite report bound")
-    endpoint = lambda value: loopback_endpoint(value, "ipv4")
+    require_relay_family(endpoints, family)
+    endpoint = lambda value: loopback_endpoint(value, family)
     front, back, server = (endpoint(endpoints[k]) for k in ("front", "back", "server"))
     client = endpoint(trace[0]["source"])
     require(len({front, back, server, client}) == 4, "overlapping owners")
@@ -151,19 +152,21 @@ SCHEDULES = (("baseline", "large", False), ("small-control", "test", True),
              ("capped-refusal", "large", True), ("fresh-recovery", "large", False))
 
 
-def review(record, patch):
+def review(record, patch, *, family="ipv4"):
     from run import expect
+    require(family in ("ipv4", "ipv6") and record.get("family", "ipv4") == family, "campaign family mismatch")
     require(record["server_ready"].get("transport") == "oscore" and
             record["server_ready"].get("libcoap_patch_sha256") == patch["patch_sha256"], "server provenance mismatch")
     expect(record["setup"])
-    server_endpoint = loopback_endpoint(("127.0.0.1", record["server_ready"]["port"]), "ipv4")
+    server_endpoint = loopback_endpoint(("::1", record["server_ready"]["port"], 0, 0) if family == "ipv6"
+                                        else ("127.0.0.1", record["server_ready"]["port"]), family)
     require(len(record["schedules"]) == 4, "incomplete campaign")
     requests, explicit = set(), set()
     proofs = []
     for index, (case, (name, path, capped)) in enumerate(zip(record["schedules"], SCHEDULES), 1):
         require(case["name"] == name and case["sequence_start"] == index*100, "wrong schedule/order")
-        require(loopback_endpoint(case["endpoints"]["server"], "ipv4") == server_endpoint, "server changed")
-        proof = grade(case["trace"], case["result"], case["endpoints"], path=path, capped=capped)
+        require(loopback_endpoint(case["endpoints"]["server"], family) == server_endpoint, "server changed")
+        proof = grade(case["trace"], case["result"], case["endpoints"], path=path, capped=capped, family=family)
         require(proof == case["proof"], "retained proof does not match trace")
         _, binding = request_plain(bytes.fromhex(case["trace"][0]["hex"]))
         require(int.from_bytes(binding.partial_iv, "big") == index*100, "wrong starting binding")
@@ -173,29 +176,30 @@ def review(record, patch):
         proofs.append(proof)
     return {"schedules": 4, "same_server_port": record["server_ready"]["port"], "cap_bytes": 256,
             "fresh_recovery_bytes": proofs[-1]["delivered_authenticated_bytes"],
-            "scope": "finite IPv4 loopback silent datagram cap; no adaptive PMTU, ICMP or sustained availability; fresh client/relay for recovery"}
+            "scope": f"finite {'IPv6' if family == 'ipv6' else 'IPv4'} loopback silent datagram cap; no adaptive PMTU, ICMP or sustained availability; fresh client/relay for recovery"}
 
 
-def campaign(client, server, record, patch):
+def campaign(client, server, record, patch, *, family="ipv4"):
     from run import Server, Proxy, request, expect
-    record["schedules"] = []
-    with Server(server, "oscore") as service:
+    require(family in ("ipv4", "ipv6"), "unsupported protected address family")
+    record.update(family=family, schedules=[])
+    with Server(server, "oscore", family=family) as service:
         record["server_ready"] = service.ready
         require(service.ready.get("libcoap_patch_sha256") == patch["patch_sha256"], "peer patch mismatch")
-        record["setup"] = request(client, "oscore", service.number, sequence=0)
+        record["setup"] = request(client, "oscore", service.number, sequence=0, family=family)
         expect(record["setup"])
         for index, (name, path, capped) in enumerate(SCHEDULES, 1):
             case = {"name": name, "sequence_start": index*100}
             record["schedules"].append(case)
-            relay = Proxy(service.number, "cap-256" if capped else "pass")
+            relay = Proxy(service.number, "cap-256" if capped else "pass", family=family)
             try:
                 with relay:
-                    case["endpoints"] = relay_endpoints(relay, "ipv4")
-                    case["result"] = request(client, "oscore", relay.number, path=path, sequence=index*100, timeout=6500)
+                    case["endpoints"] = relay_endpoints(relay, family)
+                    case["result"] = request(client, "oscore", relay.number, path=path, sequence=index*100, timeout=6500, family=family)
             finally:
                 case["trace"] = relay.trace
-            case["proof"] = grade(case["trace"], case["result"], case["endpoints"], path=path, capped=capped)
-    record["proof"] = review(record, patch)
+            case["proof"] = grade(case["trace"], case["result"], case["endpoints"], path=path, capped=capped, family=family)
+    record["proof"] = review(record, patch, family=family)
     record["complete"] = True
 
 
@@ -208,15 +212,16 @@ def main():
     parser.add_argument("--libcoap", type=Path, required=True)
     parser.add_argument("--libcoap-patch-manifest", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--family", choices=("ipv4", "ipv6"), default="ipv4")
     args = parser.parse_args()
     patch = json.loads(args.libcoap_patch_manifest.read_text(encoding="utf-8"))
     report = {"schema": "coaptic-protected-relay-cap/1", **source_identity(), "platform": platform.platform(),
               "libcoap_source": "851533c3cf63d16984d370ce39d586ecb3694971", "libcoap_patch": patch,
               "executables": {name: {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
                               for name,path in (("coaptic",args.coaptic), ("libcoap",args.libcoap))},
-              "qualification_complete": False, "campaign": {}}
+              "family": args.family, "qualification_complete": False, "campaign": {}}
     try:
-        campaign(args.coaptic.resolve(), args.libcoap.resolve(), report["campaign"], patch)
+        campaign(args.coaptic.resolve(), args.libcoap.resolve(), report["campaign"], patch, family=args.family)
         report["qualification_complete"] = True
     except Exception as error:
         report["error"] = f"{type(error).__name__}: {error}"
