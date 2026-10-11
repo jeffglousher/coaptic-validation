@@ -149,3 +149,23 @@ The readback counts are in-memory fixture application effects, not durable recei
 This finite CON case uses existing RFC 7252 reliability as referenced by RFC 9177
 section 7.1; it does not qualify NON missing-block recovery, timed-out Call reuse,
 protected transport, routed networks, hardware or sustained availability.
+
+
+`relay-cap-256:coaptic->libcoap` qualifies a finite IPv4 UDP loopback
+refusal/recovery boundary. Against one libcoap server, fresh client processes
+first assemble the exact 2000-byte representation, complete a small response
+through a silent 256-byte wire-datagram cap, time out while the cap drops every
+oversized first Block2 response, and assemble all 2000 bytes after the cap is
+removed. The trace binds exact endpoints, unchanged relay bytes, Block2 size and
+body metadata, and an identical CON request retry. Its first retry uses the
+unchanged 2?3 second RTO with 50 ms early capture and one second late scheduling
+tolerance. Each request has a 6.5-second peer deadline and a distinct process
+deadline; a killed or stuck process is a failure. The relay limits each trace to
+256 records. A retry of a rejected first block may obtain a new server ETag;
+delivered blocks of a complete representation must retain one ETag.
+
+This case records a silent relay limit, not an IP MTU or ICMP discovery result,
+adaptive block shrinking, continuation of the timed-out Call, protected traffic,
+routed/scoped networking, hardware or sustained availability. The original RFC
+7252 section 4.6 and RFC 7959 block-size rules remain separate from this finite
+fault schedule.
