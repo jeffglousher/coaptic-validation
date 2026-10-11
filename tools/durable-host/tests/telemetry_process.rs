@@ -1,4 +1,4 @@
-use coaptic::provisioning::Receipt;
+use coaptic::provisioning::{OperationId, Receipt, TelemetryOperation};
 use coaptic::storage::UdpSocketIo;
 use coaptic::{App, Code, ContentFormat, profiles};
 use coaptic_esphome_probe::{host_state::FileStore, security_state as security};
@@ -191,6 +191,16 @@ fn child_service_lost_reply_then_restart_recovers_exact_durable_receipt() {
     let second = start(&root, &address.to_string(), &peer.to_string(), false);
     let receipt = request(&root, client, address, true).unwrap();
     assert_eq!(receipt.sequence(), 1);
+    let payload = [0x37; 1024];
+    let operation = TelemetryOperation::new(
+        OperationId::new([0x29; 16]),
+        policy.resource,
+        Some(42),
+        &payload,
+    )
+    .unwrap();
+    assert_eq!(receipt.id(), operation.id());
+    assert_eq!(receipt.digest(), operation.digest());
     let report = second.finish();
     assert!(report.contains("\"effects\":1"), "{report}");
     assert!(report.contains("\"receipts\":1"), "{report}");
