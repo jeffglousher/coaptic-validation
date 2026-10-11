@@ -198,8 +198,8 @@ impl CryptoCcm {
 mod record_policy_tests {
     use super::*;
 
-    fn codec(tag: CryptoCcmTagLen, remote_key: &[u8]) -> CryptoCcm {
-        CryptoCcm::new(&tag, &[0x11; 16], &[0x22; 4], remote_key, &[0x22; 4])
+    fn codec(tag: CryptoCcmTagLen, key: &[u8; 16], iv: &[u8; 4]) -> CryptoCcm {
+        CryptoCcm::new(&tag, key, iv, key, iv)
     }
     fn header(len: usize) -> RecordLayerHeader {
         RecordLayerHeader {
@@ -216,7 +216,9 @@ mod record_policy_tests {
             (CryptoCcmTagLen::CryptoCcm8TagLength, 8),
             (CryptoCcmTagLen::CryptoCcmTagLength, 16),
         ] {
-            let ccm = codec(tag, &[0x11; 16]);
+            let key = rand::random::<[u8; 16]>();
+            let iv = rand::random::<[u8; 4]>();
+            let ccm = codec(tag, &key, &iv);
             for length in 0..8 + bytes {
                 let mut wire = Vec::new();
                 header(length).marshal(&mut wire).unwrap();
@@ -231,9 +233,13 @@ mod record_policy_tests {
             CryptoCcmTagLen::CryptoCcm8TagLength,
             CryptoCcmTagLen::CryptoCcmTagLength,
         ] {
-            let sender = codec(tag.clone(), &[0x11; 16]);
-            let receiver = codec(tag.clone(), &[0x11; 16]);
-            let wrong = codec(tag, &[0x33; 16]);
+            let key = rand::random::<[u8; 16]>();
+            let iv = rand::random::<[u8; 4]>();
+            let mut wrong_key = key;
+            wrong_key[0] ^= 1;
+            let sender = codec(tag.clone(), &key, &iv);
+            let receiver = codec(tag.clone(), &key, &iv);
+            let wrong = codec(tag, &wrong_key, &iv);
             let mut plain = Vec::new();
             header(4).marshal(&mut plain).unwrap();
             plain.extend_from_slice(b"test");
