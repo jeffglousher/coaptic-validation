@@ -29,9 +29,11 @@ and suite revisions, dirty state, prepared lock hashes, and fixture hashes.
 - [Durable host effect/receipt reference](tools/durable-host/README.md)
 
 Coaptic CI calls [validation.yml](.github/workflows/validation.yml) at an exact
-suite commit. This repository's CI checks the public baseline in `library.json`;
-manual runs accept another full library commit SHA. Updating that baseline is an
-explicit change. Moving the tooling does not establish production readiness.
+suite commit. This repository's CI checks the full library revision pinned in
+[ci.yml](.github/workflows/ci.yml); manual runs accept another full library commit
+SHA. `library.json` supplies the checkout baseline for local setup. Changing either
+reference is an explicit source selection. Moving the tooling does not establish
+production readiness.
 
 ## Qualification
 
@@ -56,7 +58,8 @@ Branch coverage and address-sanitized libFuzzer campaigns require
 Fuzzing uses fresh seeded corpora, bounded time/inputs/memory, three semantic
 oracles and nonzero execution/feedback requirements. Reports retain both source
 revisions and the fuzz lock hash. The coverage report also requires execution
-of 18 named RFC requirement proofs; this inventory is selected, not exhaustive.
+of every named proof in [the requirement manifest](tools/qualification/contracts.json);
+this inventory is selected, not exhaustive.
 On Windows, supply `--asan-runtime-directory` for the installed MSVC ASan DLL;
 the runner adds it only to the campaign environment and records its hash.
 Device execution, stack limits, physical power-loss recovery, and full
