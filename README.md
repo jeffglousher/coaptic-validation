@@ -113,6 +113,14 @@ commit before dispatch. A failed or ambiguous commit stops the service.
 The qualification task also stops after 32 consecutive poll failures, including
 invalid protected packets; sustained hostile-traffic availability is unqualified.
 
+Both network modes guard the caller's millisecond clock. Equal ticks are valid;
+a backward tick stops before another receive, sender reservation, checkpoint or
+notification, with FFI result `-7`. `None` remains an explicit clean stop. A new
+run performs ordinary ownership and durable-security recovery; do not reset the
+clock epoch while an App is live. Extend wrapping counters in the platform
+adapter. The guard does not detect stopped clocks or incorrect forward jumps,
+and host tests do not qualify the physical timer or update installed firmware.
+
 The task exclusively owns its context and NVS record. Authentication/readback
 protect against corruption and accidental substitution, not restoration of a
 valid old flash snapshot. NVS and compiled credentials do not establish hostile

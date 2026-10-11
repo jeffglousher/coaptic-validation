@@ -6,6 +6,7 @@
 //! host tests do not establish device execution or flash power-loss behavior.
 #![forbid(unsafe_code)]
 
+use coaptic::platform::{CheckedClock, ClockError};
 use coaptic::storage::DatagramIo;
 use coaptic::{App, Request, Response, get, post, profiles};
 use core::cell::Cell;
@@ -74,6 +75,19 @@ fn ticks(_: Request<'_>) -> Response<'static> {
     Response::content_copy(&TICKS.load(Ordering::Relaxed).to_be_bytes()).observe(0)
 }
 
+// None is the platform's explicit stop signal, not a timestamp to substitute.
+// Regression stops the service before any work using the refused reading.
+fn next_time<C>(clock: &mut CheckedClock<C>) -> Result<Option<u64>, &'static str>
+where
+    C: FnMut() -> Result<u64, ()>,
+{
+    match clock.now_ms() {
+        Ok(now) => Ok(Some(now)),
+        Err(ClockError::Source(())) => Ok(None),
+        Err(ClockError::Regressed { .. }) => Err("clock regression"),
+    }
+}
+
 /// Runs until the owning platform returns `None` from its scheduling clock.
 ///
 /// The caller owns the live transport and supplies a secure entropy function.
@@ -83,6 +97,8 @@ fn ticks(_: Request<'_>) -> Response<'static> {
 /// and bound idle waits so protocol timers progress. The ESPHome adapter yields
 /// after 32 ready polls and waits at most 10 ms for socket readability when idle.
 /// Consecutive transport/poll failures refuse after 32 iterations.
+/// Equal ticks are allowed; a backward tick stops before another poll or notify.
+/// The platform must extend wrapping counters and keep one epoch for this run.
 pub fn run<T: DatagramIo>(
     io: T,
     random: fn(&mut [u8]) -> bool,
@@ -106,7 +122,8 @@ pub fn run<T: DatagramIo>(
     let mut next = 0;
     let mut errors = 0;
     let mut tick = 0u32;
-    while let Some(now) = clock() {
+    let mut clock = CheckedClock::new(|| clock().ok_or(()));
+    while let Some(now) = next_time(&mut clock)? {
         if app.poll(now).is_err() {
             errors += 1;
             if errors >= 32 {
@@ -128,6 +145,9 @@ pub fn run<T: DatagramIo>(
 /// Protected service: restore authenticated durable state before binding, require
 /// every inbound checkpoint before dispatch, and stop on an uncertain commit.
 /// No plaintext fallback, implicit provisioning or application durability claim.
+/// Clock regression stops before another receive, reservation or checkpoint;
+/// `None` remains an explicit clean stop. A restart requires normal durable
+/// recovery and a safe endpoint lifetime, not a reset of live protocol timers.
 #[cfg(feature = "oscore")]
 pub fn run_protected<T: DatagramIo, S: super::security_state::Store>(
     io: T,
@@ -157,7 +177,8 @@ pub fn run_protected<T: DatagramIo, S: super::security_state::Store>(
     let mut next = 0;
     let mut errors = 0;
     let mut tick = 0u32;
-    while let Some(now) = clock() {
+    let mut clock = CheckedClock::new(|| clock().ok_or(()));
+    while let Some(now) = next_time(&mut clock)? {
         let context = app.oscore().ok_or("missing security context")?;
         let remaining = context
             .sender_reservation_end()
@@ -236,6 +257,64 @@ mod tests {
             self.outgoing.borrow_mut().push(bytes.to_vec());
             Ok(bytes.len())
         }
+    }
+
+    struct Tracked(Scripted, Rc<Cell<usize>>);
+    impl DatagramIo for Tracked {
+        type Error = ();
+        fn recv(&mut self, b: &mut [u8]) -> Result<Option<(usize, coaptic::Endpoint)>, ()> {
+            self.1.set(self.1.get() + 1);
+            self.0.recv(b)
+        }
+        fn send(&mut self, to: coaptic::Endpoint, b: &[u8]) -> Result<usize, ()> {
+            self.0.send(to, b)
+        }
+    }
+
+    #[test]
+    fn checked_network_clock_refuses_regression_before_io_and_releases_owner() {
+        let _test = TEST_LOCK.lock().unwrap();
+        let reads = Rc::new(Cell::new(0));
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let io = Tracked(
+            Scripted {
+                incoming: (1..=3)
+                    .map(|mid| request(mid, coaptic::Code::GET, "test", &[]))
+                    .collect(),
+                outgoing: out.clone(),
+                fail: false,
+            },
+            reads.clone(),
+        );
+        let mut times = [100, 100, 99].into_iter();
+        assert_eq!(
+            run(
+                io,
+                |b| {
+                    b.fill(42);
+                    true
+                },
+                || times.next(),
+                &[b'a'; 32]
+            ),
+            Err("clock regression")
+        );
+        assert_eq!(reads.get(), 2);
+        assert_eq!(out.borrow().len(), 2);
+        assert_eq!(TICKS.load(Ordering::Relaxed), 1);
+        let mut times = [500_000, 500_001].into_iter();
+        assert_eq!(
+            run(
+                Idle,
+                |b| {
+                    b.fill(42);
+                    true
+                },
+                || times.next(),
+                &[b'b'; 32]
+            ),
+            Ok(())
+        );
     }
 
     fn request(mid: u16, code: coaptic::Code, path: &str, payload: &[u8]) -> Vec<u8> {
@@ -407,17 +486,6 @@ mod tests {
             c.recipient = 1;
             c
         }
-        struct Tracked(Scripted, Rc<Cell<usize>>);
-        impl DatagramIo for Tracked {
-            type Error = ();
-            fn recv(&mut self, b: &mut [u8]) -> Result<Option<(usize, coaptic::Endpoint)>, ()> {
-                self.1.set(self.1.get() + 1);
-                self.0.recv(b)
-            }
-            fn send(&mut self, to: coaptic::Endpoint, b: &[u8]) -> Result<usize, ()> {
-                self.0.send(to, b)
-            }
-        }
         fn execute(
             m: Memory,
             packets: Vec<Vec<u8>>,
@@ -465,6 +533,81 @@ mod tests {
             let mut wire = [0; 1152];
             let n = ctx.protect_request(&plain, &mut wire).unwrap();
             wire[..n].to_vec()
+        }
+
+        #[test]
+        fn checked_network_clock_preserves_checkpoint_and_authenticated_recovery() {
+            let _test = TEST_LOCK.lock().unwrap();
+            let mut memory = Memory::default();
+            provision(&mut memory, &credentials()).unwrap();
+            let mut peer = SecurityContext::derive(peer_credentials().parameters()).unwrap();
+            let packets: Vec<_> = (1..=3)
+                .map(|mid| protected_request(&mut peer, mid, coaptic::Code::GET, "test", &[]))
+                .collect();
+            let reads = Rc::new(Cell::new(0));
+            let out = Rc::new(RefCell::new(Vec::new()));
+            let io = Tracked(
+                Scripted {
+                    incoming: packets.clone().into(),
+                    outgoing: out.clone(),
+                    fail: false,
+                },
+                reads.clone(),
+            );
+            let mut times = [100, 100, 99].into_iter();
+            let mut before_refusal = None;
+            let result = run_protected(
+                io,
+                |b| {
+                    b.fill(42);
+                    true
+                },
+                || {
+                    let now = times.next();
+                    if now == Some(99) {
+                        let data = memory.0.borrow();
+                        before_refusal = Some((data.record, data.commits));
+                    }
+                    now
+                },
+                &[b'a'; 32],
+                &credentials(),
+                memory.clone(),
+            );
+            assert_eq!(result, Err("clock regression"));
+            assert_eq!(reads.get(), 2);
+            assert_eq!(out.borrow().len(), 2);
+            assert_eq!(TICKS.load(Ordering::Relaxed), 1);
+            let data = memory.0.borrow();
+            assert_eq!(Some((data.record, data.commits)), before_refusal);
+            drop(data);
+
+            // Fresh run restores durable replay: consumed request refuses;
+            // the request left unread at clock refusal still succeeds.
+            let (result, recovered, _) =
+                execute(memory, vec![packets[0].clone(), packets[2].clone()]);
+            assert_eq!(result, Ok(()));
+            assert_eq!(recovered.len(), 1);
+            assert_eq!(
+                decode(&recovered[0]).unwrap().message_id(),
+                MessageId::new(3)
+            );
+            let mut responses = out.borrow().clone();
+            responses.extend(recovered);
+            let mut verifier = SecurityContext::derive(credentials().parameters()).unwrap();
+            for (request, response) in packets.iter().zip(responses.iter()) {
+                let mut scratch = [0; 1152];
+                let (_, reference) = verifier
+                    .unprotect_request(&decode(request).unwrap(), &mut scratch)
+                    .unwrap();
+                let response = decode(response).unwrap();
+                assert!(response.oscore().is_some());
+                let opened = peer
+                    .unprotect_response(&response, reference, &mut scratch)
+                    .unwrap();
+                assert_eq!(opened.code(), coaptic::Code::CONTENT);
+                assert_eq!(opened.payload(), b"coaptic");
+            }
         }
         #[test]
         fn protected_service_refuses_missing_state_and_ambiguous_commit_before_response() {

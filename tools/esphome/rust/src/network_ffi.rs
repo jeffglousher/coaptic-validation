@@ -163,6 +163,7 @@ pub unsafe extern "C" fn coaptic_network_run(context: *mut c_void, id: *const u8
         Err("sender reservation") => -4,
         Err("provisioning") => -5,
         Err("unsupported security mode") => -6,
+        Err("clock regression") => -7,
         Err(_) => -1,
     }
 }
