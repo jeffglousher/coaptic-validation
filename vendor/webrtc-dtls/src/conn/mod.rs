@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod conn_test;
 mod final_flight;
+#[cfg(test)]
+mod record_policy_test;
 
 use final_flight::FinalFlightHandle;
 
@@ -72,6 +74,35 @@ struct ConnReaderContext {
     handshake_tx: mpsc::Sender<(oneshot::Sender<()>, mpsc::Sender<()>)>,
     handshake_done_rx: mpsc::Receiver<()>,
     packet_tx: Arc<mpsc::Sender<PacketSendRequest>>,
+}
+
+// Authentication failure is distinct from identity lookup. RFC6347 permits
+// discard or fatal bad_record_mac. Only CCM/CCM8 error typing is qualified here;
+// other PSK suites retain their preexisting alert classification.
+fn record_decrypt_alert(
+    id: crate::cipher_suite::CipherSuiteId,
+    psk: bool,
+    error: &Error,
+) -> Option<Alert> {
+    use crate::cipher_suite::CipherSuiteId;
+    if !psk {
+        return None;
+    }
+    let ccm = matches!(
+        id,
+        CipherSuiteId::Tls_Psk_With_Aes_128_Ccm | CipherSuiteId::Tls_Psk_With_Aes_128_Ccm_8
+    );
+    if ccm && !matches!(error, Error::ErrInvalidMac) {
+        return None;
+    }
+    Some(Alert {
+        alert_level: AlertLevel::Fatal,
+        alert_description: if ccm {
+            AlertDescription::BadRecordMac
+        } else {
+            AlertDescription::UnknownPskIdentity
+        },
+    })
 }
 
 // Conn represents a DTLS connection
@@ -1015,19 +1046,11 @@ impl DTLSConn {
                     Err(err) => {
                         debug!("{}: decrypt failed: {}", srv_cli_str(ctx.is_client), err);
 
-                        // If we get an error for PSK we need to return an error.
-                        if cipher_suite.is_psk() {
-                            return (
-                                false,
-                                Some(Alert {
-                                    alert_level: AlertLevel::Fatal,
-                                    alert_description: AlertDescription::UnknownPskIdentity,
-                                }),
-                                None,
-                            );
-                        } else {
-                            return (false, None, None);
-                        }
+                        return (
+                            false,
+                            record_decrypt_alert(cipher_suite.id(), cipher_suite.is_psk(), &err),
+                            None,
+                        );
                     }
                 };
             }
