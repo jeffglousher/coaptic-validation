@@ -1652,8 +1652,12 @@ def separate_loss_client(client, server):
         with Proxy(service.number, "drop-separate") as relay:
             result = request(client, "udp", relay.number, path="separate", timeout=8000)
         trace = relay.trace
-    expect(result, 69, b"separate-payload")
-    return grade_separate_loss(trace)
+        expect(result, 69, b"separate-payload")
+        proof = grade_separate_loss(trace)
+        recovery = request(client, "udp", service.number, path="separate", timeout=8000)
+        expect(recovery, 69, b"separate-payload")
+    proof["fresh_client_recovery"] = True
+    return proof
 
 
 def grade_separate_loss(trace):
@@ -2439,6 +2443,7 @@ def main():
     case("separate:coaptic", lambda: separate_response(peers["coaptic"]))
     case("separate:coap-rs", lambda: separate_response(peers["coap-rs"]))
     case("separate-client:coaptic->coap-rs", lambda: separate_client(peers["coaptic"], peers["coap-rs"]))
+    case("separate-loss:coaptic->coap-rs", lambda: separate_loss_client(peers["coaptic"], peers["coap-rs"]))
     for client in ("coaptic", "coap-rs"):
         case(f"separate-loss:{client}->coaptic",
              lambda client=client: separate_loss_client(peers[client], peers["coaptic"]))

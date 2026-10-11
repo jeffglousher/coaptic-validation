@@ -19,6 +19,12 @@ unsafe extern "C" {
     fn coaptic_security_read(context: *mut c_void, bytes: *mut u8, length: u32) -> i32;
     #[cfg(feature = "oscore")]
     fn coaptic_security_commit(context: *mut c_void, bytes: *const u8, length: u32) -> bool;
+    #[cfg(feature = "telemetry")]
+    fn coaptic_telemetry_config(context: *mut c_void, bytes: *mut u8, capacity: u32) -> i32;
+    #[cfg(feature = "telemetry")]
+    fn coaptic_pending_read(context: *mut c_void, bytes: *mut u8, length: u32) -> i32;
+    #[cfg(feature = "telemetry")]
+    fn coaptic_pending_commit(context: *mut c_void, bytes: *const u8, length: u32) -> bool;
     fn coaptic_socket_random(bytes: *mut u8, length: u32) -> bool;
     fn coaptic_enter_critical();
     fn coaptic_leave_critical();
@@ -97,6 +103,83 @@ impl super::security_state::Store for Nvs {
     }
 }
 
+#[cfg(feature = "telemetry")]
+struct PendingNvs(*mut c_void);
+#[cfg(feature = "telemetry")]
+impl super::pending_telemetry::Store for PendingNvs {
+    fn read(
+        &mut self,
+    ) -> Result<Option<[u8; super::pending_telemetry::RECORD_BYTES]>, super::pending_telemetry::Error>
+    {
+        let mut bytes = [0; super::pending_telemetry::RECORD_BYTES];
+        match unsafe { coaptic_pending_read(self.0, bytes.as_mut_ptr(), bytes.len() as u32) } {
+            0 => Ok(None),
+            1 => Ok(Some(bytes)),
+            _ => Err(super::pending_telemetry::Error::Storage),
+        }
+    }
+    fn commit(
+        &mut self,
+        bytes: &[u8; super::pending_telemetry::RECORD_BYTES],
+    ) -> Result<(), super::pending_telemetry::Error> {
+        if unsafe { coaptic_pending_commit(self.0, bytes.as_ptr(), bytes.len() as u32) } {
+            Ok(())
+        } else {
+            Err(super::pending_telemetry::Error::Storage)
+        }
+    }
+}
+
+#[cfg(feature = "telemetry")]
+fn telemetry(
+    context: *mut c_void,
+    mode: u32,
+    credentials: &super::security_state::Credentials,
+    random: fn(&mut [u8]) -> bool,
+    clock: impl FnMut() -> Option<u64>,
+) -> Result<(), &'static str> {
+    let mut bytes = [0; super::telemetry_config::MAX_BYTES];
+    let length =
+        unsafe { coaptic_telemetry_config(context, bytes.as_mut_ptr(), bytes.len() as u32) };
+    if length < 0 || length as usize > bytes.len() {
+        return Err("telemetry config");
+    }
+    let config = super::telemetry_config::Config::parse(&bytes[..length as usize], mode == 4)
+        .ok_or("telemetry config")?;
+    if mode == 4 {
+        // Verify existing security ownership; offline provisioning opens no socket.
+        // If a commit fails, stop without resetting or replacing either record.
+        super::security_state::verify_record(&mut Nvs(context), credentials)
+            .map_err(|_| "security recovery")?;
+        let mut store = PendingNvs(context);
+        let operation = config.operation.ok_or("telemetry config")?;
+        super::pending_telemetry::provision_operation(
+            &mut store,
+            credentials,
+            config.principal,
+            &operation,
+        )
+        .map_err(|_| "pending provisioning")
+    } else {
+        super::protected_telemetry::run(
+            Socket(context),
+            random,
+            clock,
+            super::protected_telemetry::Service {
+                endpoint: config.endpoint,
+                principal: config.principal,
+                resource: config.resource,
+                credentials,
+                timeout_ms: config.timeout_ms,
+            },
+            Nvs(context),
+            PendingNvs(context),
+        )
+        .map(|_| ())
+        .map_err(|_| "telemetry stopped")
+    }
+}
+
 /// Runs the IPv4 qualification service with ESPHome-owned task and socket state.
 ///
 /// # Safety
@@ -125,7 +208,7 @@ pub unsafe extern "C" fn coaptic_network_run(context: *mut c_void, id: *const u8
     let result = match mode {
         0 => super::network::run(Socket(context), random, clock, &run_id),
         #[cfg(feature = "oscore")]
-        1 | 2 => {
+        1..=4 => {
             let mut bytes = [0; 66];
             if !unsafe { coaptic_security_config(context, bytes.as_mut_ptr(), bytes.len() as u32) }
             {
@@ -143,7 +226,7 @@ pub unsafe extern "C" fn coaptic_network_run(context: *mut c_void, id: *const u8
                 // Explicit offline mode: no socket read/send or network service.
                 super::security_state::provision(&mut Nvs(context), &credentials)
                     .map_err(|_| "provisioning")
-            } else {
+            } else if mode == 1 {
                 super::network::run_protected(
                     Socket(context),
                     random,
@@ -152,6 +235,15 @@ pub unsafe extern "C" fn coaptic_network_run(context: *mut c_void, id: *const u8
                     &credentials,
                     Nvs(context),
                 )
+            } else {
+                #[cfg(feature = "telemetry")]
+                {
+                    telemetry(context, mode, &credentials, random, clock)
+                }
+                #[cfg(not(feature = "telemetry"))]
+                {
+                    Err("unsupported security mode")
+                }
             }
         }
         _ => Err("unsupported security mode"),
@@ -164,6 +256,9 @@ pub unsafe extern "C" fn coaptic_network_run(context: *mut c_void, id: *const u8
         Err("provisioning") => -5,
         Err("unsupported security mode") => -6,
         Err("clock regression") => -7,
+        Err("telemetry config") => -8,
+        Err("pending provisioning") => -9,
+        Err("telemetry stopped") => -10,
         Err(_) => -1,
     }
 }
