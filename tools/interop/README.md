@@ -127,8 +127,11 @@ bounded standalone fixture, not upstream coap-rs reliability, scoped/routed
 networks, protected transport or sustained availability.
 
 
-`con-qblock1-loss:coaptic->libcoap` qualifies the existing independent CON upload
-fixture over IPv4 loopback. The 2000-byte request uses two Q-Block1 payloads
+`con-qblock1-loss:coaptic->libcoap` and `ipv6-con-qblock1-loss:coaptic->libcoap`
+qualify the existing independent CON upload fixture over IPv4 and IPv6 loopback.
+The IPv6 case requires an independent `::1` probe, IPv6-only relay sockets and
+exact four-component endpoint ownership; IPv4, mapped or scoped addresses refuse.
+The 2000-byte request uses two Q-Block1 payloads
 (SZX 6), one Request-Tag and Size1. The relay forwards the initial 1024 bytes and
 requires their owned empty ACK before dropping the later payload. A successful
 schedule requires byte-identical retransmission and a matching final 2.01 ACK;

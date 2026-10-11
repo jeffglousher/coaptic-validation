@@ -21,36 +21,47 @@ def upload(num):
                         (292, b"upload-1")], LARGE[num * 1024:(num + 1) * 1024])
 
 
-def evidence(complete=True):
+def evidence(complete=True, family="ipv4"):
+    endpoint = lambda value: ["::1", value[1], 0, 0] if family == "ipv6" else value
     packets = [("request", "forward", upload(0)), ("response", "forward", b"\x60\x00\x00\x0a"),
                ("request", "drop", upload(1)), ("request", "forward" if complete else "drop", upload(1))]
     if complete:
         packets.append(("response", "forward", b"\x61\x41\x00\x0bq"))
     return [dict(direction=direction, action=action, hex=wire.hex(), forwarded_hex=wire.hex(),
                  time_ns=index * 3_000_000_000,
-                 source=CLIENT if direction == "request" else ENDPOINTS["server"],
-                 destination=ENDPOINTS["server"] if direction == "request" else CLIENT,
-                 relay=ENDPOINTS["back"] if direction == "request" else ENDPOINTS["front"])
+                 source=endpoint(CLIENT if direction == "request" else ENDPOINTS["server"]),
+                 destination=endpoint(ENDPOINTS["server"] if direction == "request" else CLIENT),
+                 relay=endpoint(ENDPOINTS["back"] if direction == "request" else ENDPOINTS["front"]))
             for index, (direction, action, wire) in enumerate(packets)]
 
 
 class UploadLossTests(unittest.TestCase):
+    family = "ipv4"
+
+    def evidence(self, complete=True):
+        return evidence(complete, self.family)
+
     def grade(self, trace, complete=True, *, result=None, before=None, after=None, endpoints=None):
+        if endpoints is None:
+            endpoints = ENDPOINTS if self.family == "ipv4" else dict(
+                {key: ["::1", value[1], 0, 0] for key, value in ENDPOINTS.items()},
+                family="AF_INET6", v6only=[1, 1])
         return grade(trace, (SUCCESS if complete else REFUSAL) if result is None else result,
-                     ENDPOINTS if endpoints is None else endpoints,
+                     endpoints,
                      counts("1:1") if before is None else before,
-                     counts("2:2" if complete else "1:1") if after is None else after, complete=complete)
+                     counts("2:2" if complete else "1:1") if after is None else after,
+                     complete=complete, family=self.family)
 
     def test_exact_complete_partial_and_fresh_success(self):
         for complete, size, accepted in [(True, 2000, 2), (False, 1024, 1), (True, 2000, 2)]:
-            proof = self.grade(evidence(complete), complete)
+            proof = self.grade(self.evidence(complete), complete)
             self.assertEqual((proof["delivered_bytes"], proof["accepted_after"], proof["handler_calls_after"]),
                              (size, accepted, accepted))
             self.assertEqual(proof["retransmissions"], 1)
 
     def test_missing_or_reordered_evidence_refuses(self):
         for complete in (True, False):
-            trace = evidence(complete)
+            trace = self.evidence(complete)
             for index in range(len(trace)):
                 with self.subTest(complete=complete, missing=index), self.assertRaises(AssertionError):
                     self.grade(trace[:index] + trace[index + 1:], complete)
@@ -65,7 +76,7 @@ class UploadLossTests(unittest.TestCase):
 
     def test_changed_packet_or_forwarded_bytes_refuse(self):
         for complete in (True, False):
-            trace = evidence(complete)
+            trace = self.evidence(complete)
             for index in range(len(trace)):
                 for offset in (0, 1, 2, 3, -1):
                     changed = copy.deepcopy(trace)
@@ -89,7 +100,7 @@ class UploadLossTests(unittest.TestCase):
 
     def test_all_endpoint_and_loss_ownership_is_required(self):
         for complete in (True, False):
-            trace = evidence(complete)
+            trace = self.evidence(complete)
             for index in range(len(trace)):
                 for key in ("source", "destination", "relay"):
                     changed = copy.deepcopy(trace)
@@ -118,27 +129,27 @@ class UploadLossTests(unittest.TestCase):
         for change in [dict(exit_code=0), dict(event="response"), dict(message="socket unavailable"),
                        dict(code=65), dict(payload_hex="00")]:
             with self.subTest(change=change), self.assertRaises(AssertionError):
-                self.grade(evidence(False), False, result=dict(REFUSAL, **change))
+                self.grade(self.evidence(False), False, result=dict(REFUSAL, **change))
         for complete in (True, False):
             for bad in ("0:0", "2:3", "0:1", "9999:9999", "bad"):
                 with self.subTest(complete=complete, counts=bad), self.assertRaises(AssertionError):
-                    self.grade(evidence(complete), complete, after=counts(bad))
+                    self.grade(self.evidence(complete), complete, after=counts(bad))
             with self.assertRaises(AssertionError):
-                self.grade(evidence(complete), complete, before=counts("1:2"))
+                self.grade(self.evidence(complete), complete, before=counts("1:2"))
             with self.assertRaises(AssertionError):
-                self.grade(evidence(complete), not complete)
+                self.grade(self.evidence(complete), not complete)
 
     def test_retry_capture_must_match_declared_fixture_rto(self):
         for complete in (True, False):
             for interval in (0, 1, 1_000_000, 1_949_999_999, 4_000_000_001):
-                changed = evidence(complete)
+                changed = self.evidence(complete)
                 changed[3]["time_ns"] = changed[2]["time_ns"] + interval
                 if complete:
                     changed[4]["time_ns"] = changed[3]["time_ns"] + 1
                 with self.subTest(complete=complete, interval=interval), self.assertRaises(AssertionError):
                     self.grade(changed, complete)
             for interval in (1_950_000_000, 2_000_000_000, 3_000_000_000, 4_000_000_000):
-                changed = evidence(complete)
+                changed = self.evidence(complete)
                 changed[3]["time_ns"] = changed[2]["time_ns"] + interval
                 if complete:
                     changed[4]["time_ns"] = changed[3]["time_ns"] + 1
@@ -153,6 +164,35 @@ class UploadLossTests(unittest.TestCase):
             packet = bytearray(upload(1))
             packet[offset] = value
             self.assertFalse(later_upload(packet))
+
+
+class IPv6UploadLossTests(UploadLossTests):
+    family = "ipv6"
+
+    def test_ipv6_family_socket_mode_and_endpoint_shape_refuse(self):
+        endpoints = dict({key: ["::1", value[1], 0, 0] for key, value in ENDPOINTS.items()},
+                         family="AF_INET6", v6only=[1, 1])
+        for complete in (True, False):
+            trace = self.evidence(complete)
+            for change in ({"family": "AF_INET"}, {"family": None}, {"v6only": [0, 1]},
+                           {"v6only": [1, 0]}, {"v6only": None}):
+                with self.subTest(change=change), self.assertRaises(AssertionError):
+                    self.grade(trace, complete, endpoints=dict(endpoints, **change))
+            for index in range(len(trace)):
+                for key in ("source", "destination", "relay"):
+                    for bad in (["::1", 1001], ["127.0.0.1", 1001, 0, 0], ["::ffff:127.0.0.1", 1001, 0, 0],
+                                ["::1", 1001, 1, 0], ["::1", 1001, 0, 1], ["::1", 0, 0, 0],
+                                ["::1", 9999, 0, 0], ["::1", 1001, False, 0], ["::1", 1001, 0, 0.0]):
+                        changed = copy.deepcopy(trace)
+                        changed[index][key] = bad
+                        with self.subTest(index=index, key=key, bad=bad), self.assertRaises(AssertionError):
+                            self.grade(changed, complete)
+            for key in ("front", "back", "server"):
+                with self.subTest(endpoint=key), self.assertRaises(AssertionError):
+                    self.grade(trace, complete, endpoints=dict(endpoints, **{key: ["::1", 1004, 0, 0]}))
+            with self.assertRaises(AssertionError):
+                grade(trace, SUCCESS if complete else REFUSAL, endpoints, counts("1:1"),
+                      counts("2:2" if complete else "1:1"), complete=complete, family="invalid")
 
 
 if __name__ == "__main__":

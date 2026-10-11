@@ -20,7 +20,7 @@ def later_upload(packet):
         return False
 
 
-def grade(trace, result, endpoints, before, after, *, complete):
+def grade(trace, result, endpoints, before, after, *, complete, family="ipv4"):
     from run import LARGE, coap_payload, decoded_options, expect, expect_refusal, packet_token
     if complete:
         expect(result, 65, b"")
@@ -38,10 +38,19 @@ def grade(trace, result, endpoints, before, after, *, complete):
     expected = accepted + int(complete)
     expect(after, 69, f"{expected}:{expected}".encode())
 
+    if family not in ("ipv4", "ipv6"):
+        raise AssertionError("unsupported upload address family")
+    ipv6 = family == "ipv6"
+    if ipv6 and (endpoints.get("family") != "AF_INET6" or endpoints.get("v6only") != [1, 1]):
+        raise AssertionError("upload relay did not use IPv6-only sockets")
+
     def endpoint(value):
-        if (not isinstance(value, (list, tuple)) or len(value) != 2 or value[0] != "127.0.0.1"
-                or type(value[1]) is not int or not 0 < value[1] < 65536):
-            raise AssertionError("not an exact IPv4 loopback endpoint")
+        if (not isinstance(value, (list, tuple)) or len(value) != (4 if ipv6 else 2)
+                or value[0] != ("::1" if ipv6 else "127.0.0.1")
+                or type(value[1]) is not int or not 0 < value[1] < 65536
+                or (ipv6 and (value[2:] not in ([0, 0], (0, 0))
+                              or any(type(component) is not int for component in value[2:])))):
+            raise AssertionError("not an exact upload loopback endpoint")
         return tuple(value)
 
     if not 4 <= len(trace) <= 256:

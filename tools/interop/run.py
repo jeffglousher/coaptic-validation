@@ -2224,24 +2224,31 @@ def qblock1_interop(client, server):
     return {"post_datagrams": len(uploads), "readback": "1:1"}
 
 
-def qblock1_con_loss(client, server):
+def qblock1_con_loss(client, server, family="ipv4"):
     """Independent CON upload retries, no partial handler effect, fresh-process recovery."""
     from qblock_upload import grade
+    if family not in ("ipv4", "ipv6"):
+        raise ValueError("unsupported upload address family")
     schedules = {}
-    with Server(server, "udp") as service:
+    with Server(server, "udp", family=family) as service:
+        probe = ipv6_probe(service.number) if family == "ipv6" else None
         for label, mode, deadline, accepted in [("recovery", "drop-qblock1-once", 12000, 0),
                                                ("partial_refusal", "drop-qblock1-permanent", 6000, 1),
                                                ("fresh_recovery", "drop-qblock1-once", 12000, 1)]:
-            before = request(client, "udp", service.number, path="upload")
+            before = request(client, "udp", service.number, path="upload", family=family)
             expect(before, 69, f"{accepted}:{accepted}".encode())
-            with Proxy(service.number, mode) as relay:
+            with Proxy(service.number, mode, family=family) as relay:
                 endpoints = {"front": relay.front.getsockname(), "back": relay.back.getsockname(), "server": relay.dest}
+                if family == "ipv6":
+                    endpoints.update(family="AF_INET6" if relay.front.family == relay.back.family == socket.AF_INET6 else "wrong",
+                                     v6only=[sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY)
+                                             for sock in (relay.front, relay.back)])
                 result = request(client, "udp", relay.number, path="upload", method="POST",
-                                 payload=LARGE, timeout=deadline, qblock1=True)
-            after = request(client, "udp", service.number, path="upload")
-            proof = grade(relay.trace, result, endpoints, before, after, complete=label != "partial_refusal")
+                                 payload=LARGE, timeout=deadline, qblock1=True, family=family)
+            after = request(client, "udp", service.number, path="upload", family=family)
+            proof = grade(relay.trace, result, endpoints, before, after, complete=label != "partial_refusal", family=family)
             schedules[label] = dict(proof=proof, result=result, before=before, after=after, deadline_ms=deadline)
-    return {"schedules": schedules}
+    return {"family": family, "probe": probe, "schedules": schedules}
 
 
 def empty_request_tag(server):
@@ -2615,6 +2622,8 @@ def main():
          lambda: separate_client(peers["coaptic"], peers["libcoap"], timeout=8000))
     case("con-qblock1-loss:coaptic->libcoap",
          lambda: qblock1_con_loss(peers["coaptic"], peers["libcoap"]))
+    case("ipv6-con-qblock1-loss:coaptic->libcoap",
+         lambda: qblock1_con_loss(peers["coaptic"], peers["libcoap"], family="ipv6"))
     for client, server in [("coaptic", "coaptic"), ("coaptic", "libcoap"), ("libcoap", "coaptic")]:
         case(f"qblock1-interop:{client}->{server}",
              lambda client=client, server=server: qblock1_interop(peers[client], peers[server]))
