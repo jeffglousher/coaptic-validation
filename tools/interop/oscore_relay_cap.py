@@ -94,7 +94,8 @@ def grade(trace, result, endpoints, *, path, capped):
             response_times.append(at)
             dropped_lengths.append(len(wire))
             continue
-        require(mid not in response_mids and mid not in request_mids, "response MID reused")
+        # RFC7252 4.4: each sender owns its MID namespace.
+        require(mid not in response_mids, "response sender reused MID")
         plain = response_plain(wire, latest)
         opts = options(plain)
         require(int(plain.code) == 69, "not authenticated Content")
