@@ -141,9 +141,9 @@ pub fn run_td(id: &str, pair: Pair) -> TdResult {
         }
     }
     let capture = Capture::new();
-    // A single transport tap preserves literal retransmissions in OBS11;
+    // A single transport tap preserves literal transmissions in OBS05/11;
     // merged send/receive taps would make retries ambiguous with duplicate taps.
-    if id != "TD_COAP_OBS_11" {
+    if !matches!(id, "TD_COAP_OBS_11" | "TD_COAP_OBS_05") {
         capture.extend_from(&client.take_capture());
     }
     capture.extend_from(&server.take_capture());
@@ -538,6 +538,9 @@ fn observe(
     client: &mut dyn Peer,
     server: &mut dyn Peer,
 ) -> Result<(), PeerError> {
+    if id == "TD_COAP_OBS_05" {
+        return observe_client_off(dest, client, server);
+    }
     if id == "TD_COAP_OBS_04" {
         return observe_server_reset(dest, client, server);
     }
@@ -600,6 +603,74 @@ fn observe(
             Ok(())
         }
     }
+}
+
+fn observe_client_off(
+    dest: SocketAddr,
+    client: &mut dyn Peer,
+    server: &mut dyn Peer,
+) -> Result<(), PeerError> {
+    if client.name() != "coaptic" || server.name() != "coaptic" {
+        return Err(PeerError(
+            "SKIP: coverage gap #199: OBS05 requires controlled source and owner inspection".into(),
+        ));
+    }
+    observe_con(dest, client, server)?;
+    let owner = client.local_addr().ok_or("missing client owner")?;
+    let first = server.take_capture().snapshot();
+    let registration = coaptic::message::decode(&first[0].bytes)
+        .map_err(|error| format!("registration: {error:?}"))?;
+    let token = registration.token().as_bytes().to_vec();
+    if !server.observe_owner_present(owner, &token)? {
+        return Err(PeerError("missing initial owner".into()));
+    }
+    // Keep this socket/App alive but never poll it again: OFF produces no ACK/RST.
+    let deadline = std::time::Instant::now() + Duration::from_secs(120);
+    server.update_observed(&["obs"], site::OBS_BODY_2)?;
+    for attempt in 0..5 {
+        loop {
+            let count = server.take_capture().snapshot().len();
+            if count == 7 + attempt {
+                break;
+            }
+            if count > 7 + attempt || std::time::Instant::now() >= deadline {
+                return Err(PeerError(format!(
+                    "OBS05 attempt {attempt} capture count {count}"
+                )));
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        if attempt < 4 {
+            let body = if attempt % 2 == 0 {
+                site::OBS_BODY
+            } else {
+                site::OBS_BODY_2
+            };
+            if server.signal_observed(&["obs"], body)? != 1 {
+                return Err(PeerError("OBS05 signal lost owner".into()));
+            }
+        }
+    }
+    while server.observe_owner_present(owner, &token)? {
+        if std::time::Instant::now() >= deadline {
+            return Err(PeerError("OBS05 owner did not expire".into()));
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    let before = server.take_capture().snapshot().len();
+    for body in [site::OBS_BODY_2, site::OBS_BODY] {
+        if server.signal_observed(&["obs"], body)? != 0 {
+            return Err(PeerError("OBS05 expired owner signaled".into()));
+        }
+        server.notify_confirmable(&["obs"], body)?;
+        thread::sleep(Duration::from_millis(100));
+        if server.take_capture().snapshot().len() != before {
+            return Err(PeerError("OBS05 notification after final timeout".into()));
+        }
+    }
+    let mut recovered = crate::coaptic::CoapticPeer::new();
+    observe_con(dest, &mut recovered, server)?;
+    Ok(())
 }
 
 // Default Max-Age for these CON fixtures is 60 s, plus RFC7252 MAX_LATENCY
