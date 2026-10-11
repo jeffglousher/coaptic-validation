@@ -58,8 +58,21 @@ ClientHello match. These paths did not demonstrate private-key or master-secret
 disclosure. Static diagnostics now retain the same equality checks without
 certificate or cookie value dumps. No query is suppressed and no alert dismissed.
 
-Nine original files differ from the original hash manifest: the connection
+Ten original files differ from the original hash manifest: the connection
 implementation/tests, handshake cache, handshaker, flight4, and four codec test
 files (extended-master-secret extension, certificate, certificate-request and
-certificate-verify). The private final-flight module is new. The original hashes
+certificate-verify), plus the CCM record codec. The private final-flight and record-policy test modules are new. The original hashes
 remain unchanged so each owned edit can be compared with the upstream package.
+
+Record-error policy (#485): CCM and CCM8 reject records shorter than their explicit
+nonce and authentication tag before subtracting tag length. Their authentication
+failures retain typed `ErrInvalidMac`; PSK CCM/CCM8 record authentication uses the existing
+fatal-close path with `bad_record_mac(20)` (RFC6347 section4.1.2.1 and RFC5246
+section6.2.3.3). CCM structural decrypt errors are silently discarded, without
+asserting that a PSK identity is unknown. Non-PSK discard policy is unchanged;
+the existing CBC suite is non-PSK. GCM internals and its preexisting PSK alert
+classification remain unchanged and unqualified by this increment. This does not
+change Finished verification or make the literal DTLS02 alert51 case pass.
+
+Offline targeted checks:
+`cargo test --locked --manifest-path vendor/webrtc-dtls/Cargo.toml --lib record_policy`.
