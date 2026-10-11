@@ -203,6 +203,12 @@ impl Catalog {
 /// Grade one TD.
 pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), String> {
     let packets = capture.snapshot();
+    if td == "TD_COAP_OBS_04" {
+        grade_observe_server_reset(&packets)?;
+    }
+    if td == "TD_COAP_OBS_14" {
+        grade_observe_pumping(&packets)?;
+    }
     if td == "TD_COAP_OBS_13" {
         grade_observe_large(&packets)?;
     }
@@ -306,6 +312,187 @@ pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), St
                 n = leftover.len()
             ));
         }
+    }
+    Ok(())
+}
+
+/// Same-token recovery after real elapsed Max-Age plus MAX_LATENCY.
+fn grade_observe_server_reset(packets: &[Packet]) -> Result<(), String> {
+    let mut ordered = packets.to_vec();
+    ordered.sort_by_key(|p| p.t_ns);
+    let mut seen = HashSet::new();
+    ordered.retain(|p| seen.insert((p.src, p.dst, p.bytes.clone())));
+    if ordered.len() != 12 {
+        return Err("OBS04 requires two complete six-datagram observation phases".into());
+    }
+    grade_confirmable_observe(&ordered[..6])?;
+    grade_confirmable_observe(&ordered[6..])?;
+    let initial = decode(&ordered[0].bytes).map_err(|e| format!("OBS04 initial: {e:?}"))?;
+    let refresh = decode(&ordered[6].bytes).map_err(|e| format!("OBS04 refresh: {e:?}"))?;
+    let last = decode(&ordered[4].bytes).map_err(|e| format!("OBS04 last notification: {e:?}"))?;
+    let restarted =
+        decode(&ordered[7].bytes).map_err(|e| format!("OBS04 restarted response: {e:?}"))?;
+    if ordered[6].src != ordered[0].src
+        || ordered[6].dst != ordered[0].dst
+        || refresh.token() != initial.token()
+        || refresh.message_id() == initial.message_id()
+        || initial.options().collect::<Vec<_>>() != refresh.options().collect::<Vec<_>>()
+        || initial.payload() != refresh.payload()
+        || !initial.payload().is_empty()
+    {
+        return Err("OBS04 same endpoint, token and request identity refresh".into());
+    }
+    let max_age = match last.max_age() {
+        Some(Ok(age)) => age,
+        None => 60,
+        Some(Err(_)) => return Err("OBS04 malformed Max-Age".into()),
+    };
+    let wait_ns = (u128::from(max_age) + 100) * 1_000_000_000;
+    if ordered[6].t_ns.saturating_sub(ordered[4].t_ns) < wait_ns {
+        return Err("OBS04 refresh before real Max-Age plus MAX_LATENCY".into());
+    }
+    if restarted.observe() != Some(Ok(0)) || last.observe() != Some(Ok(2)) {
+        return Err("OBS04 reset sequence was not exercised".into());
+    }
+    Ok(())
+}
+
+/// Both independently reset initial-size cases and mixed notification forms.
+fn grade_observe_pumping(packets: &[Packet]) -> Result<(), String> {
+    let mut ordered = packets.to_vec();
+    ordered.sort_by_key(|p| p.t_ns);
+    let mut seen = HashSet::new();
+    ordered.retain(|p| seen.insert((p.src, p.dst, p.bytes.clone())));
+    if ordered.len() != 18 {
+        return Err("OBS14 requires both initial-size runs (18 unique datagrams)".into());
+    }
+    let parse =
+        |i: usize| decode(&ordered[i].bytes).map_err(|e| format!("OBS14 packet {i}: {e:?}"));
+    let mut cursor = 0;
+    let mut old_token = None;
+    for versions in [[0, 1, 2], [1, 2, 1]] {
+        let registration = parse(cursor)?;
+        let client = ordered[cursor].src;
+        let server = ordered[cursor].dst;
+        if client == server
+            || registration.ty() != Type::Confirmable
+            || registration.code() != Code::GET
+            || registration.uri_path().collect::<Vec<_>>() != [Ok("obs-pumping")]
+            || registration.observe() != Some(Ok(0))
+            || registration.token().is_empty()
+            || old_token == Some(registration.token())
+            || !registration.payload().is_empty()
+        {
+            return Err("OBS14 fresh registration identity".into());
+        }
+        old_token = Some(registration.token());
+        cursor += 1;
+        let mut previous = None;
+        let mut server_mids = HashSet::new();
+        let mut client_mids = HashSet::new();
+        client_mids.insert(registration.message_id());
+        for (step, version) in versions.into_iter().enumerate() {
+            let (body, etag) =
+                crate::site::observe_pumping(version).ok_or("OBS14 fixture version")?;
+            let large = body.len() > 1024;
+            let first = parse(cursor)?;
+            let seq = first
+                .observe()
+                .and_then(Result::ok)
+                .ok_or("OBS14 missing Observe")?;
+            if seq > 0x00ff_ffff
+                || previous.is_some_and(|old| {
+                    let d = seq.wrapping_sub(old) & 0x00ff_ffff;
+                    d == 0 || d >= 0x0080_0000
+                })
+            {
+                return Err("OBS14 Observe progression".into());
+            }
+            previous = Some(seq);
+            if ordered[cursor].src != server
+                || ordered[cursor].dst != client
+                || first.ty()
+                    != if step == 0 {
+                        Type::Acknowledgement
+                    } else {
+                        Type::Confirmable
+                    }
+                || first.code() != Code::CONTENT
+                || first.token() != registration.token()
+                || first.content_format() != Some(Ok(coaptic::message::ContentFormat::TEXT_PLAIN))
+                || first.etag().collect::<Vec<_>>() != [etag]
+                || first.max_age() != Some(Ok(5))
+                || first.payload() != if large { &body[..1024] } else { body }
+                || (!large && first.block2().is_some())
+                || first
+                    .block2()
+                    .and_then(Result::ok)
+                    .map(|b| (b.num(), b.more(), b.size()))
+                    != if large { Some((0, true, 1024)) } else { None }
+            {
+                return Err("OBS14 complete initial/notification representation".into());
+            }
+            cursor += 1;
+            if step == 0 {
+                if first.message_id() != registration.message_id() {
+                    return Err("OBS14 initial ACK MID".into());
+                }
+            } else {
+                let ack = parse(cursor)?;
+                if !server_mids.insert(first.message_id())
+                    || ordered[cursor].src != client
+                    || ordered[cursor].dst != server
+                    || !ack.is_empty_ack()
+                    || ordered[cursor].bytes.len() != 4
+                    || ack.message_id() != first.message_id()
+                {
+                    return Err("OBS14 CON ACK ownership".into());
+                }
+                cursor += 1;
+            }
+            if large {
+                let request = parse(cursor)?;
+                let response = parse(cursor + 1)?;
+                if ordered[cursor].src != client
+                    || ordered[cursor].dst != server
+                    || request.ty() != Type::Confirmable
+                    || request.code() != Code::GET
+                    || request.token() != registration.token()
+                    || !client_mids.insert(request.message_id())
+                    || request.uri_path().collect::<Vec<_>>() != [Ok("obs-pumping")]
+                    || request.observe().is_some()
+                    || !request.payload().is_empty()
+                    || request
+                        .block2()
+                        .and_then(Result::ok)
+                        .map(|b| (b.num(), b.more(), b.size()))
+                        != Some((1, false, 1024))
+                    || ordered[cursor + 1].src != server
+                    || ordered[cursor + 1].dst != client
+                    || response.ty() != Type::Acknowledgement
+                    || response.code() != Code::CONTENT
+                    || response.message_id() != request.message_id()
+                    || response.token() != request.token()
+                    || response.observe().is_some()
+                    || response.content_format()
+                        != Some(Ok(coaptic::message::ContentFormat::TEXT_PLAIN))
+                    || response.etag().collect::<Vec<_>>() != [etag]
+                    || response.max_age() != Some(Ok(5))
+                    || response
+                        .block2()
+                        .and_then(Result::ok)
+                        .map(|b| (b.num(), b.more(), b.size()))
+                        != Some((1, false, 1024))
+                    || response.payload() != &body[1024..]
+                {
+                    return Err("OBS14 complete remaining Block2 representation".into());
+                }
+                cursor += 2;
+            }
+        }
+    }
+    if cursor != ordered.len() {
+        return Err("OBS14 incomplete cases".into());
     }
     Ok(())
 }
@@ -1779,5 +1966,76 @@ mod tests {
         }"#;
         let exp: ExpectTd = serde_json::from_str(json).unwrap();
         grade_td("lead-noise", &exp, &cap).expect("grade");
+    }
+}
+
+#[cfg(test)]
+mod observe_reset_tests {
+    use super::*;
+    #[test]
+    fn observe_server_reset_real_elapsed_recovery_and_mutation_refusal() {
+        let started = std::time::Instant::now();
+        let result = crate::runner::run_td(
+            "TD_COAP_OBS_04",
+            crate::runner::Pair {
+                client: "coaptic",
+                server: "coaptic",
+            },
+        );
+        assert!(result.error.is_none(), "{:?}", result.error);
+        assert!(started.elapsed() >= std::time::Duration::from_secs(160));
+        let mut packets = result.capture.snapshot();
+        packets.sort_by_key(|p| p.t_ns);
+        let mut seen = HashSet::new();
+        packets.retain(|p| seen.insert((p.src, p.dst, p.bytes.clone())));
+        assert_eq!(packets.len(), 12);
+        grade_observe_server_reset(&packets).unwrap();
+        for (target, fault) in [
+            (0, "path"),
+            (1, "body"),
+            (2, "body"),
+            (3, "mid"),
+            (4, "body"),
+            (5, "endpoint"),
+            (6, "early"),
+            (6, "token"),
+            (6, "endpoint"),
+            (6, "mid"),
+            (7, "body"),
+            (8, "body"),
+            (9, "mid"),
+            (10, "body"),
+            (11, "missing"),
+        ] {
+            let mut changed = packets.clone();
+            match fault {
+                "missing" => {
+                    changed.remove(target);
+                }
+                "body" | "path" => *changed[target].bytes.last_mut().unwrap() ^= 1,
+                "mid" => changed[target].bytes[3] ^= 1,
+                "token" => changed[target].bytes[4] ^= 1,
+                "endpoint" => changed[target].src = changed[target].dst,
+                "early" => {
+                    let delta = changed[6].t_ns - changed[4].t_ns - 1_000_000_000;
+                    for packet in &mut changed[6..] {
+                        packet.t_ns -= delta;
+                    }
+                }
+                _ => unreachable!(),
+            }
+            assert!(
+                grade_observe_server_reset(&changed).is_err(),
+                "accepted {target} {fault}"
+            );
+        }
+        if let Some(directory) = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            result
+                .capture
+                .write_pcap(std::fs::File::create(directory.join("obs-04-coaptic.pcap")).unwrap())
+                .unwrap();
+        }
     }
 }

@@ -292,13 +292,7 @@
       {"type": "NON", "code": "2.05", "token": "echo", "observe": "increase", "content_format": 0, "payload": "obs-0"}
     ]
   },
-  "TD_COAP_OBS_04": {
-    "allow_extra": true,
-    "coap": [
-      {"code": "0.01", "observe": "register"},
-      {"code": "2.05"}
-    ]
-  },
+  "TD_COAP_OBS_04": { "allow_extra": true, "coap": [] },
   "TD_COAP_OBS_05": {
     "allow_extra": true,
     "coap": [
@@ -314,13 +308,7 @@
   "TD_COAP_OBS_11": { "allow_extra": true, "coap": [] },
   "TD_COAP_OBS_12": { "allow_extra": true, "coap": [] },
   "TD_COAP_OBS_13": { "allow_extra": true, "coap": [] },
-  "TD_COAP_OBS_14": {
-    "allow_extra": true,
-    "coap": [
-      {"code": "0.01", "observe": "register"},
-      {"code": "2.05"}
-    ]
-  },
+  "TD_COAP_OBS_14": { "allow_extra": true, "coap": [] },
   "TD_COAP_DTLS_01": {
     "allow_extra": true,
     "dtls": {"handshake": "success", "client_hello_contains": "TLS_PSK_WITH_AES_128_CCM_8", "server_hello": "TLS_PSK_WITH_AES_128_CCM_8", "finished": true},

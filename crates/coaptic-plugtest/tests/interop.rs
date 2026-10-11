@@ -1173,3 +1173,175 @@ fn observe_large_complete_block2_snapshots() {
         );
     }
 }
+
+#[test]
+fn observe_pumping_covers_both_initial_sizes_and_complete_notifications() {
+    let result = runner::run_td(
+        "TD_COAP_OBS_14",
+        Pair {
+            client: "coaptic",
+            server: "coaptic",
+        },
+    );
+    use coaptic::message::{Message, Opt, OptionNumber, decode, encode, encode_uint};
+    use coaptic_plugtest::pcap::Capture;
+    assert!(result.error.is_none(), "{:?}", result.error);
+    let catalog = Catalog::load().unwrap();
+    let packets = result.capture.snapshot();
+    let mut unique = packets.clone();
+    unique.sort_by_key(|p| p.t_ns);
+    let mut seen = std::collections::HashSet::new();
+    unique.retain(|p| seen.insert((p.src, p.dst, p.bytes.clone())));
+    assert_eq!(unique.len(), 18);
+    for (target, fault) in [
+        (0, "path"),
+        (1, "body"),
+        (1, "malformed-block"),
+        (6, "malformed-block"),
+        (2, "body"),
+        (2, "token"),
+        (2, "endpoint"),
+        (2, "sequence"),
+        (2, "format"),
+        (2, "block"),
+        (3, "mid"),
+        (3, "endpoint"),
+        (4, "path"),
+        (4, "observe"),
+        (4, "block"),
+        (5, "etag"),
+        (5, "short-body"),
+        (5, "more"),
+        (5, "missing"),
+        (5, "endpoint"),
+        (5, "token"),
+        (5, "mid"),
+        (6, "body"),
+        (8, "missing"),
+        (9, "body"),
+        (11, "body"),
+        (12, "body"),
+        (14, "body"),
+        (17, "body"),
+        (17, "missing"),
+    ] {
+        let changed = Capture::new();
+        for packet in &packets {
+            let index = unique
+                .iter()
+                .position(|p| p.src == packet.src && p.dst == packet.dst && p.bytes == packet.bytes)
+                .unwrap();
+            let mut bytes = packet.bytes.clone();
+            let mut src = packet.src;
+            if index == target {
+                match fault {
+                    "missing" => continue,
+                    "body" => *bytes.last_mut().unwrap() ^= 1,
+                    "short-body" => {
+                        bytes.pop();
+                    }
+                    "token" => bytes[4] ^= 1,
+                    "mid" => bytes[3] ^= 1,
+                    "endpoint" => src = packet.dst,
+                    "malformed-block" => {
+                        let original = decode(&bytes).unwrap();
+                        let seq = encode_uint(original.observe().unwrap().unwrap());
+                        let format = encode_uint(0);
+                        let age = encode_uint(5);
+                        let malformed = [0u8; 4];
+                        let opts = [
+                            Opt::etag(if index == 1 { b"P0" } else { b"P2" }),
+                            Opt::observe(&seq),
+                            Opt::content_format(&format),
+                            Opt::max_age(&age),
+                            Opt::opaque(OptionNumber::BLOCK2, &malformed),
+                        ];
+                        let msg =
+                            Message::new(original.ty(), original.code(), original.message_id())
+                                .with_token(original.token())
+                                .with_options(&opts)
+                                .with_payload(original.payload());
+                        let mut buf = [0; 2048];
+                        let n = encode(&msg, &mut buf).unwrap();
+                        bytes = buf[..n].to_vec();
+                    }
+                    _ => {
+                        let original = decode(&bytes).unwrap();
+                        let seq = encode_uint(if fault == "sequence" { 0 } else { 1 });
+                        let format = encode_uint(if fault == "format" { 42 } else { 0 });
+                        let age = encode_uint(5);
+                        let block = [if fault == "block" || fault == "more" {
+                            0x1e
+                        } else if index == 2 {
+                            0x0e
+                        } else {
+                            0x16
+                        }];
+                        let mut opts = Vec::new();
+                        if index == 0 || index == 4 {
+                            if index == 0 || fault == "observe" {
+                                opts.push(Opt::observe_register());
+                            }
+                            opts.push(Opt::uri_path(if fault == "path" {
+                                "wrong"
+                            } else {
+                                "obs-pumping"
+                            }));
+                            if index == 4 {
+                                opts.push(Opt::opaque(OptionNumber::BLOCK2, &block));
+                            }
+                        } else {
+                            opts.push(Opt::etag(if fault == "etag" { b"P0" } else { b"P1" }));
+                            if index == 2 {
+                                opts.push(Opt::observe(&seq));
+                            }
+                            opts.push(Opt::content_format(&format));
+                            opts.push(Opt::max_age(&age));
+                            opts.push(Opt::opaque(OptionNumber::BLOCK2, &block));
+                        }
+                        let msg =
+                            Message::new(original.ty(), original.code(), original.message_id())
+                                .with_token(original.token())
+                                .with_options(&opts)
+                                .with_payload(original.payload());
+                        let mut buf = [0; 2048];
+                        let n = encode(&msg, &mut buf).unwrap();
+                        bytes = buf[..n].to_vec();
+                    }
+                }
+            }
+            changed.push(src, packet.dst, &bytes, packet.decrypted);
+        }
+        assert!(
+            catalog.grade("TD_COAP_OBS_14", &changed).is_err(),
+            "accepted {target} {fault}"
+        );
+    }
+    for pair in [
+        Pair {
+            client: "coap-rs",
+            server: "coaptic",
+        },
+        Pair {
+            client: "coaptic",
+            server: "coap-rs",
+        },
+    ] {
+        assert!(
+            runner::run_td("TD_COAP_OBS_14", pair)
+                .error
+                .as_deref()
+                .unwrap()
+                .starts_with("SKIP:")
+        );
+    }
+    if let Some(directory) = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR") {
+        let directory = std::path::PathBuf::from(directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        result
+            .capture
+            .write_pcap(std::fs::File::create(directory.join("obs-14-coaptic.pcap")).unwrap())
+            .unwrap();
+    }
+    assert!(result.error.is_none(), "{:?}", result.error);
+}

@@ -538,6 +538,12 @@ fn observe(
     client: &mut dyn Peer,
     server: &mut dyn Peer,
 ) -> Result<(), PeerError> {
+    if id == "TD_COAP_OBS_04" {
+        return observe_server_reset(dest, client, server);
+    }
+    if id == "TD_COAP_OBS_14" {
+        return observe_pumping(dest, client, server);
+    }
     if id == "TD_COAP_OBS_13" {
         return observe_large(dest, client, server);
     }
@@ -594,6 +600,98 @@ fn observe(
             Ok(())
         }
     }
+}
+
+// Default Max-Age for these CON fixtures is 60 s, plus RFC7252 MAX_LATENCY
+// of 100 s. Real elapsed time also exceeds RFC7641's 128 s reorder window.
+const OBSERVE_RESET_WAIT: Duration = Duration::from_secs(160);
+fn observe_server_reset(
+    dest: SocketAddr,
+    client: &mut dyn Peer,
+    server: &mut dyn Peer,
+) -> Result<(), PeerError> {
+    if client.name() != "coaptic" || server.name() != "coaptic" {
+        return Err(PeerError(
+            "SKIP: coverage gap #199: OBS04 requires same-endpoint reset and refresh controls"
+                .into(),
+        ));
+    }
+    let mut request = ClientRequest::get(&["obs"]);
+    request.observe = Some(0);
+    let initial = client.begin_observe(dest, &request)?;
+    if initial.payload != site::OBS_BODY {
+        return Err(PeerError("OBS04 initial body".into()));
+    }
+    let client_endpoint = client.local_addr();
+    for body in [site::OBS_BODY_2, site::OBS_BODY] {
+        server.notify_confirmable(&["obs"], body)?;
+        if client.take_notification(Duration::from_secs(3))?.payload != body {
+            return Err(PeerError("OBS04 initial notification".into()));
+        }
+        client.observe_quiet_for(Duration::from_millis(20))?;
+    }
+    server.reset_observe_server()?;
+    if server.local_addr() != Some(dest) {
+        return Err(PeerError("OBS04 changed server endpoint".into()));
+    }
+    server.notify_confirmable(&["obs"], site::OBS_BODY_2)?;
+    // Poll continuously: any unwanted application delivery aborts the quiet interval.
+    client.observe_quiet_for(OBSERVE_RESET_WAIT)?;
+    let refreshed = client.request_on_observe(dest, &request)?;
+    if refreshed.payload != site::OBS_BODY || client.local_addr() != client_endpoint {
+        return Err(PeerError("OBS04 refresh body/endpoint".into()));
+    }
+    for body in [site::OBS_BODY_2, site::OBS_BODY] {
+        server.notify_confirmable(&["obs"], body)?;
+        if client.take_notification(Duration::from_secs(3))?.payload != body {
+            return Err(PeerError("OBS04 renewed notification".into()));
+        }
+        client.observe_quiet_for(Duration::from_millis(20))?;
+    }
+    Ok(())
+}
+
+fn observe_pumping(
+    mut dest: SocketAddr,
+    client: &mut dyn Peer,
+    server: &mut dyn Peer,
+) -> Result<(), PeerError> {
+    if client.name() != "coaptic" || server.name() != "coaptic" {
+        return Err(PeerError(
+            "SKIP: coverage gap #199: controlled pumping fixture requires Coaptic peers".into(),
+        ));
+    }
+    for (case, versions) in [[0, 1, 2], [1, 2, 1]].into_iter().enumerate() {
+        if case != 0 {
+            server.stop_server();
+            dest = server.start_server()?;
+        }
+        server.update_pumping_observed(&["obs-pumping"], versions[0])?;
+        let mut registration = ClientRequest::get(&["obs-pumping"]);
+        registration.observe = Some(0);
+        for (step, version) in versions.into_iter().enumerate() {
+            let response = if step == 0 {
+                client.begin_observe(dest, &registration)?
+            } else {
+                server.update_pumping_observed(&["obs-pumping"], version)?;
+                client.take_notification(Duration::from_secs(3))?
+            };
+            let (body, etag) = site::observe_pumping(version).ok_or("invalid pumping version")?;
+            if response.code != Code::CONTENT
+                || response.content_format != Some(0)
+                || response.body.as_deref().unwrap_or(&response.payload) != body
+                || response.etag != [etag.to_vec()]
+                || response.observe.is_none()
+            {
+                return Err(PeerError(format!(
+                    "OBS14 incomplete case {case} step {step}"
+                )));
+            }
+            // Observe complete application delivery before scheduling the next representation.
+            client.observe_quiet_for(Duration::from_millis(20))?;
+        }
+    }
+    Ok(())
 }
 
 fn observe_large(
