@@ -138,7 +138,7 @@ pub(super) fn campaign(
                     stamp()?
                 ),
             )?;
-            std::thread::sleep(Duration::from_millis(2));
+            std::thread::sleep(Duration::from_millis(50));
         }
         let mut unexpected = [0; 4097];
         match probe.recv_from(&mut unexpected) {

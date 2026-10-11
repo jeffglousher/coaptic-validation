@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from raw_udp import grade, load_artifacts, archive_proofs, LENGTHS, MAX_EXPANDED_ARCHIVE, MAX_ARCHIVE_HEADERS
 
 
-def fixture():
+def fixture(packet_spacing_ms=2):
     h = lambda text: hashlib.sha256(text.encode()).hexdigest()
     run, core, suite = "a" * 32, "b" * 40, "c" * 40
     image, binary, static = h("image"), h("binary"), h("static")
@@ -35,7 +35,7 @@ def fixture():
             now += 300
             length = LENGTHS[phase - 1]
             for index in range(64):
-                now += 2
+                now += packet_spacing_ms
                 host.append({"event": "packet", "group": phase - 1, "index": index, "length": length, "at_ms": now,
                              "sha256": hashlib.sha256(bytes([0xA5]) * length).hexdigest()})
         for path in ("identity", "large", "echo", "ticks"):
@@ -60,6 +60,15 @@ class RawUdpGraderTests(unittest.TestCase):
         self.assertEqual(report["packet_bytes"], sum(LENGTHS) * 64)
         self.assertEqual(report["counter_delta"]["dropped"], 256)
         self.assertIn("Synthetic", " ".join(report["limitations"]))
+
+    def test_slower_pacing_still_requires_all_device_drops(self):
+        data = fixture(packet_spacing_ms=50)
+        self.assertTrue(grade(*data)["passed"])
+        row = json.loads(data[1][2]["message"].split(" ", 1)[1])
+        row["dropped"] = 56
+        data[1][2]["message"] = "COAPTIC_NETWORK " + json.dumps(row)
+        with self.assertRaisesRegex(ValueError, "actual raw drop accounting"):
+            grade(*data)
 
     def test_host_mutations_refuse(self):
         mutations = [

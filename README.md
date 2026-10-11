@@ -142,12 +142,17 @@ This finite driver is a qualification tool, not an unbounded host service.
 private state, with a new report path instead of a saved request. In protected
 service mode it checks identity, complete 2000-byte delivery, 128-byte echo and
 an authenticated timer before and after four finite 64-packet UDP groups
-(1153, 2047, 2048 and 4096 bytes, all `0xa5`, 2 ms pacing). It never provisions
+(1153, 2047, 2048 and 4096 bytes, all `0xa5`, 50 ms pacing). It never provisions
 or switches firmware. A completed host report explicitly leaves device
 qualification false: [the offline grader](tools/qualification/raw_udp.py)
 requires independent encrypted-API counter capture and verified build/install
 records. [Synthetic fixtures](tools/qualification/test_raw_udp.py) exercise
 refusal grading and do not qualify hardware or sustained availability.
+
+Pacing targets observable delivery through the device socket boundary, not
+throughput. An initial 2 ms trial sent all 256 datagrams but recorded only 56
+device drops; the unchanged strict grader rejected its incomplete accounting.
+The slower retry retains a separate host source identity and evidence record.
 
 The grader's `--help` lists the required retained artifacts. Its manifest binds
 40-character core/suite revisions, host binary and OTA hashes, protected mode
