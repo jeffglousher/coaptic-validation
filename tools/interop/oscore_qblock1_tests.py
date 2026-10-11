@@ -117,6 +117,24 @@ class ProtectedQBlockTests(unittest.TestCase):
             with self.subTest(mutation=mutations.index(change)), self.assertRaises(AssertionError):
                 grade(*data)
 
+    def test_pending_con_requires_exact_owner_settlement(self):
+        missing = evidence()
+        missing[0].pop(1)
+        delayed = evidence()
+        delayed[0][1], delayed[0][2] = delayed[0][2], delayed[0][1]
+        for i, row in enumerate(delayed[0]):
+            row["time_ns"] = i * 10_000_000
+        settled_retry = evidence()
+        retry = copy.deepcopy(settled_retry[0][0])
+        retry["time_ns"] = 2_500_000_000
+        settled_retry[0].insert(2, retry)
+        for row in settled_retry[0][3:]:
+            row["time_ns"] += 2_500_000_000
+        for name, data in (("missing ACK", missing), ("delayed ACK", delayed),
+                           ("settled retry", settled_retry)):
+            with self.subTest(case=name), self.assertRaises(AssertionError):
+                grade(*data)
+
     def test_loss_and_timeout_mutations_refuse(self):
         for mode, mutate in [
             ("drop-once", lambda x: x[0][3].update(action="forward")),

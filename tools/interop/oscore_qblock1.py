@@ -106,6 +106,7 @@ def grade(trace, result, endpoints, before, after, mode):
     unique, pivs = {}, set()
     body = bytearray()
     latest = None
+    acknowledged = True
     token = szx = None
     previous_time = -1
     request_retries = dropped = final_forwarded = final_seen = 0
@@ -131,12 +132,13 @@ def grade(trace, result, endpoints, before, after, mode):
                     "request not forwarded CON POST")
             require(not final_forwarded, "request after completed response")
             if wire in unique:
-                require(wire == latest, "retry changed current request ownership")
+                require(wire == latest and not acknowledged, "retry changed or settled request ownership")
                 request_retries += 1
                 interval = at - first_time[wire]
                 require(interval >= 1_950_000_000, "request retry before original RTO")
                 retry_intervals.append(interval)
                 continue
+            require(acknowledged, "new CON before previous exact-owner ACK")
             require(wire[2:4] not in {old[2:4] for old in unique}, "MID reused with changed ciphertext")
             outer = decoded_options(wire)
             require(set(outer) == {9} and len(outer[9]) == 1, "unexpected outer options")
@@ -171,6 +173,7 @@ def grade(trace, result, endpoints, before, after, mode):
             token, szx = packet_token(wire), current_szx
             body.extend(plain.payload)
             unique[wire], first_time[wire], latest = num, at, wire
+            acknowledged = False
         else:
             require(latest is not None and wire[2:4] == latest[2:4]
                     and (wire[0] >> 4) & 3 == 2, "response does not ACK current exact MID")
@@ -178,11 +181,14 @@ def grade(trace, result, endpoints, before, after, mode):
             if wire[1] == 0:
                 require(wire[0] == 0x60 and len(wire) == 4 and action == "forward",
                         "invalid or dropped empty ACK")
+                acknowledged = True
                 continue
             require(packet_token(wire) == token and set(decoded_options(wire)) == {9},
                     "response token/protection mismatch")
             plain = response_plain(wire, latest)
             require(int(plain.code) in (65, 95) and plain.payload == b"", "wrong authenticated response")
+            if action == "forward":
+                acknowledged = True
             if int(plain.code) == 65:
                 require(bytes(body) == LARGE, "Created before exact complete body")
                 final_seen += 1
