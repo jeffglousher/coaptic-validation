@@ -3868,6 +3868,15 @@
       "executable": "tools/interop/run.py:qblock2_missing"
     },
     {
+      "id": "con-qblock2-loss:coaptic->libcoap",
+      "client": "coaptic", "server": "libcoap", "transport": "udp", "security": "none",
+      "address_family": "ipv4-loopback", "execution_platforms": ["linux", "windows"], "requires": [],
+      "features": ["q-block2", "confirmable", "retransmission", "partial-timeout"],
+      "positive_proof": ["lost later CON block retransmits identical bytes/MID/token at unchanged NSTART1", "exact endpoint-bound empty ACK before each later block", "complete 2000-byte body and fresh complete recovery against the same server"],
+      "failure_proof": ["permanent block1 loss delivers only block0 then protocol timeout without application response", "changed retransmission, wrong ACK ownership, NSTART bypass and incomplete-body evidence refuse"],
+      "executable": "tools/interop/run.py:qblock2_con_loss"
+    },
+    {
       "id": "ipv6-qblock2-loss:coaptic->libcoap",
       "client": "coaptic", "server": "libcoap", "transport": "udp", "security": "none",
       "address_family": "ipv6-loopback", "execution_platforms": ["linux", "windows"], "requires": [],
@@ -4314,7 +4323,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "Coaptic NON Q-Block2 recovery against libcoap is qualified over IPv4 and IPv6 loopback UDP, including IPv6 permanent-loss partial timeout and fresh recovery. CON loss recovery against libcoap, protected, scoped and routed addressing remain unqualified. coap-rs has no Q-Block.",
+      "reason": "Coaptic NON Q-Block2 recovery against libcoap is qualified over IPv4 and IPv6 loopback UDP, including IPv6 permanent-loss partial timeout and fresh recovery. CON retransmission recovery and bounded partial refusal against libcoap are qualified at NSTART1 over IPv4 loopback; post-MAX_TRANSMIT_SPAN selective recovery, protected, scoped and routed addressing remain unqualified. coap-rs has no Q-Block.",
       "issue": 200,
       "executable_cases": []
     },

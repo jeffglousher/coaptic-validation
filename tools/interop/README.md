@@ -1,95 +1,205 @@
 # Independent process interoperability
 
+
+
 Three executables talk over loopback UDP or DTLS:
 
+
+
 - `peer-coaptic`: Coaptic App, webrtc-dtls 0.12 / util 0.11.
+
 - `peer-coap-rs`: coap 0.28.1, same DTLS crates, no Coaptic types.
+
 - `peer-libcoap`: libcoap 4.3.5b at `851533c3cf63d16984d370ce39d586ecb3694971`. CMake checks that revision. CI builds OpenSSL DTLS and OSCORE.
+
+
 
 libcoap is BSD-2-Clause and is not linked into the library. OpenSSL is a test-machine dependency. The PSK `sesame` is a fixture.
 
+
+
 ## Build and run
+
+
 
 Requires stable Rust, Python 3.10+, CMake 3.20+, a C compiler, and OpenSSL headers.
 
+
+
 ```sh
+
 cargo build --locked --release -p peer-coaptic -p peer-coap-rs
+
 git init /tmp/libcoap
+
 git -C /tmp/libcoap fetch --depth 1 https://github.com/obgm/libcoap.git 851533c3cf63d16984d370ce39d586ecb3694971
+
 git -C /tmp/libcoap checkout --detach FETCH_HEAD
+
 cmake -S tools/interop/libcoap -B target/libcoap-peer -DLIBCOAP_SOURCE=/tmp/libcoap -DCMAKE_BUILD_TYPE=Release -DENABLE_DTLS=ON -DDTLS_BACKEND=openssl -DENABLE_OSCORE=ON
+
 cmake --build target/libcoap-peer --parallel 2
+
 python3 -m unittest discover -s tools/interop -p 'test_*.py'
+
 python3 tools/interop/run.py --coaptic target/release/peer-coaptic --coap-rs target/release/peer-coap-rs --libcoap target/libcoap-peer/peer-libcoap --iterations 100 --output target/process-interop.json
+
 ```
+
+
 
 Windows: MSVC (`-G "Visual Studio 17 2022" -A x64`, `--config Release`) and `.exe` paths. Without OpenSSL, configure `-DENABLE_DTLS=OFF -DENABLE_OSCORE=OFF` and pass `--libcoap-udp-only`. CI does not use that flag.
 
+
+
 ## Result
+
+
 
 [`capabilities.json`](capabilities.json) is the case list. A report passes when every enabled case appears once, passes, and keeps evidence. Gaps in that file are open. Linux and Windows are the declared platforms.
 
+
+
 `--libcoap-udp-only` and `--libcoap-oscore-unavailable` mark the matching C cases build-excluded. An empty run fails. Wrong-key and blackhole cases need the peer's error exit. A timeout is not a DTLS alert.
+
+
 
 Upload readback is `accepted:calls`. `sesame` selects the public RFC 8613 C.1 secret. Any other key label mismatches on purpose.
 
+
+
 The Coaptic OSCORE client retries one authenticated 4.01 that carries Echo, once, with the same request. The libcoap direction uses its B.1.2 challenge.
+
+
 
 coap-rs answers a skipped Block1 number with 2.31. coap-rs and libcoap apply a duplicated counter POST twice.
 
+
+
 The standalone coap-rs UDP fixture also serves `/separate`: an empty request ACK,
+
 then a complete CON response with the original token and a new MID. The relay
+
 checks both MID bindings, the full payload and the client's empty response ACK.
+
 Admission and queued responses are each bounded to eight, with a 2,048-byte
+
 datagram limit. Separate-CON state retains at most eight complete requests and
+
 responses, and permits only one outstanding separate response per endpoint.
+
 Oversized or saturated input receives no ACK. Matching empty ACK/RST releases
+
 the response slot; wrong endpoint/MID or malformed controls do not. A ten-second
+
 backend deadline rejects late replies by reservation identity. Response retries
-use randomized 2–3 second initial timeouts, exponential backoff and at most four
+
+use randomized 2â€“3 second initial timeouts, exponential backoff and at most four
+
 retransmissions within the RFC 7252 transmission span; final expiry releases the
+
 slot. These are standalone fixture rules, not an upstream coap-rs reliability
+
 claim. DTLS remains unqualified.
 
+
+
 The separate-response loss cases use Coaptic and coap-rs clients against the
+
 Coaptic server, and a Coaptic client against the standalone coap-rs fixture,
+
 over IPv4 loopback UDP. The relay forwards the empty request ACK,
+
 drops exactly the first separate CON 2.05, and requires an identical complete
+
 retransmission followed by the client's matching ACK. The request deadline is
+
 eight seconds; the relay retains at most 256 datagrams. Missing, changed or
+
 out-of-order evidence fails. A fresh client must then complete against the same
+
 server. These cases do not qualify protected transports, other address families
+
 or hardware.
+
 The coap-rs client can repeat the original GET despite its empty ACK. The trace
+
 retains those retries and matching repeated ACKs; every delivered separate
+
 response must still match the dropped bytes exactly. This checks recovery and
+
 bindings, not a complete retransmission-timer conformance schedule.
 
+
+
 The Coaptic-to-libcoap Q-Block2 missing-block case uses explicit NON requests
+
 (`qblock2-non` in the Coaptic peer). The fixture knows that both peers support
+
 Q-Block; this case does not qualify capability discovery. RFC 9177 sections 7.1
+
 and 7.2 distinguish NON transfer recovery from CON congestion control: with
+
 libcoap's default NSTART of one, dropping a CON payload prevents a higher block
+
 from arriving. Existing CON cases retain their original request type.
 
+
+
 The IPv6 variant also retains each datagram's exact source, destination and
+
 relay endpoints and requires AF_INET6 with IPV6_V6ONLY on both relay sockets.
+
 An independent `::1` GET verifies server reachability. Three schedules run
+
 against the same server: selective missing-block recovery to the full 2000-byte
+
 body, permanent block-1 loss with 1744 delivered bytes and a protocol timeout,
+
 then fresh full recovery. The refusal deadline is six seconds, allowing the
+
 RFC 9177 four-second NON_RECEIVE_TIMEOUT to trigger a selective retry. Complete
+
 transfers have a twenty-second deadline; each trace is bounded to 256 datagrams.
+
 Partial evidence cannot pass the complete-response oracle. Endpoint/family,
+
 loss, representation and timeout mutations are rejected. This is loopback UDP
+
 qualification, not scoped link-local, routed, protected or hardware evidence.
 
+
+
 The relay selects 256-byte blocks, withholds block 1 until the client requests
+
 it, and requires a higher block to arrive before that selective recovery. The
+
 20-second deadline and 256-datagram trace bound apply. Delivered payloads must
+
 reassemble the exact 2000-byte pattern with stable ETag, Size2 and block size,
+
 contiguous numbers and a final block. The report retains the full trace,
+
 including original and forwarded bytes. Mutation tests reject absent loss,
+
 wrong recovery options, CON fallback and incomplete or changed body evidence.
+
 These cases cover IPv4 and IPv6 loopback UDP; protected recovery, scoped/routed
-networks, CON loss recovery against libcoap and hardware remain unqualified.
+
+networks and hardware remain unqualified.
+
+
+The separate `con-qblock2-loss` case qualifies Coaptic-to-libcoap CON recovery
+with libcoap's unchanged default NSTART of one. It drops the first later CON
+block 1, requires a byte-identical retransmission with the same MID and token,
+and binds every empty ACK to the exact client/server relay endpoints. Each
+outstanding CON must be ACKed before the next block. Complete delivery requires
+the exact 2000-byte body with stable ETag, Size2 and SZX; losing block 1 permanently
+must instead produce a protocol timeout with only 256 verified partial bytes.
+A fresh request to the same server then recovers the full body. Each successful
+schedule has a 20-second deadline; refusal has a 6-second deadline and must include
+an actual retransmission. Capture bounds remain 256 datagrams, with monotonic
+capture times retained. These finite IPv4 loopback schedules do not qualify
+post-MAX_TRANSMIT_SPAN selective retry, every retransmission timer boundary,
+protected transfers or sustained availability. RFC 9177 sections 4.4 and 7.1 describe
+this CON reliability behavior separately from NON selective recovery.
