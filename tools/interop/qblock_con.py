@@ -1,7 +1,7 @@
 """Strict evidence oracle for RFC9177 CON reliability at NSTART=1."""
 
 
-def grade(trace, result, endpoints, *, complete):
+def grade(trace, result, endpoints, *, complete, family="ipv4"):
     # Runtime import avoids a cycle with the executable runner.
     from run import LARGE, block1_fields, coap_payload, decoded_options, expect, expect_refusal, packet_token
 
@@ -12,14 +12,22 @@ def grade(trace, result, endpoints, *, complete):
         if result.get("payload_hex") or "code" in result:
             raise AssertionError("partial timeout reported an application response")
 
+    if family not in ("ipv4", "ipv6"):
+        raise AssertionError("unsupported CON address family")
+    ipv6 = family == "ipv6"
+    if ipv6 and (endpoints.get("family") != "AF_INET6" or endpoints.get("v6only") != [1, 1]):
+        raise AssertionError("CON relay did not use IPv6-only sockets")
+
     def endpoint(value):
-        if (not isinstance(value, (list, tuple)) or len(value) != 2 or value[0] != "127.0.0.1"
-                or type(value[1]) is not int or not 0 < value[1] < 65536):
-            raise AssertionError("not an exact IPv4 loopback endpoint")
+        if (not isinstance(value, (list, tuple)) or len(value) != (4 if ipv6 else 2)
+                or value[0] != ("::1" if ipv6 else "127.0.0.1")
+                or type(value[1]) is not int or not 0 < value[1] < 65536
+                or (ipv6 and value[2:] not in ([0, 0], (0, 0)))):
+            raise AssertionError("not an exact CON loopback endpoint")
         return tuple(value)
 
-    if len(trace) < 4:
-        raise AssertionError("missing CON loss evidence")
+    if not 4 <= len(trace) <= 256:
+        raise AssertionError("CON trace outside finite capture bound")
     front, back, server = (endpoint(endpoints.get(key)) for key in ("front", "back", "server"))
     client = endpoint(trace[0].get("source"))
     if len({client, server, front, back}) != 4:
@@ -110,4 +118,4 @@ def grade(trace, result, endpoints, *, complete):
         raise AssertionError("missing permanent-loss partial refusal evidence")
     return dict(complete=complete, delivered_bytes=sum(len(LARGE[n * 256:(n + 1) * 256]) for n in delivered),
                 blocks=len(delivered), drops=len(dropped), retransmissions=retransmissions,
-                nstart=1, trace=trace, endpoints=endpoints)
+                nstart=1, family=family, trace=trace, endpoints=endpoints)
