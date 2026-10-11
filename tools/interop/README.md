@@ -364,3 +364,37 @@ not qualify NON, other peers, nonzero IPv6 zones, routed networks, sustained
 availability, or all OSCORE/Q-Block combinations. The mandatory lifetime sanitizer
 gate remains before all patched traffic. Original unpatched failure evidence remains applicable to
 the unmodified upstream revision.
+
+### Protected Observe explicit cancellation
+
+`oscore_observe_cancel.py` qualifies the existing `Outgoing::deregister_call`
+API against the pinned libcoap OSCORE counter fixture (#503). One Coaptic process
+keeps the same App and UDP socket through registration, one notification,
+explicit cancellation, a three-second poll interval, and fresh registration
+with two later notifications. The complete representations are `0,1,1,2,3,4`;
+the repeated `1` is the ordinary cancellation GET response.
+
+The oracle authenticates the Inner Observe=1 and counter target, checks matching
+registration/cancellation Tokens and distinct request bindings, and requires
+the cancellation response and its transport controls to settle. An independent
+protected POST and complete authenticated GET readback confirm the counter
+changes to `2` during the quiet interval, with no observer traffic before fresh
+registration. Fresh registration must use a different Token and deliver all
+three current representations on the same live server. This is a bounded absence
+observation, not a claim that the server can never send another notification.
+
+The pinned aiocoap 0.4.16 decoder normalizes cancellation by removing Observe
+from its returned request. The oracle uses its post-decrypt hook and message
+decoder to retain and check the authenticated Inner option before normalization;
+an Outer Observe option alone does not qualify cancellation. Synthetic mutation
+tests refuse missing ACKs, wrong owners, altered identity/bindings, notifications
+during the quiet interval, missing updates/readback, and incomplete recovery.
+Supervisor failures retain partial traces and stop the owned client.
+
+Required hosted execution retains `oscore-observe-cancellation.json`, exact clean
+library/suite sources, prepared lock hashes, libcoap source/patch and executable
+hashes. The local Windows libcoap build lacks OSCORE and cannot qualify this
+campaign. The existing 181-case inventory and literal plugtest statuses remain
+unchanged. Scope is the finite IPv4 loopback fixture; enrollment, power-loss,
+routed networks, physical-device behavior and sustained availability remain
+unqualified.
