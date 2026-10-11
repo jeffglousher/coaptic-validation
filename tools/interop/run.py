@@ -334,6 +334,10 @@ class Proxy:
                         from oscore_qblock1 import final_response
                         if (not dropped or self.mode == "drop-oscore-final-permanent") and final_response(data, self.trace):
                             action, dropped = "drop", True
+                    elif self.mode in ("drop-oscore-q2-once", "drop-oscore-q2-permanent") and not incoming and len(data) >= 4 and data[1] == 68:
+                        from oscore_qblock2 import later_response
+                        if (not dropped or self.mode == "drop-oscore-q2-permanent") and later_response(data, self.trace):
+                            action, dropped = "drop", True
                     elif self.mode == "drop-reply" and not incoming and not dropped:
                         action, dropped = "drop", True
                     elif self.mode == "delay-reply" and not incoming and not dropped:
