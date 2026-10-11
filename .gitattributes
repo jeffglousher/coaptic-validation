@@ -1,2 +1,5 @@
 # Preparation hashes the exact lock bytes; keep them identical on every host.
 **/Cargo.lock text eol=lf
+
+# Dependency patch provenance hashes canonical patch bytes.
+tools/interop/libcoap/patches/*.patch text eol=lf
