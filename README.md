@@ -163,7 +163,7 @@ to the existing ESPHome `esp32.framework` configuration:
 
 ```yaml
 sdkconfig_options:
-  CONFIG_LWIP_IP4_REASSEMBLY: y
+  CONFIG_LWIP_IP4_REASSEMBLY: "y"
   CONFIG_LWIP_IP_REASS_MAX_PBUFS: "10"
 ```
 

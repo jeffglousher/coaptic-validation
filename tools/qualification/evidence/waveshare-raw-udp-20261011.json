@@ -339,5 +339,33 @@
     "Firmware identity is verified build/install provenance plus encrypted API run identity, not measured or cryptographic firmware attestation.",
     "Private credentials, network addresses, full configurations and local paths are excluded. Original private evidence is retained and identified by hashes."
   ],
-  "core_version": "0.0.10"
+  "core_version": "0.0.10",
+  "firmware_rust_build": {
+    "compiler": "rustc 1.97.0-nightly (8ea53bcd7 2026-07-08) (1.97.0.0)\nbinary: rustc\ncommit-hash: 8ea53bcd7257011cbf96f6398551bdc650b04334\ncommit-date: 2026-07-08\nhost: x86_64-pc-windows-msvc\nrelease: 1.97.0-nightly\nLLVM version: 21.1.3\n",
+    "target": "xtensa-esp32s3-none-elf",
+    "features": [
+      "network",
+      "standalone",
+      "oscore"
+    ],
+    "suite_locks": {
+      "Cargo.lock": "c828ba35cd8454e9911f732603178f9c4a63e89c94f12aafcc005f422fac2611",
+      "tools/benchmark/native/Cargo.lock": "46c0948ab45312dbf4cc2a8af05bfffb56df71e793ae07fed0c429d705066bb8",
+      "tools/security-interop/Cargo.lock": "f3dd99f2557d57141090490a97d5b0673fcd7340a6f5cf32514be2aaef54b12d",
+      "tools/security-profile/Cargo.lock": "78241c33afec6a80477e7ed9f3782e8933313d654ce5678796495d088a1fefca",
+      "tools/esphome/rust/Cargo.lock": "bf5c1c935dcf355b4cae6dfde901f422b80dbf819b0e2afed9b1a629434c8581",
+      "tools/qualification/esp32/Cargo.lock": "f12cb93c97a57a5341791d86a85a369e7369ae679a863a4247a11675701d744c",
+      "tools/durable-host/Cargo.lock": "27bb82a74447500be78fe00a59968080c9fc7460f7183991fc0df1ccb88639aa"
+    },
+    "command": [
+      "py",
+      "tools/esphome/build_archive.py",
+      "--toolchain",
+      "coaptic-esp-1.97",
+      "--expected-library-revision",
+      "0d3cfdd40143f6d091acf23afa022c2553b6717a",
+      "--oscore"
+    ],
+    "command_exit_code": 0
+  }
 }
