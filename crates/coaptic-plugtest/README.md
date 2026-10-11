@@ -284,3 +284,24 @@ notifications per fresh run. It does not establish sustained cadence, resource
 capacity across additional owners, or protected interoperability. The original
 TD requirements and RFC7959 section 2.6 are tracked in
 [#435](https://github.com/jeffglousher/coaptic/issues/435).
+
+### Observe recovery after server state loss
+
+Literal TD_COAP_OBS_04 uses a bounded control that rebuilds the server App while
+retaining the UDP socket, then confirms completion. After two acknowledged CON
+notifications, the server loses its observation state and cannot deliver another
+update. The consuming client fixture polls through 160 real seconds before using
+`reregister_call` with the same token and request identity. This is the existing
+notification's default Max-Age (60 seconds) plus MAX_LATENCY (100 seconds), without
+clock acceleration. It also exceeds RFC7641's 128-second ordering window so the
+reset server sequence can be accepted. The core does not schedule refresh itself.
+
+The twelve-datagram grader requires unchanged endpoints/token/request options,
+a distinct refresh MID, the elapsed capture interval, reset sequence zero, and
+two complete acknowledged CON notifications both before and after reset. Fifteen
+trace mutations refuse altered ownership, bodies, missing packets or early refresh.
+Short adapter tests cover identity mismatch without traffic, occupied/missing
+reset control, same-endpoint silence after reset and valid registration recovery.
+`COAPTIC_OBSERVE_CAPTURE_DIR` retains `obs-04-coaptic.pcap`. This is one plaintext
+loopback observer, not protected or cross-implementation qualification. Tracked in
+[#436](https://github.com/jeffglousher/coaptic/issues/436).
