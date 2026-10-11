@@ -458,10 +458,14 @@ jobs:
           echo "$RUNNER_TEMP/oscore-qblock1/bin" >> "$GITHUB_PATH"
       - name: Authenticated Q-Block1 oracle tests
         run: python3 -m unittest discover -s tools/interop -p 'oscore_qblock1_tests.py'
+      - name: Authenticated Q-Block2 baseline oracle tests
+        run: python3 -m unittest discover -s tools/interop -p 'oscore_qblock2_tests.py'
       - name: Supervisor and fault-injection tests
         run: python3 -m unittest discover -s tools/interop -p 'test_*.py'
       - name: Wire interoperability, reliability and timing
         run: python3 tools/interop/run.py --coaptic target/release/peer-coaptic --coap-rs target/release/peer-coap-rs --libcoap target/libcoap-peer/peer-libcoap --iterations 100 --build-note "all peers Release; Ubuntu hosted runner" --output target/process-interop.json
+      - name: Observe protected Q-Block2 baseline (not complete qualification)
+        run: python3 tools/interop/oscore_qblock2.py --coaptic target/release/peer-coaptic --libcoap target/libcoap-peer/peer-libcoap --output target/oscore-qblock2-baseline.json
       - name: Retain measurements and fault evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -469,6 +473,7 @@ jobs:
           name: process-interop
           path: |
             target/process-interop.json
+            target/oscore-qblock2-baseline.json
             ${{ runner.temp }}/validation-source.json
           if-no-files-found: warn
   plugtest:

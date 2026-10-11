@@ -212,3 +212,15 @@ campaign remains retained; the final fresh-recovery schedule was not reached in
 that failed run. The later actual campaign (`38131267282`) passed all six schedules,
 including fresh recovery; [source-bound results](https://github.com/jeffglousher/coaptic/issues/468#issuecomment-6108057349)
 retain the successful trace separately from both failed campaigns.
+
+The separate `oscore_qblock2.py` baseline observer records the protected
+Coaptic-to-libcoap `/large` response using the same pinned aiocoap decoder.
+Its report records exact sources, executable hashes, endpoint ownership,
+authenticated Q-Block2/ETag/Size2/body evidence, and the observed ACK/CON
+sequence. Run it with `--coaptic PATH --libcoap PATH --output REPORT.json`
+after building the same OSCORE-enabled peers and installing the pinned decoder
+requirements used above. This is a baseline prerequisite for
+[#472](https://github.com/jeffglousher/coaptic/issues/472), not a complete
+loss/refusal/recovery qualification or an enabled capability-matrix case.
+A failed baseline retains its trace and failure; synthetic oracle tests do
+not establish independent-peer interoperability.
