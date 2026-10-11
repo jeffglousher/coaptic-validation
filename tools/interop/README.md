@@ -265,3 +265,35 @@ Local synthetic oracle/source-hash checks cannot establish that this C gate or
 the patched wire baseline succeeds. Both remain required before qualification;
 [#472's original failure](https://github.com/jeffglousher/coaptic/issues/472#issuecomment-6108231594)
 and its full loss/refusal/recovery acceptance remain separate.
+
+
+### Protected Q-Block2 finite recovery campaign
+
+`oscore_qblock2.py --campaign` adds five bounded exchanges on one running patched
+libcoap server: complete baseline, one intact later-block loss, permanent
+later-block loss, wrong-key refusal, and fresh complete recovery. It retains the
+same source, patch-manifest and executable hashes as the baseline observer.
+The observed baseline form is one protected CON GET, an empty ACK, and two
+separate protected CON responses (1,024 and 976 bytes), each explicitly ACKed.
+The relay only drops intact authenticated block 1; it does not modify ciphertext.
+
+The maintained aiocoap decoder binds every response to the exact current request.
+The grader requires the full 2,000-byte body, stable ETag and Size2, distinct
+explicit response PIVs, and exact ciphertext/MID/PIV retransmission after the
+original exponential RTO. Permanent loss must end in the peer's protocol timeout
+with an authenticated 1,024-byte forwarded prefix, its exact ACK and no complete
+application response. This is wire evidence, not instrumentation of the client's
+internal buffer. Only the pinned peer's exact `request timed out` error qualifies;
+a subprocess deadline or crash fails qualification. The wrong-key case
+requires the pinned peer's exact unprotected 4.00 diagnostic (RFC 8613 section
+8.2 step 6), with no authenticated response. Fresh request bindings and distinct
+server PIVs across the five exchanges establish fresh same-server recovery.
+Different relay ports mean this is not a same-endpoint stale-transfer expiry test.
+
+Hosted execution is required before claiming this campaign passed. The existing
+180-case inventory remains unchanged. The separate retained campaign report is
+limited to IPv4 loopback, CON, SZX 1,024 and this explicitly patched peer; it does
+not qualify NON, other peers, routed networks, sustained availability, or all
+OSCORE/Q-Block combinations. The mandatory lifetime sanitizer gate remains before
+all patched traffic. Original unpatched failure evidence remains applicable to
+the unmodified upstream revision.
