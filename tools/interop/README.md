@@ -175,7 +175,7 @@ routed/scoped networking, hardware or sustained availability. The original RFC
 7252 section 4.6 and RFC 7959 block-size rules remain separate from this finite
 fault schedule.
 
-A separate protected IPv4 classic Block2 campaign uses a 256-byte unchanged
+A separate protected IPv4/IPv6 classic Block2 campaign uses a 256-byte unchanged
 UDP datagram cap: complete 2000-byte baseline, a small protected control under
 the cap, oversized-response loss with exact server retransmission and protocol
 timeout, then complete fresh-client recovery on the same server after removing
@@ -185,10 +185,31 @@ the cap. Run:
 python tools/interop/oscore_relay_cap.py --coaptic PATH --libcoap PATH --output REPORT.json --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json
 ```
 
+Add `--family ipv6` for the separate IPv6 loopback campaign. Its report must
+prove IPv6-only relay sockets and exact `::1` endpoint ownership; IPv4 fallback,
+mapped addresses and nonzero scope/flow identifiers refuse qualification.
+
 The maintained aiocoap decoder checks request binding, inner options and body,
 ACK ownership and unchanged retries. These finite schedules require their own
 exact-source hosted report; they do not qualify adaptive PMTU, ICMP, routed
-networks or sustained availability. See [#495](https://github.com/jeffglousher/coaptic/issues/495).
+networks or sustained availability. See [#495](https://github.com/jeffglousher/coaptic/issues/495)
+and [#499](https://github.com/jeffglousher/coaptic/issues/499).
+
+Protected Observe has a separate finite duplicate-delivery campaign:
+
+```sh
+python tools/interop/oscore_observe.py --coaptic PATH --libcoap PATH --output REPORT.json --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json
+```
+
+Three fresh client sessions share one server: baseline counter values `0,1,2`,
+an intact stale-notification replay during `2,3,4`, then fresh recovery `4,5,6`.
+The replay must arrive after the middle value and before the final valid update,
+without consuming a client observation result. The oracle authenticates the
+registration, notifications and controlled updates and checks their ownership
+and timing. This proves finite duplicate application-delivery refusal, without
+attributing it to OSCORE replay-window or CoAP duplicate suppression alone.
+Exact-source reports are required; routed networks, physical devices and
+sustained availability remain outside [#501](https://github.com/jeffglousher/coaptic/issues/501).
 
 The `oscore-qblock1-recovery:coaptic->libcoap` case uses the pinned libcoap
 OpenSSL/OSCORE build over IPv4 loopback. Its offline aiocoap oracle authenticates
