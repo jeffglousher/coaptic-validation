@@ -534,6 +534,9 @@ fn observe(
     client: &mut dyn Peer,
     server: &mut dyn Peer,
 ) -> Result<(), PeerError> {
+    if id == "TD_COAP_OBS_06" {
+        return observe_restart(dest, client, server);
+    }
     if id == "TD_COAP_OBS_01" {
         return observe_con(dest, client, server);
     }
@@ -572,6 +575,57 @@ fn observe(
             Ok(())
         }
     }
+}
+
+fn observe_restart(
+    dest: SocketAddr,
+    client: &mut dyn Peer,
+    server: &mut dyn Peer,
+) -> Result<(), PeerError> {
+    if client.name() != "coaptic" || server.name() != "coaptic" {
+        return Err(PeerError("SKIP: coverage gap #199: OBS_06 needs controlled same-endpoint client restart and CON server".into()));
+    }
+    observe_con(dest, client, server)?;
+    let endpoint = client
+        .local_addr()
+        .ok_or("OBS_06 missing client endpoint")?;
+    client.restart_observe_client()?;
+    if client.local_addr() != Some(endpoint) {
+        return Err(PeerError("OBS_06 restart changed endpoint".into()));
+    }
+    server.notify_confirmable(&["obs"], site::OBS_BODY_2)?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(1);
+    loop {
+        client.observe_quiet_for(Duration::from_millis(20))?;
+        let reset = server.take_capture().snapshot().iter().any(|packet| {
+            packet.src == endpoint
+                && packet.dst == dest
+                && coaptic::message::decode(&packet.bytes).is_ok_and(|p| p.ty() == Type::Reset)
+        });
+        if reset {
+            break;
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(PeerError(
+                "OBS_06 restarted client did not reset notification".into(),
+            ));
+        }
+    }
+    let before = server.take_capture().snapshot().len();
+    // Three independently scheduled updates after RST; each quiet interval exceeds
+    // the server loop period. Recovery below proves the server remains responsive.
+    for payload in [site::OBS_BODY, site::OBS_BODY_2, site::OBS_BODY] {
+        server.notify_confirmable(&["obs"], payload)?;
+        client.observe_quiet_for(Duration::from_secs(1))?;
+    }
+    if server.take_capture().snapshot().len() != before {
+        return Err(PeerError("OBS_06 server sent traffic after reset".into()));
+    }
+    observe_con(dest, client, server)?;
+    if client.local_addr() != Some(endpoint) {
+        return Err(PeerError("OBS_06 recovery changed endpoint".into()));
+    }
+    Ok(())
 }
 
 fn observe_con(

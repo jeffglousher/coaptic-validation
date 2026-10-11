@@ -203,6 +203,9 @@ impl Catalog {
 /// Grade one TD.
 pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), String> {
     let packets = capture.snapshot();
+    if td == "TD_COAP_OBS_06" {
+        grade_observe_restart(&packets)?;
+    }
     if td == "TD_COAP_OBS_01" {
         grade_confirmable_observe(&packets)?;
     }
@@ -288,6 +291,70 @@ pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), St
                 n = leftover.len()
             ));
         }
+    }
+    Ok(())
+}
+
+/// Literal OBS_06 wire sequence plus same-endpoint fresh registration recovery.
+/// Quiet duration and discarded application delivery are checked by the runner.
+fn grade_observe_restart(packets: &[Packet]) -> Result<(), String> {
+    let mut ordered = packets.to_vec();
+    ordered.sort_by_key(|p| p.t_ns);
+    let mut seen = HashSet::new();
+    ordered.retain(|p| seen.insert((p.src, p.dst, p.bytes.clone())));
+    if ordered.len() != 14 {
+        return Err(format!(
+            "OBS_06 requires fourteen unique datagrams including recovery, saw {}",
+            ordered.len()
+        ));
+    }
+    grade_confirmable_observe(&ordered[..6])?;
+    grade_confirmable_observe(&ordered[8..])?;
+    let initial = decode(&ordered[0].bytes).map_err(|e| format!("OBS_06 registration: {e:?}"))?;
+    let previous = decode(&ordered[4].bytes).map_err(|e| format!("OBS_06 previous: {e:?}"))?;
+    let note = decode(&ordered[6].bytes).map_err(|e| format!("OBS_06 notification: {e:?}"))?;
+    let reset = decode(&ordered[7].bytes).map_err(|e| format!("OBS_06 reset: {e:?}"))?;
+    let recovery = decode(&ordered[8].bytes).map_err(|e| format!("OBS_06 recovery: {e:?}"))?;
+    let client = ordered[0].src;
+    let server = ordered[0].dst;
+    let seq = note
+        .observe()
+        .and_then(Result::ok)
+        .ok_or("OBS_06 Observe sequence")?;
+    let previous_seq = previous
+        .observe()
+        .and_then(Result::ok)
+        .ok_or("OBS_06 previous sequence")?;
+    let delta = seq.wrapping_sub(previous_seq) & 0x00ff_ffff;
+    if ordered[6].src != server
+        || ordered[6].dst != client
+        || note.ty() != Type::Confirmable
+        || note.code() != Code::CONTENT
+        || note.token() != initial.token()
+        || note.payload() != crate::site::OBS_BODY_2
+        || note.content_format() != Some(Ok(coaptic::message::ContentFormat::TEXT_PLAIN))
+        || seq > 0x00ff_ffff
+        || delta == 0
+        || delta >= 0x0080_0000
+        || [0, 2, 4]
+            .into_iter()
+            .any(|i| decode(&ordered[i].bytes).is_ok_and(|p| p.message_id() == note.message_id()))
+    {
+        return Err("OBS_06 post-restart CON ownership and representation".into());
+    }
+    if ordered[7].src != client
+        || ordered[7].dst != server
+        || reset.ty() != Type::Reset
+        || reset.code() != Code::EMPTY
+        || !reset.token().is_empty()
+        || !reset.payload().is_empty()
+        || reset.options().next().is_some()
+        || reset.message_id() != note.message_id()
+    {
+        return Err("OBS_06 matching empty RST".into());
+    }
+    if ordered[8].src != client || ordered[8].dst != server || recovery.token() == initial.token() {
+        return Err("OBS_06 fresh registration on original endpoint".into());
     }
     Ok(())
 }
