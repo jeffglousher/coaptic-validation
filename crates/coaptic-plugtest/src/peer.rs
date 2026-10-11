@@ -211,6 +211,22 @@ pub trait Peer {
         Err(PeerError("same-owner Observe request not supported".into()))
     }
 
+    /// Commit a bounded fixture representation and signal its source; wait for completion.
+    fn signal_observed(&mut self, _path: &[&str], _payload: &[u8]) -> Result<usize, PeerError> {
+        Err(PeerError(
+            "source-backed Observe signal not supported".into(),
+        ))
+    }
+
+    /// Inspect an exact server-side Observe owner through the bounded fixture mailbox.
+    fn observe_owner_present(
+        &mut self,
+        _peer: SocketAddr,
+        _token: &[u8],
+    ) -> Result<bool, PeerError> {
+        Err(PeerError("Observe owner inspection not supported".into()))
+    }
+
     /// Lose server protocol state while preserving its UDP endpoint; wait for completion.
     fn reset_observe_server(&mut self) -> Result<(), PeerError> {
         Err(PeerError("same-endpoint server reset not supported".into()))
