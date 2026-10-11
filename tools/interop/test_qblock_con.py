@@ -112,5 +112,88 @@ class ConRecoveryTests(unittest.TestCase):
                 grade(trace, dict(REFUSAL, **change), ENDPOINTS, complete=False)
 
 
+class Ipv6ConRecoveryTests(unittest.TestCase):
+    def evidence(self, complete=True):
+        trace = evidence(complete)
+        for item in trace:
+            for key in ("source", "destination", "relay"):
+                item[key] = ["::1", item[key][1], 0, 0]
+        endpoints = {key: ["::1", value[1], 0, 0] for key, value in ENDPOINTS.items()}
+        endpoints.update(family="AF_INET6", v6only=[1, 1])
+        return trace, endpoints
+
+    def grade(self, trace, endpoints, complete=True, result=None):
+        return grade(trace, (SUCCESS if complete else REFUSAL) if result is None else result,
+                     endpoints, complete=complete, family="ipv6")
+
+    def test_exact_complete_and_partial_ipv6_evidence(self):
+        for complete, size in [(True, 2000), (False, 256)]:
+            trace, endpoints = self.evidence(complete)
+            proof = self.grade(trace, endpoints, complete)
+            self.assertEqual((proof["family"], proof["delivered_bytes"], proof["complete"]),
+                             ("ipv6", size, complete))
+            with self.assertRaises(AssertionError):
+                self.grade(trace, endpoints, not complete)
+            with self.assertRaises(AssertionError):
+                grade(trace, SUCCESS if complete else REFUSAL, endpoints, complete=complete)
+        with self.assertRaises(AssertionError):
+            grade(evidence(), SUCCESS, ENDPOINTS, complete=True, family="ipv6")
+        with self.assertRaises(AssertionError):
+            grade(evidence(), SUCCESS, ENDPOINTS, complete=True, family="unknown")
+
+    def test_socket_family_and_every_endpoint_are_required(self):
+        for complete in (True, False):
+            trace, endpoints = self.evidence(complete)
+            for key, values in [("family", [None, "AF_INET"]), ("v6only", [None, [0, 1], [1, 0]])]:
+                for value in values:
+                    with self.subTest(complete=complete, key=key, value=value), self.assertRaises(AssertionError):
+                        self.grade(trace, dict(endpoints, **{key: value}), complete)
+            for index in range(len(trace)):
+                for key in ("source", "destination", "relay"):
+                    for value in (["127.0.0.1", 9999], ["::ffff:127.0.0.1", 9999, 0, 0],
+                                  ["::1", 9999, 0, 0], ["::1", 1001, 1, 0], ["::1", 1001, 0, 1]):
+                        changed = copy.deepcopy(trace)
+                        changed[index][key] = value
+                        with self.subTest(index=index, key=key, value=value), self.assertRaises(AssertionError):
+                            self.grade(changed, endpoints, complete)
+            for key in ("front", "back", "server"):
+                with self.subTest(endpoint=key), self.assertRaises(AssertionError):
+                    self.grade(trace, dict(endpoints, **{key: ["::1", 9999, 0, 0]}), complete)
+
+    def test_missing_changed_or_reordered_packets_refuse(self):
+        for complete in (True, False):
+            trace, endpoints = self.evidence(complete)
+            for index in range(len(trace)):
+                with self.subTest(missing=index), self.assertRaises(AssertionError):
+                    self.grade(trace[:index] + trace[index + 1:], endpoints, complete)
+                for offset in (0, 1, 2, -1):
+                    changed = copy.deepcopy(trace)
+                    wire = bytearray.fromhex(changed[index]["hex"])
+                    wire[offset] ^= 1
+                    changed[index]["hex"] = wire.hex()
+                    with self.subTest(index=index, offset=offset), self.assertRaises(AssertionError):
+                        self.grade(changed, endpoints, complete)
+            changed = copy.deepcopy(trace)
+            changed[2]["action"] = "forward"
+            with self.assertRaises(AssertionError):
+                self.grade(changed, endpoints, complete)
+            changed = copy.deepcopy(trace)
+            left, right = (2, 3) if complete else (1, 2)
+            changed[left], changed[right] = changed[right], changed[left]
+            for index, row in enumerate(changed):
+                row["time_ns"] = index
+            with self.assertRaises(AssertionError):
+                self.grade(changed, endpoints, complete)
+            with self.assertRaises(AssertionError):
+                self.grade(trace * 256, endpoints, complete)
+
+    def test_partial_result_cannot_be_an_application_response_or_non_timeout_error(self):
+        trace, endpoints = self.evidence(False)
+        for change in [dict(exit_code=0), dict(event="response"), dict(message="socket unavailable"),
+                       dict(code=69), dict(payload_hex="00")]:
+            with self.subTest(change=change), self.assertRaises(AssertionError):
+                self.grade(trace, endpoints, False, dict(REFUSAL, **change))
+
+
 if __name__ == "__main__":
     unittest.main()
