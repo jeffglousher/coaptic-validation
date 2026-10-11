@@ -591,7 +591,7 @@ pub fn adapter_note() -> &'static str {
     "DTLS: harness webrtc-dtls DatagramIo adapter. coaptic library has no DTLS dep; \
      App::poll / App client see plaintext CoAP over a DTLS-wrapped socket in this crate. \
      Mixed pairs (coap-rs→coaptic, coaptic→coap-rs, coaptic→coaptic) run handshake + GET /secure. \
-     TD_COAP_DTLS_01 grades the UDP handshake and decrypted GET. DTLS_02–03 and \
+     TD_COAP_DTLS_01 grades the UDP handshake and decrypted GET. DTLS03 covers Coaptic servers. DTLS02 and \
      raw-public-key TDs stay skipped; X.509 tests do not establish RPK support."
 }
 
