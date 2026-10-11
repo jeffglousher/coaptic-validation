@@ -46,7 +46,7 @@ responses, and permits only one outstanding separate response per endpoint.
 Oversized or saturated input receives no ACK. Matching empty ACK/RST releases
 the response slot; wrong endpoint/MID or malformed controls do not. A ten-second
 backend deadline rejects late replies by reservation identity. Response retries
-use randomized 2–3 second initial timeouts, exponential backoff and at most four
+use randomized 2â€“3 second initial timeouts, exponential backoff and at most four
 retransmissions within the RFC 7252 transmission span; final expiry releases the
 slot. These are standalone fixture rules, not an upstream coap-rs reliability
 claim. DTLS remains unqualified.

@@ -147,6 +147,15 @@ pub struct State<'a, S> {
     poisoned: bool,
 }
 
+/// Authenticate an existing record without granting a sender range or writing.
+/// This is an offline preflight, not a live security context or freshness proof.
+/// The caller retains exclusive ownership; only `State::recover` may create the
+/// guarded context for network use.
+pub fn verify_record(store: &mut impl Store, credentials: &Credentials) -> Result<(), Error> {
+    let bytes = store.read()?.ok_or(Error::Missing)?;
+    Record::decode(&bytes, credentials).map(|_| ())
+}
+
 impl<'a, S: Store> State<'a, S> {
     /// Authenticate and restore replay; skip every previously reserved sequence;
     /// durably grant a fresh range before the context can be used for traffic.
@@ -292,6 +301,26 @@ mod tests {
             sender: 1,
             recipient: 2,
         }
+    }
+    #[test]
+    fn offline_verification_authenticates_without_reserving_or_writing() {
+        let c = credentials();
+        let mut m = Memory::default();
+        assert_eq!(verify_record(&mut m, &c), Err(Error::Missing));
+        assert_eq!(m.0.borrow().writes, 0);
+        provision(&mut m, &c).unwrap();
+        let before = m.0.borrow().bytes;
+        for _ in 0..3 {
+            assert_eq!(verify_record(&mut m, &c), Ok(()));
+        }
+        let mut wrong = credentials();
+        wrong.secret[0] ^= 1;
+        assert_eq!(verify_record(&mut m, &wrong), Err(Error::Corrupt));
+        assert_eq!(m.0.borrow().writes, 1);
+        assert_eq!(m.0.borrow().bytes, before);
+        let (_, context) = State::recover(m.clone(), &c).unwrap();
+        assert_eq!(context.sender_seq(), 0);
+        assert_eq!(m.0.borrow().writes, 2);
     }
     #[test]
     fn restart_restores_replay_and_skips_the_whole_reserved_range() {

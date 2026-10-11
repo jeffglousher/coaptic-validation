@@ -203,6 +203,9 @@ impl Catalog {
 /// Grade one TD.
 pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), String> {
     let packets = capture.snapshot();
+    if td == "TD_COAP_OBS_01" {
+        grade_confirmable_observe(&packets)?;
+    }
     if let Some(ref dtls) = expect.dtls {
         grade_dtls(td, dtls, &packets)?;
     }
@@ -284,6 +287,91 @@ pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), St
                 "{td}: {n} leftover CoAP datagrams (set allow_extra if this TD is chatty)",
                 n = leftover.len()
             ));
+        }
+    }
+    Ok(())
+}
+
+/// Literal OBS_01 exchange: one registration and two fully acknowledged CON
+/// notifications. Deduplicate the client/server taps, preserving wire order.
+fn grade_confirmable_observe(packets: &[Packet]) -> Result<(), String> {
+    let mut ordered: Vec<_> = packets.iter().collect();
+    ordered.sort_by_key(|p| p.t_ns);
+    let mut seen = HashSet::new();
+    ordered.retain(|p| seen.insert((p.src, p.dst, p.bytes.clone())));
+    if ordered.len() != 6 {
+        return Err(format!(
+            "OBS_01 requires six unique datagrams, saw {}",
+            ordered.len()
+        ));
+    }
+    let parsed: Vec<_> = ordered
+        .iter()
+        .map(|p| decode(&p.bytes).map_err(|e| format!("OBS_01 decode: {e:?}")))
+        .collect::<Result<_, _>>()?;
+    let client = ordered[0].src;
+    let server = ordered[0].dst;
+    if client == server
+        || parsed[0].ty() != Type::Confirmable
+        || parsed[0].code() != Code::GET
+        || parsed[0].token().is_empty()
+        || parsed[0].observe() != Some(Ok(0))
+        || parsed[0].uri_path().collect::<Vec<_>>() != [Ok("obs")]
+    {
+        return Err("OBS_01 CON registration".into());
+    }
+    let mut previous = None;
+    for (i, body) in [
+        (1, crate::site::OBS_BODY),
+        (2, crate::site::OBS_BODY_2),
+        (4, crate::site::OBS_BODY),
+    ] {
+        let p = parsed[i];
+        if ordered[i].src != server
+            || ordered[i].dst != client
+            || p.ty()
+                != if i == 1 {
+                    Type::Acknowledgement
+                } else {
+                    Type::Confirmable
+                }
+            || p.code() != Code::CONTENT
+            || p.token() != parsed[0].token()
+            || p.payload() != body
+            || p.content_format() != Some(Ok(coaptic::message::ContentFormat::TEXT_PLAIN))
+        {
+            return Err(format!("OBS_01 complete representation {i}"));
+        }
+        let seq = p
+            .observe()
+            .and_then(Result::ok)
+            .ok_or("OBS_01 Observe sequence")?;
+        if seq > 0x00ff_ffff
+            || previous.is_some_and(|last: u32| {
+                let delta = seq.wrapping_sub(last) & 0x00ff_ffff;
+                delta == 0 || delta >= 0x0080_0000
+            })
+        {
+            return Err("OBS_01 increasing Observe sequence".into());
+        }
+        previous = Some(seq);
+        if i == 1 {
+            if p.message_id() != parsed[0].message_id() {
+                return Err("OBS_01 registration ACK MID".into());
+            }
+        } else {
+            let ack = parsed[i + 1];
+            if p.message_id() == parsed[0].message_id()
+                || (i == 4 && p.message_id() == parsed[2].message_id())
+                || ordered[i + 1].src != client
+                || ordered[i + 1].dst != server
+                || !ack.is_empty_ack()
+                || !ack.token().is_empty()
+                || !ack.payload().is_empty()
+                || ack.message_id() != p.message_id()
+            {
+                return Err(format!("OBS_01 notification ACK ownership {i}"));
+            }
         }
     }
     Ok(())

@@ -34,9 +34,11 @@ struct ObserveHold {
 struct ServerCtl {
     addr: SocketAddr,
     stop: Arc<AtomicBool>,
-    notify: crate::peer::NotifyMailbox,
+    notify: NotifyMailbox,
     join: Option<JoinHandle<()>>,
 }
+
+type NotifyMailbox = Arc<Mutex<Option<(Vec<String>, Vec<u8>, bool)>>>;
 
 impl Default for CoapticPeer {
     fn default() -> Self {
@@ -145,6 +147,17 @@ impl Peer for CoapticPeer {
         *srv.notify.lock().expect("notify") = Some((
             path.iter().map(|s| (*s).to_owned()).collect(),
             payload.to_vec(),
+            false,
+        ));
+        Ok(())
+    }
+
+    fn notify_confirmable(&mut self, path: &[&str], payload: &[u8]) -> Result<(), PeerError> {
+        let srv = self.server.as_ref().ok_or("no server")?;
+        *srv.notify.lock().expect("notify") = Some((
+            path.iter().map(|s| (*s).to_owned()).collect(),
+            payload.to_vec(),
+            true,
         ));
         Ok(())
     }
@@ -165,7 +178,7 @@ fn server_loop(
     addr: SocketAddr,
     capture: Capture,
     stop: Arc<AtomicBool>,
-    notify: crate::peer::NotifyMailbox,
+    notify: NotifyMailbox,
 ) {
     let io = CapturingIo::new(sock, addr, capture);
     let mut app = bind_site(io);
@@ -173,7 +186,7 @@ fn server_loop(
     while !stop.load(Ordering::SeqCst) {
         let now = u64::try_from(origin.elapsed().as_millis()).unwrap_or(u64::MAX);
         let _ = app.poll(now);
-        if let Some((path, payload)) = notify.lock().expect("n").take() {
+        if let Some((path, payload, confirmable)) = notify.lock().expect("n").take() {
             let segs: Vec<&str> = path.iter().map(String::as_str).collect();
             let body: &'static [u8] = if payload == site::OBS_BODY_2 {
                 site::OBS_BODY_2
@@ -182,11 +195,12 @@ fn server_loop(
             } else {
                 site::OBS_BODY_2
             };
-            let _ = app.notify(
-                now,
-                &segs,
-                Response::content(body).content_format(ContentFormat::TEXT_PLAIN),
-            );
+            let response = Response::content(body).content_format(ContentFormat::TEXT_PLAIN);
+            let _ = if confirmable {
+                app.notify_confirmable(now, &segs, response)
+            } else {
+                app.notify(now, &segs, response)
+            };
         }
         thread::sleep(Duration::from_millis(2));
     }

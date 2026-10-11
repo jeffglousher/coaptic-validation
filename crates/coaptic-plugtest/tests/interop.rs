@@ -240,3 +240,131 @@ fn inventory() {
         "qualified basic CORE scenarios must remain runnable"
     );
 }
+
+#[test]
+fn confirmable_observe_notifications_reach_each_client_backend() {
+    use coaptic::message::{Code, Message, Opt, Type, decode, encode, encode_uint};
+    use coaptic_plugtest::pcap::Capture;
+    let catalog = Catalog::load().unwrap();
+    for client in ["coaptic", "coap-rs"] {
+        let result = runner::run_td(
+            "TD_COAP_OBS_01",
+            Pair {
+                client,
+                server: "coaptic",
+            },
+        );
+        assert!(result.error.is_none(), "{client}: {:?}", result.error);
+        let packets = result.capture.snapshot();
+        let last = packets
+            .iter()
+            .filter_map(|p| decode(&p.bytes).ok())
+            .filter_map(|p| p.observe().and_then(Result::ok))
+            .max()
+            .unwrap();
+        let last_mid = packets
+            .iter()
+            .find_map(|p| {
+                let p = decode(&p.bytes).ok()?;
+                (p.ty() == Type::Confirmable
+                    && p.code() == Code::CONTENT
+                    && p.observe() == Some(Ok(last)))
+                .then_some(p.message_id())
+            })
+            .unwrap();
+        for fault in [
+            "missing-notification",
+            "non-notification",
+            "token",
+            "sequence",
+            "payload",
+            "format",
+            "missing-ack",
+            "ack-mid",
+            "ack-endpoint",
+            "registration-path",
+            "registration-endpoint",
+            "initial-body",
+        ] {
+            let changed = Capture::new();
+            for packet in &packets {
+                let p = decode(&packet.bytes).unwrap();
+                let mut bytes = packet.bytes.clone();
+                let mut src = packet.src;
+                if p.code() == Code::CONTENT && p.observe() == Some(Ok(last)) {
+                    match fault {
+                        "missing-notification" => continue,
+                        "non-notification" => bytes[0] |= 0x10,
+                        "token" => bytes[4] ^= 1,
+                        "payload" => *bytes.last_mut().unwrap() ^= 1,
+                        "sequence" | "format" => {
+                            let seq = encode_uint(if fault == "sequence" { 0 } else { last });
+                            let format = encode_uint(if fault == "format" { 42 } else { 0 });
+                            let opts = [Opt::observe(&seq), Opt::content_format(&format)];
+                            let message =
+                                Message::new(Type::Confirmable, Code::CONTENT, p.message_id())
+                                    .with_token(p.token())
+                                    .with_options(&opts)
+                                    .with_payload(p.payload());
+                            let mut buf = [0; 128];
+                            let n = encode(&message, &mut buf).unwrap();
+                            bytes = buf[..n].to_vec();
+                        }
+                        _ => {}
+                    }
+                }
+                if p.is_empty_ack() && p.message_id() == last_mid {
+                    match fault {
+                        "missing-ack" => continue,
+                        "ack-mid" => bytes[3] ^= 1,
+                        "ack-endpoint" => src = packet.dst,
+                        _ => {}
+                    }
+                }
+                if p.code() == Code::GET {
+                    if fault == "registration-path" {
+                        let opts = [Opt::observe_register(), Opt::uri_path("wrong")];
+                        let message = Message::new(Type::Confirmable, Code::GET, p.message_id())
+                            .with_token(p.token())
+                            .with_options(&opts);
+                        let mut buf = [0; 128];
+                        let n = encode(&message, &mut buf).unwrap();
+                        bytes = buf[..n].to_vec();
+                    } else if fault == "registration-endpoint" {
+                        src = packet.dst;
+                    }
+                }
+                if fault == "initial-body"
+                    && p.ty() == Type::Acknowledgement
+                    && p.code() == Code::CONTENT
+                {
+                    *bytes.last_mut().unwrap() ^= 1;
+                }
+                changed.push(src, packet.dst, &bytes, packet.decrypted);
+            }
+            assert!(
+                catalog.grade("TD_COAP_OBS_01", &changed).is_err(),
+                "{client}: accepted {fault}"
+            );
+        }
+        if let Some(directory) = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            result
+                .capture
+                .write_pcap(
+                    std::fs::File::create(directory.join(format!("obs-01-{client}.pcap"))).unwrap(),
+                )
+                .unwrap();
+        }
+    }
+    let reverse = runner::run_td(
+        "TD_COAP_OBS_01",
+        Pair {
+            client: "coaptic",
+            server: "coap-rs",
+        },
+    );
+    assert!(reverse.error.as_deref().unwrap().starts_with("SKIP:"));
+    assert!(catalog::skip_reason("TD_COAP_OBS_06").is_some());
+}
