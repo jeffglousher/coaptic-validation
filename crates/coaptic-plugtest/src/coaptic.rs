@@ -835,7 +835,13 @@ mod observe_owner_tests {
         cancel.observe = Some(1);
         let mut wrong_path = cancel.clone();
         wrong_path.path = vec!["test".into()];
-        for (target, request) in [(dest, &wrong_path), (other, &cancel), (dest, &registration)] {
+        let mut invalid_observe = registration.clone();
+        invalid_observe.observe = Some(2);
+        for (target, request) in [
+            (dest, &wrong_path),
+            (other, &cancel),
+            (dest, &invalid_observe),
+        ] {
             assert!(client.request_on_observe(target, request).is_err());
             assert_eq!(
                 client.take_capture().snapshot().len(),
