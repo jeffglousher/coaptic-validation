@@ -294,7 +294,16 @@ fn grade(case: &Case, wrong: bool) -> Result<(), String> {
         if application[0].src != client
             || application[1].src != server
             || request.code() != Code::GET
+            || request.ty() != coaptic::message::Type::Confirmable
+            || request.message_id() != coaptic::message::MessageId::new(77)
+            || request.token() != coaptic::message::Token::new(b"record").unwrap()
+            || request.uri_path().collect::<Vec<_>>() != [Ok("secure")]
+            || request.options().count() != 1
+            || !request.payload().is_empty()
             || response.code() != Code::CONTENT
+            || response.ty() != coaptic::message::Type::Acknowledgement
+            || response.message_id() != request.message_id()
+            || response.options().count() != 0
             || response.token() != request.token()
             || response.payload() != site::SECURE_BODY
         {
@@ -303,14 +312,53 @@ fn grade(case: &Case, wrong: bool) -> Result<(), String> {
     }
     Ok(())
 }
+fn command(path: &std::path::Path, program: &str, args: &[&str]) -> String {
+    let output = std::process::Command::new(program)
+        .args(args)
+        .current_dir(path)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "provenance command failed");
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
+}
+fn identity(path: &std::path::Path) -> serde_json::Value {
+    let revision = command(path, "git", &["rev-parse", "HEAD"]);
+    let status = command(path, "git", &["status", "--porcelain"]);
+    assert!(status.is_empty(), "capture requires clean source");
+    serde_json::json!({"revision":revision,"dirty":false})
+}
 #[test]
 fn dtls_record_policy_ordinary_wrong_key_refusal_and_fresh_recovery() {
     let _guard = crate::runner::harness_lock();
-    let directory = std::path::PathBuf::from("target/pcaps/dtls-record-policy");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
+    let suite = identity(root);
+    let core = identity(&root.join("coaptic"));
+    let provenance = serde_json::json!({
+        "suite":suite,"core":core,
+        "compiler":command(root,"rustc", &["-Vv"]),
+        "backend_git_tree":command(root,"git", &["rev-parse","HEAD:vendor/webrtc-dtls"]),
+        "backend_hash_algorithm":"git SHA-1 tree (all tracked vendored source)",
+        "method":"three fresh loopback associations: intact, known-identity wrong PSK, intact recovery",
+        "literal_dtls02":"SKIP: bad_record_mac20 is not prescribed decrypt_error51"
+    });
+    let directory = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| root.join("target/pcaps"))
+        .join("dtls-record-policy");
     std::fs::create_dir_all(&directory).unwrap();
     let mut reports = Vec::new();
     for (index, wrong) in [false, true, false].into_iter().enumerate() {
-        let case = run_case(wrong).unwrap();
+        let case = match run_case(wrong) {
+            Ok(case) => case,
+            Err(error) => {
+                std::fs::write(directory.join("failure.json"), serde_json::to_vec_pretty(&serde_json::json!({"provenance":provenance,"case":index,"error":error.to_string(),"complete":false})).unwrap()).unwrap();
+                panic!("case {index}: {error}");
+            }
+        };
         case.capture
             .write_pcap(
                 std::fs::File::create(directory.join(format!("case-{index}.pcap"))).unwrap(),
@@ -319,7 +367,10 @@ fn dtls_record_policy_ordinary_wrong_key_refusal_and_fresh_recovery() {
         reports.push(serde_json::json!({"case":index,"wrong_key":wrong,"endpoints":case.endpoints,"authenticated":case.authenticated,"failed_handshake":case.failed_handshake,"completed":case.completed,"cleaned":case.cleaned,"elapsed_ms":case.elapsed.as_millis(),"application_packets":case.packets.iter().filter(|p|p.decrypted).count()}));
         std::fs::write(
             directory.join("report.json"),
-            serde_json::to_vec_pretty(&reports).unwrap(),
+            serde_json::to_vec_pretty(
+                &serde_json::json!({"provenance":provenance,"cases":reports,"complete":false}),
+            )
+            .unwrap(),
         )
         .unwrap();
         grade(&case, wrong).unwrap();
@@ -349,6 +400,37 @@ fn dtls_record_policy_ordinary_wrong_key_refusal_and_fresh_recovery() {
             }
             assert!(grade(&bad, wrong).is_err(), "mutation {mutation}");
         }
+        if !wrong {
+            for index in 0..2 {
+                for mutation in 0..4 {
+                    let mut bad = case.clone();
+                    let packet = bad
+                        .packets
+                        .iter_mut()
+                        .filter(|p| p.decrypted)
+                        .nth(index)
+                        .unwrap();
+                    match mutation {
+                        0 => packet.bytes[0] ^= 0x10,
+                        1 => packet.bytes[3] ^= 1,
+                        2 => packet.bytes[4] ^= 1,
+                        _ if index == 0 => {
+                            let pos = packet
+                                .bytes
+                                .windows(6)
+                                .position(|b| b == b"secure")
+                                .unwrap();
+                            packet.bytes[pos] = b'x';
+                        }
+                        _ => *packet.bytes.last_mut().unwrap() ^= 1,
+                    }
+                    assert!(
+                        grade(&bad, false).is_err(),
+                        "application {index} mutation {mutation}"
+                    );
+                }
+            }
+        }
         if wrong {
             for replacement in [vec![], vec![1, 20], vec![2, 51], vec![2, 115]] {
                 let mut bad = case.clone();
@@ -371,5 +453,12 @@ fn dtls_record_policy_ordinary_wrong_key_refusal_and_fresh_recovery() {
             );
         }
     }
+    assert_eq!(identity(root), suite, "suite changed during capture");
+    assert_eq!(
+        identity(&root.join("coaptic")),
+        core,
+        "core changed during capture"
+    );
+    std::fs::write(directory.join("report.json"), serde_json::to_vec_pretty(&serde_json::json!({"provenance":provenance,"cases":reports,"complete":true,"mutation_refusals":44})).unwrap()).unwrap();
     assert!(crate::catalog::skip_reason("TD_COAP_DTLS_02").is_some());
 }
