@@ -1,2 +1,6 @@
 # Preparation hashes the exact lock bytes; keep them identical on every host.
 **/Cargo.lock text eol=lf
+
+# Preserve vendored package and original RFC bytes for provenance checks.
+/vendor/webrtc-dtls/** -text
+/knowledge/rfcs/*.txt -text

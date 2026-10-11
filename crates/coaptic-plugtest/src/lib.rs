@@ -54,11 +54,11 @@
 //! client see plaintext CoAP. Mixed pairs (`coap-rs→coaptic`,
 //! `coaptic→coap-rs`, `coaptic→coaptic`) run handshake + GET `/secure`.
 //! `TD_COAP_DTLS_01` records the UDP handshake (cipher offer, selection, and
-//! Finished) plus the decrypted GET. `TD_COAP_DTLS_02`–`03` stay skipped:
-//! a plaintext `decrypt_error` alert is not graded, and each-flight handshake
-//! loss is not injected. The backend has no RFC 7250 raw public key, so
-//! `TD_COAP_DTLS_04`–`07` stay skipped. Separate X.509 tests are a different
-//! qualification and do not relabel those TDs.
+//! Finished) plus the decrypted GET. `TD_COAP_DTLS_03` qualifies Coaptic client/server
+//! under each intact handshake-datagram loss and bounded permanent loss using the
+//! vendored backend's final-flight recovery patch. Mixed directions remain SKIP.
+//! `TD_COAP_DTLS_02`'s prescribed alert and RFC7250 raw-public-key TDs remain
+//! unsupported; separate X.509 tests do not relabel those qualifications.
 //!
 //! # 6LoWPAN
 //!
