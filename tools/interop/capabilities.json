@@ -3082,7 +3082,7 @@
       "positive_proof": [
         "aiocoap authenticates inner Q-Block1 and exact complete 2000-byte upload",
         "lost authenticated Q request recovers through exact client retransmission and one handler effect",
-          "lost separate protected CON Created recovers through exact server retransmission and client ACK ownership",
+        "lost separate protected CON Created recovers through exact server retransmission and client ACK ownership",
         "fresh protected upload completes after wrong-key refusal and permanent reply loss"
       ],
       "failure_proof": [
