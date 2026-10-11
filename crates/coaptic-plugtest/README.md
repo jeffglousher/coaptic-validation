@@ -34,9 +34,9 @@ This crate is the **App SUT**. The in-crate `cargo test --test plugtest` harness
 ### Qualification boundary
 
 The App TD runner reports known incomplete scenarios as `SKIP: coverage gap #199`.
-Still unfinished, not conformance passes: OBS_01 (notifications stay NON until the
-24-hour confirm point); the rest of OBS except a coaptic↔coaptic OBS_02 NON
-notification (coap-rs does not collect notifications); DTLS_02 (no plaintext
+OBS_01 and OBS_02 pass for Coaptic and coap-rs clients against the Coaptic
+server; their coap-rs-server directions remain SKIP. Still unfinished, not
+conformance passes: the remaining Observe scenarios; DTLS_02 (no plaintext
 `decrypt_error` alert); DTLS_03 (each handshake flight is not dropped); and
 DTLS_04–07 (no RFC 7250 raw public key). An X.509 run is a different test.
 CORE separate responses, loss and retransmission, BLOCK trains, and DTLS_01
@@ -64,6 +64,25 @@ retiring the old ring/webpki chain. Dedicated tests qualify mutual X.509 GET in
 the two mixed directions and Coaptic self-pair, and require a certificate-verifier
 error for unrelated trust roots on either endpoint. They do not upgrade skipped
 RPK TDs to passes; independent DTLS-backend coverage remains libcoap/OpenSSL.
+
+### Literal confirmable Observe qualification
+
+`cargo test --locked -p coaptic-plugtest --test interop confirmable_observe_notifications_reach_each_client_backend`
+runs the original TD_COAP_OBS_01: CON registration for `/obs`, initial ACK
+representation, then two complete CON notifications with matching empty ACKs.
+The fixture requests CON explicitly through `App::notify_confirmable`; caller
+time is not accelerated and ordinary adaptive `notify` remains unchanged.
+Both clients collect the full expected bodies. The grader checks endpoint
+roles, token/MID ownership, content format and increasing Observe values;
+12 mutation cases per client reject incomplete or corrupted evidence.
+Set `COAPTIC_OBSERVE_CAPTURE_DIR` to retain `obs-01-coaptic.pcap` and
+`obs-01-coap-rs.pcap`. Duplicate client/server capture taps are deduplicated;
+only the six prescribed unique datagrams are accepted.
+
+This plaintext socket proof is separate from protected interoperability and
+sustained-loss qualification. The coap-rs server wrapper has no controlled CON
+notification source and stays SKIP. OBS_06 and all other incomplete literal
+Observe scenarios remain SKIP; see [#410](https://github.com/jeffglousher/coaptic/issues/410).
 
 ### Observe reset socket qualification
 

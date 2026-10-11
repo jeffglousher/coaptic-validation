@@ -143,9 +143,6 @@ pub fn skip_reason(id: &str) -> Option<&'static str> {
         return Some("enable crate feature dtls (harness webrtc-dtls adapter)");
     }
     match id {
-        "TD_COAP_OBS_01" => Some(
-            "coverage gap #199: server notifications stay NON until the 24-hour confirm point; this TD requires CON notifications",
-        ),
         "TD_COAP_DTLS_02" => Some(
             "coverage gap #199: prescribed decrypt_error alert is not visible as a plaintext fatal alert",
         ),
@@ -155,7 +152,7 @@ pub fn skip_reason(id: &str) -> Option<&'static str> {
         "TD_COAP_DTLS_04" | "TD_COAP_DTLS_05" | "TD_COAP_DTLS_06" | "TD_COAP_DTLS_07" => Some(
             "coverage gap #199: DTLS backend has no RFC 7250 raw public key; an X.509 run is a different test",
         ),
-        _ if OBS.contains(&id) && id != "TD_COAP_OBS_02" => Some(
+        _ if OBS.contains(&id) && !matches!(id, "TD_COAP_OBS_01" | "TD_COAP_OBS_02") => Some(
             "coverage gap #199: Observe cancel, Max-Age, re-registration, restart, loss, or large notifications are not qualified",
         ),
         _ => None,
