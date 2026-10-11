@@ -3171,6 +3171,15 @@
       "executable": "tools/interop/run.py:separate_client"
     },
     {
+      "id": "ipv6-separate-loss:coaptic->coap-rs",
+      "client": "coaptic", "server": "coap-rs", "transport": "udp", "security": "none",
+      "address_family": "ipv6-loopback", "execution_platforms": ["linux", "windows"], "requires": [],
+      "features": ["separate-response", "confirmable", "retransmission", "ipv6", "protocol-timeout"],
+      "positive_proof": ["IPv6-only exact endpoints and independent ::1 reachability", "lost standalone-fixture CON response retransmits identical bytes/MID/token then gets an owned ACK", "complete separate-payload and fresh complete recovery against the same server"],
+      "failure_proof": ["permanent reply loss retains initial request ACK and repeated CON attempts then protocol timeout without application response", "wrong family/endpoints, changed retransmission or ACK ownership and incomplete refusal evidence reject"],
+      "executable": "tools/interop/run.py:separate_ipv6_loss"
+    },
+    {
       "id": "separate-loss:coaptic->coap-rs",
       "client": "coaptic",
       "server": "coap-rs",
@@ -4339,7 +4348,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "The bounded standalone coap-rs fixture qualifies IPv4 UDP separate-response loss recovery. DTLS, other address families and embedded execution remain unqualified; this does not establish upstream coap-rs retransmission behavior.",
+      "reason": "The bounded standalone coap-rs fixture qualifies IPv4 and IPv6 loopback UDP separate-response loss recovery, including IPv6 permanent-reply-loss timeout and fresh recovery. DTLS, scoped/routed addressing and embedded execution remain unqualified; this does not establish upstream coap-rs retransmission behavior.",
       "issue": 200,
       "executable_cases": []
     },
