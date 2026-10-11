@@ -1632,7 +1632,7 @@ fn cipher_id(name: &str) -> Option<u16> {
 }
 
 /// Minimal DTLS ClientHello cipher-suite scan (best-effort).
-fn client_hello_has_suite(record: &[u8], suite: u16) -> bool {
+pub(crate) fn client_hello_has_suite(record: &[u8], suite: u16) -> bool {
     let Some(body) = dtls_handshake_body(record, 1) else {
         return false;
     };
@@ -1664,7 +1664,7 @@ fn client_hello_has_suite(record: &[u8], suite: u16) -> bool {
         .any(|c| u16::from_be_bytes([c[0], c[1]]) == suite)
 }
 
-fn server_hello_suite(record: &[u8]) -> Option<u16> {
+pub(crate) fn server_hello_suite(record: &[u8]) -> Option<u16> {
     let body = dtls_handshake_body(record, 2)?;
     if body.len() < 35 {
         return None;
