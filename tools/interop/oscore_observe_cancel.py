@@ -158,8 +158,12 @@ def review(record, patch):
                  (fresh_proof["notification_times_ns"][0], fresh_proof["notification_times_ns"][1]),
                  (fresh_proof["notification_times_ns"][1], fresh_proof["notification_times_ns"][2])]
     for write, (left, right) in zip(writes, intervals):
-        require(left < write["trace"][0]["time_ns"] and write["trace"][-1]["time_ns"] < right,
+        # The authenticated update can cause a notification before the
+        # independent writer's response/ACK exchange settles. Its triggering
+        # request must precede that notification; do not invent socket ordering.
+        require(left < write["trace"][0]["time_ns"] < right,
                 "resource update outside required lifecycle interval")
+    require(writes[1]["trace"][-1]["time_ns"] < after[0]["time_ns"], "quiet update not complete before fresh registration")
     readback = record["quiet_readback"]["trace"]
     require(writes[1]["trace"][-1]["time_ns"] < readback[0]["time_ns"]
             and readback[-1]["time_ns"] < after[0]["time_ns"], "missing authenticated quiet-interval effect")

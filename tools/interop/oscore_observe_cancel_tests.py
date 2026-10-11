@@ -129,6 +129,13 @@ class CancellationTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "response owner/options"):
             review(r, {"patch_sha256": "patch"})
 
+    def test_notification_can_precede_independent_writer_exchange_completion(self):
+        r = evidence(fresh_token=b"n")
+        for write, notification_at in zip((r["writes"][0], r["writes"][2], r["writes"][3]),
+                                         (r["trace"][4]["time_ns"], r["trace"][14]["time_ns"], r["trace"][16]["time_ns"])):
+            write["trace"][-1]["time_ns"] = notification_at + 50_000
+        self.assertEqual(review(r, {"patch_sha256": "patch"})["complete_bodies"], ["0", "1", "1", "2", "3", "4"])
+
     def test_hold_update_readback_and_fresh_recovery_are_required(self):
         mutations = [lambda r: r["writes"].pop(),
                      lambda r: r["quiet_readback"]["result"].update(payload_hex=b"1".hex()),
