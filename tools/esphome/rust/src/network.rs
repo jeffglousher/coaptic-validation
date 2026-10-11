@@ -4,6 +4,17 @@
 //! No actuator or durable application-effect boundary is supplied here. Runtime
 //! and storage custody remain caller-owned. Sources/images must be verified;
 //! host tests do not establish device execution or flash power-loss behavior.
+//!
+//! The poll-error streak measures returned errors, not received datagrams.
+//! Malformed and unauthenticated packets can be silently refused with `Ok`,
+//! which resets that streak just as an idle poll does. Durable recovery,
+//! checkpoint and reservation failures have their own immediate stop paths.
+//! Host tests qualify finite 64-packet malformed/wrong-key/tamper/replay bursts,
+//! complete protected oversized-echo refusals, fresh authenticated recovery and
+//! the 31/32 transport-error boundary. Oversized echo enters the authenticated
+//! handler; it is distinct from the C++ socket's raw UDP truncation/drop boundary,
+//! which these Rust tests do not execute. These finite tests do not establish
+//! sustained hostile-traffic availability or platform scheduler fairness.
 #![forbid(unsafe_code)]
 
 use coaptic::platform::{CheckedClock, ClockError};
@@ -18,6 +29,8 @@ static ID: [AtomicU8; 32] = [const { AtomicU8::new(0) }; 32];
 static TICKS: AtomicU32 = AtomicU32::new(0);
 #[cfg(test)]
 static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+#[cfg(test)]
+static ECHO_CALLS: AtomicU32 = AtomicU32::new(0);
 const LARGE: [u8; 2000] = [0x5a; 2000];
 
 struct Owner;
@@ -49,6 +62,8 @@ fn test(_: Request<'_>) -> Response<'static> {
 }
 
 fn echo(request: Request<'_>) -> Response<'static> {
+    #[cfg(test)]
+    ECHO_CALLS.fetch_add(1, Ordering::Relaxed);
     let body = request.body().unwrap_or(request.payload());
     if body.len() > 128 {
         return Response::new(coaptic::Code::REQUEST_ENTITY_TOO_LARGE);
@@ -448,6 +463,8 @@ mod tests {
         use super::*;
         use crate::security_state::{Credentials, Error, RECORD_BYTES, Store, provision};
         use coaptic::oscore::SecurityContext;
+        // Kept beside the adapter so these tests exercise its real poll loop.
+        mod rejection_tests;
         #[derive(Default)]
         struct Data {
             record: Option<[u8; RECORD_BYTES]>,
