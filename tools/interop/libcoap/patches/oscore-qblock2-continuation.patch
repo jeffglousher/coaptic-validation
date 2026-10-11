@@ -31,15 +31,17 @@ index 1e325c0..5b8e6bf 100644
 
  #endif /* COAP_BLOCK_INTERNAL_H_ */
 diff --git a/include/coap3/coap_pdu_internal.h b/include/coap3/coap_pdu_internal.h
-index 2e8a451..bd58c9b 100644
+index 2e8a451..114aa66 100644
 --- a/include/coap3/coap_pdu_internal.h
 +++ b/include/coap3/coap_pdu_internal.h
-@@ -173,6 +173,12 @@ struct coap_pdu_t {
+@@ -173,6 +173,14 @@ struct coap_pdu_t {
    size_t body_total;        /**< Holds body data total size */
    coap_lg_xmit_t *lg_xmit;  /**< Holds ptr to lg_xmit if sending a set of
                                   blocks */
-+#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
++#if COAP_OSCORE_SUPPORT
 +  uint64_t oscore_request_generation; /**< Originating authenticated request. */
++#endif
++#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
 +  uint64_t oscore_q_generation; /**< Exact owned request binding, zero if absent. */
 +  uint32_t oscore_q_block2; /**< Packed inner Q-Block2 continuation for encrypted
 +                                UDP CON; zero means none. lg_xmit is weak. */
@@ -48,15 +50,15 @@ index 2e8a451..bd58c9b 100644
    coap_binary_t *data_free; /**< Data to be freed off by coap_delete_pdu() */
  };
 diff --git a/include/coap3/coap_session_internal.h b/include/coap3/coap_session_internal.h
-index e42b911..e19d7be 100644
+index e42b911..9d78b8e 100644
 --- a/include/coap3/coap_session_internal.h
 +++ b/include/coap3/coap_session_internal.h
 @@ -186,6 +186,11 @@ struct coap_session_t {
                                         close */
    uint8_t csm_not_seen;           /**< Set if timeout waiting for CSM */
  #if COAP_OSCORE_SUPPORT
-+#if COAP_Q_BLOCK_SUPPORT
 +  uint64_t oscore_request_generation; /**< No reuse, including recipient replacement. */
++#if COAP_Q_BLOCK_SUPPORT
 +  uint64_t oscore_q_generation; /**< Monotonic across transfer allocation reuse. */
 +  unsigned int oscore_q_encrypting; /**< Dynamic recipient removal refuses while set. */
 +#endif
@@ -927,16 +929,18 @@ index a1d4592..0e975ad 100644
  }
 
 diff --git a/src/coap_pdu.c b/src/coap_pdu.c
-index 4602820..26ff2c4 100644
+index 4602820..67e5406 100644
 --- a/src/coap_pdu.c
 +++ b/src/coap_pdu.c
-@@ -62,6 +62,11 @@ coap_pdu_clear(coap_pdu_t *pdu, size_t size) {
+@@ -62,6 +62,13 @@ coap_pdu_clear(coap_pdu_t *pdu, size_t size) {
    pdu->body_offset = 0;
    pdu->body_total = 0;
    pdu->lg_xmit = NULL;
++#if COAP_OSCORE_SUPPORT
++  pdu->oscore_request_generation = 0;
++#endif
 +#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
 +  pdu->oscore_q_block2 = 0;
-+  pdu->oscore_request_generation = 0;
 +  pdu->oscore_q_generation = 0;
 +#endif
    pdu->session = NULL;

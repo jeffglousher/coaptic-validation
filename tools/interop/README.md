@@ -246,7 +246,9 @@ repeated-selector bursts are refused. It does not add an independent-peer PASS
 for those combinations. Retained binding metadata is limited to one token of at
 most eight bytes, 200 AAD bytes, a 13-byte nonce and an eight-byte request PIV per
 live transfer, plus allocator/structure overhead. This is not a total libcoap
-memory ceiling. Dynamic recipient deletion conservatively refuses while a
+memory ceiling. The authenticated-request generation adds one 64-bit field to
+each OSCORE PDU, session and association even when Q-Block is disabled; structure
+padding and allocator overhead are additional. Dynamic recipient deletion conservatively refuses while a
 protected-Q response is encrypting, and otherwise invalidates only the exact
 OSCORE context/recipient's bindings. Context teardown follows upstream's documented
 prohibition on calling `coap_free_context()` from a libcoap callback.
