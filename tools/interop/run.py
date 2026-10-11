@@ -301,7 +301,7 @@ class Proxy:
                     except ConnectionResetError:
                         # Windows reports late ICMP port-unreachable when a
                         # one-shot client exits after the first duplicate reply.
-                        if self.mode in ("duplicate-request", "dtls-reconnect", "drop-qblock2", "drop-qblock2-permanent", "reorder-qblock2") and sock is self.front:
+                        if self.mode in ("duplicate-request", "dtls-reconnect", "drop-qblock2", "drop-qblock2-permanent", "drop-qblock2-once", "reorder-qblock2") and sock is self.front:
                             continue
                         raise
                     incoming = sock is self.front
@@ -328,9 +328,10 @@ class Proxy:
                         action, dropped = "delay", True
                     elif self.mode == "duplicate-request" and incoming and not duplicated:
                         action, duplicated = "duplicate", True
-                    elif self.mode in ("drop-qblock2", "drop-qblock2-permanent"):
-                        # Shrink the /large size hint, then drop block 1 until the client asks for it.
-                        # Block 0 still arrives, so Size2 is seen. The probe token is left alone.
+                    elif self.mode in ("drop-qblock2", "drop-qblock2-permanent", "drop-qblock2-once"):
+                        # Shrink /large to 256-byte blocks. Lose block1 once,
+                        # permanently, or until selective recovery, per schedule.
+                        # Block0 and its Size2 arrive; probe tokens are untouched.
                         token = packet_token(data)
                         if incoming:
                             try:
@@ -342,7 +343,7 @@ class Proxy:
                                 release_held = True
                         elif not release_held:
                             num = qblock2_content_num(data)
-                            if num == 1 and token in large_tokens:
+                            if num == 1 and token in large_tokens and (self.mode != "drop-qblock2-once" or held_num is None):
                                 action = "drop"
                                 held_num = num
                     elif self.mode == "reorder-qblock2":
@@ -360,7 +361,7 @@ class Proxy:
                     if len(self.trace) >= (8192 if self.mode == "dtls-reconnect" else 256):
                         raise RuntimeError("proxy trace limit exceeded")
                     forwarded = data[:-1] + bytes([data[-1] ^ 0x80]) if action == "corrupt" else data
-                    if self.mode in ("drop-qblock2", "drop-qblock2-permanent") and incoming and action == "forward" and packet_token(data) in large_tokens:
+                    if self.mode in ("drop-qblock2", "drop-qblock2-permanent", "drop-qblock2-once") and incoming and action == "forward" and packet_token(data) in large_tokens:
                         forwarded = shrink_qblock2_szx(data)
                     elif self.qblock2_szx is not None and incoming and action == "forward":
                         try:
@@ -370,6 +371,7 @@ class Proxy:
                             pass
                     self.trace.append({"direction": "request" if incoming else "response",
                                        "action": action, "hex": data.hex(), "forwarded_hex": forwarded.hex(),
+                                       "time_ns": time.monotonic_ns(),
                                        "source": list(source), "destination": list(self.dest if incoming else client),
                                        "relay": list((self.back if incoming else self.front).getsockname())})
                     if action == "delay":
@@ -2070,6 +2072,22 @@ def qblock2_ipv6_loss(client, server):
     return {"probe": probe, "schedules": proofs}
 
 
+def qblock2_con_loss(client, server):
+    """Default-NSTART CON retransmission, bounded partial refusal, then fresh success."""
+    from qblock_con import grade
+    proofs = {}
+    with Server(server, "udp") as service:
+        for label, mode, deadline in [("recovery", "drop-qblock2-once", 20000),
+                                      ("partial_refusal", "drop-qblock2-permanent", 6000),
+                                      ("fresh_recovery", "drop-qblock2-once", 20000)]:
+            with Proxy(service.number, mode) as relay:
+                endpoints = {"front": relay.front.getsockname(), "back": relay.back.getsockname(), "server": relay.dest}
+                result = request(client, "udp", relay.number, path="large", timeout=deadline, qblock2=True)
+            proof = grade(relay.trace, result, endpoints, complete=label != "partial_refusal")
+            proofs[label] = dict(proof=proof, result=result, deadline_ms=deadline)
+    return {"schedules": proofs}
+
+
 def qblock2_window(client, server):
     """RFC 9177 section 4.4: a full window of 10 is confirmed with Q-Block2 NUM 10, M=1."""
     with Server(server, "udp") as service:
@@ -2555,6 +2573,8 @@ def main():
          lambda: qblock2_missing(peers["coaptic"], peers["libcoap"], non=True))
     case("ipv6-qblock2-loss:coaptic->libcoap",
          lambda: qblock2_ipv6_loss(peers["coaptic"], peers["libcoap"]))
+    case("con-qblock2-loss:coaptic->libcoap",
+         lambda: qblock2_con_loss(peers["coaptic"], peers["libcoap"]))
     case("qblock2-reorder:coaptic->coaptic",
          lambda: qblock2_reorder(peers["coaptic"], peers["coaptic"]))
     for client, server in [("coaptic", "coaptic"), ("coaptic", "libcoap"), ("libcoap", "coaptic")]:

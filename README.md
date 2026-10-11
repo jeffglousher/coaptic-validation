@@ -163,9 +163,16 @@ owned `coaptic_sec` namespace. No key is erased by these modes.
 The task stops after one bounded attempt. A restart recovers the same operation
 and skips previously reserved sender sequences; an authenticated receipt must
 be durably saved before `COAPTIC_TELEMETRY_COMPLETE` is logged. A previously
-completed record returns its saved result without transmitting. Configuration
-generation and host tests do not qualify ESP flash or device restart behavior;
-source-verified physical execution remains in #333/#365.
+completed record returns its saved result without transmitting.
+
+A [source-verified ESP32-S3/Windows qualification](tools/esphome/evidence/retained-telemetry-20261011.json)
+retained a 1024-byte operation across a device software restart after the host
+withheld its receipt. A fresh host process returned the original receipt with
+one journaled effect and a byte-identical journal; the device then logged durable completion.
+The report records separate firmware and host source revisions, hashes, methods,
+setup failures and limits. ESP32-S3 is a qualification platform for the portable
+constrained adapter. Flash power-loss recovery, hostile snapshot rollback,
+production key custody and enrollment remain unqualified in #333/#365.
 
 Build tooling requires clean library and suite checkouts after preparation:
 
