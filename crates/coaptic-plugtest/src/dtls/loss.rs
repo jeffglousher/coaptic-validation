@@ -1,4 +1,4 @@
-//! Bounded intact-datagram qualification of the Coaptic DTLS03 direction.
+//! Bounded intact-datagram qualification of DTLS03 with a Coaptic server.
 
 use super::*;
 use std::net::UdpSocket;
@@ -218,11 +218,95 @@ fn io_from_conn(conn: DTLSConn, local: SocketAddr, peer: SocketAddr) -> DtlsIo {
     }
 }
 
-async fn exchange(target: Option<Target>) -> Result<Case, PeerError> {
-    exchange_with_limit(target, 1).await
+#[derive(Clone, Copy)]
+pub(super) enum ClientKind {
+    Coaptic,
+    CoapRs,
+}
+impl ClientKind {
+    fn direction(self) -> &'static str {
+        match self {
+            Self::Coaptic => "coaptic-to-coaptic",
+            Self::CoapRs => "coap-rs-to-coaptic",
+        }
+    }
 }
 
-async fn exchange_with_limit(target: Option<Target>, drop_limit: usize) -> Result<Case, PeerError> {
+// The actual coap-rs client owns CoAP encoding, matching and delivery. Only
+// authenticated transport bytes are tapped here; DTLS still uses the same backend.
+struct CapturedRsClient {
+    connection: Arc<DTLSConn>,
+    local: SocketAddr,
+    peer: SocketAddr,
+    capture: Capture,
+}
+#[async_trait]
+impl coap::client::ClientTransport for CapturedRsClient {
+    async fn recv(&self, bytes: &mut [u8]) -> std::io::Result<(usize, Option<SocketAddr>)> {
+        let n = self
+            .connection
+            .recv(bytes)
+            .await
+            .map_err(std::io::Error::other)?;
+        self.capture.push(self.peer, self.local, &bytes[..n], true);
+        Ok((n, Some(self.peer)))
+    }
+    async fn send(&self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.capture.push(self.local, self.peer, bytes, true);
+        let n = self
+            .connection
+            .send(bytes)
+            .await
+            .map_err(std::io::Error::other)?;
+        Ok(n)
+    }
+}
+
+async fn rs_get_over_connection(
+    conn: DTLSConn,
+    local: SocketAddr,
+    peer: SocketAddr,
+    capture: Capture,
+) -> Result<(), PeerError> {
+    let connection = Arc::new(conn);
+    let client = coap::client::CoAPClient::from_transport(CapturedRsClient {
+        connection: Arc::clone(&connection),
+        local,
+        peer,
+        capture,
+    });
+    let mut request = coap::request::RequestBuilder::request_path(
+        "/secure",
+        coap_lite::RequestType::Get,
+        None,
+        vec![],
+        Some(format!("coaps://{peer}/secure")),
+    )
+    .build();
+    request.message.set_token(vec![0x44, 0x54, 0x4c, 0x53]);
+    let response = client
+        .send(request)
+        .await
+        .map_err(|e| PeerError(format!("coap-rs GET /secure: {e}")))?;
+    let _ = tokio::time::timeout(Duration::from_secs(1), connection.close()).await;
+    if response.message.header.code
+        != coap_lite::MessageClass::Response(coap_lite::ResponseType::Content)
+        || response.message.payload != site::SECURE_BODY
+    {
+        return Err(PeerError("coap-rs authenticated complete response".into()));
+    }
+    Ok(())
+}
+
+async fn exchange(target: Option<Target>, client_kind: ClientKind) -> Result<Case, PeerError> {
+    exchange_with_limit(target, 1, client_kind).await
+}
+
+async fn exchange_with_limit(
+    target: Option<Target>,
+    drop_limit: usize,
+    client_kind: ClientKind,
+) -> Result<Case, PeerError> {
     let capture = Capture::new();
     let client = tokio::net::UdpSocket::bind("127.0.0.1:0")
         .await
@@ -283,15 +367,22 @@ async fn exchange_with_limit(target: Option<Target>, drop_limit: usize) -> Resul
                 Ok(())
             },
         )?;
-        let client_io = CapturingIo::new(
-            io_from_conn(client_conn, client_addr, front_addr),
-            client_addr,
-            capture.clone(),
-        )
-        .decrypted();
-        tokio::task::spawn_blocking(move || coaptic_get_secure(client_io, front_addr))
-            .await
-            .map_err(|e| PeerError(e.to_string()))?
+        match client_kind {
+            ClientKind::Coaptic => {
+                let client_io = CapturingIo::new(
+                    io_from_conn(client_conn, client_addr, front_addr),
+                    client_addr,
+                    capture.clone(),
+                )
+                .decrypted();
+                tokio::task::spawn_blocking(move || coaptic_get_secure(client_io, front_addr))
+                    .await
+                    .map_err(|e| PeerError(e.to_string()))?
+            }
+            ClientKind::CoapRs => {
+                rs_get_over_connection(client_conn, client_addr, front_addr, capture.clone()).await
+            }
+        }
     })
     .await;
     if let Some(serving) = serving {
@@ -494,11 +585,14 @@ fn grade_case(case: &Case, target: Option<&Target>, complete: bool) -> Result<()
     crate::grade::Catalog::load()?.grade("TD_COAP_DTLS_01", &capture)
 }
 
-fn retain(cases: &[Case], targets: &[Target]) {
+fn retain(cases: &[Case], targets: &[Target], client_kind: ClientKind) {
     let Some(directory) = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR") else {
         return;
     };
-    let directory = std::path::PathBuf::from(directory).join("dtls03-loss");
+    let directory = std::path::PathBuf::from(directory).join(match client_kind {
+        ClientKind::Coaptic => "dtls03-loss",
+        ClientKind::CoapRs => "dtls03-coap-rs-loss",
+    });
     std::fs::create_dir_all(&directory).unwrap();
     let mut reports = Vec::new();
     for (index, case) in cases.iter().enumerate() {
@@ -527,7 +621,7 @@ fn retain(cases: &[Case], targets: &[Target]) {
         };
         serde_json::json!({"revision":git(&["rev-parse","HEAD"]),"dirty":!git(&["status","--porcelain"]).is_empty()})
     };
-    let report = serde_json::json!({"literal_td":"TD_COAP_DTLS_03","literal_complete":true,"literal_status":"PASS","direction":"coaptic-to-coaptic","suite":identity(root),"core":identity(&root.join("coaptic")),"backend":"vendored webrtc-dtls 0.12.0 with bounded final-flight retention","normal_targets":targets,"cases":reports,"case_order":"baseline, six targeted one-datagram losses, permanent final-flight loss refusal, fresh recovery","fixture_mapping":"TD /secure stimulus chosen over inconsistent /test step; UDP server port5684; exact secure fixture body","limitations":"other application directions remain SKIP; no first-party core DTLS, DTLS02 alert or RPK claim"});
+    let report = serde_json::json!({"literal_td":"TD_COAP_DTLS_03","literal_complete":true,"literal_status":"PASS","direction":client_kind.direction(),"suite":identity(root),"core":identity(&root.join("coaptic")),"backend":"vendored webrtc-dtls 0.12.0 with bounded final-flight retention","normal_targets":targets,"cases":reports,"case_order":"baseline, six targeted one-datagram losses, permanent final-flight loss refusal, fresh recovery","fixture_mapping":"TD /secure stimulus chosen over inconsistent /test step; UDP server port5684; exact secure fixture body","limitations":"Coaptic-to-coap-rs remains SKIP; shared DTLS backend, not independent cryptographic interoperability; no first-party core DTLS, DTLS02 alert or RPK claim"});
     std::fs::write(
         directory.join("report.json"),
         serde_json::to_vec_pretty(&report).unwrap(),
@@ -535,8 +629,8 @@ fn retain(cases: &[Case], targets: &[Target]) {
     .unwrap();
 }
 
-fn qualify() -> Result<(Vec<Case>, Vec<Target>), PeerError> {
-    let baseline = runtime()?.block_on(exchange(None))?;
+fn qualify(client_kind: ClientKind) -> Result<(Vec<Case>, Vec<Target>), PeerError> {
+    let baseline = runtime()?.block_on(exchange(None, client_kind))?;
     grade_case(&baseline, None, true).map_err(PeerError)?;
     let targets: Vec<_> = baseline
         .events
@@ -556,30 +650,41 @@ fn qualify() -> Result<(Vec<Case>, Vec<Target>), PeerError> {
     }
     let mut cases = vec![baseline];
     for target in &targets {
-        let case = runtime()?.block_on(exchange(Some(target.clone())))?;
+        let case = runtime()?.block_on(exchange(Some(target.clone()), client_kind))?;
         grade_case(&case, Some(target), true).map_err(PeerError)?;
         cases.push(case);
     }
-    let refused =
-        runtime()?.block_on(exchange_with_limit(Some(targets[5].clone()), MAX_DATAGRAMS))?;
+    let refused = runtime()?.block_on(exchange_with_limit(
+        Some(targets[5].clone()),
+        MAX_DATAGRAMS,
+        client_kind,
+    ))?;
     grade_case(&refused, Some(&targets[5]), false).map_err(PeerError)?;
     cases.push(refused);
-    let recovery = runtime()?.block_on(exchange(None))?;
+    let recovery = runtime()?.block_on(exchange(None, client_kind))?;
     grade_case(&recovery, None, true).map_err(PeerError)?;
     cases.push(recovery);
-    retain(&cases, &targets);
+    retain(&cases, &targets, client_kind);
     Ok((cases, targets))
 }
 
-pub(super) fn run() -> Result<Capture, PeerError> {
-    let (cases, _) = qualify()?;
+pub(super) fn run(client_kind: ClientKind) -> Result<Capture, PeerError> {
+    let (cases, _) = qualify(client_kind)?;
     Ok(cases[0].capture.clone())
 }
 
 #[test]
 fn dtls03_all_intact_losses_refuse_permanent_loss_and_fresh_recovery() {
+    loss_campaign(ClientKind::Coaptic);
+}
+#[test]
+fn dtls03_coap_rs_intact_losses_refuse_permanent_loss_and_fresh_recovery() {
+    loss_campaign(ClientKind::CoapRs);
+}
+#[cfg(test)]
+fn loss_campaign(client_kind: ClientKind) {
     let _guard = crate::runner::harness_lock();
-    let (cases, targets) = qualify().unwrap();
+    let (cases, targets) = qualify(client_kind).unwrap();
     assert!(cases[..7].iter().all(|case| case.completed));
     assert!(!cases[7].completed);
     assert!(cases[8].completed);
@@ -600,6 +705,9 @@ fn dtls03_all_intact_losses_refuse_permanent_loss_and_fresh_recovery() {
             "missing-retry",
             "record-sequence-reuse",
             "application",
+            "response-body",
+            "response-token",
+            "response-mid",
         ] {
             let mut changed = cases[index].clone();
             let lost = changed.events.iter().position(|e| !e.forwarded).unwrap();
@@ -656,6 +764,21 @@ fn dtls03_all_intact_losses_refuse_permanent_loss_and_fresh_recovery() {
                         .unwrap()
                         .bytes = changed.events[retry].bytes.clone();
                 }
+                "response-body" | "response-token" | "response-mid" => {
+                    for packet in changed
+                        .packets
+                        .iter_mut()
+                        .filter(|p| p.decrypted && p.bytes[1] == 69)
+                    {
+                        let index = match fault {
+                            "response-body" => packet.bytes.len() - 1,
+                            "response-token" => 4,
+                            "response-mid" => 3,
+                            _ => unreachable!(),
+                        };
+                        packet.bytes[index] ^= 1;
+                    }
+                }
                 "application" => {
                     if let Some(p) = changed.packets.iter_mut().find(|p| p.decrypted) {
                         *p.bytes.last_mut().unwrap() ^= 1;
@@ -678,7 +801,10 @@ fn dtls03_all_intact_losses_refuse_permanent_loss_and_fresh_recovery() {
 #[test]
 fn dtls03_final_flight_loss_recovers_same_connection() {
     let _guard = crate::runner::harness_lock();
-    let baseline = runtime().unwrap().block_on(exchange(None)).unwrap();
+    let baseline = runtime()
+        .unwrap()
+        .block_on(exchange(None, ClientKind::Coaptic))
+        .unwrap();
     grade_case(&baseline, None, true).unwrap();
     let targets: Vec<_> = baseline
         .events
@@ -690,7 +816,7 @@ fn dtls03_final_flight_loss_recovers_same_connection() {
     let final_flight = &targets[5];
     let recovered = runtime()
         .unwrap()
-        .block_on(exchange(Some(final_flight.clone())))
+        .block_on(exchange(Some(final_flight.clone()), ClientKind::Coaptic))
         .unwrap();
     grade_case(&recovered, Some(final_flight), true).unwrap();
 }

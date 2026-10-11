@@ -10,9 +10,9 @@
 //! `TLS_PSK_WITH_AES_128_CCM_8` (ETSI CoAP#4).
 //!
 //! `TD_COAP_DTLS_01` records the handshake and decrypted GET. `TD_COAP_DTLS_03`
-//! qualifies each intact handshake-datagram loss for Coaptic client/server using
-//! a bounded final-flight patch to the vendored test backend. Other directions
-//! remain skipped. DTLS02's prescribed alert and RFC7250 raw-public-key TDs
+//! qualifies each intact handshake-datagram loss for Coaptic or coap-rs clients with a Coaptic server using
+//! a bounded final-flight patch to the shared vendored test backend. The reverse mixed direction
+//! remains skipped. DTLS02's prescribed alert and RFC7250 raw-public-key TDs
 //! remain unsupported; X.509 runs are a different qualification.
 
 #[path = "../../../tools/interop/coap_dtls.rs"]
@@ -342,20 +342,23 @@ fn run_one(id: &str, pair: Pair) -> TdResult {
             capture: Capture::new(),
         };
     }
-    if id == "TD_COAP_DTLS_03" && (pair.client != "coaptic" || pair.server != "coaptic") {
+    if id == "TD_COAP_DTLS_03"
+        && (pair.server != "coaptic" || !matches!(pair.client, "coaptic" | "coap-rs"))
+    {
         return TdResult {
             id: id.to_owned(),
             pair,
-            error: Some(
-                "SKIP: DTLS03 intact-loss qualification currently covers only coaptic-to-coaptic"
-                    .into(),
-            ),
+            error: Some("SKIP: DTLS03 intact-loss qualification requires a Coaptic server".into()),
             capture: Capture::new(),
         };
     }
     let err = match id {
         "TD_COAP_DTLS_01" => dtls_psk(pair, PSK_KEY, true),
-        "TD_COAP_DTLS_03" => loss::run(),
+        "TD_COAP_DTLS_03" => loss::run(if pair.client == "coap-rs" {
+            loss::ClientKind::CoapRs
+        } else {
+            loss::ClientKind::Coaptic
+        }),
         "TD_COAP_DTLS_02" => dtls_psk(pair, b"wrong", false),
         other => Err(PeerError(format!("unknown DTLS id {other}"))),
     };
@@ -588,13 +591,26 @@ pub fn adapter_note() -> &'static str {
     "DTLS: harness webrtc-dtls DatagramIo adapter. coaptic library has no DTLS dep; \
      App::poll / App client see plaintext CoAP over a DTLS-wrapped socket in this crate. \
      Mixed pairs (coap-rs→coaptic, coaptic→coap-rs, coaptic→coaptic) run handshake + GET /secure. \
-     TD_COAP_DTLS_01 grades the UDP handshake and decrypted GET. DTLS_02–03 and \
+     TD_COAP_DTLS_01 grades the UDP handshake and decrypted GET. DTLS03 covers Coaptic servers. DTLS02 and \
      raw-public-key TDs stay skipped; X.509 tests do not establish RPK support."
 }
 
 #[cfg(test)]
 mod qualification_tests {
     use super::*;
+
+    #[test]
+    fn dtls03_reverse_mixed_direction_remains_skipped() {
+        let result = run_one(
+            "TD_COAP_DTLS_03",
+            Pair {
+                client: "coaptic",
+                server: "coap-rs",
+            },
+        );
+        assert!(result.error.as_deref().unwrap().starts_with("SKIP:"));
+        assert!(result.capture.snapshot().is_empty());
+    }
 
     #[test]
     fn psk_authentication_preserves_mixed_coap_get() {
