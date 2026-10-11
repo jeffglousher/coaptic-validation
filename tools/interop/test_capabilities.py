@@ -26,12 +26,12 @@ class CapabilityTests(unittest.TestCase):
     def test_full_and_explicitly_limited_inventory(self):
         full = self.check(self.outcomes)
         self.assertTrue(full["complete"])
-        self.assertEqual(full["enabled_cases"], 179)
+        self.assertEqual(full["enabled_cases"], 180)
         excluded = {row["id"] for row in self.manifest["cases"] if row["requires"]}
         limited = self.check([row for row in self.outcomes if row["name"] not in excluded], False, "windows")
         self.assertTrue(limited["complete"])
         self.assertEqual(limited["enabled_cases"], 150)
-        self.assertEqual(sum(row["status"] == "build-excluded" for row in limited["cases"]), 29)
+        self.assertEqual(sum(row["status"] == "build-excluded" for row in limited["cases"]), 30)
         self.assertEqual(limited["unqualified"], full["unqualified"])
         self.assertEqual(len(self.digest), 64)
 
@@ -90,7 +90,7 @@ class CapabilityTests(unittest.TestCase):
         return names
 
     def test_runner_full_security_inventory_is_unchanged(self):
-        self.check_runner_inventory([], set(), 179)
+        self.check_runner_inventory([], set(), 180)
 
     def test_runner_oscore_exclusion_preserves_c_dtls_observe(self):
         names = self.check_runner_inventory(["--libcoap-oscore-unavailable"], {"libcoap-oscore"}, 167)
