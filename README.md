@@ -138,6 +138,66 @@ that result to durable device recovery, independently observe the restart and
 allow no intervening protected traffic. Silence alone is not a passing result.
 This finite driver is a qualification tool, not an unbounded host service.
 
+`raw-udp ADDRESS CREDENTIALS STATE REPORT RUN_ID` uses the same exclusive
+private state, with a new report path instead of a saved request. In protected
+service mode it checks identity, complete 2000-byte delivery, 128-byte echo and
+an authenticated timer before and after four finite 64-packet UDP groups
+(1153, 2047, 2048 and 4096 bytes, all `0xa5`, 50 ms pacing). It never provisions
+or switches firmware. A completed host report explicitly leaves device
+qualification false: [the offline grader](tools/qualification/raw_udp.py)
+requires independent encrypted-API counter capture and verified build/install
+records. [Synthetic fixtures](tools/qualification/test_raw_udp.py) exercise
+refusal grading and do not qualify hardware or sustained availability.
+
+Pacing targets observable delivery through the device socket boundary, not
+throughput. The [source-bound physical record](tools/qualification/evidence/waveshare-raw-udp-20261011.json)
+and [qualification report](https://github.com/jeffglousher/coaptic/issues/462#issuecomment-6107306240)
+retain three actual trials: 56 recorded drops at 2 ms pacing, 64 at 50 ms,
+and all 256 after enabling IPv4 reassembly in the qualification image. The
+unchanged strict grader rejected both incomplete trials and accepted the third,
+including all 20 protected controls and timer progress. Those failures do not
+conclusively locate packet loss. Firmware and host source identities are separate.
+
+The successful ESP-IDF v5.5.5 qualification image adds these platform settings
+to the existing ESPHome `esp32.framework` configuration:
+
+```yaml
+sdkconfig_options:
+  CONFIG_LWIP_IP4_REASSEMBLY: "y"
+  CONFIG_LWIP_IP_REASS_MAX_PBUFS: "10"
+```
+
+These settings let fragmented IPv4 UDP datagrams reach the socket boundary.
+The generated SDK configuration changed only the reassembly enable flag; the
+waiting-pbuf limit remained 10. Its three-second reassembly lifetime and ten-pbuf
+count describe platform resources outside Coaptic's storage budget, not a byte
+or whole-device memory ceiling. This qualification configuration does not change
+core defaults or establish sustained availability or throughput.
+
+The grader's `--help` lists the required retained artifacts. Its manifest binds
+40-character core/suite revisions, host binary and OTA hashes, protected mode
+1, run ID, installation time/receipt hash, capture-tool hash and SHA-256 hashes
+of `host_build`, `firmware_preparation`, `component_archive` and `installation`.
+The firmware preparation retains `images` with build success, run ID and OTA
+hash; the upload receipt records `exit_code: 0`, `mode: "protected"`, run ID,
+OTA hash and host `observed_at_ms`. Existing static-archive build metadata is
+checked inside the component archive without filesystem extraction. Compressed
+input is limited to 16 MB, expansion to 32 MiB and physical/logical TAR headers
+to 64; duplicate members and links refuse. This is build/install attribution, not
+cryptographic firmware attestation.
+
+Capture input is JSONL: `capture_begin` records `at_ms`,
+`clock: "host_utc_receipt"`, `transport: "encrypted_esphome_api"` and
+`device_ipv4`; each `log` records host receipt `at_ms` and `message`;
+`capture_end` records `at_ms`. Use the same host UTC clock as the campaign,
+start after the verified service is ready, and retain counter samples within
+10 seconds before and after the campaign. Device timestamps are not substituted.
+All 256 actual socket drops must be accounted for; unrelated oversize traffic,
+missing counters, counter resets, stopped tasks or partial bodies refuse the
+result. The task may yield zero times under paced traffic; this campaign does
+not establish scheduling fairness. Telemetry mode 3 requires a separately
+reviewed service-mode transition before this demonstration.
+
 The optional Rust `telemetry` feature provides
 [`pending_telemetry`](tools/esphome/rust/src/pending_telemetry.rs): one
 authenticated 1,214-byte caller-owned record for a complete pending operation
