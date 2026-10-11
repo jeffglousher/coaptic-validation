@@ -92,4 +92,19 @@ contiguous numbers and a final block. The report retains the full trace,
 including original and forwarded bytes. Mutation tests reject absent loss,
 wrong recovery options, CON fallback and incomplete or changed body evidence.
 These cases cover IPv4 and IPv6 loopback UDP; protected recovery, scoped/routed
-networks, CON loss recovery against libcoap and hardware remain unqualified.
+networks and hardware remain unqualified.
+
+The separate `con-qblock2-loss` case qualifies Coaptic-to-libcoap CON recovery
+with libcoap's unchanged default NSTART of one. It drops the first later CON
+block 1, requires a byte-identical retransmission with the same MID and token,
+and binds every empty ACK to the exact client/server relay endpoints. Each
+outstanding CON must be ACKed before the next block. Complete delivery requires
+the exact 2000-byte body with stable ETag, Size2 and SZX; losing block 1 permanently
+must instead produce a protocol timeout with only 256 verified partial bytes.
+A fresh request to the same server then recovers the full body. Each successful
+schedule has a 20-second deadline; refusal has a 6-second deadline and must include
+an actual retransmission. Capture bounds remain 256 datagrams, with monotonic
+capture times retained. These finite IPv4 loopback schedules do not qualify
+post-MAX_TRANSMIT_SPAN selective retry, every retransmission timer boundary,
+protected transfers or sustained availability. RFC 9177 sections 4.4 and 7.1 describe
+this CON reliability behavior separately from NON selective recovery.
