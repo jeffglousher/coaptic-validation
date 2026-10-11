@@ -41,6 +41,14 @@ struct ServerCtl {
 }
 
 enum NotifyCommand {
+    SignalObserved {
+        body: &'static [u8],
+        completion: std::sync::mpsc::SyncSender<usize>,
+    },
+    ObserveOwner {
+        key: coaptic::storage::ObserveKey,
+        completion: std::sync::mpsc::SyncSender<bool>,
+    },
     ResetObserved(std::sync::mpsc::SyncSender<()>),
     UpdatePumpingObserved {
         version: u8,
@@ -184,6 +192,45 @@ impl Peer for CoapticPeer {
             .saturating_add(1);
         let call = send_client(&mut hold.app, dest, req, now, Some(hold.call))?;
         wait_response(&mut hold.app, call, hold.origin, req.timeout)
+    }
+
+    fn signal_observed(&mut self, path: &[&str], payload: &[u8]) -> Result<usize, PeerError> {
+        if path != ["obs"] {
+            return Err(PeerError("signal requires /obs".into()));
+        }
+        let body = site::observe_update_body(payload).ok_or("unsupported signal representation")?;
+        let server = self.server.as_ref().ok_or("no server")?;
+        let (completion, result) = std::sync::mpsc::sync_channel(1);
+        {
+            let mut command = server.notify.lock().expect("signal");
+            if command.is_some() {
+                return Err(PeerError("notification command occupied".into()));
+            }
+            *command = Some(NotifyCommand::SignalObserved { body, completion });
+        }
+        result
+            .recv_timeout(Duration::from_secs(1))
+            .map_err(|error| PeerError(format!("signal completion: {error}")))
+    }
+
+    fn observe_owner_present(&mut self, peer: SocketAddr, token: &[u8]) -> Result<bool, PeerError> {
+        if token.is_empty() {
+            return Err(PeerError("empty owner token".into()));
+        }
+        let token = coaptic::message::Token::new(token).ok_or("invalid owner token")?;
+        let key = coaptic::storage::ObserveKey::new(token, Endpoint::from(peer));
+        let server = self.server.as_ref().ok_or("no server")?;
+        let (completion, result) = std::sync::mpsc::sync_channel(1);
+        {
+            let mut command = server.notify.lock().expect("owner");
+            if command.is_some() {
+                return Err(PeerError("notification command occupied".into()));
+            }
+            *command = Some(NotifyCommand::ObserveOwner { key, completion });
+        }
+        result
+            .recv_timeout(Duration::from_secs(1))
+            .map_err(|error| PeerError(format!("owner completion: {error}")))
     }
 
     fn reset_observe_server(&mut self) -> Result<(), PeerError> {
@@ -407,6 +454,13 @@ fn server_loop(
         let _ = app.poll(now);
         if let Some(command) = notify.lock().expect("n").take() {
             match command {
+                NotifyCommand::SignalObserved { body, completion } => {
+                    site::commit_observe_update(body);
+                    let _ = completion.send(app.signal(&["obs"]));
+                }
+                NotifyCommand::ObserveOwner { key, completion } => {
+                    let _ = completion.send(app.engine().lookup_observe(key).is_some());
+                }
                 NotifyCommand::ResetObserved(completion) => {
                     site::reset();
                     app = bind_site(app.into_io());
@@ -1433,6 +1487,109 @@ mod observe_server_reset_tests {
         assert!(matches!(
             *command.lock().unwrap(),
             Some(NotifyCommand::ResetObserved(_))
+        ));
+        assert!(server.take_capture().snapshot().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod observe_off_tests {
+    use super::*;
+    #[test]
+    fn invalid_source_and_owner_commands_refuse_then_recover() {
+        let _guard = crate::runner::harness_lock();
+        let mut server = CoapticPeer::new();
+        assert!(server.signal_observed(&["obs"], site::OBS_BODY).is_err());
+        assert!(
+            server
+                .observe_owner_present("127.0.0.1:5683".parse().unwrap(), &[1])
+                .is_err()
+        );
+        let dest = server.start_server().unwrap();
+        let mut client = CoapticPeer::new();
+        let mut request = ClientRequest::get(&["obs"]);
+        request.observe = Some(0);
+        client.begin_observe(dest, &request).unwrap();
+        let packets = server.take_capture().snapshot();
+        let registration = decode(&packets[0].bytes).unwrap();
+        let token = registration.token().as_bytes().to_vec();
+        let owner = client.local_addr().unwrap();
+        assert!(server.observe_owner_present(owner, &token).unwrap());
+        let before = server.take_capture().snapshot().len();
+        for (path, body) in [
+            (&["obs-non"][..], site::OBS_BODY),
+            (&["obs"][..], &b"invalid"[..]),
+        ] {
+            assert!(server.signal_observed(path, body).is_err());
+        }
+        for token in [&[][..], &[0; 9][..]] {
+            assert!(server.observe_owner_present(owner, token).is_err());
+        }
+        let (other_socket, other) = bind_loopback().unwrap();
+        assert!(!server.observe_owner_present(other, &token).unwrap());
+        let mut wrong_token = token.clone();
+        wrong_token[0] ^= 1;
+        assert!(!server.observe_owner_present(owner, &wrong_token).unwrap());
+        assert!(server.observe_owner_present(owner, &token).unwrap());
+        assert_eq!(site::observed_response().payload(), site::OBS_BODY);
+        client.observe_quiet_for(Duration::from_millis(30)).unwrap();
+        assert_eq!(server.take_capture().snapshot().len(), before);
+        assert_eq!(
+            server.signal_observed(&["obs"], site::OBS_BODY_2).unwrap(),
+            1
+        );
+        assert_eq!(
+            client
+                .take_notification(Duration::from_secs(2))
+                .unwrap()
+                .payload,
+            site::OBS_BODY_2
+        );
+        drop(other_socket);
+        let mut unsupported = crate::runner::peer_by_name("coap-rs").unwrap();
+        assert!(
+            unsupported
+                .signal_observed(&["obs"], site::OBS_BODY)
+                .is_err()
+        );
+        assert!(unsupported.observe_owner_present(owner, &token).is_err());
+        assert!(unsupported.take_capture().snapshot().is_empty());
+    }
+    #[test]
+    fn occupied_off_commands_preserve_queued_owner_and_emit_nothing() {
+        let mut server = CoapticPeer::new();
+        let (completion, _result) = std::sync::mpsc::sync_channel(1);
+        let command = Arc::new(Mutex::new(Some(NotifyCommand::SignalObserved {
+            body: site::OBS_BODY,
+            completion,
+        })));
+        server.server = Some(ServerCtl {
+            addr: "127.0.0.1:5683".parse().unwrap(),
+            stop: Arc::new(AtomicBool::new(false)),
+            notify: Arc::clone(&command),
+            loss: crate::observe_loss::ObserveLoss::default(),
+            join: None,
+        });
+        assert!(
+            server
+                .signal_observed(&["obs"], site::OBS_BODY_2)
+                .unwrap_err()
+                .0
+                .contains("occupied")
+        );
+        assert!(
+            server
+                .observe_owner_present("127.0.0.1:5684".parse().unwrap(), &[1])
+                .unwrap_err()
+                .0
+                .contains("occupied")
+        );
+        assert!(matches!(
+            *command.lock().unwrap(),
+            Some(NotifyCommand::SignalObserved {
+                body: site::OBS_BODY,
+                ..
+            })
         ));
         assert!(server.take_capture().snapshot().is_empty());
     }

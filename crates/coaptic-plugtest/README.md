@@ -305,3 +305,34 @@ reset control, same-endpoint silence after reset and valid registration recovery
 `COAPTIC_OBSERVE_CAPTURE_DIR` retains `obs-04-coaptic.pcap`. This is one plaintext
 loopback observer, not protected or cross-implementation qualification. Tracked in
 [#436](https://github.com/jeffglousher/coaptic/issues/436).
+
+### Observe termination after the client stops processing
+
+Literal TD_COAP_OBS_05 first delivers two acknowledged CON notifications, then
+keeps the client App/socket alive without polling it. The server sends five real
+CON attempts without receiving ACKs. After each of the first four attempts, an
+acknowledged bounded fixture command commits the next complete representation
+and signals the route source. Each timeout supersedes the retained packet with
+an updated Observe sequence and MID while keeping the finite retry/backoff budget.
+
+After the final timeout, an acknowledged fixture query checks that the exact
+endpoint/token owner is absent. Further signals select no observer, and attempted
+notifications remain quiet for two 100-millisecond intervals. A fresh client then
+registers and receives two complete notifications. The server tap retains exactly
+seventeen packets; its grader checks full bodies, ownership, updated sequences,
+distinct MIDs, exponential timer bounds and the final-timeout interval before
+recovery. Later intervals retain the first captured randomized timeout, allowing
+25 milliseconds of first-interval uncertainty scaled by backoff plus 100
+milliseconds of capture/poll scheduling tolerance. Twenty-eight trace mutations cover malformed ownership/content,
+missing or extra packets, an inserted ACK and premature retry/recovery timing.
+Two short adapter tests cover invalid and occupied commands, unchanged state and
+no traffic on refusal, wrong-owner inspection and valid signal recovery.
+
+The run has a 120-second OFF-phase deadline and uses actual elapsed time, without
+clock acceleration. The capture alone does not encode the internal owner query;
+the runner separately requires its acknowledged result before recovery.
+Unsupported directions remain SKIP. Set `COAPTIC_OBSERVE_CAPTURE_DIR` to retain
+`obs-05-coaptic.pcap`. This is one plaintext loopback observer with two static
+representations; it does not qualify protected supersession, arbitrary source
+cardinality or sustained traffic. Tracked in
+[#443](https://github.com/jeffglousher/coaptic/issues/443).

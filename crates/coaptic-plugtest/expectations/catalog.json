@@ -293,13 +293,7 @@
     ]
   },
   "TD_COAP_OBS_04": { "allow_extra": true, "coap": [] },
-  "TD_COAP_OBS_05": {
-    "allow_extra": true,
-    "coap": [
-      {"code": "0.01", "observe": "register"},
-      {"code": "2.05"}
-    ]
-  },
+  "TD_COAP_OBS_05": {"allow_extra": true, "coap": []},
   "TD_COAP_OBS_06": { "allow_extra": true, "coap": [] },
   "TD_COAP_OBS_07": { "allow_extra": true, "coap": [] },
   "TD_COAP_OBS_08": { "allow_extra": true, "coap": [] },
