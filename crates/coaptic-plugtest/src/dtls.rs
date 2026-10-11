@@ -12,7 +12,7 @@
 //! `TD_COAP_DTLS_01` records the handshake and decrypted GET. `TD_COAP_DTLS_03`
 //! qualifies each intact handshake-datagram loss for Coaptic or coap-rs clients with a Coaptic server using
 //! a bounded final-flight patch to the shared vendored test backend. The reverse mixed direction
-//! remain skipped. DTLS02's prescribed alert and RFC7250 raw-public-key TDs
+//! remains skipped. DTLS02's prescribed alert and RFC7250 raw-public-key TDs
 //! remain unsupported; X.509 runs are a different qualification.
 
 #[path = "../../../tools/interop/coap_dtls.rs"]
