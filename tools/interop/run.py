@@ -2648,6 +2648,8 @@ def main():
     from relay_cap import workflow as relay_cap_workflow
     case("relay-cap-256:coaptic->libcoap",
          lambda: relay_cap_workflow(peers["coaptic"], peers["libcoap"]))
+    case("ipv6-relay-cap-256:coaptic->libcoap",
+         lambda: relay_cap_workflow(peers["coaptic"], peers["libcoap"], family="ipv6"))
     case("ipv6-con-qblock1-loss:coaptic->libcoap",
          lambda: qblock1_con_loss(peers["coaptic"], peers["libcoap"], family="ipv6"))
     for client, server in [("coaptic", "coaptic"), ("coaptic", "libcoap"), ("libcoap", "coaptic")]:
