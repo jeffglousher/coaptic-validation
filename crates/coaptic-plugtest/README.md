@@ -222,8 +222,9 @@ bound to the registered endpoint/token, and consumed once. ACK loss additionally
 binds the MID of that owner's outgoing notification. Real UDP and real retry
 timers produce recovery; no clock acceleration is used.
 
-A competing update while each CON is outstanding must not bypass NSTART. The
-client receives complete values, suppresses duplicate delivery after ACK loss,
+A competing notification attempt while each CON is outstanding is refused by
+NSTART; it does not commit a new resource representation. The client receives
+complete values, suppresses duplicate delivery after ACK loss,
 and receives two fresh updates after recovery. The seventeen-datagram grader
 uses the server tap only, preserving retransmissions without duplicate capture
 taps. It checks identical retransmitted bytes, ACK ownership, distinct new MIDs,

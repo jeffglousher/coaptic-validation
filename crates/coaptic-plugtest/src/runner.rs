@@ -640,7 +640,8 @@ fn observe_con_loss(
                 return Err(PeerError("ACK loss was not consumed".into()));
             }
         }
-        // While the first CON remains outstanding, another update must not bypass NSTART.
+        // Attempt another notification without changing stored resource state.
+        // While the first CON remains outstanding, it must not bypass NSTART.
         server.notify_confirmable(
             &["obs"],
             if payload == site::OBS_BODY {
