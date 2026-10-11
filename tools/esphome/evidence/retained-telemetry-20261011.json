@@ -1,0 +1,148 @@
+{
+  "schema": "coaptic-retained-telemetry-physical/1",
+  "recorded_utc_date": "2026-10-11",
+  "status": "passed",
+  "platform": "Reserved Waveshare ESP32-S3, Windows x86_64 host, one local IPv4 LAN",
+  "firmware": {
+    "library_revision": "beef47dd85b57779c175cfe6d58c5b316ea975a1",
+    "suite_revision": "2bdfb5679b4d31a740d949cc74ff70977556a082",
+    "archive_sha256": "7e7cc0731b9cffe768ca4c2745449694f15547cad42fec65300ff4f7f35083e2",
+    "features": [
+      "network",
+      "standalone",
+      "oscore",
+      "telemetry"
+    ],
+    "compiler": "rustc 1.97.0-nightly (8ea53bcd7 2026-07-08) (1.97.0.0)\nbinary: rustc\ncommit-hash: 8ea53bcd7257011cbf96f6398551bdc650b04334\ncommit-date: 2026-07-08\nhost: x86_64-pc-windows-msvc\nrelease: 1.97.0-nightly\nLLVM version: 21.1.3\n",
+    "esphome": "2026.9.1",
+    "esp_idf": "5.5.5",
+    "suite_locks": {
+      "Cargo.lock": "021c004de02c0a9ba39ddc56c57b70e7de3789daea5bff9d289afdbb32674d2a",
+      "tools/benchmark/native/Cargo.lock": "46c0948ab45312dbf4cc2a8af05bfffb56df71e793ae07fed0c429d705066bb8",
+      "tools/security-interop/Cargo.lock": "f3dd99f2557d57141090490a97d5b0673fcd7340a6f5cf32514be2aaef54b12d",
+      "tools/security-profile/Cargo.lock": "78241c33afec6a80477e7ed9f3782e8933313d654ce5678796495d088a1fefca",
+      "tools/esphome/rust/Cargo.lock": "bf5c1c935dcf355b4cae6dfde901f422b80dbf819b0e2afed9b1a629434c8581",
+      "tools/qualification/esp32/Cargo.lock": "f12cb93c97a57a5341791d86a85a369e7369ae679a863a4247a11675701d744c",
+      "tools/durable-host/Cargo.lock": "847f93f8aafbf0dbdab3dff9bab030507e917406a3d64acf4d909b3d7b475b85"
+    },
+    "images": {
+      "pending": {
+        "run_id": "c0e027bf5370a384c4c428d79c1d642d",
+        "config_sha256": "f0e5b49c156826f22d08a4b7789c85bd44f2e8923b7a134c8dec4bdc3be510e0",
+        "firmware.elf_sha256": "1eab4f5f05a62a977a439e5c26c8a0a4a2a07d1dadf753ac924ceec65745daed",
+        "firmware.factory.bin_sha256": "13bca49b1a5aec398e9b3dad1cd11ff3b9d2c2218b960a1d1f08679af5f952f3",
+        "firmware.ota.bin_sha256": "bef1e374da8b7a1dcdb26e36a2c041a05cc5ec594524584c427ecd1481d0e015"
+      },
+      "telemetry": {
+        "run_id": "bbb93abb4035db3f6a55f477fdf4b381",
+        "config_sha256": "3a85ea343b80208ff49e30517192d7e4428bb4a3c63392432f22b85bbe45e48e",
+        "firmware.elf_sha256": "5c1545c11aeaa3fbf6b0711cdba717d4667690856c2273e1ace48bde118d4f00",
+        "firmware.factory.bin_sha256": "cbab9e281d699f765588844f35644bdda8bd598b8235268a5684d45faab69ac8",
+        "firmware.ota.bin_sha256": "77a6582c12f91a975a723d91c9a055077f1d6bac9ebe7853dd4b48bb808a2437"
+      }
+    }
+  },
+  "host": {
+    "library_revision": "beef47dd85b57779c175cfe6d58c5b316ea975a1",
+    "suite_revision": "5fd2d553a841c7ec3344c266ee147f9a2add1e14",
+    "binary_sha256": "6e9eb95f47e230203ef0b31f3578e4c20e65e8e633714ed1ce088091eeb9a94c",
+    "compiler": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-pc-windows-msvc\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+    "suite_locks": {
+      "Cargo.lock": "021c004de02c0a9ba39ddc56c57b70e7de3789daea5bff9d289afdbb32674d2a",
+      "tools/benchmark/native/Cargo.lock": "46c0948ab45312dbf4cc2a8af05bfffb56df71e793ae07fed0c429d705066bb8",
+      "tools/security-interop/Cargo.lock": "f3dd99f2557d57141090490a97d5b0673fcd7340a6f5cf32514be2aaef54b12d",
+      "tools/security-profile/Cargo.lock": "78241c33afec6a80477e7ed9f3782e8933313d654ce5678796495d088a1fefca",
+      "tools/esphome/rust/Cargo.lock": "bf5c1c935dcf355b4cae6dfde901f422b80dbf819b0e2afed9b1a629434c8581",
+      "tools/qualification/esp32/Cargo.lock": "f12cb93c97a57a5341791d86a85a369e7369ae679a863a4247a11675701d744c",
+      "tools/durable-host/Cargo.lock": "27bb82a74447500be78fe00a59968080c9fc7460f7183991fc0df1ccb88639aa"
+    },
+    "runtime": "std, fixed Coaptic storage; exclusive caller-owned security and journal files"
+  },
+  "operation": {
+    "payload_bytes": 1024,
+    "payload_sha256": "f1305624e9a6d905a63dc5ec25bee729df52db7ce7ff2c25716dd91303e8a699",
+    "content_format": 42,
+    "pending_record_bytes": 1214,
+    "receipt_bytes": 56,
+    "journal_bytes": 1225,
+    "journal_sha256_before_and_after_recovery": "9f06ca31b9735fa7eb4eda63e764924f966af978e7af674307adcf94d76bda79",
+    "receipt_sha256_before_and_after_recovery": "88e03b408756f83f81b0f7ad81ef9c9a576a848ec9e490f02e77134608105720",
+    "exact_operation_id_and_complete_body_verified": true
+  },
+  "observations": {
+    "first_process": {
+      "run_id": "72e0b0224b9f84096b089e581219c00c",
+      "polls": 57675,
+      "admitted": 1,
+      "refused": 0,
+      "poll_errors": 0,
+      "receipts": 0,
+      "dropped_receipts": 1,
+      "effects": 1
+    },
+    "fresh_process_after_device_restart": {
+      "run_id": "591a8e3c1048f70a7f7fb593278cc1da",
+      "polls": 22572,
+      "admitted": 1,
+      "refused": 0,
+      "poll_errors": 0,
+      "receipts": 1,
+      "dropped_receipts": 0,
+      "effects": 1
+    },
+    "device_restart_independently_observed": true,
+    "device_completion_logged_after_recovery": true,
+    "journal_byte_identical": true,
+    "task_stack_peak_observed_bytes": 74660,
+    "task_stack_capacity_bytes": 98304
+  },
+  "method": [
+    "Build a clean protected telemetry archive from the exact firmware source pair above with tools/esphome/build_archive.py --expected-library-revision LIBRARY_SHA --oscore --telemetry; verify the archive and firmware hashes before each OTA installation.",
+    "Preserve existing pairwise credentials, management credentials and original firmware. Reuse the authoritative durable OSCORE state without reset; install an explicit qualification principal/resource binding on both endpoints.",
+    "Run telemetry-service provision-journal to create a new host journal. Verify repeat provisioning refuses and leaves existing security state unchanged.",
+    "Install firmware with telemetry.provision_pending to save one unique operation ID and complete 1024-byte body offline. Remove provision_pending and install normal telemetry firmware using the same archive. Normal firmware contains neither operation ID nor body.",
+    "Run telemetry-service serve with drop-first-receipt, a 90000 ms deadline and 180000 poll limit. Require one admitted exact operation, one durable effect, one intentionally withheld receipt and no transmitted receipt. Retain the journal snapshot after process exit.",
+    "Request device software restart through its encrypted ESPHome API. Independently capture the restart log and reset task counter for the installed run ID before accepting recovery evidence.",
+    "Start a fresh telemetry-service process against the same security file and journal, with a 35000 ms deadline and 70000 poll limit. Require the same operation ID and complete body, the original receipt, exactly one effect and a byte-identical journal. Capture COAPTIC_TELEMETRY_COMPLETE from the restarted device.",
+    "Preserve raw evidence privately. Update only the reserved device saved configuration to the verified normal telemetry archive; remove the temporary program/address-scoped UDP firewall rule."
+  ],
+  "setup_and_failure_evidence": [
+    "Initial inbound LAN probe timed out before Windows administrator approval of a temporary UDP rule. That timeout was not treated as an authenticated protocol result.",
+    "The first application receipt was deliberately withheld after the effect and receipt journal were durable; recovery used a fresh host process.",
+    "The offline provisioning one-shot boot log was missed. Subsequent exact authenticated operation recovery established retained ID/body, rather than a claimed observed provisioning log.",
+    "The restarted client retried while the fresh host process was not yet listening.",
+    "Repeated host journal provisioning refused without changing authoritative security state."
+  ],
+  "cleanup": {
+    "temporary_firewall_rule_removed": true,
+    "management_credentials_preserved": true,
+    "secret_file_unchanged": true,
+    "saved_normal_configuration_sha256": "b5970d958b5c601016522b5f7bdcb71a7d86d5efee7b2d656cb77deb94190994"
+  },
+  "limitations": [
+    "manual caller-installed binding, no enrollment/current-policy authority",
+    "software restart only, no flash power-loss or hostile snapshot rollback",
+    "ESP32-S3 is qualification platform, not portable-core dependency",
+    "production entropy/key custody and full HA/Taldra end-user flow unproven",
+    "offline provisioning one-shot boot log was missed by API capture; retained operation was confirmed by subsequent exact authenticated body and ID recovery",
+    "task stack observation includes adapter/runtime initialization and is not a whole-device memory ceiling or performance comparison",
+    "client retried while the fresh host process was not yet listening before receipt recovery",
+    "One operation on one device and LAN; no sustained availability, routed-network, throughput, independent protected-stack hardware or additional-MCU qualification.",
+    "No physical third-boot proof of cached completion without traffic; that behavior has host/unit coverage.",
+    "Build preparation runtime_passed fields remain false because compilation alone did not prove execution; physical conclusions derive from the separate host/API records."
+  ],
+  "private_evidence_sha256": {
+    "device-restart-capture-1791686918168791000.json": "8d1ecee4ccfc37b60564f6dfb6e393a180eb8c1ab5ad2234fde74fc8a9615bb8",
+    "device-restart-capture-1791686918168791000.log": "647d178e3dfdf2d55e0bc9caba6123300a07d3a6cad5ef8a4187829910144a11",
+    "firewall-status.json": "336fb8b74c0d2b2e78bc54bc6d6af48fe2aeca2c9add6bce3b5ea4201f3f8631",
+    "first-operation-capture-1791686839053215600.json": "1d206bd63e46362b8da2ca2f7c3ccbba1d13bee53728fc0f2da4c7efeee2c46b",
+    "first-operation-capture-1791686839053215600.log": "3814c13b4b555c21dc63c14e2dfe0c07fdc7b60d370e0962c64a01e7ba47afcf",
+    "ha-install.json": "583a9c8c2fd2ac7014a334a3c60a9dd73412a246c26c971bcbde49bbc1dbbd17",
+    "host-build.json": "d168b39cecdc6beaf8859a2764d989e7076a4a151469acdc917a92a702922120",
+    "journal-provision.json": "10c0a4a7707fa20148730e0f9589694fe08d8d5f27e0e782f6c4e670978f0dbc",
+    "lost-receipt-host.json": "b7f8ea933fdf8f836197e82ea10fed79409461f7189f0327102f5a1037729bb1",
+    "physical-summary.json": "6ad96b8ff4bff3a1dc765c62487ccd7551649df13602ae93bd37197141094ccc",
+    "recovered-receipt-host.json": "a4cf605fc1307a30f371032d4e5cce5d430c99c5904a13633ef9a499206067a9",
+    "restart-command.json": "bb60982a69a1e691edac1682ca2d536a32b100243ce3330caeedd32fed9aae3d"
+  }
+}

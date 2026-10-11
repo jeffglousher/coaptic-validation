@@ -203,6 +203,9 @@ impl Catalog {
 /// Grade one TD.
 pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), String> {
     let packets = capture.snapshot();
+    if td == "TD_COAP_OBS_09" {
+        grade_observe_update(&packets)?;
+    }
     if matches!(td, "TD_COAP_OBS_10" | "TD_COAP_OBS_12") {
         grade_observe_owner_request(&packets, td == "TD_COAP_OBS_12")?;
     }
@@ -293,6 +296,69 @@ pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), St
                 "{td}: {n} leftover CoAP datagrams (set allow_extra if this TD is chatty)",
                 n = leftover.len()
             ));
+        }
+    }
+    Ok(())
+}
+
+/// Actual resource update: CON delivery plus an independent GET read-back per value.
+fn grade_observe_update(packets: &[Packet]) -> Result<(), String> {
+    let mut ordered = packets.to_vec();
+    ordered.sort_by_key(|p| p.t_ns);
+    let mut seen = HashSet::new();
+    ordered.retain(|p| seen.insert((p.src, p.dst, p.bytes.clone())));
+    if ordered.len() != 14 {
+        return Err("OBS_09 requires fourteen unique datagrams".into());
+    }
+    grade_confirmable_observe(&ordered[..6])?;
+    let mut updated = ordered[..2].to_vec();
+    updated.extend_from_slice(&ordered[6..8]);
+    updated.extend_from_slice(&ordered[10..12]);
+    grade_confirmable_observe(&updated)?;
+    let parse =
+        |i: usize| decode(&ordered[i].bytes).map_err(|e| format!("OBS_09 packet {i}: {e:?}"));
+    let registration = parse(0)?;
+    let previous = parse(4)?
+        .observe()
+        .and_then(Result::ok)
+        .ok_or("OBS_09 previous sequence")?;
+    let next = parse(6)?
+        .observe()
+        .and_then(Result::ok)
+        .ok_or("OBS_09 updated sequence")?;
+    let delta = next.wrapping_sub(previous) & 0x00ff_ffff;
+    if delta == 0 || delta >= 0x0080_0000 {
+        return Err("OBS_09 sequence progression".into());
+    }
+    for (i, body) in [(8, crate::site::OBS_BODY_2), (12, crate::site::OBS_BODY)] {
+        let request = parse(i)?;
+        let reply = parse(i + 1)?;
+        if ordered[i].src != ordered[0].src
+            || ordered[i].dst != ordered[0].dst
+            || request.ty() != Type::Confirmable
+            || request.code() != Code::GET
+            || request.uri_path().collect::<Vec<_>>() != [Ok("obs")]
+            || request.observe().is_some()
+            || request.token().is_empty()
+            || request.token() == registration.token()
+            || request.message_id() == registration.message_id()
+            || (i == 12
+                && (request.token() == parse(8)?.token()
+                    || request.message_id() == parse(8)?.message_id()))
+        {
+            return Err("OBS_09 read-back request identity".into());
+        }
+        if ordered[i + 1].src != ordered[0].dst
+            || ordered[i + 1].dst != ordered[0].src
+            || reply.ty() != Type::Acknowledgement
+            || reply.code() != Code::CONTENT
+            || reply.message_id() != request.message_id()
+            || reply.token() != request.token()
+            || reply.observe().is_some()
+            || reply.payload() != body
+            || reply.content_format() != Some(Ok(coaptic::message::ContentFormat::TEXT_PLAIN))
+        {
+            return Err("OBS_09 complete changed resource read-back".into());
         }
     }
     Ok(())
