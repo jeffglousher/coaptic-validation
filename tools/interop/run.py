@@ -325,6 +325,11 @@ class Proxy:
                           and len(data) >= 4 and data[0] >> 6 == 1
                           and (data[0] >> 4) & 3 == 0 and data[1] == 69):
                         action, dropped = "drop", True
+                    elif self.mode == "drop-oscore-request-once" and incoming and not dropped:
+                        from oscore_qblock1 import request_plain
+                        plain, _ = request_plain(data)
+                        if any(int(option.number) == 19 for option in plain.opt.option_list()):
+                            action, dropped = "drop", True
                     elif self.mode in ("drop-oscore-final-once", "drop-oscore-final-permanent") and not incoming:
                         from oscore_qblock1 import final_response
                         if (not dropped or self.mode == "drop-oscore-final-permanent") and final_response(data, self.trace):

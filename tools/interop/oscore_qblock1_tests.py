@@ -31,28 +31,38 @@ def evidence(mode="baseline", option=19, body=LARGE):
     client = FixtureContext(server=False, wrong_key=mode == "wrong-key")
     server = FixtureContext(server=True)
     packets = []
+    at = 0
+    def append(direction, action, wire, *, retry=False):
+        nonlocal at
+        at += 2_500_000_000 if retry else 10_000_000
+        packets.append((direction, action, wire, at))
     for num in range(1 if mode == "wrong-key" else 2):
         plain = coap_message(2, 10 + num, b"q", [(11, b"upload"), (12, b"*"),
                     (option, b"\x0e" if num == 0 else b"\x16"), (60, b"\x07\xd0"),
                     (292, b"upload-1")], body[num * 1024:(num + 1) * 1024])
         request, binding = protect(client, plain)
-        packets.append(("request", "forward", request))
+        if mode == "drop-request" and num == 0:
+            append("request", "drop", request)
+            append("request", "forward", request, retry=True)
+        else:
+            append("request", "forward", request)
         if mode == "wrong-key":
             break
-        if num == 0:
-            packets.append(("response", "forward", b"\x60\x00\x00\x0a"))
-        else:
+        append("response", "forward", b"\x60\x00\x00" + bytes([10 + num]))
+        if num == 1:
             _, received_binding = request_plain(request)
-            response, _ = protect(server, b"\x61\x41\x00\x0bq", received_binding)
-            packets.append(("response", "forward" if mode == "baseline" else "drop", response))
-            if mode != "baseline":
-                packets += [("request", "forward", request),
-                            ("response", "forward" if mode == "drop-once" else "drop", response)]
-    trace = [dict(direction=d, action=a, hex=w.hex(), forwarded_hex=w.hex(), time_ns=i * 10_000_000 + (2_500_000_000 if i >= 4 else 0),
+            response, _ = protect(server, b"\x41\x41\x00\x32q", received_binding)
+            loss = mode in ("drop-once", "drop-permanent")
+            append("response", "drop" if loss else "forward", response)
+            if loss:
+                append("response", "drop" if mode == "drop-permanent" else "forward", response, retry=True)
+            if mode != "drop-permanent":
+                append("request", "forward", b"\x60\x00\x00\x32")
+    trace = [dict(direction=d, action=a, hex=w.hex(), forwarded_hex=w.hex(), time_ns=t,
                   source=CLIENT if d == "request" else ENDPOINTS["server"],
                   destination=ENDPOINTS["server"] if d == "request" else CLIENT,
                   relay=ENDPOINTS["back"] if d == "request" else ENDPOINTS["front"])
-             for i, (d, a, w) in enumerate(packets)]
+             for d, a, w, t in packets]
     return [trace, REFUSAL.copy() if mode in ("wrong-key", "drop-permanent") else SUCCESS.copy(),
             copy.deepcopy(ENDPOINTS), counts(0), counts(0 if mode == "wrong-key" else 1), mode]
 
@@ -78,7 +88,7 @@ class ProtectedQBlockTests(unittest.TestCase):
             response_plain(bytes.fromhex(value), different_request)
 
     def test_success_loss_wrong_key_and_unknown_outcome(self):
-        for mode in ("baseline", "drop-once", "drop-permanent", "wrong-key"):
+        for mode in ("baseline", "drop-request", "drop-once", "drop-permanent", "wrong-key"):
             with self.subTest(mode=mode):
                 proof = grade(*evidence(mode))
                 self.assertEqual(proof["body_bytes_observed"], 1024 if mode == "wrong-key" else 2000)
@@ -87,9 +97,9 @@ class ProtectedQBlockTests(unittest.TestCase):
     def test_classifier_requires_authenticated_final_response(self):
         trace = evidence()[0]
         self.assertFalse(final_response(bytes.fromhex(trace[1]["hex"]), trace[:1]))
-        self.assertTrue(final_response(bytes.fromhex(trace[-1]["hex"]), trace[:-1]))
+        self.assertTrue(final_response(bytes.fromhex(trace[4]["hex"]), trace[:4]))
         with self.assertRaises(AssertionError):
-            final_response(bytes.fromhex(trace[-1]["hex"][:-2] + "00"), trace[:-1])
+            final_response(bytes.fromhex(trace[4]["hex"][:-2] + "00"), trace[:4])
 
     def test_validly_protected_classic_or_changed_body_refuse(self):
         for data in (evidence(option=27), evidence(body=LARGE[:-1] + b"\xff")):
@@ -139,16 +149,32 @@ class ProtectedQBlockTests(unittest.TestCase):
         for mode in ("drop-once", "drop-permanent"):
             data = evidence(mode)
             data[0].insert(1, copy.deepcopy(data[0][0]))
-            data[0].pop(5)  # Remove the actual final-request retry.
+            data[0].pop(6)  # Remove actual separate-response retry.
             for i, row in enumerate(data[0]):
                 row["time_ns"] = 0 if i == 0 else 2_000_000_000 + i * 10_000_000
             with self.subTest(mode=mode), self.assertRaises(AssertionError):
                 grade(*data)
 
+    def test_separate_ack_and_retry_mutations_refuse(self):
+        for mode, mutate in [
+            ("baseline", lambda x: x[0].pop()),
+            ("baseline", lambda x: x[0][-1].update(hex="60000033", forwarded_hex="60000033")),
+            ("baseline", lambda x: x[0][-1].update(source=["127.0.0.1", 9999])),
+            ("baseline", lambda x: x[0][-1].update(action="drop")),
+            ("drop-once", lambda x: x[0][5].update(hex=x[0][5]["hex"][:-2] + "00", forwarded_hex=x[0][5]["hex"][:-2] + "00")),
+            ("drop-once", lambda x: x[0][5].update(time_ns=x[0][4]["time_ns"] + 100_000_000)),
+            ("drop-request", lambda x: x[0][0].update(action="forward")),
+            ("drop-request", lambda x: x[0].pop(1)),
+            ("drop-request", lambda x: x[0][1].update(time_ns=100_000_000)),
+        ]:
+            data = evidence(mode)
+            mutate(data)
+            with self.subTest(mode=mode), self.assertRaises(AssertionError):
+                grade(*data)
+
     def test_loss_and_timeout_mutations_refuse(self):
         for mode, mutate in [
-            ("drop-once", lambda x: x[0][3].update(action="forward")),
-            ("drop-once", lambda x: x[0][4].update(time_ns=x[0][2]["time_ns"] + 100_000_000)),
+            ("drop-once", lambda x: x[0][4].update(action="forward")),
             ("drop-permanent", lambda x: x[0][-1].update(action="forward")),
             ("drop-permanent", lambda x: x[1].update(message="process killed")),
             ("drop-permanent", lambda x: x[1].update(exit_code=-9)),

@@ -62,10 +62,11 @@ def final_response(wire, trace):
     if len(wire) < 5 or wire[1] == 0:
         return False
     candidates = [bytes.fromhex(row["hex"]) for row in trace
-                  if row["direction"] == "request" and row["action"] == "forward"]
+                  if row["direction"] == "request" and row["action"] == "forward"
+                  and len(bytes.fromhex(row["hex"])) > 4]
     require(candidates, "protected reply without a request")
     request = candidates[-1]
-    require(wire[2:4] == request[2:4] and packet_token(wire) == packet_token(request),
+    require((wire[0] >> 4) & 3 == 0 and packet_token(wire) == packet_token(request),
             "protected reply owner mismatch")
     return int(response_plain(wire, request).code) == 65
 
@@ -82,7 +83,7 @@ def _counts(event):
 
 def grade(trace, result, endpoints, before, after, mode):
     from run import LARGE, decoded_options, packet_token, block1_fields, expect, expect_refusal
-    require(mode in ("baseline", "drop-once", "drop-permanent", "wrong-key"), "unknown schedule")
+    require(mode in ("baseline", "drop-request", "drop-once", "drop-permanent", "wrong-key"), "unknown schedule")
     wrong = mode == "wrong-key"
     timeout = mode in ("drop-permanent", "wrong-key")
     if timeout:
@@ -111,8 +112,12 @@ def grade(trace, result, endpoints, before, after, mode):
     previous_time = -1
     request_retries = dropped = final_forwarded = final_seen = 0
     retry_intervals = []
-    final_retry_pending = False
-    final_request_retries = 0
+    lost_request = None
+    lost_request_at = None
+    request_loss_retries = 0
+    response_wire = None
+    response_first_at = None
+    response_retries = client_acks = 0
     first_time = {}
     for row in trace:
         direction, action = row["direction"], row["action"]
@@ -130,15 +135,28 @@ def grade(trace, result, endpoints, before, after, mode):
         require(4 <= len(wire) <= 4096 and wire[0] >> 6 == 1 and wire[0] & 15 <= 8,
                 "malformed bounded CoAP packet")
         if direction == "request":
+            if wire[1] == 0:
+                require(response_wire is not None and final_forwarded == 1 and client_acks == 0
+                        and wire == b"\x60\x00" + response_wire[2:4] and action == "forward",
+                        "missing or wrong separate-response ACK ownership")
+                client_acks += 1
+                continue
+            if action == "drop":
+                require(mode == "drop-request" and lost_request is None and latest is None,
+                        "unexpected request loss")
+                request_plain(wire)  # The relay loss is an intact authenticated request.
+                lost_request, lost_request_at = wire, at
+                continue
+            if lost_request is not None and latest is None:
+                require(wire == lost_request and at - lost_request_at >= 1_950_000_000,
+                        "lost request did not retry exact bytes after its RTO")
+                request_loss_retries += 1
             require(action == "forward" and (wire[0] >> 4) & 3 == 0 and wire[1] == 2,
                     "request not forwarded CON POST")
             require(not final_forwarded, "request after completed response")
             if wire in unique:
                 require(wire == latest and not acknowledged, "retry changed or settled request ownership")
                 request_retries += 1
-                if dropped and bytes(body) == LARGE:
-                    final_retry_pending = True
-                    final_request_retries += 1
                 interval = at - first_time[wire]
                 require(interval >= 1_950_000_000, "request retry before original RTO")
                 retry_intervals.append(interval)
@@ -180,47 +198,51 @@ def grade(trace, result, endpoints, before, after, mode):
             unique[wire], first_time[wire], latest = num, at, wire
             acknowledged = False
         else:
-            require(latest is not None and wire[2:4] == latest[2:4]
-                    and (wire[0] >> 4) & 3 == 2, "response does not ACK current exact MID")
+            require(latest is not None, "response without a forwarded request")
             require(not wrong, "wrong-key request received a response")
             if wire[1] == 0:
-                require(wire[0] == 0x60 and len(wire) == 4 and action == "forward",
-                        "invalid or dropped empty ACK")
+                require(wire == b"\x60\x00" + latest[2:4] and action == "forward",
+                        "invalid or dropped exact-owner empty ACK")
                 acknowledged = True
                 continue
-            require(packet_token(wire) == token and set(decoded_options(wire)) == {9},
-                    "response token/protection mismatch")
+            require(acknowledged and (wire[0] >> 4) & 3 == 0
+                    and packet_token(wire) == token and set(decoded_options(wire)) == {9},
+                    "separate response type/token/protection or request settlement mismatch")
+            require(wire[2:4] not in {old[2:4] for old in unique}, "server response reused upload MID")
             plain = response_plain(wire, latest)
-            require(int(plain.code) in (65, 95) and plain.payload == b"", "wrong authenticated response")
-            if action == "forward":
-                acknowledged = True
-            if int(plain.code) == 65:
-                require(bytes(body) == LARGE, "Created before exact complete body")
-                require(not final_seen or final_retry_pending, "Created repeated without final-request retry after loss")
-                final_retry_pending = False
-                final_seen += 1
-                if action == "drop":
-                    dropped += 1
-                else:
-                    final_forwarded += 1
+            require(int(plain.code) == 65 and plain.payload == b"", "wrong authenticated Created")
+            require(bytes(body) == LARGE, "Created before exact complete body")
+            if response_wire is None:
+                response_wire, response_first_at = wire, at
             else:
-                require(action == "forward", "unexpected intermediate response loss")
+                require(wire == response_wire and dropped and not final_forwarded
+                        and at - response_first_at >= 1_950_000_000,
+                        "separate response retry changed bytes/ownership or preceded RTO")
+                response_retries += 1
+            final_seen += 1
+            if action == "drop":
+                dropped += 1
+            else:
+                final_forwarded += 1
     if wrong:
         require(len(unique) == 1 and len(body) < len(LARGE) and not final_seen,
                 "wrong-key request advanced upload")
     else:
         require(bytes(body) == LARGE and len(unique) >= 2 and final_seen >= 1,
                 "missing authenticated fragmented upload completion")
-    if mode == "baseline":
+    require(client_acks == (0 if timeout else 1), "separate response ACK absent or unexpected")
+    if mode in ("baseline", "drop-request"):
         require(dropped == 0 and final_forwarded == 1, "baseline delivery mismatch")
+        require(request_loss_retries == int(mode == "drop-request"), "request loss/recovery not exercised")
     elif mode == "drop-once":
-        require(dropped == 1 and final_forwarded == 1 and final_request_retries >= 1,
+        require(dropped == 1 and final_forwarded == 1 and response_retries >= 1,
                 "one-loss recovery not exercised")
     elif mode == "drop-permanent":
-        require(dropped >= 2 and final_forwarded == 0 and final_request_retries >= 1,
+        require(dropped >= 2 and final_forwarded == 0 and response_retries >= 1,
                 "permanent loss/timeout not exercised")
     return {"authenticated_inner_blocks": len(unique), "body_bytes_observed": len(body),
-            "exact_request_retries": request_retries, "final_request_retries_after_loss": final_request_retries, "retry_intervals_ns": retry_intervals,
+            "exact_request_retries": request_retries, "request_loss_retries": request_loss_retries, "exact_response_retries": response_retries,
+            "exact_client_acks": client_acks, "retry_intervals_ns": retry_intervals,
             "dropped_authenticated_created": dropped, "effect_before": prior, "effect_after": current,
             "client_outcome": "timeout; independently observed one application effect" if mode == "drop-permanent"
                               else "wrong-key refusal" if wrong else "complete Created",
@@ -237,7 +259,8 @@ def workflow(client, server):
             sequence += 100
             return request(client, "oscore", kwargs.pop("port", service.number), sequence=sequence, **kwargs)
 
-        for mode, fault in (("baseline", "pass"), ("drop-once", "drop-oscore-final-once"),
+        for mode, fault in (("baseline", "pass"), ("drop-request", "drop-oscore-request-once"),
+                            ("drop-once", "drop-oscore-final-once"),
                             ("drop-permanent", "drop-oscore-final-permanent"), ("wrong-key", "pass"),
                             ("baseline", "pass")):
             before = exchange(path="upload")
@@ -261,6 +284,6 @@ def workflow(client, server):
                 record["trace"] = relay.trace
                 raise AssertionError(json.dumps({"error": str(error), "completed": schedules, "failed": record})) from error
             schedules.append(record)
-        expect(exchange(path="upload"), 69, b"4:4")
+        expect(exchange(path="upload"), 69, b"5:5")
     return {"schedules": schedules, "limits": "finite IPv4 loopback fixture; no enrollment or sustained availability",
             "libcoap_source": "851533c3cf63d16984d370ce39d586ecb3694971"}
