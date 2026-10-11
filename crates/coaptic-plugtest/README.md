@@ -37,7 +37,7 @@ The App TD runner reports known incomplete scenarios as `SKIP: coverage gap #199
 OBS_01 and OBS_02 pass for Coaptic and coap-rs clients against the Coaptic
 server; their coap-rs-server directions remain SKIP. Still unfinished, not
 conformance passes: the remaining Observe scenarios; DTLS_02 (no plaintext
-`decrypt_error` alert); mixed-direction DTLS_03; and
+`decrypt_error` alert); Coaptic-to-coap-rs DTLS_03; and
 DTLS_04–07 (no RFC 7250 raw public key). An X.509 run is a different test.
 CORE separate responses, loss and retransmission, BLOCK trains, and DTLS_01
 cipher offer, selection, and Finished are graded from the capture. The Engine
@@ -347,13 +347,14 @@ cardinality or sustained traffic. Tracked in
 
 ### DTLS handshake loss
 
-TD_COAP_DTLS_03 qualifies the Coaptic client/server direction through the vendored
-webrtc-dtls 0.12.0 test adapter. A bounded loopback gateway inventories the six
+TD_COAP_DTLS_03 qualifies Coaptic and coap-rs clients with a Coaptic server through
+the shared vendored webrtc-dtls 0.12.0 test adapter. The mixed direction uses the
+actual coap-rs client for CoAP encoding, matching and response delivery. A bounded loopback gateway inventories the six
 normal PSK handshake datagrams, including coalesced records and cookie exchange,
 then drops each exactly once in a fresh connection. Every targeted run requires
 an observed retransmission, both completed handshakes and the exact CoAP response.
 Permanent final-server-flight loss must time out without application delivery;
-a fresh connection must then recover. Other application directions remain SKIP.
+a fresh connection must then recover. Coaptic-to-coap-rs remains SKIP.
 
 The original backend returned from its handshake driver after sending the server's
 final CCS/Finished, leaving no active responder when that flight was lost. The
@@ -364,8 +365,8 @@ The original failing diagnostic remains source-linked in
 [PR41](https://github.com/jeffglousher/coaptic-validation/pull/41).
 
 Run `cargo test -p coaptic-plugtest --features dtls --lib dtls03_ -- --nocapture`.
-With `COAPTIC_OBSERVE_CAPTURE_DIR` set, `dtls03-loss` retains nine wire captures
-and a source-bound report: baseline, six individual losses, permanent-loss
+With `COAPTIC_OBSERVE_CAPTURE_DIR` set, `dtls03-loss` and `dtls03-coap-rs-loss`
+each retain nine wire captures and a source-bound report: baseline, six individual losses, permanent-loss
 refusal and fresh recovery. Each case has a six-second deadline, 256-datagram
 capture limit and 2048-byte receive scratch. Offline evidence mutations refuse
 missing loss, wrong ownership, changed bytes, missing completion/retry and altered
@@ -376,4 +377,5 @@ resource precondition and stimulus; its later `/test` line is inconsistent with
 those requirements. Both peers use the same test-only DTLS backend, so this is
 neither independent-stack DTLS interoperability nor hardware qualification.
 The core has no DTLS dependency; DTLS02 prescribed-alert and RPK gaps remain open.
-Tracking: [#446](https://github.com/jeffglousher/coaptic/issues/446).
+Tracking: [#446](https://github.com/jeffglousher/coaptic/issues/446) and
+[#480](https://github.com/jeffglousher/coaptic/issues/480).
