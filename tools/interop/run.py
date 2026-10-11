@@ -2093,20 +2093,27 @@ def qblock2_ipv6_loss(client, server):
     return {"probe": probe, "schedules": proofs}
 
 
-def qblock2_con_loss(client, server):
+def qblock2_con_loss(client, server, family="ipv4"):
     """Default-NSTART CON retransmission, bounded partial refusal, then fresh success."""
     from qblock_con import grade
+    if family not in ("ipv4", "ipv6"):
+        raise ValueError("unsupported CON address family")
     proofs = {}
-    with Server(server, "udp") as service:
+    with Server(server, "udp", family=family) as service:
+        probe = ipv6_probe(service.number) if family == "ipv6" else None
         for label, mode, deadline in [("recovery", "drop-qblock2-once", 20000),
                                       ("partial_refusal", "drop-qblock2-permanent", 6000),
                                       ("fresh_recovery", "drop-qblock2-once", 20000)]:
-            with Proxy(service.number, mode) as relay:
+            with Proxy(service.number, mode, family=family) as relay:
                 endpoints = {"front": relay.front.getsockname(), "back": relay.back.getsockname(), "server": relay.dest}
-                result = request(client, "udp", relay.number, path="large", timeout=deadline, qblock2=True)
-            proof = grade(relay.trace, result, endpoints, complete=label != "partial_refusal")
+                if family == "ipv6":
+                    endpoints.update(family="AF_INET6" if relay.front.family == relay.back.family == socket.AF_INET6 else "wrong",
+                                     v6only=[sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY)
+                                             for sock in (relay.front, relay.back)])
+                result = request(client, "udp", relay.number, path="large", family=family, timeout=deadline, qblock2=True)
+            proof = grade(relay.trace, result, endpoints, complete=label != "partial_refusal", family=family)
             proofs[label] = dict(proof=proof, result=result, deadline_ms=deadline)
-    return {"schedules": proofs}
+    return {"family": family, "probe": probe, "schedules": proofs}
 
 
 def qblock2_window(client, server):
@@ -2595,6 +2602,8 @@ def main():
          lambda: qblock2_missing(peers["coaptic"], peers["libcoap"], non=True))
     case("ipv6-qblock2-loss:coaptic->libcoap",
          lambda: qblock2_ipv6_loss(peers["coaptic"], peers["libcoap"]))
+    case("ipv6-con-qblock2-loss:coaptic->libcoap",
+         lambda: qblock2_con_loss(peers["coaptic"], peers["libcoap"], family="ipv6"))
     case("con-qblock2-loss:coaptic->libcoap",
          lambda: qblock2_con_loss(peers["coaptic"], peers["libcoap"]))
     case("qblock2-reorder:coaptic->coaptic",
