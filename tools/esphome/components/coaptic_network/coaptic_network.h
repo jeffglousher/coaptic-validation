@@ -23,6 +23,17 @@ class CoapticNetwork : public Component {
   bool security_config(uint8_t *bytes, uint32_t length);
   int32_t read_security(uint8_t *bytes, uint32_t length);
   bool commit_security(const uint8_t *bytes, uint32_t length);
+  void set_telemetry(const std::string &principal, uint8_t kid, const std::string &resource,
+                     uint32_t address, uint16_t port, uint32_t timeout,
+                     const std::string &operation, int32_t format, const std::string &payload) {
+    principal_ = principal; principal_kid_ = kid; resource_ = resource;
+    peer_address_ = address; peer_port_ = port; telemetry_timeout_ = timeout;
+    operation_ = operation; format_ = format; payload_ = payload;
+    security_mode_ = operation.empty() ? 3 : 4;
+  }
+  int32_t telemetry_config(uint8_t *bytes, uint32_t capacity);
+  int32_t read_pending(uint8_t *bytes, uint32_t length);
+  bool commit_pending(const uint8_t *bytes, uint32_t length);
   void loop() override;
   void on_shutdown() override;
   float get_setup_priority() const override { return setup_priority::LATE; }
@@ -49,6 +60,11 @@ class CoapticNetwork : public Component {
   uint8_t sender_{1}, recipient_{2};
   uint32_t security_mode_{0};
   nvs_handle_t security_handle_{0};
+  std::string principal_, resource_, operation_, payload_;
+  uint8_t principal_kid_{0};
+  uint32_t peer_address_{0}, telemetry_timeout_{0};
+  uint16_t peer_port_{0};
+  int32_t format_{-1};
 };
 
 }

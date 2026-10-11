@@ -58,6 +58,9 @@ pub mod pending_telemetry;
 #[cfg(feature = "telemetry")]
 pub mod protected_telemetry;
 
+#[cfg(feature = "telemetry")]
+pub mod telemetry_config;
+
 #[cfg(all(feature = "network", target_os = "none"))]
 mod network_ffi;
 
