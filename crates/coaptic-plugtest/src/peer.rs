@@ -228,6 +228,21 @@ pub trait Peer {
         Err(PeerError("notify not supported".into()))
     }
 
+    /// Arm one controlled receive loss for the exact owner; `ack` selects ACK loss.
+    fn arm_observe_loss(
+        &mut self,
+        peer: SocketAddr,
+        token: &[u8],
+        ack: bool,
+    ) -> Result<(), PeerError> {
+        let _ = (peer, token, ack);
+        Err(PeerError("Observe loss control not supported".into()))
+    }
+    /// Number of consumed controlled receive losses on this peer.
+    fn observe_losses(&self) -> usize {
+        0
+    }
+
     /// Set the bounded fixture state: 0 restores, 1 deletes, 2 changes format.
     fn set_observed_state(&mut self, path: &[&str], state: u8) -> Result<(), PeerError> {
         let _ = (path, state);

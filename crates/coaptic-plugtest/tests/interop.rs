@@ -943,3 +943,94 @@ fn observed_resource_terminal_errors_and_recovery() {
         }
     }
 }
+
+#[test]
+fn observe_con_and_ack_loss_preserve_nstart_and_recover() {
+    use coaptic_plugtest::pcap::Capture;
+    let id = "TD_COAP_OBS_11";
+    let result = runner::run_td(
+        id,
+        Pair {
+            client: "coaptic",
+            server: "coaptic",
+        },
+    );
+    assert!(result.error.is_none(), "{:?}", result.error);
+    let packets = result.capture.snapshot();
+    let catalog = Catalog::load().unwrap();
+    for (target, fault) in [
+        (7, "missing"),
+        (7, "mid"),
+        (7, "body"),
+        (7, "token"),
+        (7, "endpoint"),
+        (8, "mid"),
+        (8, "endpoint"),
+        (10, "missing"),
+        (10, "mid"),
+        (11, "missing"),
+        (11, "body"),
+        (11, "endpoint"),
+        (12, "mid"),
+        (13, "body"),
+        (15, "missing"),
+        (6, "overlap"),
+    ] {
+        let changed = Capture::new();
+        for (index, packet) in packets.iter().enumerate() {
+            let mut bytes = packet.bytes.clone();
+            let mut src = packet.src;
+            if index == target {
+                match fault {
+                    "missing" => continue,
+                    "mid" => bytes[3] ^= 1,
+                    "token" => bytes[4] ^= 1,
+                    "body" => *bytes.last_mut().unwrap() ^= 1,
+                    "endpoint" => src = packet.dst,
+                    "overlap" => {
+                        changed.push(packets[9].src, packets[9].dst, &packets[9].bytes, false)
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            changed.push(src, packet.dst, &bytes, packet.decrypted);
+        }
+        assert!(
+            catalog.grade(id, &changed).is_err(),
+            "accepted {target} {fault}"
+        );
+    }
+    if let Some(directory) = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR") {
+        let directory = std::path::PathBuf::from(directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        result
+            .capture
+            .write_pcap(std::fs::File::create(directory.join("obs-11-coaptic.pcap")).unwrap())
+            .unwrap();
+    }
+    for pair in [
+        Pair {
+            client: "coap-rs",
+            server: "coaptic",
+        },
+        Pair {
+            client: "coaptic",
+            server: "coap-rs",
+        },
+    ] {
+        assert!(
+            runner::run_td(id, pair)
+                .error
+                .as_deref()
+                .unwrap()
+                .starts_with("SKIP:")
+        );
+    }
+    let mut unsupported = runner::peer_by_name("coap-rs").unwrap();
+    assert!(
+        unsupported
+            .arm_observe_loss("127.0.0.1:5683".parse().unwrap(), &[1], false)
+            .is_err()
+    );
+    assert_eq!(unsupported.observe_losses(), 0);
+}
