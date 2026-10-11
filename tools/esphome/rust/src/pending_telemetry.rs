@@ -133,6 +133,26 @@ pub fn provision(
     credentials: &Credentials,
     principal: Principal,
 ) -> Result<(), Error> {
+    provision_record(store, credentials, principal, None)
+}
+
+/// Offline first provisioning with complete work in the first committed record.
+/// Existing storage refuses, including a prior uncertain successful write.
+pub fn provision_operation(
+    store: &mut impl Store,
+    credentials: &Credentials,
+    principal: Principal,
+    operation: &TelemetryOperation<'_>,
+) -> Result<(), Error> {
+    provision_record(store, credentials, principal, Some(operation))
+}
+
+fn provision_record(
+    store: &mut impl Store,
+    credentials: &Credentials,
+    principal: Principal,
+    operation: Option<&TelemetryOperation<'_>>,
+) -> Result<(), Error> {
     if store.read()?.is_some() {
         return Err(Error::Present);
     }
@@ -140,12 +160,28 @@ pub fn provision(
     bytes[..8].copy_from_slice(MAGIC);
     bytes[8..40].copy_from_slice(&identity(credentials, principal));
     bytes[40..48].copy_from_slice(&1u64.to_be_bytes());
+    if let Some(operation) = operation {
+        put_operation(&mut bytes, operation);
+    }
     sign(&mut bytes, credentials);
     store.commit(&bytes)?;
     if store.read()? != Some(bytes) {
         return Err(Error::Storage);
     }
     Ok(())
+}
+
+fn put_operation(bytes: &mut [u8; RECORD_BYTES], operation: &TelemetryOperation<'_>) {
+    bytes[48..TAG].fill(0);
+    bytes[48] = 1;
+    bytes[49..65].copy_from_slice(operation.id().as_bytes());
+    bytes[65..97].copy_from_slice(operation.resource());
+    if let Some(format) = operation.content_format() {
+        bytes[97] = 1;
+        bytes[98..100].copy_from_slice(&format.to_be_bytes());
+    }
+    bytes[100..102].copy_from_slice(&(operation.payload().len() as u16).to_be_bytes());
+    bytes[102..102 + operation.payload().len()].copy_from_slice(operation.payload());
 }
 
 /// At most one pending operation; the record also retains its final receipt.
@@ -231,19 +267,10 @@ impl<'a, S: Store> Pending<'a, S> {
         if self.bytes[48] == 2 && &self.bytes[49..65] == id.as_bytes() {
             return Err(Error::IdReused);
         }
-        TelemetryOperation::new(id, resource, format, payload)
+        let operation = TelemetryOperation::new(id, resource, format, payload)
             .map_err(|_| Error::InvalidOperation)?;
         let mut next = self.next()?;
-        next[48..TAG].fill(0);
-        next[48] = 1;
-        next[49..65].copy_from_slice(id.as_bytes());
-        next[65..97].copy_from_slice(&resource);
-        if let Some(format) = format {
-            next[97] = 1;
-            next[98..100].copy_from_slice(&format.to_be_bytes());
-        }
-        next[100..102].copy_from_slice(&(payload.len() as u16).to_be_bytes());
-        next[102..102 + payload.len()].copy_from_slice(payload);
+        put_operation(&mut next, &operation);
         self.persist(next)
     }
 
@@ -395,6 +422,41 @@ mod tests {
     fn receipt(pending: &Pending<'_, Backend>) -> Receipt {
         let op = pending.pending().unwrap().unwrap();
         Receipt::from_parts(op.id(), *op.digest(), 7).unwrap()
+    }
+    #[test]
+    fn first_provision_commits_complete_work_and_uncertain_write_recovers() {
+        let credentials = credentials();
+        let payload = [0x67; 1024];
+        let operation =
+            TelemetryOperation::new(OperationId::new([9; 16]), [5; 32], Some(42), &payload)
+                .unwrap();
+        for ambiguous in [false, true] {
+            let mut backend = Backend::default();
+            if ambiguous {
+                backend.0.borrow_mut().fault = Fault::AfterWrite;
+            }
+            assert_eq!(
+                provision_operation(&mut backend, &credentials, principal(1), &operation),
+                if ambiguous {
+                    Err(Error::Storage)
+                } else {
+                    Ok(())
+                }
+            );
+            assert_eq!(backend.0.borrow().commits, 1);
+            let before = backend.0.borrow().record;
+            assert_eq!(
+                provision_operation(&mut backend, &credentials, principal(1), &operation),
+                Err(Error::Present)
+            );
+            assert_eq!(backend.0.borrow().record, before);
+            let restored = Pending::recover(backend, &credentials, principal(1)).unwrap();
+            let actual = restored.pending().unwrap().unwrap();
+            assert_eq!(actual.id(), operation.id());
+            assert_eq!(actual.digest(), operation.digest());
+            assert_eq!(actual.payload(), payload);
+            assert!(restored.completion().unwrap().is_none());
+        }
     }
     #[test]
     fn complete_operation_and_receipt_survive_recovery_without_replacement() {
