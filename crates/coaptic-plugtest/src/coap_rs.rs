@@ -39,6 +39,17 @@ struct ObserveHold {
     notifications: std::sync::mpsc::Receiver<Result<ClientResponse, PeerError>>,
     failed: Arc<AtomicBool>,
     cancel: Option<oneshot::Sender<ObserveMessage>>,
+    owner: Option<ObserveOwner>,
+}
+
+struct ObserveOwner {
+    registration_token: Vec<u8>,
+    next_readback: u64,
+    client: UdpCoAPClient,
+    destination: SocketAddr,
+    path: Vec<String>,
+    query: Vec<String>,
+    accept: Option<u16>,
 }
 
 impl ObserveHold {
@@ -202,28 +213,61 @@ impl Peer for CoapRsPeer {
         req: &ClientRequest,
     ) -> Result<ClientResponse, PeerError> {
         self.observe = None;
+        if req.path.len() > 8
+            || req.query.len() > 8
+            || req
+                .path
+                .iter()
+                .chain(&req.query)
+                .map(String::len)
+                .sum::<usize>()
+                > 512
+        {
+            return Err("Observe owner identity exceeds fixture bound".into());
+        }
         let destination = dest.to_string();
-        let registration = build_lite_request(req, &destination)?;
+        let mut registration = build_lite_request(req, &destination)?;
+        if registration.message.get_token().is_empty() {
+            registration.message.set_token(0u64.to_be_bytes().to_vec());
+        }
+        let registration_token = registration.message.get_token().to_vec();
         let (sender, notifications) = std::sync::mpsc::sync_channel(OBSERVE_QUEUE);
         let failed = Arc::new(AtomicBool::new(false));
         let callback_failed = Arc::clone(&failed);
         let timeout = req.timeout;
-        let cancel = self
+        let (client, cancel, local) = self
             .rt
             .block_on(async move {
-                let mut client = UdpCoAPClient::new(&destination).await?;
+                let socket = UdpSocket::bind(if dest.is_ipv4() {
+                    "127.0.0.1:0"
+                } else {
+                    "[::1]:0"
+                })?;
+                let local = socket.local_addr()?;
+                let mut client = UdpCoAPClient::new_with_std_socket(socket, &destination).await?;
                 client.set_receive_timeout(timeout);
-                client
+                let cancel = client
                     .observe_with(registration, move |response| {
                         queue_notification(&sender, &callback_failed, response);
                     })
-                    .await
+                    .await?;
+                Ok::<_, std::io::Error>((client, cancel, local))
             })
             .map_err(|error| PeerError(error.to_string()))?;
+        self.addr = Some(local);
         self.observe = Some(ObserveHold {
             notifications,
             failed,
             cancel: Some(cancel),
+            owner: Some(ObserveOwner {
+                registration_token,
+                next_readback: 1,
+                client,
+                destination: dest,
+                path: req.path.clone(),
+                query: req.query.clone(),
+                accept: req.accept,
+            }),
         });
         let response = self.take_notification(req.timeout);
         if response.is_err() {
@@ -236,12 +280,69 @@ impl Peer for CoapRsPeer {
         let response = self
             .observe
             .as_ref()
-            .ok_or("no observe client")?
+            .ok_or("same-owner request not supported without Observe client")?
             .receive(timeout);
         if response.is_err() {
             self.observe = None;
         }
         response
+    }
+
+    fn request_on_observe(
+        &mut self,
+        dest: SocketAddr,
+        req: &ClientRequest,
+    ) -> Result<ClientResponse, PeerError> {
+        let hold = self
+            .observe
+            .as_mut()
+            .ok_or("same-owner request not supported without Observe client")?;
+        let owner = hold.owner.as_mut().ok_or("no retained Observe transport")?;
+        // Only ordinary read-back is qualified here. Refresh/cancellation must
+        // not overwrite the existing Observe token's receive subscription.
+        if hold.failed.load(Ordering::Acquire)
+            || dest != owner.destination
+            || req.path != owner.path
+            || req.query != owner.query
+            || req.accept != owner.accept
+            || req.ty != Type::Confirmable
+            || req.code != Code::GET
+            || req.observe.is_some()
+            || !req.payload.is_empty()
+            || req.content_format.is_some()
+            || !req.etag.is_empty()
+            || !req.if_match.is_empty()
+            || req.if_none_match
+            || req.block2.is_some()
+            || req.token_len.is_some()
+            || req.timeout.is_zero()
+            || req.timeout > Duration::from_secs(3)
+        {
+            return Err("unsupported same-owner Observe read-back".into());
+        }
+        let mut request = build_lite_request(req, &dest.to_string())?;
+        // The SDK send path allocates MIDs but leaves request tokens to callers.
+        // Burn each finite token before I/O, including failed requests.
+        let token = loop {
+            let token = owner.next_readback.to_be_bytes();
+            owner.next_readback = owner
+                .next_readback
+                .checked_add(1)
+                .ok_or("Observe read-back token space exhausted")?;
+            if token.as_slice() != owner.registration_token {
+                break token;
+            }
+        };
+        request.message.set_token(token.to_vec());
+        let response = self
+            .rt
+            .block_on(async {
+                tokio::time::timeout(req.timeout, owner.client.send(request))
+                    .await
+                    .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "read-back"))?
+            })
+            .map_err(|error| PeerError(error.to_string()))?;
+        Ok(from_lite(&response.message))
     }
 
     fn take_capture(&mut self) -> Capture {
@@ -758,8 +859,96 @@ mod observe_tests {
                 notifications,
                 failed: Arc::new(AtomicBool::new(false)),
                 cancel: None,
+                owner: None,
             },
         )
+    }
+
+    #[test]
+    fn same_owner_readback_refuses_invalid_requests_then_preserves_observation() {
+        let _guard = crate::runner::harness_lock();
+        let mut server = crate::coaptic::CoapticPeer::new();
+        let dest = server.start_server().unwrap();
+        let mut client = CoapRsPeer::new();
+        let readback = ClientRequest::get(&["obs"]);
+        assert!(client.request_on_observe(dest, &readback).is_err());
+        let mut registration = readback.clone();
+        registration.observe = Some(0);
+        assert_eq!(
+            client.begin_observe(dest, &registration).unwrap().payload,
+            site::OBS_BODY
+        );
+        let endpoint = client.local_addr();
+        let other = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let before = server.take_capture().snapshot().len();
+        let mut wrong_path = readback.clone();
+        wrong_path.path = vec!["test".into()];
+        let mut cancel = readback.clone();
+        cancel.observe = Some(1);
+        let mut put = readback.clone();
+        put.code = Code::PUT;
+        for (destination, request) in [
+            (other.local_addr().unwrap(), &readback),
+            (dest, &wrong_path),
+            (dest, &registration),
+            (dest, &cancel),
+            (dest, &put),
+        ] {
+            assert!(client.request_on_observe(destination, request).is_err());
+            assert_eq!(client.local_addr(), endpoint);
+        }
+        std::thread::sleep(Duration::from_millis(25));
+        assert_eq!(
+            server.take_capture().snapshot().len(),
+            before,
+            "refusal performed I/O"
+        );
+        other
+            .set_read_timeout(Some(Duration::from_millis(20)))
+            .unwrap();
+        assert!(other.recv_from(&mut [0u8; 64]).is_err());
+        assert_eq!(
+            client.request_on_observe(dest, &readback).unwrap().payload,
+            site::OBS_BODY
+        );
+        server.update_observed(&["obs"], site::OBS_BODY_2).unwrap();
+        let notification = client.take_notification(Duration::from_secs(1)).unwrap();
+        assert_eq!(notification.payload, site::OBS_BODY_2);
+        assert_eq!(notification.ty, Type::Confirmable);
+        let response = client.request_on_observe(dest, &readback).unwrap();
+        assert_eq!(response.payload, site::OBS_BODY_2);
+        assert!(response.observe.is_none());
+        assert_eq!(client.local_addr(), endpoint);
+        // Exhaustion refuses without wrapping/reusing a token or cancelling Observe.
+        client
+            .observe
+            .as_mut()
+            .unwrap()
+            .owner
+            .as_mut()
+            .unwrap()
+            .next_readback = u64::MAX;
+        std::thread::sleep(Duration::from_millis(25));
+        let before = server.take_capture().snapshot().len();
+        assert!(client.request_on_observe(dest, &readback).is_err());
+        std::thread::sleep(Duration::from_millis(25));
+        assert_eq!(server.take_capture().snapshot().len(), before);
+        server.update_observed(&["obs"], site::OBS_BODY).unwrap();
+        assert_eq!(
+            client
+                .take_notification(Duration::from_secs(1))
+                .unwrap()
+                .payload,
+            site::OBS_BODY
+        );
+        assert_eq!(
+            client.begin_observe(dest, &registration).unwrap().payload,
+            site::OBS_BODY
+        );
+        assert_eq!(
+            client.request_on_observe(dest, &readback).unwrap().payload,
+            site::OBS_BODY
+        );
     }
 
     #[test]

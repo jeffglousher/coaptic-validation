@@ -968,8 +968,10 @@ fn observe_resource_update(
     client: &mut dyn Peer,
     server: &mut dyn Peer,
 ) -> Result<(), PeerError> {
-    if client.name() != "coaptic" || server.name() != "coaptic" {
-        return Err(PeerError("SKIP: coverage gap #199: OBS_09 needs controlled resource mutation and same-owner readback".into()));
+    if server.name() != "coaptic" {
+        return Err(PeerError(
+            "SKIP: coverage gap #199: OBS_09 needs controlled server resource mutation".into(),
+        ));
     }
     observe_con(dest, client, server)?;
     let endpoint = client.local_addr();

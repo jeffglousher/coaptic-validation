@@ -194,7 +194,8 @@ async fn run() -> Result<(), Error> {
                 .restore_replay(checkpoint)
                 .map_err(|e| format!("OSCORE replay restore: {e:?}"))?;
         }
-        app.set_oscore(context);
+        app.set_oscore(&mut Some(context))
+            .map_err(|e| format!("OSCORE context installation: {e}"))?;
     }
     if a.server {
         support::ready(
