@@ -7,6 +7,8 @@
 //! Checksums detect accidental corruption; the caller protects the file from
 //! malicious replacement and supplies independently current policy on startup.
 
+pub mod telemetry;
+
 use coaptic::provisioning::{
     OperationId, Principal, Receipt, ReceiptError, ReceiptStore, TelemetryOperation, TrustAnchor,
 };

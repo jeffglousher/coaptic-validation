@@ -2,7 +2,7 @@
 import copy
 import unittest
 
-from run import LARGE, block1_value, coap_message, command, grade_qblock2_missing
+from run import LARGE, block1_value, coap_message, command, grade_qblock2_missing, grade_qblock2_timeout, grade_ipv6_relay
 
 
 def row(direction, wire, action="forward"):
@@ -111,6 +111,66 @@ class RecoveryTests(unittest.TestCase):
         trace[-1]["forwarded_hex"] = content(1, payload=b"x" * 256).hex()
         with self.assertRaises(AssertionError):
             grade_qblock2_missing(trace)
+
+
+class Ipv6RecoveryTests(unittest.TestCase):
+    def trace(self):
+        trace = evidence()
+        for index in (0, 9):
+            wire = bytearray.fromhex(trace[index]["hex"])
+            wire[0] |= 0x10
+            trace[index]["hex"] = wire.hex()
+        return trace
+
+    def test_exact_ipv6_endpoint_evidence_refuses_fallback_and_wrong_owner(self):
+        endpoints = dict(family="AF_INET6", v6only=[1, 1], front=["::1", 1001, 0, 0],
+                         back=["::1", 1002, 0, 0], server=["::1", 1003, 0, 0])
+        client = ["::1", 1004, 0, 0]
+        trace = self.trace()
+        for row in trace:
+            incoming = row["direction"] == "request"
+            row.update(source=client if incoming else endpoints["server"],
+                       destination=endpoints["server"] if incoming else client,
+                       relay=endpoints["back"] if incoming else endpoints["front"])
+        self.assertEqual(grade_ipv6_relay(trace, endpoints)["client"], tuple(client))
+        for key, value in [("family", "AF_INET"), ("v6only", [0, 1]),
+                           ("server", ["127.0.0.1", 1003]), ("front", endpoints["back"])]:
+            changed = copy.deepcopy(endpoints)
+            changed[key] = value
+            with self.subTest(key=key), self.assertRaises(AssertionError):
+                grade_ipv6_relay(trace, changed)
+        for index in (0, 1, 2, 9, 10):
+            for key in ("source", "destination", "relay"):
+                for wrong in (["::1", 9999, 0, 0], ["::ffff:127.0.0.1", 1004, 0, 0], None):
+                    changed = copy.deepcopy(trace)
+                    changed[index][key] = wrong
+                    with self.subTest(index=index, key=key, wrong=wrong), self.assertRaises(AssertionError):
+                        grade_ipv6_relay(changed, endpoints)
+
+    def test_partial_timeout_requires_real_incomplete_data_and_selective_attempt(self):
+        trace = self.trace()[:-1]
+        refusal = dict(event="error", message="request timed out", exit_code=1)
+        proof = grade_qblock2_timeout(trace, refusal)
+        self.assertFalse(proof["complete"])
+        self.assertEqual(proof["partial_bytes"], 1744)
+        self.assertEqual(proof["blocks"], 7)
+        self.assertNotIn("length", proof)
+        for invalid in [[], trace[:-1], trace[:3], self.trace()]:
+            with self.subTest(trace=invalid), self.assertRaises(AssertionError):
+                grade_qblock2_timeout(invalid, refusal)
+        for change in [dict(exit_code=0), dict(event="response"), dict(message="socket unavailable"),
+                       dict(code=69), dict(payload_hex="00")]:
+            with self.subTest(change=change), self.assertRaises(AssertionError):
+                grade_qblock2_timeout(trace, dict(refusal, **change))
+        for index in range(1, 9):
+            changed = copy.deepcopy(trace)
+            wire = bytearray.fromhex(changed[index]["hex"])
+            wire[-1] ^= 1
+            changed[index]["hex"] = wire.hex()
+            with self.subTest(index=index), self.assertRaises(AssertionError):
+                grade_qblock2_timeout(changed, refusal)
+        with self.assertRaises(AssertionError):
+            grade_qblock2_missing(trace, require_non=True)
 
 
 if __name__ == "__main__":

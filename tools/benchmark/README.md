@@ -157,3 +157,30 @@ Architecture and further workload decisions are tracked in
 [#340](https://github.com/jeffglousher/coaptic/issues/340); delivery is
 [#341](https://github.com/jeffglousher/coaptic/issues/341). Existing interop,
 plugtest and device qualification retain their own acceptance and reports.
+
+## Stateful entropy footprint diagnostic
+
+The [source-bound entropy report](evidence/stateful-entropy-20261010.json) compares
+pre-entropy core `9a74f23` with `05fd33d` (merged unchanged as `beef47d`). Matching
+fixed and allocated App types grow by eight inline bytes on the measured
+64-bit Windows target; pool allocation requests and logical work are unchanged.
+Independent `std`/`alloc` modes were measured with OSCORE disabled. Inline type
+sizes exclude heap pool contents, external driver state and stack peaks. The
+three-operation instrumented timings do not establish throughput changes.
+
+To repeat this narrow recipe, prepare two clean checkouts of suite
+`fa0db679aae244ecf96dfe3122cdddf94ffbb1ac`, each with its clean core checkout at
+`coaptic/`: baseline `9a74f2362040fde40d3b869229b4abf9c319bd35` and candidate
+`05fd33d6d24888443a4130e83a6c9b5ec7e90c32`. The report retains compiler and lock
+hashes. Use that compiler for an identical layout comparison; another target
+or compiler produces a separately qualified observation.
+
+```sh
+python tools/benchmark/entropy_footprint.py --baseline-suite BASELINE_SUITE --candidate-suite CANDIDATE_SUITE --output NEW_EVIDENCE_DIRECTORY --build-root BUILD_DIRECTORY
+```
+
+The runner refuses dirty/wrong revisions or ambiguous compiler artifacts,
+separates Cargo targets by source revision, records every command and retains
+failed logs. It compiles the retained exact size probe and the explicit entropy
+layout probe, then runs the unchanged profiler for only 64-byte and 64-KiB
+complete bodies. It does not run a benchmark campaign or the full test suite.

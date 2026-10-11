@@ -52,7 +52,65 @@ def protected_config(config):
     return config
 
 
+def telemetry_config(config, provision=False):
+    protected_config(config)
+    telemetry = {"principal_public_key": "026b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296",
+                 "principal_kid": 1, "resource": "05" * 32, "peer_address": "192.0.2.2"}
+    if provision:
+        telemetry["provision_pending"] = {"operation_id": "09" * 16,
+                                          "payload_hex": "67" * 1024, "content_format": 42}
+    config["coaptic_network"]["telemetry"] = telemetry
+    return config
+
+
 class ConfigurationRefusalTests(unittest.TestCase):
+    def test_telemetry_source_bundled_and_external_modes_generate(self):
+        for runtime, provision in [("source", False), ("source", True), ("bundled", False),
+                                   ("bundled", True), ("external", False)]:
+            with self.subTest(runtime=runtime, provision=provision), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                config = telemetry_config(network_configuration(root, runtime), provision)
+                if runtime == "bundled":
+                    _, marker, report = archive_fixture(root, config)
+                    report["features"] += ["oscore", "telemetry"]
+                    marker.write_text(json.dumps(report), encoding="utf-8")
+                path = root / "network.yaml"
+                path.write_text(json.dumps(config), encoding="utf-8")
+                result = subprocess.run([sys.executable, "-m", "esphome", "compile", str(path), "--only-generate"],
+                                        capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                generated = (root / "build/src/main.cpp").read_text()
+                self.assertIn("set_telemetry(", generated)
+                self.assertIn("set_oscore(", generated)
+                self.assertEqual(("09" * 16) in generated, provision)
+                if runtime == "source":
+                    self.assertIn('set(COAPTIC_TELEMETRY "ON")', (root / "build/CMakeLists.txt").read_text())
+
+    def test_telemetry_refuses_unprotected_unbounded_and_mismatched_configuration(self):
+        for change in ["plaintext", "security_provision", "peer", "timeout", "operation", "payload", "archive"]:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                config = telemetry_config(network_configuration(root, "bundled" if change == "archive" else "source"), True)
+                network = config["coaptic_network"]
+                telemetry = network["telemetry"]
+                if change == "plaintext":
+                    del network["oscore"]
+                    network["allow_plaintext"] = True
+                elif change == "security_provision": network["oscore"]["provision_only"] = True
+                elif change == "peer": telemetry["peer_address"] = "224.0.0.1"
+                elif change == "timeout": telemetry["timeout_ms"] = 0
+                elif change == "operation": telemetry["provision_pending"]["operation_id"] = "09" * 15
+                elif change == "payload": telemetry["provision_pending"]["payload_hex"] = "67" * 1025
+                else:
+                    _, marker, report = archive_fixture(root, config)
+                    report["features"].append("oscore")
+                    marker.write_text(json.dumps(report), encoding="utf-8")
+                path = root / "network.yaml"
+                path.write_text(json.dumps(config), encoding="utf-8")
+                result = subprocess.run([sys.executable, "-m", "esphome", "config", str(path)],
+                                        capture_output=True, text=True, timeout=60)
+                self.assertNotEqual(result.returncode, 0)
+
     def test_archive_schema_versions_require_their_exact_lock_sets(self):
         for version, host_lock, accepted in [(2, False, True), (2, True, False),
                                              (3, True, True), (3, False, False)]:

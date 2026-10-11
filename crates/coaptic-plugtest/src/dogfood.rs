@@ -1507,6 +1507,9 @@ fn run_coap_rs_client(cfg: &Config, dest: SocketAddr) -> Result<PairReport, Peer
     let mut report = PairReport::new();
     let large = site::large_body();
     for i in 0..cfg.iterations {
+        // The prior iteration really deleted /obs. Recreate only this owned
+        // fixture; protocol tables, counters and unrelated resources stay live.
+        site::set_observed_state(0);
         let loop_t0 = Instant::now();
         one_rs(
             &mut client,
@@ -1553,8 +1556,9 @@ fn run_coap_rs_client(cfg: &Config, dest: SocketAddr) -> Result<PairReport, Peer
             "OBS GET /obs",
         )?;
         // Fresh UDP client per send_request: Observe=1 cannot match the
-        // registration Token. DELETE /obs drops the resource's observers
-        // so high-N does not fill the 4-row table.
+        // registration Token. DELETE /obs removes the fixture and its observers
+        // so high-N does not fill the 4-row table. The next iteration explicitly
+        // recreates the fixture; this is not same-owner Observe cancellation.
         let mut del = ClientRequest::request(Code::DELETE, &["obs"]);
         del.timeout = cfg.timeout;
         let got = client.send_request(dest, &del)?;
