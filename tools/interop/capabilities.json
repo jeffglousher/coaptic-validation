@@ -3886,6 +3886,15 @@
       "executable": "tools/interop/run.py:qblock2_con_loss"
     },
     {
+      "id": "ipv6-con-qblock2-loss:coaptic->libcoap",
+      "client": "coaptic", "server": "libcoap", "transport": "udp", "security": "none",
+      "address_family": "ipv6-loopback", "execution_platforms": ["linux", "windows"], "requires": [],
+      "features": ["q-block2", "confirmable", "retransmission", "partial-timeout", "ipv6"],
+      "positive_proof": ["exact AF_INET6/IPV6_V6ONLY endpoint ownership and independent ::1 probe", "lost later CON block retransmits identical bytes/MID/token at unchanged NSTART1", "exact endpoint-bound empty ACK before each later block", "complete 2000-byte body and fresh complete recovery against the same server"],
+      "failure_proof": ["permanent block1 loss delivers only block0 then protocol timeout without application response", "changed retransmission, wrong ACK ownership, NSTART bypass and incomplete-body evidence refuse"],
+      "executable": "tools/interop/run.py:qblock2_con_loss"
+    },
+    {
       "id": "ipv6-qblock2-loss:coaptic->libcoap",
       "client": "coaptic", "server": "libcoap", "transport": "udp", "security": "none",
       "address_family": "ipv6-loopback", "execution_platforms": ["linux", "windows"], "requires": [],
