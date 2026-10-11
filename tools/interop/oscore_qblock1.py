@@ -81,7 +81,29 @@ def _counts(event):
     return tuple(map(int, fields))
 
 
-def grade(trace, result, endpoints, before, after, mode):
+def _endpoint(value, family):
+    require(family in ("ipv4", "ipv6"), "unsupported protected address family")
+    ipv6 = family == "ipv6"
+    require(isinstance(value, (list, tuple)) and len(value) == (4 if ipv6 else 2)
+            and value[0] == ("::1" if ipv6 else "127.0.0.1")
+            and type(value[1]) is int and 0 < value[1] < 65536
+            and (not ipv6 or all(type(part) is int and part == 0 for part in value[2:])),
+            "not exact loopback endpoint with zero flow/scope")
+    return tuple(value)
+
+
+def _relay_endpoints(relay, family):
+    import socket
+    endpoints = {"front": list(relay.front.getsockname()), "back": list(relay.back.getsockname()),
+                 "server": list(relay.dest)}
+    if family == "ipv6":
+        endpoints["family"] = "AF_INET6" if relay.front.family == relay.back.family == socket.AF_INET6 else "wrong"
+        endpoints["v6only"] = [sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY)
+                               for sock in (relay.front, relay.back)]
+    return endpoints
+
+
+def grade(trace, result, endpoints, before, after, mode, *, family="ipv4"):
     from run import LARGE, decoded_options, packet_token, block1_fields, coap_payload, expect, expect_refusal
     require(mode in ("baseline", "drop-request", "drop-once", "drop-permanent", "wrong-key"), "unknown schedule")
     wrong = mode == "wrong-key"
@@ -95,11 +117,14 @@ def grade(trace, result, endpoints, before, after, mode):
     require(current == tuple(n + int(not wrong) for n in prior), "handler effect mismatch")
     require(1 <= len(trace) <= 256, "trace outside finite bound")
 
+    require(family in ("ipv4", "ipv6"), "unsupported protected address family")
+    if family == "ipv6":
+        only = endpoints.get("v6only")
+        require(endpoints.get("family") == "AF_INET6" and isinstance(only, list)
+                and len(only) == 2 and all(type(value) is int and value == 1 for value in only),
+                "relay sockets not proven IPv6-only")
     def endpoint(value):
-        require(isinstance(value, (list, tuple)) and len(value) == 2
-                and value[0] == "127.0.0.1" and type(value[1]) is int
-                and 0 < value[1] < 65536, "not an exact IPv4 loopback endpoint")
-        return tuple(value)
+        return _endpoint(value, family)
 
     front, back, server = (endpoint(endpoints[k]) for k in ("front", "back", "server"))
     client = endpoint(trace[0]["source"])
@@ -220,7 +245,8 @@ def grade(trace, result, endpoints, before, after, mode):
             require(acknowledged and (wire[0] >> 4) & 3 == 0
                     and packet_token(wire) == token and set(decoded_options(wire)) == {9},
                     "separate response type/token/protection or request settlement mismatch")
-            require(wire[2:4] not in {old[2:4] for old in unique}, "server response reused upload MID")
+            # RFC 7252 sections 4.4/4.5 scope MIDs by sender endpoint.
+            # A separate server response may reuse a numeric client-request MID.
             plain = response_plain(wire, latest)
             require(int(plain.code) == 65 and plain.payload == b"", "wrong authenticated Created")
             require(bytes(body) == LARGE, "Created before exact complete body")
@@ -262,41 +288,141 @@ def grade(trace, result, endpoints, before, after, mode):
             "decoder": "aiocoap " + importlib.metadata.version("aiocoap")}
 
 
-def workflow(client, server):
-    from run import LARGE, Proxy, Server, expect, request
-    schedules = []
+MODES = ("baseline", "drop-request", "drop-once", "drop-permanent", "wrong-key", "baseline")
+
+
+def campaign_review(record, *, family="ipv4"):
+    """Reauthenticate six captured uploads, exact outcomes and fresh same-server recovery."""
+    from run import expect_refusal
+    require(record.get("family") == family, "campaign address family changed")
+    ready = record["server_ready"]
+    require(ready.get("transport") == "oscore", "server not protected")
+    server = _endpoint(("::1", ready["port"], 0, 0) if family == "ipv6"
+                       else ("127.0.0.1", ready["port"]), family)
+    schedules = record["schedules"]
+    require(len(schedules) == len(MODES), "incomplete six-schedule campaign")
+    bindings, first_bindings = set(), []
+    effects = (0, 0)
+    for index, (case, mode) in enumerate(zip(schedules, MODES)):
+        sequence = 200 + index * 300
+        require(case["mode"] == mode and type(case["sequence_start"]) is int
+                and case["sequence_start"] == sequence, "changed campaign order/sequence")
+        require(_endpoint(case["endpoints"]["server"], family) == server, "server changed during recovery")
+        result, trace = case["result"], case["trace"]
+        proof = grade(trace, result, case["endpoints"], case["before"], case["after"], mode, family=family)
+        require(json.dumps(proof, sort_keys=True) == json.dumps(case["proof"], sort_keys=True),
+                "retained proof differs from actual trace")
+        require(_counts(case["before"]) == effects, "effect history changed between schedules")
+        effects = _counts(case["after"])
+        host_ns = result.get("host_total_ns")
+        require(type(host_ns) is int and 0 <= host_ns <= 10_500_000_000
+                and trace[-1]["time_ns"] - trace[0]["time_ns"] <= host_ns,
+                "missing bounded host duration or trace exceeds process lifetime")
+        if mode in ("drop-permanent", "wrong-key"):
+            expect_refusal(result)
+            require(result.get("message") == "request timed out" and "code" not in result
+                    and not result.get("payload_hex"), "not exact protocol timeout without response")
+            require(host_ns >= (650_000_000 if mode == "wrong-key" else 6_450_000_000), "premature timeout")
+        seen = set()
+        for row in trace:
+            wire = bytes.fromhex(row["hex"])
+            if row["direction"] != "request" or wire[1] == 0 or wire in seen:
+                continue
+            _, binding = request_plain(wire, wrong_key=mode == "wrong-key")
+            piv = bytes(binding.partial_iv)
+            require(piv not in bindings, "request PIV reused between uploads")
+            value = int.from_bytes(piv, "big")
+            # A full-body sizing attempt may consume a PIV before Block1 fallback.
+            # Bind actual upload requests to the caller's disjoint finite range.
+            require(sequence <= value < sequence + 100, "request outside reserved upload sequence range")
+            if not seen:
+                first_bindings.append(value)
+            bindings.add(piv)
+            seen.add(wire)
+    require(effects == (5, 5) and _counts(record["final_readback"]) == effects,
+            "final independent effect readback differs")
+    return {"same_server": list(server), "schedules": list(MODES), "fresh_upload_bindings": first_bindings,
+            "distinct_request_pivs": len(bindings), "final_effect": list(effects),
+            "fresh_recovery_body_bytes": schedules[-1]["proof"]["body_bytes_observed"],
+            "scope": f"finite {family} loopback CON Q-Block1; no durable effects, enrollment, routed or sustained availability qualification"}
+
+
+def workflow(client, server, *, family="ipv4", record=None, patch=None):
+    from run import LARGE, Proxy, Server, request
+    require(family in ("ipv4", "ipv6"), "unsupported protected address family")
+    if record is None:
+        record = {}
+    record.update(family=family, schedules=[], complete=False,
+                  limits=f"finite {family} loopback fixture; no enrollment or sustained availability",
+                  libcoap_source="851533c3cf63d16984d370ce39d586ecb3694971")
     sequence = 0
-    with Server(server, "oscore") as service:
+    with Server(server, "oscore", family=family) as service:
+        record["server_ready"] = service.ready
+        if patch is not None:
+            require(service.ready.get("libcoap_patch_sha256") == patch["patch_sha256"],
+                    "server binary does not identify expected dependency patch")
         def exchange(**kwargs):
             nonlocal sequence
             sequence += 100
-            return request(client, "oscore", kwargs.pop("port", service.number), sequence=sequence, **kwargs)
+            return request(client, "oscore", kwargs.pop("port", service.number), sequence=sequence,
+                           family=family, **kwargs)
 
-        for mode, fault in (("baseline", "pass"), ("drop-request", "drop-oscore-request-once"),
-                            ("drop-once", "drop-oscore-final-once"),
-                            ("drop-permanent", "drop-oscore-final-permanent"), ("wrong-key", "pass"),
-                            ("baseline", "pass")):
-            before = exchange(path="upload")
-            record = {"mode": mode, "before": before}
-            relay = Proxy(service.number, fault)
+        for mode, fault in zip(MODES, ("pass", "drop-oscore-request-once", "drop-oscore-final-once",
+                                       "drop-oscore-final-permanent", "pass", "pass")):
+            current = {"mode": mode, "sequence_start": sequence + 200}
+            record["schedules"].append(current)
+            current["before"] = exchange(path="upload")
+            relay = Proxy(service.number, fault, family=family)
             try:
                 with relay:
-                    endpoints = {"front": list(relay.front.getsockname()), "back": list(relay.back.getsockname()),
-                                 "server": list(relay.dest)}
-                    record["endpoints"] = endpoints
-                    result = exchange(port=relay.number, path="upload", method="POST", payload=LARGE,
-                                      timeout=6500 if mode != "wrong-key" else 700,
-                                      qblock1=True, key="incorrect" if mode == "wrong-key" else "sesame")
-                    record["result"] = result
-                after = exchange(path="upload")
-                record["after"] = after
-                record["trace"] = relay.trace
-                record["proof"] = grade(relay.trace, result, endpoints, before, after, mode)
+                    current["endpoints"] = _relay_endpoints(relay, family)
+                    current["result"] = exchange(port=relay.number, path="upload", method="POST", payload=LARGE,
+                                                  timeout=6500 if mode != "wrong-key" else 700,
+                                                  qblock1=True, key="incorrect" if mode == "wrong-key" else "sesame")
+                current["after"] = exchange(path="upload")
+                current["trace"] = relay.trace
+                current["proof"] = grade(relay.trace, current["result"], current["endpoints"],
+                                          current["before"], current["after"], mode, family=family)
             except (AssertionError, RuntimeError) as error:
-                # Include captured bytes even when the relay or subprocess fails.
-                record["trace"] = relay.trace
-                raise AssertionError(json.dumps({"error": str(error), "completed": schedules, "failed": record})) from error
-            schedules.append(record)
-        expect(exchange(path="upload"), 69, b"5:5")
-    return {"schedules": schedules, "limits": "finite IPv4 loopback fixture; no enrollment or sustained availability",
-            "libcoap_source": "851533c3cf63d16984d370ce39d586ecb3694971"}
+                # The relay context has joined before retaining its final trace.
+                current["trace"] = relay.trace
+                raise AssertionError(json.dumps({"error": str(error), "completed": record["schedules"][:-1],
+                                                 "failed": current})) from error
+        record["final_readback"] = exchange(path="upload")
+    record["proof"] = campaign_review(record, family=family)
+    record["complete"] = True
+    return record
+
+
+def main():
+    import argparse
+    import hashlib
+    import platform
+    from pathlib import Path
+    from run import source_identity
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--coaptic", required=True, type=Path)
+    parser.add_argument("--libcoap", required=True, type=Path)
+    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--family", choices=("ipv4", "ipv6"), default="ipv4")
+    parser.add_argument("--libcoap-patch-manifest", required=True, type=Path)
+    args = parser.parse_args()
+    peers = {"coaptic": args.coaptic.resolve(), "libcoap": args.libcoap.resolve()}
+    patch = json.loads(args.libcoap_patch_manifest.read_text(encoding="utf-8"))
+    report = {"schema": "coaptic-protected-qblock1-campaign/1", **source_identity(),
+              "family": args.family, "platform": platform.platform(), "libcoap_patch": patch, "qualification_complete": False,
+              "executables": {name: {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+                              for name, path in peers.items()}, "campaign": {}}
+    try:
+        workflow(peers["coaptic"], peers["libcoap"], family=args.family, record=report["campaign"], patch=patch)
+        report["qualification_complete"] = True
+    except Exception as error:
+        report["error"] = f"{type(error).__name__}: {error}"
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"qualification_complete": report["qualification_complete"], "report": str(args.output)}))
+    return 0 if report["qualification_complete"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
