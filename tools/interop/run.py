@@ -1868,7 +1868,7 @@ def grade_qblock2_missing(trace, *, require_ack=False, require_non=False):
     missing = nums[0]
     downloads = []
     for row in trace:
-        if row["direction"] != "request":
+        if row["direction"] != "request" or row["action"] != "forward":
             continue
         packet = bytes.fromhex(row["hex"])
         if len(packet) > 4 and packet[1] == 1 and b"large" in decoded_options(packet).get(11, []):
@@ -1885,7 +1885,7 @@ def grade_qblock2_missing(trace, *, require_ack=False, require_non=False):
     recovers = []
     recover_at = None
     for index, row in enumerate(trace):
-        if row["direction"] != "request":
+        if row["direction"] != "request" or row["action"] != "forward":
             continue
         packet = bytes.fromhex(row["hex"])
         if packet_token(packet) not in large_tokens or not qblock2_requests_num(packet, missing):
@@ -1904,6 +1904,7 @@ def grade_qblock2_missing(trace, *, require_ack=False, require_non=False):
             raise AssertionError("recovery set the M bit")
     drop_at = next(i for i, row in enumerate(trace) if row["action"] == "drop")
     if not any(row["direction"] == "request"
+               and row["action"] == "forward"
                and b"large" in decoded_options(bytes.fromhex(row["hex"])).get(11, [])
                and any(block1_fields(value)[0] == 0 for value in
                        decoded_options(bytes.fromhex(row["hex"])).get(31, []))
@@ -1915,7 +1916,7 @@ def grade_qblock2_missing(trace, *, require_ack=False, require_non=False):
         qblock2_content_num(bytes.fromhex(row["hex"])) not in (None, 0, missing)
         and packet_token(bytes.fromhex(row["hex"])) in large_tokens
         for row in trace[:recover_at]
-        if row["direction"] == "response" and row["action"] != "drop"
+        if row["direction"] == "response" and row["action"] == "forward"
     ):
         raise AssertionError("no higher Q-Block2 block arrived before the recovery request")
     parts = {}
@@ -1968,6 +1969,8 @@ def grade_qblock2_missing(trace, *, require_ack=False, require_non=False):
             resent = True
     if not resent:
         raise AssertionError("the missing block was not delivered after the recovery request")
+    if any(request_szx != szx for parsed in recovers for _, _, request_szx in parsed):
+        raise AssertionError("recovery SZX did not match the representation")
     if terminal is None or not parts or terminal != max(parts):
         raise AssertionError("no terminal Q-Block2 block completed the body")
     if sorted(parts) != list(range(terminal + 1)):

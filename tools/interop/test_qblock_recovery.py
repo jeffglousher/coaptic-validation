@@ -9,9 +9,9 @@ def row(direction, wire, action="forward"):
     return {"direction": direction, "action": action, "hex": wire.hex()}
 
 
-def get(num=0, more=True, token=b"q"):
+def get(num=0, more=True, token=b"q", szx=4):
     return coap_message(1, 10 + num, token,
-                        [(11, b"large"), (31, block1_value(num, more, 4))])
+                        [(11, b"large"), (31, block1_value(num, more, szx))])
 
 
 def content(num, *, more=None, szx=4, etag=b"v", token=b"q", payload=None, size=2000):
@@ -29,6 +29,27 @@ def evidence():
 
 
 class RecoveryTests(unittest.TestCase):
+    def test_requests_must_be_forwarded_and_recovery_size_must_match(self):
+        for index in (0, 9):
+            for action in ("hold", "drop", "corrupt"):
+                changed = copy.deepcopy(evidence())
+                changed[index]["action"] = action
+                with self.subTest(index=index, action=action), self.assertRaises(AssertionError):
+                    grade_qblock2_missing(changed)
+        changed = evidence()
+        changed[9] = row("request", get(1, False, szx=3))
+        with self.assertRaisesRegex(AssertionError, "recovery SZX"):
+            grade_qblock2_missing(changed)
+
+    def test_held_higher_blocks_do_not_prove_delivery_before_recovery(self):
+        trace = evidence()
+        # The complete body still arrives, but higher blocks arrive only after recovery.
+        # Their earlier held copies must not satisfy the higher-block prerequisite.
+        held = [dict(item, action="hold") for item in trace[3:9]]
+        changed = trace[:3] + held + trace[9:] + trace[3:9]
+        with self.assertRaisesRegex(AssertionError, "no higher Q-Block2"):
+            grade_qblock2_missing(changed)
+
     def test_non_flag_is_explicit_and_preserves_the_existing_con_option(self):
         self.assertEqual(command("peer", "client", "udp", 5683, qblock2=True)[-1], "qblock2")
         args = command("peer", "client", "udp", 5683, qblock2_non=True)
