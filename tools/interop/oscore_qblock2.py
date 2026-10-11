@@ -71,7 +71,7 @@ def baseline_grade(trace, result, endpoints):
             request_pending = False
             forms.append("empty request ACK")
             continue
-        require(packet_token(wire) == token and set(decoded_options(wire)) == {9},
+        require(wire[1] == 68 and packet_token(wire) == token and set(decoded_options(wire)) == {9},
                 "response token/protection mismatch")
         if ty == 2:
             require(request_pending and mid == latest[2:4], "piggybacked response owner mismatch")
@@ -106,17 +106,53 @@ def baseline_grade(trace, result, endpoints):
             "request_count": len(request_mids), "scope": "baseline only; loss/refusal/recovery not yet qualified"}
 
 
-def baseline(client, server):
-    import json
+def baseline(client, server, record):
     from run import Proxy, Server, request, expect
     with Server(server, "oscore") as service:
-        expect(request(client, "oscore", service.number, sequence=0))
-        with Proxy(service.number, "pass") as relay:
-            endpoints = {"front": relay.front.getsockname(), "back": relay.back.getsockname(), "server": relay.dest}
-            result = request(client, "oscore", relay.number, path="large", sequence=100, timeout=6500, qblock2=True)
-        record = {"trace": relay.trace, "result": result, "endpoints": endpoints}
+        record["setup"] = request(client, "oscore", service.number, sequence=0)
+        expect(record["setup"])
+        relay = Proxy(service.number, "pass")
         try:
-            record["proof"] = baseline_grade(relay.trace, result, endpoints)
-        except AssertionError as error:
-            raise AssertionError(json.dumps({"error": str(error), "baseline": record})) from error
-        return record
+            with relay:
+                record["endpoints"] = {"front": relay.front.getsockname(), "back": relay.back.getsockname(), "server": relay.dest}
+                record["result"] = request(client, "oscore", relay.number, path="large", sequence=100, timeout=6500, qblock2=True)
+        finally:
+            record["trace"] = relay.trace
+        record["proof"] = baseline_grade(record["trace"], record["result"], record["endpoints"])
+
+
+def main():
+    import argparse
+    import hashlib
+    import json
+    import platform
+    from pathlib import Path
+    # Importing run makes the common tools identity module available.
+    from run import source_identity
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--coaptic", required=True, type=Path)
+    parser.add_argument("--libcoap", required=True, type=Path)
+    parser.add_argument("--output", required=True, type=Path)
+    args = parser.parse_args()
+    peers = {"coaptic": args.coaptic.resolve(), "libcoap": args.libcoap.resolve()}
+    report = {"schema": "coaptic-protected-qblock2-baseline/1", **source_identity(),
+              "platform": platform.platform(), "qualification_complete": False,
+              "scope": "baseline observation only; loss/refusal/recovery remain unqualified",
+              "libcoap_source": "851533c3cf63d16984d370ce39d586ecb3694971",
+              "executables": {name: {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+                              for name, path in peers.items()}, "baseline": {}}
+    try:
+        baseline(peers["coaptic"], peers["libcoap"], report["baseline"])
+        report["baseline_passed"] = True
+    except Exception as error:
+        report["baseline_passed"] = False
+        report["error"] = f"{type(error).__name__}: {error}"
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_bytes((json.dumps(report, indent=2) + "\n").encode("utf-8"))
+    print(json.dumps({"baseline_passed": report["baseline_passed"],
+                      "qualification_complete": False, "report": str(args.output)}))
+    return 0 if report["baseline_passed"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

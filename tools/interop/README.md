@@ -210,3 +210,15 @@ still requiring client timeout, no authenticated upload progress and unchanged
 handler counts. This diagnostic establishes no authenticated success. The failed
 campaign remains retained; the final fresh-recovery schedule still needs a new
 hosted execution.
+
+The separate `oscore_qblock2.py` baseline observer records the protected
+Coaptic-to-libcoap `/large` response using the same pinned aiocoap decoder.
+Its report records exact sources, executable hashes, endpoint ownership,
+authenticated Q-Block2/ETag/Size2/body evidence, and the observed ACK/CON
+sequence. Run it with `--coaptic PATH --libcoap PATH --output REPORT.json`
+after building the same OSCORE-enabled peers and installing the pinned decoder
+requirements used above. This is a baseline prerequisite for
+[#472](https://github.com/jeffglousher/coaptic/issues/472), not a complete
+loss/refusal/recovery qualification or an enabled capability-matrix case.
+A failed baseline retains its trace and failure; synthetic oracle tests do
+not establish independent-peer interoperability.

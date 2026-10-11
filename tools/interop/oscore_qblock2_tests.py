@@ -4,7 +4,7 @@ import unittest
 import aiocoap
 from aiocoap.message import Direction
 from oscore_qblock1 import FixtureContext, request_plain
-from oscore_qblock2 import baseline_grade
+from oscore_qblock2 import baseline, baseline_grade
 from run import LARGE, coap_message
 
 ENDPOINTS = {"front": ["127.0.0.1", 1001], "back": ["127.0.0.1", 1002], "server": ["127.0.0.1", 1003]}
@@ -44,6 +44,31 @@ def evidence(separate=False, *, tag=b"tag", size=b"\x07\xd0", q_option=31, body=
     return [trace, dict(event="response", code=69, payload_hex=LARGE.hex(), exit_code=0), copy.deepcopy(ENDPOINTS)]
 
 class BaselineTests(unittest.TestCase):
+    def test_subprocess_failure_retains_joined_relay_trace(self):
+        from unittest.mock import MagicMock, patch
+        service, relay = MagicMock(), MagicMock()
+        service.__enter__.return_value = service
+        relay.__enter__.return_value = relay
+        service.number = 1003
+        relay.front.getsockname.return_value = ENDPOINTS["front"]
+        relay.back.getsockname.return_value = ENDPOINTS["back"]
+        relay.dest = ENDPOINTS["server"]
+        # The trace becomes final only when the context joins its worker.
+        relay.trace = []
+        def joined(*_):
+            relay.trace = [{"action": "forward", "partial": True}]
+            return False
+        relay.__exit__.side_effect = joined
+        record = {}
+        with patch("run.Server", return_value=service), patch("run.Proxy", return_value=relay), \
+             patch("run.expect"), patch("run.request", side_effect=[{}, RuntimeError("subprocess deadline")]):
+            with self.assertRaisesRegex(RuntimeError, "subprocess deadline"):
+                baseline(None, None, record)
+        self.assertEqual(record["trace"], [{"action": "forward", "partial": True}])
+        self.assertEqual(record["endpoints"]["server"], ENDPOINTS["server"])
+        self.assertNotIn("proof", record)
+        self.assertNotIn("result", record)
+
     def test_authenticated_baseline_shapes(self):
         for separate in (False, True):
             proof=baseline_grade(*evidence(separate))
