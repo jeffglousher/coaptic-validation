@@ -1,6 +1,12 @@
 """Exact two-block CON upload evidence for the existing independent libcoap fixture."""
 import re
 
+# peer-coaptic uses App's unchanged Transmission defaults: ACK_TIMEOUT 2000 ms,
+# ACK_RANDOM_FACTOR 1.5 (core src/message/mod.rs). Relay capture may lag socket
+# arrival: allow 50 ms early capture skew and 1000 ms late host scheduling.
+INITIAL_RTO_NS = (2_000_000_000, 3_000_000_000)
+CAPTURE_TOLERANCE_NS = (50_000_000, 1_000_000_000)
+
 
 def later_upload(packet):
     from run import block1_fields, decoded_options
@@ -47,6 +53,7 @@ def grade(trace, result, endpoints, before, after, *, complete):
     initial = later = None
     initial_acked = later_forwarded = final_acked = False
     drops = retries = 0
+    first_drop_time = first_retry_interval = None
     previous_time = -1
     for index, row in enumerate(trace):
         direction, action = row["direction"], row["action"]
@@ -87,9 +94,15 @@ def grade(trace, result, endpoints, before, after, *, complete):
                     if action != "drop":
                         raise AssertionError("first later upload block was not lost")
                     later = wire
+                    first_drop_time = timestamp
                 elif wire != later:
                     raise AssertionError("upload retry changed bytes or identity")
                 else:
+                    if retries == 0:
+                        first_retry_interval = timestamp - first_drop_time
+                        if not (INITIAL_RTO_NS[0] - CAPTURE_TOLERANCE_NS[0] <= first_retry_interval
+                                <= INITIAL_RTO_NS[1] + CAPTURE_TOLERANCE_NS[1]):
+                            raise AssertionError("first retry outside fixture RTO capture window")
                     retries += 1
                 if action == "drop":
                     drops += 1
@@ -113,4 +126,6 @@ def grade(trace, result, endpoints, before, after, *, complete):
         raise AssertionError("missing permanent upload loss/refusal proof")
     return dict(complete=complete, delivered_bytes=2000 if complete else 1024, drops=drops,
                 retransmissions=retries, accepted_before=accepted, accepted_after=expected,
-                handler_calls_after=expected, trace=trace, endpoints=endpoints)
+                handler_calls_after=expected, first_retry_interval_ns=first_retry_interval,
+                initial_rto_ns=INITIAL_RTO_NS, capture_tolerance_ns=CAPTURE_TOLERANCE_NS,
+                trace=trace, endpoints=endpoints)

@@ -139,6 +139,10 @@ changed. A fresh client process and relay then complete against the same server.
 The successful schedules have twelve-second deadlines; refusal has six seconds
 and must retain a genuine retry. Traces are limited to 256 datagrams and bind
 each packet to exact endpoints, monotonic capture time and unchanged wire bytes.
+The first retry must match the fixture's unchanged 2–3 second initial RTO, allowing
+50 ms early capture skew and one second of late host scheduling. Zero/compressed
+capture intervals refuse; this is not qualification of every timer boundary.
+The readback counts are in-memory fixture application effects, not durable receipts.
 This finite CON case uses existing RFC 7252 reliability as referenced by RFC 9177
 section 7.1; it does not qualify NON missing-block recovery, timed-out Call reuse,
 protected transport, routed networks, hardware or sustained availability.

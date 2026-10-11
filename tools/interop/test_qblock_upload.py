@@ -128,6 +128,22 @@ class UploadLossTests(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 self.grade(evidence(complete), not complete)
 
+    def test_retry_capture_must_match_declared_fixture_rto(self):
+        for complete in (True, False):
+            for interval in (0, 1, 1_000_000, 1_949_999_999, 4_000_000_001):
+                changed = evidence(complete)
+                changed[3]["time_ns"] = changed[2]["time_ns"] + interval
+                if complete:
+                    changed[4]["time_ns"] = changed[3]["time_ns"] + 1
+                with self.subTest(complete=complete, interval=interval), self.assertRaises(AssertionError):
+                    self.grade(changed, complete)
+            for interval in (1_950_000_000, 2_000_000_000, 3_000_000_000, 4_000_000_000):
+                changed = evidence(complete)
+                changed[3]["time_ns"] = changed[2]["time_ns"] + interval
+                if complete:
+                    changed[4]["time_ns"] = changed[3]["time_ns"] + 1
+                self.assertEqual(self.grade(changed, complete)["first_retry_interval_ns"], interval)
+
     def test_fault_selector_is_confined_to_later_con_upload(self):
         self.assertTrue(later_upload(upload(1)))
         self.assertFalse(later_upload(upload(0)))
