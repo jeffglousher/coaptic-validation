@@ -212,3 +212,51 @@ campaign remains retained; the final fresh-recovery schedule was not reached in
 that failed run. The later actual campaign (`38131267282`) passed all six schedules,
 including fresh recovery; [source-bound results](https://github.com/jeffglousher/coaptic/issues/468#issuecomment-6108057349)
 retain the successful trace separately from both failed campaigns.
+
+The separate `oscore_qblock2.py` baseline observer records the protected
+Coaptic-to-libcoap `/large` response using the same pinned aiocoap decoder.
+Its report records exact sources, executable hashes, endpoint ownership,
+authenticated Q-Block2/ETag/Size2/body evidence, and the observed ACK/CON
+sequence. Run it with `--coaptic PATH --libcoap PATH --output REPORT.json`
+after building the same OSCORE-enabled peers and installing the pinned decoder
+requirements used above. This is a baseline prerequisite for
+[#472](https://github.com/jeffglousher/coaptic/issues/472), not a complete
+loss/refusal/recovery qualification or an enabled capability-matrix case.
+A failed baseline retains its trace and failure; synthetic oracle tests do
+not establish independent-peer interoperability.
+
+
+The companion-owned prerequisite patch for [#477](https://github.com/jeffglousher/coaptic/issues/477)
+retains an immutable request binding per protected UDP Q-Block2 transfer, separate
+from libcoap's mutable token association. Session-monotonic generations revoke
+superseded queued and timer continuations. A separate authenticated-request
+generation is committed only after successful authentication and complete inner
+decoding, then stamped on the response before the application callback. Missing
+or stale stamps (including unsupported asynchronous copies) refuse transfer
+binding. This does not qualify proxy/async behavior or preclude their earlier
+upstream empty ACK. Same-token replacement and recipient recreation cannot retarget an old
+response. Failed decoding or replacement allocation preserves the prior request
+association. Distinct response blocks use fresh
+server PIVs; ciphertext retransmissions remain unchanged. The exact upstream,
+patch and modified-source hashes are checked before building and reported with
+the binary identity; this is a patched peer, not unmodified libcoap qualification.
+
+The bounded patch supports ordinary CON exchanges and one explicit cached block
+per fresh request. Protected NON/Observe transfer binding and cached M=1 or
+repeated-selector bursts are refused. It does not add an independent-peer PASS
+for those combinations. Retained binding metadata is limited to one token of at
+most eight bytes, 200 AAD bytes, a 13-byte nonce and an eight-byte request PIV per
+live transfer, plus allocator/structure overhead. This is not a total libcoap
+memory ceiling. The authenticated-request generation adds one 64-bit field to
+each OSCORE PDU, session and association even when Q-Block is disabled; structure
+padding and allocator overhead are additional. Dynamic recipient deletion conservatively refuses while a
+protected-Q response is encrypting, and otherwise invalidates only the exact
+OSCORE context/recipient's bindings. Context teardown follows upstream's documented
+prohibition on calling `coap_free_context()` from a libcoap callback.
+
+The mandatory hosted ASan/UBSan lifetime executable uses in-memory transport
+writes and allocation refusal injection before any patched process campaign.
+Local synthetic oracle/source-hash checks cannot establish that this C gate or
+the patched wire baseline succeeds. Both remain required before qualification;
+[#472's original failure](https://github.com/jeffglousher/coaptic/issues/472#issuecomment-6108231594)
+and its full loss/refusal/recovery acceptance remain separate.
