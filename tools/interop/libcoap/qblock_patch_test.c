@@ -463,6 +463,9 @@ static void callback_request_replacement(void) {
   unsigned replaced;coap_pdu_t *input;coap_resource_t *r;
   for(replaced=0;replaced<=1;replaced++) {
     setup();ctx->p_osc_ctx->rfc8613_b_1_2=0;ctx->p_osc_ctx->recipient_chain->initial_state=0;
+    /* Match peer.c admission: Q-Block is a negotiated critical option. */
+    ctx->block_mode=COAP_BLOCK_USE_LIBCOAP|COAP_BLOCK_SINGLE_BODY|COAP_BLOCK_TRY_Q_BLOCK;
+    session->block_mode=ctx->block_mode;
     r=coap_resource_init(coap_make_str_const("large"),COAP_RESOURCE_SAFE_REQUEST_HANDLER);CHECK(r);
     coap_register_handler(r,COAP_REQUEST_GET,origin_handler);coap_add_resource_lkd(ctx,r);
     replace_in_handler=replaced;handler_calls=0;
