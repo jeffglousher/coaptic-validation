@@ -451,6 +451,8 @@ jobs:
           cargo build --locked --release -p peer-coaptic -p peer-coap-rs
           cmake -S tools/interop/libcoap -B target/libcoap-peer -G Ninja -DLIBCOAP_SOURCE="$RUNNER_TEMP/libcoap" -DCMAKE_BUILD_TYPE=Release -DENABLE_DTLS=ON -DDTLS_BACKEND=openssl -DENABLE_OSCORE=ON -DLIBCOAP_QBLOCK_PATCH=ON
           cmake --build target/libcoap-peer --parallel 2
+      - name: Patched backend continuation ownership and NSTART refusal
+        run: target/libcoap-peer/qblock-patch-test | tee target/qblock-patch-test.txt
       - name: Isolated pinned protected-trace decoder
         run: |
           python3 -m venv "$RUNNER_TEMP/oscore-qblock1"
@@ -474,6 +476,7 @@ jobs:
           path: |
             target/process-interop.json
             target/oscore-qblock2-baseline.json
+            target/qblock-patch-test.txt
             ${{ runner.temp }}/validation-source.json
           if-no-files-found: warn
   plugtest:
