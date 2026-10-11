@@ -156,13 +156,13 @@ def review(record, patch):
     require(record["server_ready"].get("transport") == "oscore" and
             record["server_ready"].get("libcoap_patch_sha256") == patch["patch_sha256"], "server provenance mismatch")
     expect(record["setup"])
+    server_endpoint = loopback_endpoint(("127.0.0.1", record["server_ready"]["port"]), "ipv4")
     require(len(record["schedules"]) == 4, "incomplete campaign")
     requests, explicit = set(), set()
     proofs = []
     for index, (case, (name, path, capped)) in enumerate(zip(record["schedules"], SCHEDULES), 1):
         require(case["name"] == name and case["sequence_start"] == index*100, "wrong schedule/order")
-        require(case["endpoints"]["server"] == ["127.0.0.1", record["server_ready"]["port"]]
-                or tuple(case["endpoints"]["server"]) == ("127.0.0.1", record["server_ready"]["port"]), "server changed")
+        require(loopback_endpoint(case["endpoints"]["server"], "ipv4") == server_endpoint, "server changed")
         proof = grade(case["trace"], case["result"], case["endpoints"], path=path, capped=capped)
         require(proof == case["proof"], "retained proof does not match trace")
         _, binding = request_plain(bytes.fromhex(case["trace"][0]["hex"]))
