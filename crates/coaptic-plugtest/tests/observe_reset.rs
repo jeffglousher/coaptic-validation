@@ -35,7 +35,9 @@ fn register(socket: &UdpSocket, server: SocketAddr, mid: u16, token: &[u8]) {
     let response = decode(&bytes).unwrap();
     assert_eq!(response.ty(), Type::Acknowledgement);
     assert_eq!(response.code(), Code::CONTENT);
+    assert_eq!(response.message_id(), MessageId::new(mid));
     assert_eq!(response.token().as_bytes(), token);
+    assert_eq!(response.payload(), site::OBS_BODY);
     assert!(response.observe().is_some());
 }
 
@@ -70,7 +72,7 @@ fn reset(peer: &mut CoapticPeer, socket: &UdpSocket, server: SocketAddr, mid: Me
 // Grade the server's single tap, so every datagram occurs exactly once. Exact
 // order rejects missing refusal steps, an unmatched accepted reset, and any
 // notification after removal, including during the health check.
-fn grade(packets: &[Packet]) -> Result<(), String> {
+fn grade(packets: &[Packet], client: SocketAddr, server: SocketAddr) -> Result<(), String> {
     if packets.len() != 13 {
         return Err(format!("expected 13 packets, got {}", packets.len()));
     }
@@ -78,13 +80,22 @@ fn grade(packets: &[Packet]) -> Result<(), String> {
         .iter()
         .map(|p| decode(&p.bytes).map_err(|e| format!("{e:?}")))
         .collect::<Result<_, _>>()?;
-    let server = packets[0].dst;
-    let client = packets[0].src;
+    for i in [0, 3, 7, 8, 10] {
+        if packets[i].src != client || packets[i].dst != server {
+            return Err(format!("client endpoint direction {i}"));
+        }
+    }
+    for i in [1, 2, 4, 6, 9, 11, 12] {
+        if packets[i].src != server || packets[i].dst != client {
+            return Err(format!("server endpoint direction {i}"));
+        }
+    }
     for i in [0, 10] {
         if p[i].ty() != Type::Confirmable
             || p[i].code() != Code::GET
             || p[i].observe() != Some(Ok(0))
             || p[i].token().is_empty()
+            || p[i].uri_path().collect::<Vec<_>>() != [Ok("obs-non")]
         {
             return Err(format!("registration {i}"));
         }
@@ -93,6 +104,7 @@ fn grade(packets: &[Packet]) -> Result<(), String> {
             || p[i + 1].message_id() != p[i].message_id()
             || p[i + 1].token() != p[i].token()
             || p[i + 1].observe().is_none()
+            || p[i + 1].payload() != site::OBS_BODY
         {
             return Err(format!("registration response {i}"));
         }
@@ -130,11 +142,14 @@ fn grade(packets: &[Packet]) -> Result<(), String> {
         return Err("reset ownership".into());
     }
     if p[8].code() != Code::GET
+        || p[8].ty() != Type::Confirmable
+        || p[8].uri_path().collect::<Vec<_>>() != [Ok("test")]
         || p[8].observe().is_some()
         || p[9].code() != Code::CONTENT
         || p[9].ty() != Type::Acknowledgement
         || p[9].message_id() != p[8].message_id()
         || p[9].token() != p[8].token()
+        || p[9].payload() != site::TEST_BODY
     {
         return Err("server health exchange".into());
     }
@@ -185,16 +200,20 @@ fn non_reset_requires_matching_endpoint_and_mid_then_allows_fresh_registration()
             .with_token(Token::new(b"health").unwrap())
             .with_options(&options),
     );
-    assert_eq!(
-        decode(&receive(&client, server)).unwrap().code(),
-        Code::CONTENT
-    );
+    let health_bytes = receive(&client, server);
+    let health = decode(&health_bytes).unwrap();
+    assert_eq!(health.code(), Code::CONTENT);
+    assert_eq!(health.ty(), Type::Acknowledgement);
+    assert_eq!(health.message_id(), MessageId::new(11));
+    assert_eq!(health.token().as_bytes(), b"health");
+    assert_eq!(health.payload(), site::TEST_BODY);
     register(&client, server, 12, b"new");
     notify(&mut peer, &client, server, b"new");
     peer.stop_server();
     let capture = peer.take_capture();
     let packets = capture.snapshot();
-    grade(&packets).unwrap();
+    let client_addr = client.local_addr().unwrap();
+    grade(&packets, client_addr, server).unwrap();
     for mutation in [
         "missing-reset",
         "wrong-mid",
@@ -215,7 +234,34 @@ fn non_reset_requires_matching_endpoint_and_mid_then_allows_fresh_registration()
             "payload" => *changed[12].bytes.last_mut().unwrap() ^= 1,
             _ => unreachable!(),
         }
-        assert!(grade(&changed).is_err(), "accepted {mutation}");
+        assert!(
+            grade(&changed, client_addr, server).is_err(),
+            "accepted {mutation}"
+        );
+    }
+    for i in [0, 1, 8, 9, 10, 11] {
+        for change_source in [false, true] {
+            let mut changed = packets.clone();
+            if change_source {
+                changed[i].src = stranger.local_addr().unwrap();
+            } else {
+                changed[i].dst = stranger.local_addr().unwrap();
+            }
+            assert!(
+                grade(&changed, client_addr, server).is_err(),
+                "accepted endpoint mutation at {i}"
+            );
+        }
+    }
+    // These requests end in their URI-Path and these responses end in their
+    // fixed payload. Mutating the final byte preserves parseability.
+    for i in [0, 1, 8, 9, 10, 11] {
+        let mut changed = packets.clone();
+        *changed[i].bytes.last_mut().unwrap() ^= 1;
+        assert!(
+            grade(&changed, client_addr, server).is_err(),
+            "accepted path/body mutation at {i}"
+        );
     }
     if let Some(directory) = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR") {
         std::fs::create_dir_all(&directory).unwrap();
