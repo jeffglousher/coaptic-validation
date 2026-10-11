@@ -203,6 +203,9 @@ impl Catalog {
 /// Grade one TD.
 pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), String> {
     let packets = capture.snapshot();
+    if td == "TD_COAP_OBS_13" {
+        grade_observe_large(&packets)?;
+    }
     if td == "TD_COAP_OBS_11" {
         grade_observe_loss(&packets)?;
     }
@@ -302,6 +305,129 @@ pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), St
                 "{td}: {n} leftover CoAP datagrams (set allow_extra if this TD is chatty)",
                 n = leftover.len()
             ));
+        }
+    }
+    Ok(())
+}
+
+/// Complete fixed-size Block2 registration and two later CON representations.
+fn grade_observe_large(packets: &[Packet]) -> Result<(), String> {
+    let mut ordered = packets.to_vec();
+    ordered.sort_by_key(|p| p.t_ns);
+    let mut seen = HashSet::new();
+    ordered.retain(|p| seen.insert((p.src, p.dst, p.bytes.clone())));
+    if ordered.len() != 12 {
+        return Err("OBS13 requires twelve unique datagrams".into());
+    }
+    let parse =
+        |i: usize| decode(&ordered[i].bytes).map_err(|e| format!("OBS13 packet {i}: {e:?}"));
+    let registration = parse(0)?;
+    let client = ordered[0].src;
+    let server = ordered[0].dst;
+    if client == server
+        || registration.ty() != Type::Confirmable
+        || registration.code() != Code::GET
+        || registration.token().is_empty()
+        || registration.uri_path().collect::<Vec<_>>() != [Ok("obs-large")]
+        || registration.observe() != Some(Ok(0))
+        || !registration.payload().is_empty()
+    {
+        return Err("OBS13 registration identity".into());
+    }
+    let mut previous = None;
+    let mut client_mids = HashSet::new();
+    let mut server_mids = HashSet::new();
+    client_mids.insert(registration.message_id());
+    for (version, first_index, request_index) in [(0, 1, 2), (1, 4, 6), (2, 8, 10)] {
+        let (body, etag) = crate::site::observe_large(version).ok_or("OBS13 fixture version")?;
+        let first = parse(first_index)?;
+        let request = parse(request_index)?;
+        let last = parse(request_index + 1)?;
+        let seq = first
+            .observe()
+            .and_then(Result::ok)
+            .ok_or("OBS13 block-zero Observe")?;
+        if seq > 0x00ff_ffff
+            || previous.is_some_and(|old| {
+                let d = seq.wrapping_sub(old) & 0x00ff_ffff;
+                d == 0 || d >= 0x0080_0000
+            })
+        {
+            return Err("OBS13 sequence progression".into());
+        }
+        previous = Some(seq);
+        if first.ty()
+            != if version == 0 {
+                Type::Acknowledgement
+            } else {
+                Type::Confirmable
+            }
+            || first.token() != registration.token()
+            || first
+                .block2()
+                .and_then(Result::ok)
+                .map(|b| (b.num(), b.more(), b.size()))
+                != Some((0, true, 1024))
+        {
+            return Err("OBS13 first block identity/shape".into());
+        }
+        if version == 0 {
+            if first.message_id() != registration.message_id() {
+                return Err("OBS13 initial ACK MID".into());
+            }
+        } else {
+            let ack = parse(first_index + 1)?;
+            if !server_mids.insert(first.message_id())
+                || ordered[first_index + 1].src != client
+                || ordered[first_index + 1].dst != server
+                || !ack.is_empty_ack()
+                || ordered[first_index + 1].bytes.len() != 4
+                || ack.message_id() != first.message_id()
+            {
+                return Err("OBS13 CON acknowledgement".into());
+            }
+        }
+        if ordered[request_index].src != client
+            || ordered[request_index].dst != server
+            || request.ty() != Type::Confirmable
+            || request.code() != Code::GET
+            || request.token() != registration.token()
+            || !client_mids.insert(request.message_id())
+            || request.uri_path().collect::<Vec<_>>() != [Ok("obs-large")]
+            || request.observe().is_some()
+            || !request.payload().is_empty()
+            || request
+                .block2()
+                .and_then(Result::ok)
+                .map(|b| (b.num(), b.more(), b.size()))
+                != Some((1, false, 1024))
+            || last.ty() != Type::Acknowledgement
+            || last.message_id() != request.message_id()
+            || last.token() != request.token()
+            || last.observe().is_some()
+            || last
+                .block2()
+                .and_then(Result::ok)
+                .map(|b| (b.num(), b.more(), b.size()))
+                != Some((1, false, 1024))
+        {
+            return Err("OBS13 complete follow-up identity/shape".into());
+        }
+        for (index, response, slice) in [
+            (first_index, first, &body[..1024]),
+            (request_index + 1, last, &body[1024..]),
+        ] {
+            if ordered[index].src != server
+                || ordered[index].dst != client
+                || response.code() != Code::CONTENT
+                || response.content_format()
+                    != Some(Ok(coaptic::message::ContentFormat::TEXT_PLAIN))
+                || response.etag().collect::<Vec<_>>() != [etag]
+                || response.max_age() != Some(Ok(5))
+                || response.payload() != slice
+            {
+                return Err("OBS13 representation body/metadata".into());
+            }
         }
     }
     Ok(())

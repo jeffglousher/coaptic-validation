@@ -313,13 +313,7 @@
   "TD_COAP_OBS_10": { "allow_extra": true, "coap": [] },
   "TD_COAP_OBS_11": { "allow_extra": true, "coap": [] },
   "TD_COAP_OBS_12": { "allow_extra": true, "coap": [] },
-  "TD_COAP_OBS_13": {
-    "allow_extra": true,
-    "coap": [
-      {"code": "0.01", "observe": "register"},
-      {"code": "2.05"}
-    ]
-  },
+  "TD_COAP_OBS_13": { "allow_extra": true, "coap": [] },
   "TD_COAP_OBS_14": {
     "allow_extra": true,
     "coap": [

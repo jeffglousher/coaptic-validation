@@ -538,6 +538,9 @@ fn observe(
     client: &mut dyn Peer,
     server: &mut dyn Peer,
 ) -> Result<(), PeerError> {
+    if id == "TD_COAP_OBS_13" {
+        return observe_large(dest, client, server);
+    }
     if id == "TD_COAP_OBS_11" {
         return observe_con_loss(dest, client, server);
     }
@@ -591,6 +594,50 @@ fn observe(
             Ok(())
         }
     }
+}
+
+fn observe_large(
+    dest: SocketAddr,
+    client: &mut dyn Peer,
+    server: &mut dyn Peer,
+) -> Result<(), PeerError> {
+    if client.name() != "coaptic" || server.name() != "coaptic" {
+        return Err(PeerError(
+            "SKIP: coverage gap #199: complete large Observe fixture requires Coaptic peers".into(),
+        ));
+    }
+    let mut registration = ClientRequest::get(&["obs-large"]);
+    registration.observe = Some(0);
+    for version in 0..=2 {
+        let response = if version == 0 {
+            client.begin_observe(dest, &registration)?
+        } else {
+            server.update_large_observed(&["obs-large"], version)?;
+            client
+                .take_notification(Duration::from_secs(3))
+                .map_err(|error| {
+                    PeerError(format!(
+                        "{error}; server notification error: {:?}",
+                        server.notification_error()
+                    ))
+                })?
+        };
+        let (body, etag) = site::observe_large(version).ok_or("invalid fixture version")?;
+        if response.code != Code::CONTENT
+            || response.content_format != Some(0)
+            || response.body.as_deref().unwrap_or(&response.payload) != body
+            || response.etag != [etag.to_vec()]
+            || response.observe.is_none()
+        {
+            return Err(PeerError(format!(
+                "OBS13 complete version {version}: {} bytes, observe {:?}, etag {:?}",
+                response.body.as_deref().unwrap_or(&response.payload).len(),
+                response.observe,
+                response.etag
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn observe_con_loss(
