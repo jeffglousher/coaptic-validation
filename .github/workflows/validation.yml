@@ -449,7 +449,7 @@ jobs:
           cargo clippy --locked -p peer-coaptic -p peer-coap-rs --all-targets -- -D warnings
           cargo test --locked -p peer-coaptic -p peer-coap-rs
           cargo build --locked --release -p peer-coaptic -p peer-coap-rs
-          cmake -S tools/interop/libcoap -B target/libcoap-peer -G Ninja -DLIBCOAP_SOURCE="$RUNNER_TEMP/libcoap" -DCMAKE_BUILD_TYPE=Release -DENABLE_DTLS=ON -DDTLS_BACKEND=openssl -DENABLE_OSCORE=ON
+          cmake -S tools/interop/libcoap -B target/libcoap-peer -G Ninja -DLIBCOAP_SOURCE="$RUNNER_TEMP/libcoap" -DCMAKE_BUILD_TYPE=Release -DENABLE_DTLS=ON -DDTLS_BACKEND=openssl -DENABLE_OSCORE=ON -DLIBCOAP_QBLOCK_PATCH=ON
           cmake --build target/libcoap-peer --parallel 2
       - name: Isolated pinned protected-trace decoder
         run: |
@@ -463,9 +463,9 @@ jobs:
       - name: Supervisor and fault-injection tests
         run: python3 -m unittest discover -s tools/interop -p 'test_*.py'
       - name: Wire interoperability, reliability and timing
-        run: python3 tools/interop/run.py --coaptic target/release/peer-coaptic --coap-rs target/release/peer-coap-rs --libcoap target/libcoap-peer/peer-libcoap --iterations 100 --build-note "all peers Release; Ubuntu hosted runner" --output target/process-interop.json
+        run: python3 tools/interop/run.py --coaptic target/release/peer-coaptic --coap-rs target/release/peer-coap-rs --libcoap target/libcoap-peer/peer-libcoap --iterations 100 --build-note "all peers Release; Ubuntu hosted runner" --output target/process-interop.json --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json
       - name: Observe protected Q-Block2 baseline (not complete qualification)
-        run: python3 tools/interop/oscore_qblock2.py --coaptic target/release/peer-coaptic --libcoap target/libcoap-peer/peer-libcoap --output target/oscore-qblock2-baseline.json
+        run: python3 tools/interop/oscore_qblock2.py --coaptic target/release/peer-coaptic --libcoap target/libcoap-peer/peer-libcoap --output target/oscore-qblock2-baseline.json --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json
       - name: Retain measurements and fault evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

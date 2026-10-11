@@ -1,5 +1,6 @@
 """Authenticated independent Q-Block2 baseline; loss qualification is separate."""
-from oscore_qblock1 import request_plain, response_plain, require
+from oscore_qblock1 import request_plain, response_plain, require, incoming
+from aiocoap import oscore
 
 
 def baseline_grade(trace, result, endpoints):
@@ -18,7 +19,7 @@ def baseline_grade(trace, result, endpoints):
     request_pending = False
     server_pending = None
     token = etag = None
-    request_mids, response_mids, pivs = set(), set(), set()
+    request_mids, response_mids, pivs, response_pivs = set(), set(), set(), set()
     body = bytearray()
     forms = []
     previous = -1
@@ -85,6 +86,12 @@ def baseline_grade(trace, result, endpoints):
             response_mids.add(mid)
             forms.append("separate CON content")
         plain = response_plain(wire, latest)
+        # Authentication first; parse the explicit sender PIV with the pinned decoder.
+        _, _, cose, _ = oscore.CanUnprotect._extract_encrypted0(incoming(wire))
+        piv = cose.get(oscore.COSE_PIV)
+        require(isinstance(piv, bytes) and 1 <= len(piv) <= 5 and piv not in response_pivs,
+                "distinct Q responses require distinct explicit server PIVs")
+        response_pivs.add(piv)
         options = {}
         for option in plain.opt.option_list():
             options.setdefault(int(option.number), []).append(option.encode())
@@ -103,12 +110,16 @@ def baseline_grade(trace, result, endpoints):
     require(bytes(body) == LARGE and not request_pending and server_pending is None,
             "incomplete body or unsettled CON")
     return {"body_bytes": len(body), "etag_hex": etag.hex(), "response_forms": forms,
-            "request_count": len(request_mids), "scope": "baseline only; loss/refusal/recovery not yet qualified"}
+            "request_count": len(request_mids), "server_pivs": sorted(p.hex() for p in response_pivs), "scope": "baseline only; loss/refusal/recovery not yet qualified"}
 
 
-def baseline(client, server, record):
+def baseline(client, server, record, patch=None):
     from run import Proxy, Server, request, expect
     with Server(server, "oscore") as service:
+        if patch is not None:
+            record["server_ready"] = service.ready
+            require(service.ready.get("libcoap_patch_sha256") == patch["patch_sha256"],
+                    "server binary does not identify the expected dependency patch")
         record["setup"] = request(client, "oscore", service.number, sequence=0)
         expect(record["setup"])
         relay = Proxy(service.number, "pass")
@@ -133,16 +144,19 @@ def main():
     parser.add_argument("--coaptic", required=True, type=Path)
     parser.add_argument("--libcoap", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--libcoap-patch-manifest", type=Path)
     args = parser.parse_args()
     peers = {"coaptic": args.coaptic.resolve(), "libcoap": args.libcoap.resolve()}
-    report = {"schema": "coaptic-protected-qblock2-baseline/1", **source_identity(),
+    patch = (json.loads(args.libcoap_patch_manifest.read_text(encoding="utf-8"))
+             if args.libcoap_patch_manifest else None)
+    report = {"libcoap_patch": patch, "schema": "coaptic-protected-qblock2-baseline/1", **source_identity(),
               "platform": platform.platform(), "qualification_complete": False,
               "scope": "baseline observation only; loss/refusal/recovery remain unqualified",
               "libcoap_source": "851533c3cf63d16984d370ce39d586ecb3694971",
               "executables": {name: {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
                               for name, path in peers.items()}, "baseline": {}}
     try:
-        baseline(peers["coaptic"], peers["libcoap"], report["baseline"])
+        baseline(peers["coaptic"], peers["libcoap"], report["baseline"], patch)
         report["baseline_passed"] = True
     except Exception as error:
         report["baseline_passed"] = False

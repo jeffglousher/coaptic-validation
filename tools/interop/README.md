@@ -46,7 +46,7 @@ responses, and permits only one outstanding separate response per endpoint.
 Oversized or saturated input receives no ACK. Matching empty ACK/RST releases
 the response slot; wrong endpoint/MID or malformed controls do not. A ten-second
 backend deadline rejects late replies by reservation identity. Response retries
-use randomized 2–3 second initial timeouts, exponential backoff and at most four
+use randomized 2â€“3 second initial timeouts, exponential backoff and at most four
 retransmissions within the RFC 7252 transmission span; final expiry releases the
 slot. These are standalone fixture rules, not an upstream coap-rs reliability
 claim. DTLS remains unqualified.
@@ -142,7 +142,7 @@ changed. A fresh client process and relay then complete against the same server.
 The successful schedules have twelve-second deadlines; refusal has six seconds
 and must retain a genuine retry. Traces are limited to 256 datagrams and bind
 each packet to exact endpoints, monotonic capture time and unchanged wire bytes.
-The first retry must match the fixture's unchanged 2–3 second initial RTO, allowing
+The first retry must match the fixture's unchanged 2â€“3 second initial RTO, allowing
 50 ms early capture skew and one second of late host scheduling. Zero/compressed
 capture intervals refuse; this is not qualification of every timer boundary.
 The readback counts are in-memory fixture application effects, not durable receipts.
@@ -222,3 +222,24 @@ requirements used above. This is a baseline prerequisite for
 loss/refusal/recovery qualification or an enabled capability-matrix case.
 A failed baseline retains its trace and failure; synthetic oracle tests do
 not establish independent-peer interoperability.
+
+The original unmodified pinned libcoap baseline stalled after its first
+protected CON block was acknowledged ([retained failure](https://github.com/jeffglousher/coaptic/issues/472#issuecomment-6108231594)).
+The proposed dependency patch under `libcoap/patches` retains only packed
+inner Q-Block2 metadata and a weak transfer link on encrypted UDP CONs;
+transfer deletion revokes queued/delayed links before freeing storage.
+Continuation uses libcoap's existing owned plaintext template and NSTART
+check. This marked ACK path consumes continuation before flushing unrelated
+delayed traffic; it does not establish scheduler fairness or repair general
+reentrant callback teardown. Retries retain their original ciphertext.
+Every protected Q-Block2 response selects libcoap's existing fresh sender-PIV
+path, because distinct blocks responding to one request must not share an
+AEAD nonce. The oracle requires authenticated distinct explicit server PIVs.
+
+`-DLIBCOAP_QBLOCK_PATCH=ON` verifies the exact upstream revision, patch digest,
+and all patched source hashes; unrelated changes refuse configuration. The
+peer reports its compiled patch SHA. Reports supplied with
+`--libcoap-patch-manifest libcoap/patches/oscore-qblock2-continuation.json`
+(path relative to this directory) retain this separate identity. Any success
+would qualify **patched libcoap**, not the unmodified upstream source. Actual
+patched baseline and complete loss/refusal/recovery remain pending.

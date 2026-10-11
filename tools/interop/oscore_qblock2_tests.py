@@ -10,14 +10,16 @@ from run import LARGE, coap_message
 ENDPOINTS = {"front": ["127.0.0.1", 1001], "back": ["127.0.0.1", 1002], "server": ["127.0.0.1", 1003]}
 CLIENT = ["127.0.0.1", 1004]
 
-def protected(context, wire, binding=None):
+def protected(context, wire, binding=None, explicit_piv=True):
     plain = aiocoap.Message.decode(wire)
     plain.direction = Direction.OUTGOING
+    if binding is not None:
+        binding.can_reuse_nonce = not explicit_piv
     value, _ = context.protect(plain, request_id=binding)
     value.mtype, value.mid, value.token = plain.mtype, plain.mid, plain.token
     return value.encode()
 
-def evidence(separate=False, *, tag=b"tag", size=b"\x07\xd0", q_option=31, body=LARGE, wrong_binding=False):
+def evidence(separate=False, *, tag=b"tag", size=b"\x07\xd0", q_option=31, body=LARGE, wrong_binding=False, missing_piv=False, reused_piv=False):
     client, server = FixtureContext(server=False), FixtureContext(server=True)
     wire = protected(client, coap_message(1, 10, b"q", [(11, b"large"), (31, b"\x0e")], b""))
     _, binding = request_plain(wire)
@@ -33,7 +35,9 @@ def evidence(separate=False, *, tag=b"tag", size=b"\x07\xd0", q_option=31, body=
                                           (q_option, b"\x0e" if num == 0 else b"\x16")]), body[num*1024:(num+1)*1024])
         if not separate and num == 0:
             plain = bytes([plain[0] | 0x20]) + plain[1:]
-        packets.append(("response", protected(server, plain, binding)))
+        if reused_piv:
+            server.sender_sequence_number = 0
+        packets.append(("response", protected(server, plain, binding, not missing_piv)))
         if separate or num:
             packets.append(("request", b"\x60\x00" + mid.to_bytes(2, "big")))
     trace = [dict(direction=d, action="forward", hex=w.hex(), forwarded_hex=w.hex(), time_ns=i*1000000,
@@ -91,6 +95,11 @@ class BaselineTests(unittest.TestCase):
                         {"body": LARGE[:-1]+b"\xff"}, {"wrong_binding": True}):
             with self.subTest(changes=changes), self.assertRaises(AssertionError):
                 baseline_grade(*evidence(**changes))
+
+    def test_missing_or_reused_server_piv_refuses_authenticated_distinct_blocks(self):
+        for change in ({"missing_piv": True}, {"reused_piv": True}):
+            with self.subTest(change=change), self.assertRaisesRegex(AssertionError, "explicit server PIVs"):
+                baseline_grade(*evidence(**change))
 
     def test_separate_response_requires_initial_settlement(self):
         data=evidence(True);data[0].pop(1)
