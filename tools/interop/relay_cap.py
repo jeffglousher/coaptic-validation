@@ -84,7 +84,7 @@ def grade(trace, result, endpoints, *, path, capped, deadline_ms=6500):
             if (len(values) != 1 or block1_fields(values[0]) != (num, num == 0, 6)
                     or num > 1 or payload != LARGE[num * 1024:(num + 1) * 1024]
                     or len(sizes) != 1 or int.from_bytes(sizes[0], "big") != 2000
-                    or len(tags) != 1 or not tags[0] or 31 in options):
+                    or len(tags) != 1 or not 1 <= len(tags[0]) <= 8 or 31 in options):
                 raise AssertionError("response lost exact Block2 representation")
             # A rejected first-block retry can create a fresh server snapshot.
             # Only a delivered representation must retain the same ETag.

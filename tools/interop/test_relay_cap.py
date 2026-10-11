@@ -117,6 +117,14 @@ class RelayCapTests(unittest.TestCase):
             self.check(e, path="test")
 
     def test_block_size_size2_and_delivered_etag_are_bound(self):
+        for tags in ([], [(4, b"")], [(4, b"123456789")], [(4, b"a"), (4, b"b")]):
+            for capped in (True, False):
+                e = fixture(capped=capped)
+                wire = coap_message(69, 42, b"cap", tags + [(23, b"\x0e"), (28, b"\x07\xd0")], LARGE[:1024])
+                wire = bytes([wire[0] | 0x20]) + wire[1:]
+                e["trace"][1].update(hex=wire.hex(), forwarded_hex=wire.hex())
+                with self.subTest(tags=tags, capped=capped), self.assertRaises(AssertionError):
+                    self.check(e, capped=capped)
         for replacement in (bytes([15]), bytes([6])):
             e = fixture(capped=True)
             wire = coap_message(69, 42, b"cap", [(4, b"tag"), (23, replacement), (28, b"\x07\xd0")], LARGE[:1024])

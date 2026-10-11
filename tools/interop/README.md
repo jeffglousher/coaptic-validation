@@ -158,7 +158,7 @@ through a silent 256-byte wire-datagram cap, time out while the cap drops every
 oversized first Block2 response, and assemble all 2000 bytes after the cap is
 removed. The trace binds exact endpoints, unchanged relay bytes, Block2 size and
 body metadata, and an identical CON request retry. Its first retry uses the
-unchanged 2?3 second RTO with 50 ms early capture and one second late scheduling
+unchanged RTO of 2 to 3 seconds with 50 ms early capture and one second late scheduling
 tolerance. Each request has a 6.5-second peer deadline and a distinct process
 deadline; a killed or stuck process is a failure. The relay limits each trace to
 256 records. A retry of a rejected first block may obtain a new server ETag;
