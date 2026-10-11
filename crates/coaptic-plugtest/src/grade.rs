@@ -203,6 +203,9 @@ impl Catalog {
 /// Grade one TD.
 pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), String> {
     let packets = capture.snapshot();
+    if td == "TD_COAP_OBS_05" {
+        grade_observe_client_off(&packets)?;
+    }
     if td == "TD_COAP_OBS_04" {
         grade_observe_server_reset(&packets)?;
     }
@@ -312,6 +315,75 @@ pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), St
                 n = leftover.len()
             ));
         }
+    }
+    Ok(())
+}
+
+/// Five real CON attempts, updated source representations, final timeout and recovery.
+fn grade_observe_client_off(packets: &[Packet]) -> Result<(), String> {
+    let mut ordered = packets.to_vec();
+    ordered.sort_by_key(|packet| packet.t_ns);
+    if ordered.len() != 17 {
+        return Err("OBS05 requires seventeen server-tap packets".into());
+    }
+    grade_confirmable_observe(&ordered[..6])?;
+    grade_confirmable_observe(&ordered[11..])?;
+    let parse = |index: usize| {
+        decode(&ordered[index].bytes).map_err(|error| format!("OBS05 packet{index}: {error:?}"))
+    };
+    let initial = parse(0)?;
+    let refresh = parse(11)?;
+    let client = ordered[0].src;
+    let server = ordered[0].dst;
+    if ordered[11].dst != server || ordered[11].src == client || refresh.token() == initial.token()
+    {
+        return Err("OBS05 fresh recovery owner".into());
+    }
+    let mut mids = HashSet::new();
+    mids.insert(parse(2)?.message_id());
+    mids.insert(parse(4)?.message_id());
+    let mut previous = parse(4)?
+        .observe()
+        .and_then(Result::ok)
+        .ok_or("OBS05 initial sequence")?;
+    for attempt in 0..5 {
+        let index = 6 + attempt;
+        let message = parse(index)?;
+        let seq = message
+            .observe()
+            .and_then(Result::ok)
+            .ok_or("OBS05 retry Observe")?;
+        let body = if attempt % 2 == 0 {
+            crate::site::OBS_BODY_2
+        } else {
+            crate::site::OBS_BODY
+        };
+        if ordered[index].src != server
+            || ordered[index].dst != client
+            || message.ty() != Type::Confirmable
+            || message.code() != Code::CONTENT
+            || message.token() != initial.token()
+            || !mids.insert(message.message_id())
+            || message.content_format() != Some(Ok(coaptic::message::ContentFormat::TEXT_PLAIN))
+            || message.block2().is_some()
+            || message.payload() != body
+            || seq != ((previous + 1) & 0x00ff_ffff)
+        {
+            return Err("OBS05 updated complete CON owner/representation".into());
+        }
+        previous = seq;
+        if attempt > 0 {
+            let elapsed = ordered[index].t_ns.saturating_sub(ordered[index - 1].t_ns);
+            let lower = (2u128 << (attempt - 1)) * 1_000_000_000;
+            let upper = (3u128 << (attempt - 1)) * 1_000_000_000 + 1_000_000_000;
+            // Caller milliseconds and socket capture straddle the send operation.
+            if elapsed + 5_000_000 < lower || elapsed > upper {
+                return Err("OBS05 retry outside retained real backoff bounds".into());
+            }
+        }
+    }
+    if ordered[11].t_ns.saturating_sub(ordered[10].t_ns) + 5_000_000 < 32_000_000_000 {
+        return Err("OBS05 recovery before final timeout".into());
     }
     Ok(())
 }
@@ -2035,6 +2107,136 @@ mod observe_reset_tests {
             result
                 .capture
                 .write_pcap(std::fs::File::create(directory.join("obs-04-coaptic.pcap")).unwrap())
+                .unwrap();
+        }
+    }
+}
+
+#[cfg(test)]
+mod observe_off_tests {
+    use super::*;
+    #[test]
+    fn observe_client_off_updated_retries_stop_and_recover() {
+        use coaptic::message::{Message, Opt, encode, encode_uint};
+        let result = crate::runner::run_td(
+            "TD_COAP_OBS_05",
+            crate::runner::Pair {
+                client: "coaptic",
+                server: "coaptic",
+            },
+        );
+        assert!(result.error.is_none(), "{:?}", result.error);
+        let packets = result.capture.snapshot();
+        assert_eq!(packets.len(), 17);
+        grade_observe_client_off(&packets).unwrap();
+        for (target, fault) in [
+            (0, "path"),
+            (1, "body"),
+            (3, "mid"),
+            (6, "body"),
+            (6, "token"),
+            (6, "endpoint"),
+            (7, "sequence"),
+            (7, "old-mid"),
+            (7, "body"),
+            (7, "early"),
+            (8, "missing"),
+            (8, "endpoint"),
+            (9, "token"),
+            (9, "format"),
+            (10, "body"),
+            (10, "sequence"),
+            (11, "early-final"),
+            (11, "token"),
+            (12, "body"),
+            (13, "body"),
+            (14, "mid"),
+            (16, "missing"),
+        ] {
+            let mut changed = packets.clone();
+            match fault {
+                "missing" => {
+                    changed.remove(target);
+                }
+                "body" | "path" => *changed[target].bytes.last_mut().unwrap() ^= 1,
+                "token" => changed[target].bytes[4] ^= 1,
+                "mid" => changed[target].bytes[3] ^= 1,
+                "old-mid" => {
+                    let previous = [packets[target - 1].bytes[2], packets[target - 1].bytes[3]];
+                    changed[target].bytes[2..4].copy_from_slice(&previous);
+                }
+                "endpoint" => changed[target].src = changed[target].dst,
+                "early" | "early-final" => {
+                    let delta = changed[target].t_ns - changed[target - 1].t_ns - 1_000_000;
+                    for packet in &mut changed[target..] {
+                        packet.t_ns -= delta;
+                    }
+                }
+                "sequence" | "format" => {
+                    let original = decode(&packets[target].bytes).unwrap();
+                    let seq = encode_uint(if fault == "sequence" {
+                        0
+                    } else {
+                        original.observe().unwrap().unwrap()
+                    });
+                    let format = encode_uint(if fault == "format" { 42 } else { 0 });
+                    let options = [Opt::observe(&seq), Opt::content_format(&format)];
+                    let message =
+                        Message::new(original.ty(), original.code(), original.message_id())
+                            .with_token(original.token())
+                            .with_options(&options)
+                            .with_payload(original.payload());
+                    let mut buf = [0; 512];
+                    let n = encode(&message, &mut buf).unwrap();
+                    changed[target].bytes = buf[..n].to_vec();
+                }
+                _ => unreachable!(),
+            }
+            assert!(
+                grade_observe_client_off(&changed).is_err(),
+                "accepted {target} {fault}"
+            );
+        }
+        for ack in [true, false] {
+            let mut changed = packets.clone();
+            let mut extra = packets[6].clone();
+            if ack {
+                extra.bytes = vec![0x60, 0, extra.bytes[2], extra.bytes[3]];
+                std::mem::swap(&mut extra.src, &mut extra.dst);
+                extra.t_ns += 1_000_000;
+            } else {
+                extra.t_ns = packets[11].t_ns - 1_000_000;
+            }
+            changed.push(extra);
+            assert!(
+                grade_observe_client_off(&changed).is_err(),
+                "accepted extra ACK/late notification"
+            );
+        }
+        for pair in [
+            crate::runner::Pair {
+                client: "coap-rs",
+                server: "coaptic",
+            },
+            crate::runner::Pair {
+                client: "coaptic",
+                server: "coap-rs",
+            },
+        ] {
+            assert!(
+                crate::runner::run_td("TD_COAP_OBS_05", pair)
+                    .error
+                    .as_deref()
+                    .unwrap()
+                    .starts_with("SKIP:")
+            );
+        }
+        if let Some(directory) = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            result
+                .capture
+                .write_pcap(std::fs::File::create(directory.join("obs-05-coaptic.pcap")).unwrap())
                 .unwrap();
         }
     }
