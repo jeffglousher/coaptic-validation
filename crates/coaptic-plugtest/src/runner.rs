@@ -534,6 +534,9 @@ fn observe(
     client: &mut dyn Peer,
     server: &mut dyn Peer,
 ) -> Result<(), PeerError> {
+    if matches!(id, "TD_COAP_OBS_10" | "TD_COAP_OBS_12") {
+        return observe_owner_request(id, dest, client, server);
+    }
     if id == "TD_COAP_OBS_06" {
         return observe_restart(dest, client, server);
     }
@@ -575,6 +578,59 @@ fn observe(
             Ok(())
         }
     }
+}
+
+fn observe_owner_request(
+    id: &str,
+    dest: SocketAddr,
+    client: &mut dyn Peer,
+    server: &mut dyn Peer,
+) -> Result<(), PeerError> {
+    if client.name() != "coaptic" || server.name() != "coaptic" {
+        return Err(PeerError("SKIP: coverage gap #199: same-owner Observe requests need the Coaptic client and controlled CON server".into()));
+    }
+    observe_con(dest, client, server)?;
+    let endpoint = client
+        .local_addr()
+        .ok_or("Observe client endpoint missing")?;
+    let cancel = id == "TD_COAP_OBS_12";
+    let mut request = ClientRequest::get(&["obs"]);
+    if cancel {
+        request.observe = Some(1);
+    }
+    let response = client.request_on_observe(dest, &request)?;
+    if response.ty != Type::Acknowledgement
+        || response.code != Code::CONTENT
+        || response.payload != site::OBS_BODY
+        || response.content_format != Some(0)
+        || response.observe.is_some()
+    {
+        return Err(PeerError(format!(
+            "{id} complete unrelated/cancellation response"
+        )));
+    }
+    if client.local_addr() != Some(endpoint) {
+        return Err(PeerError(format!("{id} request replaced client endpoint")));
+    }
+    if cancel {
+        let before = server.take_capture().snapshot().len();
+        for payload in [site::OBS_BODY, site::OBS_BODY_2, site::OBS_BODY] {
+            server.notify_confirmable(&["obs"], payload)?;
+            client.observe_quiet_for(Duration::from_secs(1))?;
+        }
+        if server.take_capture().snapshot().len() != before {
+            return Err(PeerError(
+                "OBS_12 server sent traffic after cancellation".into(),
+            ));
+        }
+        observe_con(dest, client, server)?;
+        if client.local_addr() != Some(endpoint) {
+            return Err(PeerError("OBS_12 recovery changed endpoint".into()));
+        }
+    } else {
+        observe_con_notifications(dest, client, server)?;
+    }
+    Ok(())
 }
 
 fn observe_restart(
@@ -647,6 +703,14 @@ fn observe_con(
     {
         return Err(PeerError("OBS_01 initial representation".into()));
     }
+    observe_con_notifications(dest, client, server)
+}
+
+fn observe_con_notifications(
+    dest: SocketAddr,
+    client: &mut dyn Peer,
+    server: &mut dyn Peer,
+) -> Result<(), PeerError> {
     for payload in [site::OBS_BODY_2, site::OBS_BODY] {
         // Separate periodic state changes without accelerating caller time.
         thread::sleep(Duration::from_millis(20));

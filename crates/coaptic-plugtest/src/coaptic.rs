@@ -133,6 +133,24 @@ impl Peer for CoapticPeer {
         wait_response(&mut hold.app, hold.call, hold.origin, timeout)
     }
 
+    fn request_on_observe(
+        &mut self,
+        dest: SocketAddr,
+        req: &ClientRequest,
+    ) -> Result<ClientResponse, PeerError> {
+        if req.code != Code::GET || !matches!(req.observe, None | Some(1)) {
+            return Err(PeerError(
+                "same-owner request must be GET or cancellation".into(),
+            ));
+        }
+        let hold = self.observe.as_mut().ok_or("no observe client")?;
+        let now = u64::try_from(hold.origin.elapsed().as_millis())
+            .unwrap_or(u64::MAX)
+            .saturating_add(1);
+        let call = send_client(&mut hold.app, dest, req, now, Some(hold.call))?;
+        wait_response(&mut hold.app, call, hold.origin, req.timeout)
+    }
+
     fn restart_observe_client(&mut self) -> Result<(), PeerError> {
         let previous = self.observe.take().ok_or("no observe client")?;
         let app = bind_client(previous.app.into_io())?;
@@ -290,8 +308,19 @@ fn start_client<T: DatagramIo<Error = std::io::Error>>(
     dest: SocketAddr,
     req: &ClientRequest,
 ) -> Result<(ClientApp<T>, Call), PeerError> {
-    let dest_ep = Endpoint::from(dest);
     let mut app = bind_client(io)?;
+    let call = send_client(&mut app, dest, req, 1, None)?;
+    Ok((app, call))
+}
+
+fn send_client<T: DatagramIo<Error = std::io::Error>>(
+    app: &mut ClientApp<T>,
+    dest: SocketAddr,
+    req: &ClientRequest,
+    now: u64,
+    observe_call: Option<Call>,
+) -> Result<Call, PeerError> {
+    let dest_ep = Endpoint::from(dest);
     let path = intern_path(&req.path)?;
     let method = Method::from_code(req.code).ok_or_else(|| {
         PeerError(format!(
@@ -327,17 +356,22 @@ fn start_client<T: DatagramIo<Error = std::io::Error>>(
     }
     match req.observe {
         Some(0) => outgoing = outgoing.observe(),
-        Some(1) => outgoing = outgoing.deregister(),
+        Some(1) => {
+            outgoing = if let Some(call) = observe_call {
+                outgoing.deregister_call(call)
+            } else {
+                outgoing.deregister()
+            };
+        }
         _ => {}
     }
     if let Some((num, more, size)) = req.block2 {
         let block = BlockValue::from_size(num, more, size).map_err(|e| format!("block2: {e:?}"))?;
         outgoing = outgoing.block2(block);
     }
-    let call = outgoing
-        .send(1)
-        .map_err(|e| format!("send {} {}: {e}", req.code, req.path.join("/")))?;
-    Ok((app, call))
+    outgoing
+        .send(now)
+        .map_err(|e| PeerError(format!("send {} {}: {e}", req.code, req.path.join("/"))))
 }
 
 fn wait_response<T: DatagramIo<Error = std::io::Error>>(
@@ -556,5 +590,86 @@ mod observe_restart_tests {
                 .payload,
             site::OBS_BODY
         );
+    }
+}
+
+#[cfg(test)]
+mod observe_owner_tests {
+    use super::*;
+
+    #[test]
+    fn cancellation_identity_refuses_before_io_then_valid_cancel_recovers() {
+        let _guard = crate::runner::harness_lock();
+        let mut server = CoapticPeer::new();
+        let dest = server.start_server().unwrap();
+        let mut client = CoapticPeer::new();
+        let mut registration = ClientRequest::get(&["obs"]);
+        registration.observe = Some(0);
+        assert_eq!(
+            client.begin_observe(dest, &registration).unwrap().payload,
+            site::OBS_BODY
+        );
+        let endpoint = client.local_addr();
+        let before = client.take_capture().snapshot().len();
+        let (other_socket, other) = bind_loopback().unwrap();
+        let mut cancel = ClientRequest::get(&["obs"]);
+        cancel.observe = Some(1);
+        let mut wrong_path = cancel.clone();
+        wrong_path.path = vec!["test".into()];
+        for (target, request) in [(dest, &wrong_path), (other, &cancel), (dest, &registration)] {
+            assert!(client.request_on_observe(target, request).is_err());
+            assert_eq!(
+                client.take_capture().snapshot().len(),
+                before,
+                "refusal performed I/O"
+            );
+            assert_eq!(client.local_addr(), endpoint);
+        }
+        drop(other_socket);
+        server
+            .notify_confirmable(&["obs"], site::OBS_BODY_2)
+            .unwrap();
+        assert_eq!(
+            client
+                .take_notification(Duration::from_secs(1))
+                .unwrap()
+                .payload,
+            site::OBS_BODY_2
+        );
+        let response = client.request_on_observe(dest, &cancel).unwrap();
+        assert_eq!(response.payload, site::OBS_BODY);
+        assert!(response.observe.is_none());
+        let before = server.take_capture().snapshot().len();
+        server.notify_confirmable(&["obs"], site::OBS_BODY).unwrap();
+        client
+            .observe_quiet_for(Duration::from_millis(100))
+            .unwrap();
+        assert_eq!(server.take_capture().snapshot().len(), before);
+        assert_eq!(
+            client.begin_observe(dest, &registration).unwrap().payload,
+            site::OBS_BODY
+        );
+        assert_eq!(client.local_addr(), endpoint);
+        server
+            .notify_confirmable(&["obs"], site::OBS_BODY_2)
+            .unwrap();
+        assert_eq!(
+            client
+                .take_notification(Duration::from_secs(1))
+                .unwrap()
+                .payload,
+            site::OBS_BODY_2
+        );
+    }
+
+    #[test]
+    fn unsupported_same_owner_request_refuses_without_io() {
+        let mut peer = crate::runner::peer_by_name("coap-rs").unwrap();
+        let request = ClientRequest::get(&["obs"]);
+        let error = peer
+            .request_on_observe("127.0.0.1:5683".parse().unwrap(), &request)
+            .unwrap_err();
+        assert!(error.0.contains("not supported"));
+        assert!(peer.take_capture().snapshot().is_empty());
     }
 }
