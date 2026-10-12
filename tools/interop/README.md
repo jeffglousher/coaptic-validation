@@ -211,6 +211,26 @@ attributing it to OSCORE replay-window or CoAP duplicate suppression alone.
 Exact-source reports are required; routed networks, physical devices and
 sustained availability remain outside [#501](https://github.com/jeffglousher/coaptic/issues/501).
 
+Use `--family ipv6` for the corresponding `::1` campaign (#507); IPv4 remains
+the default. Every observer, writer and readback relay requires AF_INET6,
+IPV6_V6ONLY and exact four-field `::1` owners with integer zero flow/scope
+identifiers. Reports are retained separately as `oscore-observe-campaign.json`
+and `oscore-observe-ipv6-campaign.json`. Actual exact-source hosted execution and
+independent authentication are required for either interoperability claim.
+Nonzero zones and routed networks remain separate qualification.
+
+Ordinary writer/readback evidence must have four distinct client/front/back/server
+owners (#508). Explicit server response PIVs must be unique across forwarded
+notifications, writers and readbacks through all three sessions (#509). The
+one exact intact stale replay remains repeated delivery of existing ciphertext;
+it is not new server generation. Request-bound implicit-response nonces remain
+valid. Both stale-delivery and cancellation campaigns share canonical explicit
+PIV validation: leading zero octets refuse, except the single-byte encoding of
+zero. A zero-prefixed alias of an authenticated nonce must not evade uniqueness.
+Authenticated synthetic counterexamples reproduced both earlier oracle
+false passes; their refusal tests correct qualification tooling without changing
+core protocol behavior or claiming actual peer traffic reused a nonce.
+
 The `oscore-qblock1-recovery:coaptic->libcoap` case uses the pinned libcoap
 OpenSSL/OSCORE build over IPv4 loopback. Its offline aiocoap oracle authenticates
 inner Q-Block1 options and every slice of the 2000-byte upload; it rejects a
