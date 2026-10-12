@@ -4,7 +4,7 @@ import subprocess
 import time
 
 from oscore_observe import (ObserveRelay, authenticated_notifications, observer_grade,
-                            exchange_grade, opts)
+                            exchange_grade, explicit_server_pivs, opts)
 from oscore_qblock1 import require, request_plain, response_plain, FixtureContext, incoming
 from oscore_qblock2 import loopback_endpoint, relay_endpoints, require_relay_family
 from run import Proxy, Server, command, decode, expect, packet_token, decoded_options, request
@@ -144,18 +144,11 @@ def review(record, patch, *, family="ipv4"):
     pivs.append(exchange_grade(record["quiet_readback"], 1, b"2", server, family=family))
     require(len(set(pivs)) == len(pivs), "reused protected request binding")
     require(not set(initial["response_pivs"]).intersection(fresh_proof["response_pivs"]), "notification nonce reused")
-    from aiocoap import oscore
     server_pivs = set()
     for part in [trace, *(write["trace"] for write in writes), record["quiet_readback"]["trace"]]:
-        for row in part:
-            wire = bytes.fromhex(row["hex"])
-            if row["direction"] == "response" and wire[1] != 0:
-                _, _, cose, _ = oscore.CanUnprotect._extract_encrypted0(incoming(wire))
-                piv = cose.get(oscore.COSE_PIV)
-                if piv is not None:
-                    require(isinstance(piv, bytes) and 1 <= len(piv) <= 5 and piv not in server_pivs,
-                            "server response PIV reused across lifecycle/exchanges")
-                    server_pivs.add(piv)
+        for piv in explicit_server_pivs(part):
+            require(piv not in server_pivs, "server response PIV reused across lifecycle/exchanges")
+            server_pivs.add(piv)
     intervals = [(initial["notification_times_ns"][0], initial["notification_times_ns"][1]),
                  (cancelled[-1]["time_ns"], after[0]["time_ns"]),
                  (fresh_proof["notification_times_ns"][0], fresh_proof["notification_times_ns"][1]),
