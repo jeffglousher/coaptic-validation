@@ -398,6 +398,15 @@ Required hosted execution retains `oscore-observe-cancellation.json`, exact clea
 library/suite sources, prepared lock hashes, libcoap source/patch and executable
 hashes. The local Windows libcoap build lacks OSCORE and cannot qualify this
 campaign. The existing 181-case inventory and literal plugtest statuses remain
-unchanged. Scope is the finite IPv4 loopback fixture; enrollment, power-loss,
+unchanged. The default is the finite IPv4 loopback fixture. Use `--family ipv6`
+for the corresponding `::1` lifecycle (#505), retained separately as
+`oscore-observe-cancellation-ipv6.json`. Both relay sockets must report AF_INET6
+and IPV6_V6ONLY, and every phase requires exact four-field `::1` owners with
+integer zero flow/scope identifiers. Mixed families, mapped IPv4 addresses,
+truncated tuples and substituted owners refuse qualification. Focused native
+socket and authenticated synthetic tests check this evidence contract;
+actual exact-source hosted traffic must independently pass before claiming
+IPv6 interoperability. These loopback cases do not qualify scoped IPv6 zones.
+Enrollment, power-loss,
 routed networks, physical-device behavior and sustained availability remain
 unqualified.

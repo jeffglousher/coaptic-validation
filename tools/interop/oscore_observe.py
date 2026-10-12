@@ -6,7 +6,7 @@ import threading
 import time
 from aiocoap import oscore
 from oscore_qblock1 import require, request_plain, response_plain, incoming
-from oscore_qblock2 import loopback_endpoint, relay_endpoints
+from oscore_qblock2 import loopback_endpoint, relay_endpoints, require_relay_family
 from run import Proxy, Server, request, command, expect, decode, decoded_options, packet_token
 
 
@@ -19,10 +19,10 @@ def opts(plain):
 
 class ObserveRelay(Proxy):
     """One observer; intact replay sends from the original client-facing socket."""
-    def __init__(self, number):
+    def __init__(self, number, family="ipv4"):
         self.lock = threading.Lock()
         self.client = None
-        super().__init__(number, "pass")
+        super().__init__(number, "pass", family=family)
 
     def record_send(self, direction, action, wire, source, target, address):
         require(len(self.trace) < 128 and 4 <= len(wire) <= 4096, "relay bounded trace/datagram limit")
@@ -73,12 +73,13 @@ def authenticated_notifications(trace):
     return values
 
 
-def observer_grade(trace, result, endpoints, start, replay, count=3):
+def observer_grade(trace, result, endpoints, start, replay, count=3, *, family="ipv4"):
     require(type(count) is int and count in (2,3), "unsupported observation count")
     expected = [str(n).encode() for n in range(start,start+count)]
     expect(result, 69, b",".join(expected))
     require(4 <= len(trace) <= 128, "observer trace outside bound")
-    endpoint = lambda x: loopback_endpoint(x,"ipv4")
+    require_relay_family(endpoints, family)
+    endpoint = lambda x: loopback_endpoint(x,family)
     front,back,server=(endpoint(endpoints[k]) for k in ("front","back","server"))
     client=endpoint(trace[0]["source"])
     require(len({front,back,server,client})==4,"overlapping owners")
@@ -159,18 +160,19 @@ def observer_grade(trace, result, endpoints, start, replay, count=3):
             "final_notification_time_ns":final_at,"scope":"intact stale datagram not delivered twice; no attribution to a specific duplicate/replay mechanism"}
 
 
-def exchange_grade(record, method, body, server_endpoint):
+def exchange_grade(record, method, body, server_endpoint, *, family="ipv4"):
     """Authenticate bounded ordinary writer/readback exchanges, including ACK controls."""
     expect(record["result"],68 if method==2 else 69,body)
     trace=record["trace"];endpoints=record["endpoints"]
     require(tuple(endpoints["server"])==server_endpoint and 2<=len(trace)<=4,"writer/readback server or trace changed")
-    client=loopback_endpoint(trace[0]["source"],"ipv4")
-    front,back,server=(loopback_endpoint(endpoints[k],"ipv4") for k in ("front","back","server"))
+    require_relay_family(endpoints, family)
+    client=loopback_endpoint(trace[0]["source"],family)
+    front,back,server=(loopback_endpoint(endpoints[k],family) for k in ("front","back","server"))
     req=None;response=None;waiting=False;pending=None;previous=-1
     for row in trace:
         direction=row["direction"];wire=bytes.fromhex(row["hex"])
         require(direction in ("request","response") and row["action"]=="forward" and row["hex"]==row["forwarded_hex"],"writer relay fault")
-        require(tuple(loopback_endpoint(row[k],"ipv4") for k in ("source","destination","relay"))==
+        require(tuple(loopback_endpoint(row[k],family) for k in ("source","destination","relay"))==
                 ((client,server,back) if direction=="request" else (server,client,front)),"writer endpoint mismatch")
         require(type(row["time_ns"]) is int and row["time_ns"]>previous,"writer clock mismatch");previous=row["time_ns"]
         require(4<=len(wire)<=4096,"invalid writer datagram")

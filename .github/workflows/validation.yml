@@ -482,6 +482,8 @@ jobs:
         run: python3 -m unittest discover -s tools/interop -p 'test_*.py'
       - name: Protected Observe explicit cancellation and fresh registration
         run: python3 tools/interop/oscore_observe_cancel.py --coaptic target/release/peer-coaptic --libcoap target/libcoap-peer/peer-libcoap --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json --output target/oscore-observe-cancellation.json
+      - name: Protected IPv6 Observe explicit cancellation and fresh registration
+        run: python3 tools/interop/oscore_observe_cancel.py --coaptic target/release/peer-coaptic --libcoap target/libcoap-peer/peer-libcoap --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json --family ipv6 --output target/oscore-observe-cancellation-ipv6.json
       - name: Wire interoperability, reliability and timing
         run: python3 tools/interop/run.py --coaptic target/release/peer-coaptic --coap-rs target/release/peer-coap-rs --libcoap target/libcoap-peer/peer-libcoap --iterations 100 --build-note "all peers Release; Ubuntu hosted runner" --output target/process-interop.json --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json
       - name: Observe protected Q-Block2 baseline (not complete qualification)
@@ -512,7 +514,8 @@ jobs:
             target/oscore-relay-cap-campaign.json
             target/oscore-relay-cap-ipv6-campaign.json
             target/oscore-observe-campaign.json
-              target/oscore-observe-cancellation.json
+            target/oscore-observe-cancellation.json
+            target/oscore-observe-cancellation-ipv6.json
             target/qblock-patch-test.txt
             ${{ runner.temp }}/validation-source.json
           if-no-files-found: warn
