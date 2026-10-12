@@ -7,6 +7,8 @@ from oscore_qblock1 import FixtureContext, request_plain
 from oscore_qblock2_tests import protected, ENDPOINTS
 from oscore_observe_tests import observer, exchange, rows
 from oscore_observe_cancel import review, campaign
+from oscore_observe import ObserveRelay
+from oscore_qblock2 import relay_endpoints
 from run import coap_message
 
 
@@ -181,6 +183,81 @@ class CancellationTests(unittest.TestCase):
         self.assertNotIn("complete", r)
         proc.kill.assert_called_once()
         proc.communicate.assert_called_once()
+
+
+def ipv6_evidence():
+    record = evidence(fresh_token=b"n")
+    record["family"] = "ipv6"
+    for part in [record, *record["writes"], record["quiet_readback"]]:
+        for key in ("front", "back", "server"):
+            part["endpoints"][key] = ["::1", part["endpoints"][key][1], 0, 0]
+        part["endpoints"].update(family="AF_INET6", v6only=[1, 1])
+        for row in part["trace"]:
+            for key in ("source", "destination", "relay"):
+                row[key] = ["::1", row[key][1], 0, 0]
+    return record
+
+
+class IPv6CancellationTests(unittest.TestCase):
+    def test_complete_authenticated_ipv6_lifecycle(self):
+        proof = review(ipv6_evidence(), {"patch_sha256": "patch"}, family="ipv6")
+        self.assertEqual(proof["same_server"], ["::1", 1003, 0, 0])
+        self.assertEqual(proof["complete_bodies"], ["0", "1", "1", "2", "3", "4"])
+
+    def test_family_selection_must_match_evidence(self):
+        for record, family in ((ipv6_evidence(), "ipv4"), (evidence(fresh_token=b"n"), "ipv6"),
+                               (ipv6_evidence(), "other")):
+            with self.subTest(family=family), self.assertRaisesRegex(AssertionError, "family mismatch"):
+                review(record, {"patch_sha256": "patch"}, family=family)
+
+    def test_all_phase_endpoints_are_exact_ipv6_owners(self):
+        bad = [["127.0.0.1", 1001], ["::ffff:127.0.0.1", 1001, 0, 0], ["::1", 1001],
+               ["::1", 1001, 1, 0], ["::1", 1001, 0, 1], ["::1", 1001, False, 0],
+               ["::1", 1001, 0, "0"], ["::1", 0, 0, 0], ["::1", 65536, 0, 0]]
+        for phase, index in (("observer", 0), ("cancel", 6), ("fresh", 10),
+                             ("write", 0), ("readback", 0)):
+            for endpoint in bad:
+                record = ipv6_evidence()
+                part = record["writes"][0] if phase == "write" else record["quiet_readback"] if phase == "readback" else record
+                part["trace"][index]["source"] = endpoint
+                with self.subTest(phase=phase, endpoint=endpoint), self.assertRaises(AssertionError):
+                    review(record, {"patch_sha256": "patch"}, family="ipv6")
+
+    def test_every_relay_requires_ipv6_only_evidence(self):
+        for part_index in range(6):
+            for value in (None, [1], [1, 0], [True, 1], [1, "1"]):
+                record = ipv6_evidence()
+                parts = [record, *record["writes"], record["quiet_readback"]]
+                parts[part_index]["endpoints"]["v6only"] = value
+                with self.subTest(part=part_index, value=value), self.assertRaisesRegex(AssertionError, "IPv6-only"):
+                    review(record, {"patch_sha256": "patch"}, family="ipv6")
+            record = ipv6_evidence()
+            parts = [record, *record["writes"], record["quiet_readback"]]
+            parts[part_index]["endpoints"]["family"] = "AF_INET"
+            with self.subTest(part=part_index), self.assertRaisesRegex(AssertionError, "IPv6-only"):
+                review(record, {"patch_sha256": "patch"}, family="ipv6")
+
+    def test_ipv6_owner_substitution_refuses(self):
+        for index in (0, 6, 10):
+            record = ipv6_evidence()
+            record["trace"][index]["relay"] = ["::1", 9000, 0, 0]
+            with self.subTest(index=index), self.assertRaises(AssertionError):
+                review(record, {"patch_sha256": "patch"}, family="ipv6")
+
+    def test_native_observe_relay_uses_ipv6_only_sockets(self):
+        with ObserveRelay(1003, family="ipv6") as relay:
+            endpoints = relay_endpoints(relay, "ipv6")
+            self.assertEqual(endpoints["family"], "AF_INET6")
+            self.assertEqual(endpoints["v6only"], [1, 1])
+            self.assertEqual(endpoints["server"], ("::1", 1003, 0, 0))
+            self.assertTrue(all(len(endpoints[k]) == 4 and endpoints[k][0] == "::1"
+                                for k in ("front", "back")))
+
+    def test_invalid_family_refuses_before_process_launch(self):
+        with patch("oscore_observe_cancel.Server") as server:
+            with self.assertRaisesRegex(AssertionError, "address family"):
+                campaign(None, None, {}, {}, family="other")
+            server.assert_not_called()
 
 
 if __name__ == "__main__":

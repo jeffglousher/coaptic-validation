@@ -6,7 +6,7 @@ import time
 from oscore_observe import (ObserveRelay, authenticated_notifications, observer_grade,
                             exchange_grade, opts)
 from oscore_qblock1 import require, request_plain, response_plain, FixtureContext, incoming
-from oscore_qblock2 import loopback_endpoint, relay_endpoints
+from oscore_qblock2 import loopback_endpoint, relay_endpoints, require_relay_family
 from run import Proxy, Server, command, decode, expect, packet_token, decoded_options, request
 
 
@@ -37,12 +37,13 @@ def requests(trace):
             if row["direction"] == "request" and bytes.fromhex(row["hex"])[1] == 5]
 
 
-def cancellation_grade(trace, endpoints, original):
+def cancellation_grade(trace, endpoints, original, *, family="ipv4"):
     """Authenticate a complete ordinary GET after matching-token Observe=1."""
     require(2 <= len(trace) <= 4, "incomplete/unbounded cancellation exchange")
-    front, back, server = (loopback_endpoint(endpoints[k], "ipv4")
+    require_relay_family(endpoints, family)
+    front, back, server = (loopback_endpoint(endpoints[k], family)
                            for k in ("front", "back", "server"))
-    client = loopback_endpoint(trace[0]["source"], "ipv4")
+    client = loopback_endpoint(trace[0]["source"], family)
     require(len({front, back, server, client}) == 4, "overlapping cancellation owners")
     req = bytes.fromhex(trace[0]["hex"])
     plain, binding = cancellation_plain(req)
@@ -61,7 +62,7 @@ def cancellation_grade(trace, endpoints, original):
         direction = row["direction"]
         require(direction in ("request", "response") and row["action"] == "forward"
                 and row["hex"] == row["forwarded_hex"], "cancellation relay fault")
-        require(tuple(loopback_endpoint(row[k], "ipv4") for k in ("source", "destination", "relay")) ==
+        require(tuple(loopback_endpoint(row[k], family) for k in ("source", "destination", "relay")) ==
                 ((client, server, back) if direction == "request" else (server, client, front)), "cancellation owner mismatch")
         at = row["time_ns"]
         require(type(at) is int and at > previous and at >= 0, "cancellation clock mismatch")
@@ -96,18 +97,20 @@ def cancellation_grade(trace, endpoints, original):
     return bytes(binding.partial_iv).hex()
 
 
-def review(record, patch):
+def review(record, patch, *, family="ipv4"):
+    require(family in ("ipv4", "ipv6") and record.get("family", "ipv4") == family, "campaign family mismatch")
     expect(record["setup"], 69, b"0")
     ready = record["server_ready"]
     require(ready.get("transport") == "oscore" and ready.get("libcoap_patch_sha256") == patch["patch_sha256"], "peer provenance changed")
     trace, endpoints = record["trace"], record["endpoints"]
     require(10 <= len(trace) <= 128, "lifecycle trace outside bound")
-    server = loopback_endpoint(("127.0.0.1", ready["port"]), "ipv4")
+    server = loopback_endpoint(("::1", ready["port"], 0, 0) if family == "ipv6"
+                               else ("127.0.0.1", ready["port"]), family)
     require(tuple(endpoints["server"]) == server, "server changed")
-    client = loopback_endpoint(trace[0]["source"], "ipv4")
+    client = loopback_endpoint(trace[0]["source"], family)
     for row in trace:
         require(row["direction"] in ("request", "response")
-                and loopback_endpoint(row["source"] if row["direction"] == "request" else row["destination"], "ipv4") == client,
+                and loopback_endpoint(row["source"] if row["direction"] == "request" else row["destination"], family) == client,
                 "lifecycle client endpoint changed")
     expect(record["result"], 69, b"0,1,1,2,3,4")
     reqs = requests(trace)
@@ -123,9 +126,9 @@ def review(record, patch):
     fresh_at, fresh = reqs[2]
     before, cancelled, after = trace[:cancel_at], trace[cancel_at:fresh_at], trace[fresh_at:]
     result = lambda body: dict(event="response", exit_code=0, code=69, payload_hex=body.hex())
-    initial = observer_grade(before, result(b"0,1"), endpoints, 0, False, count=2)
-    cancellation_piv = cancellation_grade(cancelled, endpoints, reqs[0][1])
-    fresh_proof = observer_grade(after, result(b"2,3,4"), endpoints, 2, False)
+    initial = observer_grade(before, result(b"0,1"), endpoints, 0, False, count=2, family=family)
+    cancellation_piv = cancellation_grade(cancelled, endpoints, reqs[0][1], family=family)
+    fresh_proof = observer_grade(after, result(b"2,3,4"), endpoints, 2, False, family=family)
     require(packet_token(fresh) != packet_token(cancel), "fresh registration reused cancelled token")
     previous = -1
     for row in trace:
@@ -137,8 +140,8 @@ def review(record, patch):
     require(len(writes) == 4, "missing resource updates")
     pivs = [initial["request_piv"], cancellation_piv, fresh_proof["request_piv"]]
     for write in writes:
-        pivs.append(exchange_grade(write, 2, b"", server))
-    pivs.append(exchange_grade(record["quiet_readback"], 1, b"2", server))
+        pivs.append(exchange_grade(write, 2, b"", server, family=family))
+    pivs.append(exchange_grade(record["quiet_readback"], 1, b"2", server, family=family))
     require(len(set(pivs)) == len(pivs), "reused protected request binding")
     require(not set(initial["response_pivs"]).intersection(fresh_proof["response_pivs"]), "notification nonce reused")
     from aiocoap import oscore
@@ -172,19 +175,20 @@ def review(record, patch):
     return {"same_server": list(server), "complete_bodies": ["0", "1", "1", "2", "3", "4"],
             "quiet_interval_ns": after[0]["time_ns"] - cancelled[-1]["time_ns"],
             "quiet_after_readback_ns": quiet_after_readback,
-            "request_pivs": pivs, "scope": "finite IPv4 loopback explicit cancellation; no enrollment, power-loss, routed-network or sustained-availability qualification"}
+            "request_pivs": pivs, "scope": f"finite {'IPv6' if family == 'ipv6' else 'IPv4'} loopback explicit cancellation; no enrollment, power-loss, routed-network or sustained-availability qualification"}
 
 
-def campaign(client, server, record, patch):
-    record["writes"] = []
-    with Server(server, "oscore") as service:
+def campaign(client, server, record, patch, *, family="ipv4"):
+    require(family in ("ipv4", "ipv6"), "unsupported protected address family")
+    record.update(family=family, writes=[])
+    with Server(server, "oscore", family=family) as service:
         record["server_ready"] = service.ready
         require(service.ready.get("libcoap_patch_sha256") == patch["patch_sha256"], "peer patch mismatch")
         # Establish the fixture's replay window before the measured Observe
         # exchange, including any authenticated Echo recovery challenge.
-        record["setup"] = request(client, "oscore", service.number, sequence=0, path="counter")
+        record["setup"] = request(client, "oscore", service.number, sequence=0, path="counter", family=family)
         expect(record["setup"], 69, b"0")
-        relay = ObserveRelay(service.number)
+        relay = ObserveRelay(service.number, family=family)
         proc = None
 
         def wait_until(predicate):
@@ -197,11 +201,11 @@ def campaign(client, server, record, patch):
             raise AssertionError("lifecycle wait exceeded finite deadline")
 
         def ordinary(record, method, sequence):
-            r = Proxy(service.number, "pass")
+            r = Proxy(service.number, "pass", family=family)
             try:
                 with r:
-                    record["endpoints"] = relay_endpoints(r, "ipv4")
-                    record["result"] = request(client, "oscore", r.number, path="counter", method=method, sequence=sequence)
+                    record["endpoints"] = relay_endpoints(r, family)
+                    record["result"] = request(client, "oscore", r.number, path="counter", method=method, sequence=sequence, family=family)
             finally:
                 record["trace"] = r.trace
 
@@ -212,8 +216,8 @@ def campaign(client, server, record, patch):
 
         try:
             with relay:
-                record["endpoints"] = relay_endpoints(relay, "ipv4")
-                args = command(client, "client", "oscore", relay.number, path="counter", sequence=100, timeout=15000)
+                record["endpoints"] = relay_endpoints(relay, family)
+                args = command(client, "client", "oscore", relay.number, path="counter", sequence=100, timeout=15000, family=family)
                 proc = subprocess.Popen(args + ["observe-cancel"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 wait_until(lambda t: len(authenticated_notifications(t)) >= 1)
                 # Fixture processes share one sender identity. Allocate distinct
@@ -227,7 +231,7 @@ def campaign(client, server, record, patch):
                     if len(rs) != 2:
                         return False
                     try:
-                        cancellation_grade(t[rs[1][0]:], record["endpoints"], rs[0][1])
+                        cancellation_grade(t[rs[1][0]:], record["endpoints"], rs[0][1], family=family)
                         return True
                     except AssertionError:
                         return False
@@ -249,7 +253,7 @@ def campaign(client, server, record, patch):
                 proc.kill()
                 proc.communicate()
             record["trace"] = relay.snapshot()
-    record["proof"] = review(record, patch)
+    record["proof"] = review(record, patch, family=family)
     record["complete"] = True
 
 
@@ -262,6 +266,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("coaptic", "libcoap", "libcoap-patch-manifest", "output"):
         parser.add_argument("--" + name, type=Path, required=True)
+    parser.add_argument("--family", choices=("ipv4", "ipv6"), default="ipv4")
     args = parser.parse_args()
     patch = json.loads(args.libcoap_patch_manifest.read_text())
     report = {"schema": "coaptic-protected-observe-cancellation/1", **source_identity(),
@@ -269,9 +274,9 @@ def main():
               "libcoap_source": "851533c3cf63d16984d370ce39d586ecb3694971",
               "executables": {name: {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
                               for name, path in (("coaptic", args.coaptic), ("libcoap", args.libcoap))},
-              "qualification_complete": False, "campaign": {}}
+              "family": args.family, "qualification_complete": False, "campaign": {}}
     try:
-        campaign(args.coaptic.resolve(), args.libcoap.resolve(), report["campaign"], patch)
+        campaign(args.coaptic.resolve(), args.libcoap.resolve(), report["campaign"], patch, family=args.family)
         report["qualification_complete"] = True
     except Exception as error:
         report["error"] = f"{type(error).__name__}: {error}"
