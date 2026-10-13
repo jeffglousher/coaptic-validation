@@ -1,0 +1,7 @@
+aiocoap[oscore]==0.4.16
+cbor2==6.1.5
+cbor-diag==1.2.0
+cffi==2.1.1
+cryptography==50.0.2
+filelock==4.0.12
+pycparser==3.0

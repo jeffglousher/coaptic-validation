@@ -6,7 +6,7 @@ import platform
 import subprocess
 import sys
 from pathlib import Path
-from campaign import SCHEMA, host, write_new
+from campaign import SCHEMA, digest, host, write_new
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -14,6 +14,13 @@ HERE = Path(__file__).resolve().parent
 
 def invoke(command, cwd=ROOT, env=None):
     subprocess.run([str(item) for item in command], cwd=cwd, env=env, check=True)
+
+
+def source_identity(directory):
+    def git(*args):
+        return subprocess.check_output(["git", "-C", str(directory), *args], text=True).strip()
+    return {"revision": git("rev-parse", "HEAD"), "tree": git("rev-parse", "HEAD^{tree}"),
+            "status": git("status", "--porcelain")}
 
 
 def main():
@@ -24,10 +31,13 @@ def main():
     parser.add_argument("--cmake", default="cmake")
     parser.add_argument("--libcoap-source", type=Path)
     parser.add_argument("--libcoap-bin", type=Path)
+    parser.add_argument("--libcoap-build", type=Path)
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--peers", default="coaptic,coap-rs,coap-lite-codec,aiocoap,libcoap,go-coap,http3")
     parser.add_argument("--uvloop", action="store_true")
     parser.add_argument("--coaptic-rx-bytes", type=int, choices=(1472, 2048), default=1472)
+    parser.add_argument("--matched-oscore", action="store_true",
+                        help="matched Python UDP driver for plaintext and supported OSCORE servers")
     args = parser.parse_args()
     selected = args.peers.split(",")
     allowed = {"coaptic", "coaptic-reusable", "coap-rs", "coap-lite-codec", "aiocoap", "libcoap", "go-coap", "http3"}
@@ -88,8 +98,10 @@ def main():
         if args.libcoap_bin:
             binary = args.libcoap_bin.resolve()
         else:
-            build = target / "libcoap"
-            invoke([args.cmake, "-S", HERE / "peers" / "libcoap", "-B", build, "-DCMAKE_BUILD_TYPE=Release", "-DLIBCOAP_SOURCE=" + str(args.libcoap_source.resolve())])
+            build = args.libcoap_build.resolve() if args.libcoap_build else target / "libcoap"
+            # libcoap's own git-describe probe inherits CMake's working directory.
+            # Run it in that dependency, not in the companion repository.
+            invoke([args.cmake, "-S", HERE / "peers" / "libcoap", "-B", build, "-DCMAKE_BUILD_TYPE=Release", "-DLIBCOAP_SOURCE=" + str(args.libcoap_source.resolve())], cwd=args.libcoap_source.resolve())
             invoke([args.cmake, "--build", build, "--config", "Release", "--parallel", "2"])
             binary = build / "Release" / ("bench-libcoap" + suffix) if os.name == "nt" else build / "bench-libcoap"
         peers.append({"id": "libcoap", "protocol": "coap", "server": [str(binary), "{host}", "{port}", "{bytes}"], "driver": driver,
@@ -97,16 +109,57 @@ def main():
                                    "build": "Release; UDP; library-managed blockwise; no per-request logging" if not args.libcoap_bin else "externally supplied binary; source/build association asserted by caller"}})
     for peer in peers:
         peer["security"] = "plaintext" if peer["protocol"] == "coap" else "TLS1.3"
+    unsupported = []
+    if args.matched_oscore:
+        code = "import aiocoap,cryptography,cbor2,importlib.metadata,json,pathlib; import cryptography.hazmat.bindings._rust as rust; import cbor2._cbor2 as cbor; print(json.dumps({'versions':{n:importlib.metadata.version(n) for n in ('aiocoap','cryptography','cbor2')},'trees':[str(pathlib.Path(m.__file__).parent) for m in (aiocoap,cryptography,cbor2)],'files':[rust.__file__,cbor.__file__]}))"
+        crypto = json.loads(subprocess.check_output([args.python, "-I", "-c", code], text=True))
+        protected = HERE / "protected"
+        # -I removes the script directory; explicitly execute in an isolated
+        # interpreter with only the owned helper directory added to sys.path.
+        launcher = "import runpy,sys;sys.path.insert(0,sys.argv.pop(1));runpy.run_path(sys.argv.pop(1),run_name='__main__')"
+        matched_driver = [args.python, "-I", "-c", launcher, str(protected), str(protected / "load.py")]
+        for key in ("host", "port", "bytes", "concurrency", "operations", "warmup", "timeout_ms", "mode", "security", "credentials", "sequence"):
+            matched_driver.extend(["--" + key.replace("_", "-"), "{" + key + "}"])
+        for peer in list(peers):
+            if peer["protocol"] != "coap":
+                continue
+            peer["driver"] = matched_driver
+            peer["dependency_trees"] = list(dict.fromkeys(peer.get("dependency_trees", []) + crypto["trees"] + [str(protected)]))
+            peer["dependency_files"] = crypto["files"]
+            peer["identity"]["driver_crypto"] = crypto["versions"]
+            peer["identity"]["driver_scope"] = "Python/GIL closed-loop including authentication and byte validation; separate from native Rust driver"
+            if peer["id"] not in ("coaptic", "coaptic-reusable", "aiocoap"):
+                unsupported.append({"peer": peer["id"], "security": "OSCORE-AES-CCM-16-64-128", "reason": "no native OSCORE benchmark fixture supplied"})
+                continue
+            secure = json.loads(json.dumps(peer))
+            secure["id"] += "-oscore"
+            secure["security"] = "OSCORE-AES-CCM-16-64-128"
+            if peer["id"] == "aiocoap":
+                server = [args.python, "-I", "-c", launcher, str(protected), str(protected / "aiocoap_server.py"),
+                          "--host", "{host}", "--port", "{port}", "--bytes", "{bytes}"]
+                peer["server"] = server
+                secure["server"] = server + ["--credentials", "{credentials}"]
+            else:
+                secure["server"].append("{credentials}")
+            secure["identity"]["security_profile"] = "RFC 8613 AES-CCM-16-64-128 / HKDF-SHA-256; fresh 24-byte process-lifetime secret/salt; no enrollment or persistence"
+            peers.append(secure)
+        unsupported.append({"peer": "all", "security": "DTLS", "reason": "no matched DTLS driver/fixture in this matrix; HTTP3 TLS is a separate protocol and cannot substitute"})
     cases = []
     for size, operations in ((64, 256), (1024, 128), (65536, 16)):
         for concurrency in (1, 4, 16):
-            for protocol, modes, security in (("coap", ("con", "non"), "plaintext"), ("http3", ("warm", "cold"), "TLS1.3")):
-                if not any(p["protocol"] == protocol for p in peers):
+            strata = sorted({(p["protocol"], p["security"]) for p in peers})
+            for protocol, security in strata:
+                modes = ("con", "non") if protocol == "coap" else ("warm", "cold")
+                if not any(p["protocol"] == protocol and p["security"] == security for p in peers):
                     continue
                 for mode in modes:
-                    cases.append({"id": f"{protocol}-{mode}-{size}-{concurrency}", "protocol": protocol, "security": security, "bytes": size,
+                    label = "oscore-" if security.startswith("OSCORE") else ""
+                    cases.append({"id": f"{protocol}-{label}{mode}-{size}-{concurrency}", "protocol": protocol, "security": security, "bytes": size,
                                   "concurrency": concurrency, "operations": max(operations, concurrency), "warmup": 1, "timeout_ms": 1000, "mode": mode})
     write_new(args.output, {"schema": SCHEMA, "peers": peers, "cases": cases,
+                            "unsupported": unsupported,
+                            "sources": {"library": source_identity(ROOT / "coaptic"), "suite": source_identity(ROOT),
+                                        "native_lock_sha256": digest(HERE / "native" / "Cargo.lock")},
                             "campaign_policy": {"minimum_session_gap_seconds": 60}, "created_on": platform.platform(),
                             "runtime_environment": host()["runtime_environment"],
                             "build_environment": {key: os.environ.get(key) for key in

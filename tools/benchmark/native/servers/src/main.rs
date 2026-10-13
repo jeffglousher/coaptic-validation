@@ -14,10 +14,12 @@
 //! runtime. These variants retain the same protocol processing and pools.
 #![forbid(unsafe_code)]
 use coap_lite::{CoapOption, MessageClass, MessageType, Packet, ResponseType};
+use coaptic::oscore::{DeriveParams, SecurityContext};
 use coaptic::storage::{AllocMemory, Capacities, DatagramIo, Endpoint, UdpSocketIo};
 use coaptic::{App, ContentFormat, Request, Response, get};
 use std::{
     env,
+    io::Read,
     net::UdpSocket,
     sync::{Arc, OnceLock},
     time::{Duration, Instant},
@@ -35,6 +37,7 @@ fn bind_fixture<T: DatagramIo<Error = std::io::Error>>(
     io: T,
     bytes: usize,
     rx_bytes: usize,
+    context: Option<SecurityContext>,
 ) -> Result<App<coaptic::profiles::Default, T, 1, true, AllocMemory>, Box<dyn std::error::Error>> {
     let capacities = Capacities {
         rx_datagram_slots: 4,
@@ -48,24 +51,32 @@ fn bind_fixture<T: DatagramIo<Error = std::io::Error>>(
         tx_body_slots: Some(2),
         tx_body_bytes: Some(bytes.div_ceil(1024) * 1024),
     };
-    Ok(App::builder()
-        .allow_plaintext()
+    let builder = App::builder()
         .routes::<1>()
         .block_wise::<true>()
         .randomness(|buffer| getrandom::fill(buffer).is_ok())
-        .route("bench", get(representation))
-        .bind_alloc(io, capacities)?)
+        .route("bench", get(representation));
+    let builder = if let Some(context) = context {
+        builder.oscore(context)
+    } else {
+        builder.allow_plaintext()
+    };
+    Ok(builder.bind_alloc(io, capacities)?)
 }
 
 fn coaptic_server<T: DatagramIo<Error = std::io::Error>>(
     io: T,
     bytes: usize,
     rx_bytes: usize,
+    context: Option<SecurityContext>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut app = bind_fixture(io, bytes, rx_bytes)?;
+    let mut app = bind_fixture(io, bytes, rx_bytes, context)?;
     let started = Instant::now();
     loop {
-        app.poll(started.elapsed().as_millis() as u64)?;
+        match app.poll(started.elapsed().as_millis() as u64) {
+            Ok(()) | Err(coaptic::app::Error::Oscore(_)) => {}
+            Err(error) => return Err(error.into()),
+        }
     }
 }
 
@@ -155,7 +166,7 @@ fn mio_server(
     poll.registry()
         .register(&mut io.socket, mio::Token(0), mio::Interest::READABLE)?;
     let mut events = mio::Events::with_capacity(8);
-    let mut app = bind_fixture(io, bytes, rx_bytes)?;
+    let mut app = bind_fixture(io, bytes, rx_bytes, None)?;
     let started = Instant::now();
     loop {
         let mut idle = false;
@@ -191,7 +202,7 @@ async fn ready_server(
         scratch: [0; 2049],
         received: false,
     };
-    let mut app = bind_fixture(io, bytes, rx_bytes)?;
+    let mut app = bind_fixture(io, bytes, rx_bytes, None)?;
     let started = Instant::now();
     loop {
         let mut idle = false;
@@ -273,9 +284,9 @@ fn codec_server(address: &str, body: &[u8]) -> Result<(), Box<dyn std::error::Er
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = env::args().collect();
-    if !(5..=6).contains(&args.len()) {
+    if !(5..=7).contains(&args.len()) {
         return Err(
-            "usage: bench-rust-server coaptic|coaptic-reusable|coaptic-ready|coaptic-mio|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES]".into(),
+            "usage: bench-rust-server coaptic|coaptic-reusable|coaptic-ready|coaptic-mio|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]]".into(),
         );
     }
     let rx_bytes: usize = args
@@ -286,7 +297,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if ![1472, 2048].contains(&rx_bytes) {
         return Err("receive capacity must be 1472 or 2048".into());
     }
-    if args.len() == 6
+    if args.len() >= 6
         && !matches!(
             args[1].as_str(),
             "coaptic" | "coaptic-reusable" | "coaptic-ready" | "coaptic-mio"
@@ -294,6 +305,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         return Err("receive capacity is supported only by the Coaptic fixtures".into());
     }
+    if args.len() == 7 && !matches!(args[1].as_str(), "coaptic" | "coaptic-reusable") {
+        return Err("OSCORE credentials require the Coaptic socket fixtures".into());
+    }
+    if args.len() == 7 && args[2] != "127.0.0.1" {
+        return Err("ephemeral benchmark credentials are loopback only".into());
+    }
+    let context = args
+        .get(6)
+        .map(|path| -> Result<_, Box<dyn std::error::Error>> {
+            let mut material = [0; 24];
+            let mut file = std::fs::File::open(path)?;
+            file.read_exact(&mut material)?;
+            if file.read(&mut [0])? != 0 {
+                return Err("expected 24-byte ephemeral benchmark credentials".into());
+            }
+            let result = SecurityContext::derive(DeriveParams {
+                master_secret: &material[..16],
+                master_salt: &material[16..],
+                sender_id: &[1],
+                recipient_id: &[],
+                id_context: &[],
+            });
+            material.fill(0);
+            Ok(result?)
+        })
+        .transpose()?;
     let size: usize = args[4].parse()?;
     if !(1..=1_048_576).contains(&size) {
         return Err("fixture size".into());
@@ -311,9 +348,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let socket = UdpSocket::bind(&address)?;
             socket.set_nonblocking(true)?;
             if args[1] == "coaptic-reusable" {
-                coaptic_server(UdpSocketIo::new(socket, [0u8; 2049])?, size, rx_bytes)
+                coaptic_server(
+                    UdpSocketIo::new(socket, [0u8; 2049])?,
+                    size,
+                    rx_bytes,
+                    context,
+                )
             } else {
-                coaptic_server(socket, size, rx_bytes)
+                coaptic_server(socket, size, rx_bytes, context)
             }
         }
         "coap-lite-codec" => codec_server(&address, body),

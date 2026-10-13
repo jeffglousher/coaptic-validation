@@ -637,6 +637,7 @@ jobs:
       - run: python -m unittest discover -s tools -p 'test_*.py'
       - run: python -m unittest discover -s tools/qualification -p 'test_*.py'
       - run: python -m unittest discover -s tools/interop -p 'test_*.py'
+      - run: python -m pip install -r tools/benchmark/protected/requirements.txt
       - run: python -m unittest discover -s tools/benchmark -p 'test_*.py'
       - run: python -m unittest discover -s tools/security-profile -p 'test_*.py'
       - run: python -m unittest discover -s tools/provisioning -p 'test_*.py'
@@ -649,3 +650,11 @@ jobs:
           cargo fmt --manifest-path tools/benchmark/native/Cargo.toml -p bench-profile -- --check
           cargo clippy --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-profile --all-targets -- -D warnings
           cargo test --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-profile
+      - name: Check matched protected benchmark fixtures
+        env:
+          CARGO_TARGET_DIR: target/benchmark-native
+        run: |
+          cargo fmt --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server -- --check
+          cargo clippy --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server --all-targets -- -D warnings
+          cargo build --release --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server
+          python tools/benchmark/protected/network_check.py --server target/benchmark-native/release/bench-rust-server
