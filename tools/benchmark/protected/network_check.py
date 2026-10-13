@@ -27,7 +27,7 @@ def check(server, aiocoap_server=False):
             command = [sys.executable, str(pathlib.Path(__file__).with_name("aiocoap_server.py")),
                        "--host", "127.0.0.1", "--port", str(port), "--bytes", "2000", "--credentials", str(credentials)]
         else:
-            command = [server, "coaptic", "127.0.0.1", str(port), "2000", "1472", str(credentials)]
+            command = [str(pathlib.Path(server).resolve()), "coaptic", "127.0.0.1", str(port), "2000", "1472", str(credentials)]
         with tempfile.TemporaryFile() as output:
             process = subprocess.Popen(command, stdout=output, stderr=output)
             args = SimpleNamespace(host="127.0.0.1", port=port, bytes=2000, timeout_ms=1000, mode="con")

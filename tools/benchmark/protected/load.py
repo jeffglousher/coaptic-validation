@@ -20,7 +20,7 @@ class DriverError(Exception):
     pass
 
 
-def check_body(message, offset, size, etag):
+def check_body(message, offset, size, etag, requested_block=None):
     counts = {}
     for option in message.opt.option_list():
         number = int(option.number)
@@ -41,11 +41,15 @@ def check_body(message, offset, size, etag):
         raise ValueError("representation mismatch")
     block = message.opt.block2
     if block is None:
+        if requested_block is not None or offset:
+            raise ValueError("missing negotiated Block2")
         if offset + len(body) != size:
             raise ValueError("incomplete representation")
         return size, None, current
     if block.size_exponent == 7 or block.start != offset or len(body) > block.size:
         raise ValueError("Block2 range")
+    if requested_block is not None and block.size_exponent > requested_block[2]:
+        raise ValueError("Block2 size increased")
     end = offset + len(body)
     if block.more:
         if len(body) != block.size or end >= size:
@@ -109,6 +113,8 @@ class Worker:
                 wire = self.socket.recv(65535)
                 response = aiocoap.Message.decode(wire)
                 if wire == bytes([0x60, 0, mid >> 8, mid & 255]):
+                    if self.args.mode != "con":
+                        raise ValueError("ACK for NON request")
                     continue
                 if response.code == aiocoap.EMPTY:
                     raise ValueError("malformed empty control")
@@ -128,7 +134,7 @@ class Worker:
                     if response.opt.oscore is not None:
                         raise ValueError("unexpected protection")
                     plain = response
-                offset, block, etag = check_body(plain, offset, self.args.bytes, etag)
+                offset, block, etag = check_body(plain, offset, self.args.bytes, etag, block)
                 # A separate CON response is acknowledged only after authentication.
                 if response.mtype == aiocoap.CON:
                     ack = aiocoap.Message(code=aiocoap.EMPTY)

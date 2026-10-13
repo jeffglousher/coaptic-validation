@@ -41,11 +41,16 @@ def main():
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--bytes", type=int, required=True)
     parser.add_argument("--credentials")
+    parser.add_argument("--uvloop", action="store_true")
     args = parser.parse_args()
     if args.host != "127.0.0.1" or not 1 <= args.bytes <= 1048576 or not 1 <= args.port <= 65535:
         parser.error("loopback fixture bounds")
     logging.basicConfig(level=logging.ERROR)
-    asyncio.run(serve(args))
+    if args.uvloop:
+        import uvloop
+        uvloop.run(serve(args))
+    else:
+        asyncio.run(serve(args))
 
 
 if __name__ == "__main__":

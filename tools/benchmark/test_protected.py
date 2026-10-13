@@ -2,17 +2,57 @@
 import secrets
 import sys
 import tempfile
+import threading
 import unittest
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "protected"))
 import aiocoap
 from aiocoap.message import Direction
 from context import Context
-from load import check_body
+from load import DriverError, Worker, check_body, run
+import aiocoap_server
 
 
 class ProtectedTests(unittest.TestCase):
+    def test_uvloop_selection_runs_the_requested_backend(self):
+        backend = Mock()
+        with patch.dict(sys.modules, uvloop=backend), patch.object(aiocoap_server, "serve", new=Mock(return_value="fixture")):
+            with patch.object(sys, "argv", ["fixture", "--host", "127.0.0.1", "--port", "1234", "--bytes", "64", "--uvloop"]):
+                aiocoap_server.main()
+        backend.run.assert_called_once_with("fixture")
+
+    def test_control_packets_and_unprotected_response_refusal(self):
+        for mode, protected, control, success in (
+                ("con", False, bytes([0x60, 0, 0, 0]), True),
+                ("non", False, bytes([0x60, 0, 0, 0]), False),
+                ("con", False, bytes([0x60, 0, 0, 0, 255, 1]), False),
+                ("con", True, None, False)):
+            with self.subTest(mode=mode, protected=protected, control=control):
+                response = aiocoap.Message(code=aiocoap.CONTENT, payload=bytes(range(64)), content_format=42)
+                response.mid, response.mtype, response.token = 0, aiocoap.NON, (1).to_bytes(8, "big")
+                sock = Mock()
+                sock.recv.side_effect = ([control] if control is not None else []) + [response.encode()]
+                args = SimpleNamespace(host="127.0.0.1", port=1, bytes=64, timeout_ms=1000, mode=mode)
+                context = Context(self.credentials) if protected else None
+                with patch("load.socket.socket", return_value=sock):
+                    worker = Worker(args, 0, context, threading.Lock())
+                    if success:
+                        self.assertGreater(worker.exchange(1), 0)
+                    else:
+                        with self.assertRaises(ValueError):
+                            worker.exchange(1)
+
+    def test_failure_accounting_includes_warmup_and_driver_failures(self):
+        args = SimpleNamespace(host="127.0.0.1", port=1, bytes=64, concurrency=1, operations=2,
+                               warmup=1, timeout_ms=1000, sequence=0, mode="con", security="plaintext")
+        with patch.object(Worker, "exchange", side_effect=[ValueError("warmup"), DriverError("rotation"), 100]):
+            result = run(args)
+        self.assertEqual((result["attempted"], result["completed"], result["failed"], result["warmup_failed"],
+                          result["driver_failures"], result["verified_bytes"]), (2, 1, 1, 1, 1, 64))
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
@@ -79,9 +119,11 @@ class ProtectedTests(unittest.TestCase):
                                 content_format=42, etag=b"fixture", block2=(1, False, 6))
         self.assertEqual(check_body(final, offset, 2000, etag)[0], 2000)
         for change in (dict(code=aiocoap.UNAUTHORIZED), dict(content_format=0), dict(payload=b"bad"),
-                       dict(etag=b"changed"), dict(block2=(0, False, 6)), dict(block2=(1, True, 6))):
+                       dict(etag=b"changed"), dict(block2=(0, False, 6)), dict(block2=(1, True, 6)), dict(block2=None)):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 check_body(final.copy(**change), offset, 2000, etag)
+        with self.assertRaisesRegex(ValueError, "size increased"):
+            check_body(final, offset, 2000, etag, (2, False, 5))
 
     def test_credentials_length_refused(self):
         self.credentials.write_bytes(b"short")

@@ -137,6 +137,8 @@ def main():
             if peer["id"] == "aiocoap":
                 server = [args.python, "-I", "-c", launcher, str(protected), str(protected / "aiocoap_server.py"),
                           "--host", "{host}", "--port", "{port}", "--bytes", "{bytes}"]
+                if args.uvloop:
+                    server.append("--uvloop")
                 peer["server"] = server
                 secure["server"] = server + ["--credentials", "{credentials}"]
             else:
