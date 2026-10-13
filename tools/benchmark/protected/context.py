@@ -3,6 +3,7 @@ from pathlib import Path
 from aiocoap import oscore
 
 SECURITY = "OSCORE-AES-CCM-16-64-128"
+REPLAY_WINDOW = 32
 
 
 class Context(oscore.CanProtect, oscore.CanUnprotect, oscore.SecurityContextUtils):
@@ -18,7 +19,7 @@ class Context(oscore.CanProtect, oscore.CanUnprotect, oscore.SecurityContextUtil
         self.sender_sequence_number = sequence
         self.echo_recovery = None
         self.authenticated_claims = ["ephemeral-benchmark"]
-        self.recipient_replay_window = oscore.ReplayWindow(128, lambda: None)
+        self.recipient_replay_window = oscore.ReplayWindow(REPLAY_WINDOW, lambda: None)
         self.recipient_replay_window.initialize_empty()
         self.derive_keys(material[16:], material[:16])
 

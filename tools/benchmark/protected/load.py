@@ -101,10 +101,13 @@ class Worker:
             if self.context:
                 with self.crypto_lock:
                     outgoing, binding = self.context.protect(request)
-                outgoing.mid, outgoing.mtype, outgoing.token = mid, request.mtype, token
+                    outgoing.mid, outgoing.mtype, outgoing.token = mid, request.mtype, token
+                    # A shared identity reserves and dispatches each sequence
+                    # atomically. Do not create local reordering wider than the
+                    # recipient's bounded replay window before UDP sees it.
+                    self.socket.send(outgoing.encode())
             else:
-                outgoing = request
-            self.socket.send(outgoing.encode())
+                self.socket.send(request.encode())
             while True:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:

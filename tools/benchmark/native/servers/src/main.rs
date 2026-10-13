@@ -284,6 +284,13 @@ fn codec_server(address: &str, body: &[u8]) -> Result<(), Box<dyn std::error::Er
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = env::args().collect();
+    if args.len() == 2 && args[1] == "--security-profile" {
+        println!(
+            "{{\"security\":\"OSCORE-AES-CCM-16-64-128\",\"replay_window\":{}}}",
+            coaptic::oscore::REPLAY_WINDOW
+        );
+        return Ok(());
+    }
     if !(5..=7).contains(&args.len()) {
         return Err(
             "usage: bench-rust-server coaptic|coaptic-reusable|coaptic-ready|coaptic-mio|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]]".into(),

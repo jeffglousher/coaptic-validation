@@ -52,7 +52,8 @@ def check(server, aiocoap_server=False):
                 packet = valid.encode()
                 wrong = pathlib.Path(directory) / "wrong"
                 wrong.write_bytes(secrets.token_bytes(24))
-                wrong_context = Context(wrong)
+                # Fresh sequence: isolate wrong-key refusal from replay refusal.
+                wrong_context = Context(wrong, sequence=context.sender_sequence_number)
                 wrong_packet, _ = wrong_context.protect(request)
                 wrong_packet.mtype, wrong_packet.mid, wrong_packet.token = request.mtype, request.mid, request.token
                 tampered = packet[:-1] + bytes([packet[-1] ^ 1])

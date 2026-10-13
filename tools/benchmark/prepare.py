@@ -111,7 +111,10 @@ def main():
         peer["security"] = "plaintext" if peer["protocol"] == "coap" else "TLS1.3"
     unsupported = []
     if args.matched_oscore:
-        code = "import aiocoap,cryptography,cbor2,importlib.metadata,json,pathlib; import cryptography.hazmat.bindings._rust as rust; import cbor2._cbor2 as cbor; print(json.dumps({'versions':{n:importlib.metadata.version(n) for n in ('aiocoap','cryptography','cbor2')},'trees':[str(pathlib.Path(m.__file__).parent) for m in (aiocoap,cryptography,cbor2)],'files':[rust.__file__,cbor.__file__]}))"
+        native_security = json.loads(subprocess.check_output([str(rust), "--security-profile"], text=True))
+        if native_security != {"security": "OSCORE-AES-CCM-16-64-128", "replay_window": 32}:
+            parser.error("native OSCORE profile differs from the matched 32-entry replay fixture")
+        code = "import aiocoap,cryptography,cbor2,psutil,importlib.metadata,json,pathlib; import cryptography.hazmat.bindings._rust as rust; import cbor2._cbor2 as cbor; print(json.dumps({'versions':{n:importlib.metadata.version(n) for n in ('aiocoap','cryptography','cbor2','psutil')},'trees':[str(pathlib.Path(m.__file__).parent) for m in (aiocoap,cryptography,cbor2,psutil)],'files':[rust.__file__,cbor.__file__]}))"
         crypto = json.loads(subprocess.check_output([args.python, "-I", "-c", code], text=True))
         protected = HERE / "protected"
         # -I removes the script directory; explicitly execute in an isolated
@@ -144,6 +147,8 @@ def main():
             else:
                 secure["server"].append("{credentials}")
             secure["identity"]["security_profile"] = "RFC 8613 AES-CCM-16-64-128 / HKDF-SHA-256; fresh 24-byte process-lifetime secret/salt; no enrollment or persistence"
+            secure["identity"]["replay_window"] = 32
+            secure["identity"]["security_contexts"] = "one shared identity; sender reservation and UDP dispatch serialized"
             peers.append(secure)
         unsupported.append({"peer": "all", "security": "DTLS", "reason": "no matched DTLS driver/fixture in this matrix; HTTP3 TLS is a separate protocol and cannot substitute"})
     cases = []

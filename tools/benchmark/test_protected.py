@@ -53,6 +53,30 @@ class ProtectedTests(unittest.TestCase):
         self.assertEqual((result["attempted"], result["completed"], result["failed"], result["warmup_failed"],
                           result["driver_failures"], result["verified_bytes"]), (2, 1, 1, 1, 1, 64))
 
+    def test_shared_sender_dispatch_holds_sequence_lock_through_udp_send(self):
+        crypto_lock = threading.Lock()
+        sock = Mock()
+        def sent(_):
+            self.assertTrue(crypto_lock.locked(), "sequence was reserved before unsequenced local dispatch")
+        sock.send.side_effect = sent
+        sock.recv.side_effect = TimeoutError()
+        args = SimpleNamespace(host="127.0.0.1", port=1, bytes=64, timeout_ms=1000, mode="con")
+        with patch.object(Worker, "new_socket", return_value=sock):
+            worker = Worker(args, 0, Context(self.credentials), crypto_lock)
+            with self.assertRaises(TimeoutError):
+                worker.exchange(1)
+        self.assertFalse(crypto_lock.locked(), "send/receive failure retained the shared sender lock")
+
+    def test_matched_replay_retention_accepts_31_behind_and_refuses_32(self):
+        server = Context(self.credentials, server=True)
+        recent, _ = self.request(Context(self.credentials, sequence=32))
+        server.unprotect(recent)
+        too_old, _ = self.request(Context(self.credentials, sequence=0))
+        with self.assertRaises(aiocoap.oscore.ReplayError):
+            server.unprotect(too_old)
+        retained, _ = self.request(Context(self.credentials, sequence=1))
+        self.assertEqual(server.unprotect(retained)[0].code, aiocoap.GET)
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

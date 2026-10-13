@@ -59,6 +59,12 @@ and removed after the server exits; they are not retained in reports. This is
 process-lifetime benchmarking, without enrollment, durable counters or crash
 recovery. The fixtures and driver accept only IPv4 loopback.
 
+Both protected servers use a 32-entry replay window. One shared driver identity
+serializes sequence reservation through UDP dispatch, preventing local sender
+thread scheduling from manufacturing wider reordering before packets enter
+the network. This preserves independent outstanding exchanges per worker.
+Preparation requires the pinned resource sampler and hashes its dependency tree.
+
 Completions require authenticated responses bound to their request, successful
 status, Content-Format, stable ETag, valid Block2 ranges and every expected byte.
 Unprotected application responses fail the protected driver. Authentication,
