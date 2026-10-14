@@ -243,12 +243,14 @@ impl<'a, S: Store> State<'a, S> {
         if replay == self.record.replay {
             return Ok(());
         }
-        let mut check =
-            SecurityContext::derive(self.credentials.parameters()).map_err(|_| Error::Corrupt)?;
-        check
-            .restore_replay(self.record.replay)
+        // Both checkpoints are typed/validated and this state already
+        // authenticated its immutable credential/record binding at recovery.
+        // Progression is key-independent; use the core's same rollback guard
+        // without repeating HKDF or retaining a second keyed context.
+        self.record
+            .replay
+            .validate_successor(replay)
             .map_err(|_| Error::Corrupt)?;
-        check.restore_replay(replay).map_err(|_| Error::Corrupt)?;
         self.persist(Record {
             replay,
             ..self.record
@@ -322,6 +324,44 @@ mod tests {
         assert_eq!(context.sender_seq(), 0);
         assert_eq!(m.0.borrow().writes, 2);
     }
+    #[test]
+    fn checkpoint_refusal_preserves_record_and_allows_valid_progress_without_recovery() {
+        let c = credentials();
+        let mut m = Memory::default();
+        provision(&mut m, &c).unwrap();
+        let (mut state, _) = State::recover(m.clone(), &c).unwrap();
+        state
+            .checkpoint(ReplayCheckpoint::from_parts(10, 0b1011).unwrap())
+            .unwrap();
+        let bytes = m.0.borrow().bytes;
+        let writes = m.0.borrow().writes;
+        let generation = state.generation();
+        for checkpoint in [
+            ReplayCheckpoint::from_parts(10, 1).unwrap(),
+            ReplayCheckpoint::from_parts(9, u32::MAX).unwrap(),
+        ] {
+            assert_eq!(state.checkpoint(checkpoint), Err(Error::Corrupt));
+            assert_eq!(m.0.borrow().bytes, bytes);
+            assert_eq!(m.0.borrow().writes, writes);
+            assert_eq!(state.generation(), generation);
+        }
+        // Sequence10 falls below the window; seen11/13 remain rejected.
+        state
+            .checkpoint(ReplayCheckpoint::from_parts(11, 0b101).unwrap())
+            .unwrap();
+        assert_eq!(state.generation(), generation + 1);
+        assert_eq!(m.0.borrow().writes, writes + 1);
+        assert_eq!(verify_record(&mut m, &c), Ok(()));
+        let terminal = ReplayCheckpoint::from_parts(1u64 << 40, 0).unwrap();
+        state.checkpoint(terminal).unwrap();
+        let writes = m.0.borrow().writes;
+        state.checkpoint(terminal).unwrap();
+        assert_eq!(m.0.borrow().writes, writes);
+        drop(state);
+        let (_, recovered) = State::recover(m, &c).unwrap();
+        assert_eq!(recovered.replay_checkpoint(), terminal);
+    }
+
     #[test]
     fn restart_restores_replay_and_skips_the_whole_reserved_range() {
         let c = credentials();
