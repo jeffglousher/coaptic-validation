@@ -11,7 +11,11 @@ static void representation(coap_resource_t *resource, coap_session_t *session,
                            coap_pdu_t *response) {
     coap_pdu_set_code(response, COAP_RESPONSE_CODE_CONTENT);
     coap_add_data_large_response(resource, session, request, response, query,
-        COAP_MEDIATYPE_APPLICATION_OCTET_STREAM, 60, 0, body_size, body, NULL, NULL);
+        /* The immutable fixture is determined uniquely by its length. Supply
+         * its nonzero validator instead of hashing the body per transfer.
+         * -1 omits Max-Age's already implicit 60-second default. */
+        COAP_MEDIATYPE_APPLICATION_OCTET_STREAM, -1, (uint64_t)body_size,
+        body_size, body, NULL, NULL);
 }
 
 int main(int argc, char **argv) {

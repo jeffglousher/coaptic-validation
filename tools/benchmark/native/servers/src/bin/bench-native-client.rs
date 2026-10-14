@@ -158,7 +158,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         rx_body_slots: Some(1),
         rx_body_bytes: Some(capacity),
         tx_body_slots: Some(1),
-        tx_body_bytes: Some(capacity),
+        // GET has no request body; response length does not size TX storage.
+        tx_body_bytes: Some(1024),
     };
     let heap_limit = AllocMemory::required_heap_bytes(capacities)?;
     let storage = AllocMemory::try_new(capacities, heap_limit)?;
