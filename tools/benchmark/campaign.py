@@ -160,6 +160,8 @@ def peer_identity(peer):
             raise ValueError("missing dependency tree")
         trees.append({"path": str(root.resolve()), "sha256": fingerprint([(str(p.relative_to(root)), digest(p)) for p in files])})
     result["dependency_trees"] = trees
+    result["dependency_files"] = [{"path": str(Path(p).resolve()), "sha256": digest(p)}
+                                  for p in peer.get("dependency_files", [])]
     return result
 
 
@@ -170,14 +172,15 @@ def create_plan(manifest, windows, seed, smoke=False):
     cases = list(manifest["cases"])
     if smoke:
         chosen = []
-        for protocol in ("coap", "http3"):
-            first = next((c for c in cases if c["protocol"] == protocol), None)
+        for protocol, security in sorted({(c["protocol"], c["security"]) for c in cases}):
+            first = next((c for c in cases if c["protocol"] == protocol and c["security"] == security), None)
             if first:
                 chosen.append(dict(first, operations=4, warmup=1, concurrency=1))
-        large = next((c for c in cases if c["protocol"] == "coap" and c["bytes"] > 1024 and c["mode"] == "con"
-                      and c["id"] not in {item["id"] for item in chosen}), None)
-        if large:
-            chosen.append(dict(large, operations=1, warmup=0, concurrency=1))
+            large = next((c for c in cases if c["protocol"] == protocol == "coap" and c["security"] == security
+                          and c["bytes"] > 1024 and c["mode"] == "con"
+                          and c["id"] not in {item["id"] for item in chosen}), None)
+            if large:
+                chosen.append(dict(large, operations=1, warmup=0, concurrency=1))
         cold = next((c for c in cases if c["protocol"] == "http3" and c["mode"] == "cold"
                      and c["id"] not in {item["id"] for item in chosen}), None)
         if cold:
@@ -309,13 +312,16 @@ def reserve_port():
 
 
 def run_cell(peer, case):
-    values = dict(case, port=reserve_port(), host="127.0.0.1")
+    values = dict(case, port=reserve_port(), host="127.0.0.1", sequence=0)
     values["operations"] = 1
     values["warmup"] = 0
     values["concurrency"] = 1
     before = noise()
     with tempfile.TemporaryDirectory(prefix="coaptic-benchmark-cert-") as certificate_root:
         values["certificate"] = str(Path(certificate_root) / "server.pem")
+        values["credentials"] = str(Path(certificate_root) / "oscore.bin")
+        # Fresh process-lifetime keys; never retained in campaign artifacts.
+        Path(values["credentials"]).write_bytes(os.urandom(24))
         captured = CapturedProcess(render(peer["server"], values))
         server = captured.process
         try:
@@ -335,10 +341,13 @@ def run_cell(peer, case):
                         break
                 except ValueError as error:
                     last_probe = str(error)
+                values["sequence"] += 65536
                 time.sleep(0.02)
             if readiness is None:
                 raise ValueError(f"server not externally ready; last probe={last_probe!r}")
             values.update(case)
+            # Disjoint from every readiness attempt, including partial failures.
+            values["sequence"] = 1 << 32
             timeout = min(86_400, 15 + (case["operations"] + case["warmup"] * case["concurrency"]) * case["timeout_ms"] / 1000)
             cpu_before = process_cpu(server.pid)
             measured_started = time.monotonic()

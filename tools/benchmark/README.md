@@ -35,6 +35,52 @@ results identify their asyncio event loop. Record and review the manifest's
 runtime tuning before a campaign. A manifest is trusted local executable
 configuration: command fields are argv arrays, never shell strings.
 
+## Matched protected CoAP
+
+Install `tools/benchmark/protected/requirements.txt` in the benchmark environment.
+Pass `--matched-oscore` to preparation to add Coaptic and aiocoap native OSCORE
+servers alongside plaintext controls. This matrix uses one external Python UDP
+driver for both security profiles, with independent aiocoap cryptography:
+
+```sh
+python -m pip install -r tools/benchmark/protected/requirements.txt
+python tools/benchmark/prepare.py --matched-oscore --peers coaptic,coap-rs,coap-lite-codec,aiocoap --output target/matched-oscore-manifest.json
+python tools/benchmark/campaign.py plan --manifest target/matched-oscore-manifest.json --output target/matched-oscore --windows 10 --seed 20261013
+python tools/benchmark/campaign.py run --campaign target/matched-oscore --window 0
+python tools/benchmark/campaign.py analyze --campaign target/matched-oscore --reference coaptic --output target/matched-plaintext-report.json
+python tools/benchmark/campaign.py analyze --campaign target/matched-oscore --reference coaptic-oscore --output target/matched-oscore-report.json
+```
+
+Run every scheduled window with the declared session gap. Small and blockwise
+smokes cover each security stratum. OSCORE uses RFC 8613 AES-CCM-16-64-128 and
+HKDF-SHA-256, fresh secret/salt per cell, and disjoint readiness and measured
+sender sequence ranges. Test credentials are confined to a temporary directory
+and removed after the server exits; they are not retained in reports. This is
+process-lifetime benchmarking, without enrollment, durable counters or crash
+recovery. The fixtures and driver accept only IPv4 loopback.
+
+Both protected servers use a 32-entry replay window. One shared driver identity
+serializes sequence reservation through UDP dispatch, preventing local sender
+thread scheduling from manufacturing wider reordering before packets enter
+the network. This preserves independent outstanding exchanges per worker.
+Preparation requires the pinned resource sampler and hashes its dependency tree.
+
+Completions require authenticated responses bound to their request, successful
+status, Content-Format, stable ETag, valid Block2 ranges and every expected byte.
+Unprotected application responses fail the protected driver. Authentication,
+byte validation, Python scheduling and GIL contention are included in latency
+and wall time. These results describe the matched closed-loop configuration;
+they do not establish server saturation or compare directly with timings from
+the native Rust driver. Keep the native driver for a separate plaintext campaign
+and for matched historical regression measurements.
+
+The manifest explicitly records selected peers without an OSCORE fixture and
+the absent DTLS benchmark path. coap-rs and coap-lite have no native OSCORE path
+in this harness; libcoap has native OSCORE but its benchmark fixture is currently
+plaintext. HTTP/3 TLS remains a separate protocol. No unsupported combination
+is treated as a successful encrypted result. Preparation records library/suite
+revisions, cleanliness, lockfile, crypto versions and dependency hashes.
+
 ## Cheap check
 
 With prepared executables, this checks four small requests per peer plus one

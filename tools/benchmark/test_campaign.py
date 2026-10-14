@@ -54,6 +54,26 @@ def evidence(root, count=6, failed_reference=False, resumed=False, overlap=False
 
 
 class CampaignTests(unittest.TestCase):
+    def test_smoke_covers_small_and_blockwise_in_each_security_stratum(self):
+        data = manifest()
+        secure_peer = dict(data["peers"][0], id="coaptic-oscore", security="OSCORE")
+        data["peers"].append(secure_peer)
+        data["cases"] += [dict(case(), id="large", bytes=65536),
+                          dict(case(), id="protected-small", security="OSCORE"),
+                          dict(case(), id="protected-large", security="OSCORE", bytes=65536)]
+        plan = bench.create_plan(data, 1, 1, smoke=True)
+        self.assertEqual({(c["security"], c["bytes"]) for c in plan["cases"]},
+                         {("plaintext", 64), ("plaintext", 65536), ("OSCORE", 64), ("OSCORE", 65536)})
+
+    def test_crypto_extension_mutation_changes_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            extension = Path(directory) / "crypto.pyd"
+            extension.write_bytes(b"first")
+            peer = dict(manifest()["peers"][0], dependency_files=[str(extension)])
+            before = bench.peer_identity(peer)
+            extension.write_bytes(b"changed")
+            self.assertNotEqual(before, bench.peer_identity(peer))
+
     def test_server_startup_failure_retains_exit_and_stderr(self):
         peer = {
             "server": [sys.executable, "-c", "import sys; print('fixture bind failed', file=sys.stderr); sys.exit(17)"],
