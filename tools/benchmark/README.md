@@ -83,11 +83,12 @@ verification buffers and timing storage. Allocator overhead, stack peaks and
 kernel socket memory require separate accounting.
 
 ~~~sh
-cargo build --release --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server
+cargo build --release --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server --target-dir target/benchmark-native
 python tools/benchmark/native_diagnostic.py --server target/benchmark-native/release/bench-rust-server --client target/benchmark-native/release/bench-native-client --policy spin --security oscore --output native-cost.json
 ~~~
 
-Use the existing Cargo target path selected for the build; add .exe on Windows.
+Substitute an existing compatible target in the build and binary paths; add .exe
+on Windows. Reuse that target for subsequent runs.
 The runner generates fresh pairwise credentials per process and retains CPU/RSS
 samples outside operation clocks through the gated interface. CPU counters are
 quantized; resource windows include control overhead and peak RSS covers process
