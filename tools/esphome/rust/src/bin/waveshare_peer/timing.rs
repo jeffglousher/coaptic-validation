@@ -71,11 +71,77 @@ fn mid(bytes: &[u8]) -> u64 {
         .get(2..4)
         .map_or(65536, |b| u64::from(u16::from_be_bytes([b[0], b[1]])))
 }
-fn verify(reply: &coaptic::Response<'_>, expected: &[u8]) -> Result<()> {
-    if reply.code() != Code::CONTENT || reply.payload_truncated() || reply.payload() != expected {
-        return Err("timing representation/identity");
-    }
-    Ok(())
+
+/// Execute the no_std/no-allocation initiator algorithm on the host, with the
+/// same nested transport/state trace used by the original host diagnostic.
+pub(super) fn campaign(
+    c: &Credentials,
+    state_path: &Path,
+    peer: SocketAddr,
+    run_id: &str,
+    report_path: &Path,
+) -> Result<()> {
+    use coaptic_esphome_probe::read_campaign::{self, Observation};
+    let mut report =
+        File::create_new(report_path).map_err(|_| "timing report exists/unavailable")?;
+    let clock = Instant::now();
+    let ledger = RefCell::new(Ledger {
+        events: Vec::with_capacity(EVENTS),
+        ..Ledger::default()
+    });
+    let mut completed = 0;
+    let result = (|| {
+        let socket = UdpSocket::bind("0.0.0.0:0").map_err(|_| "timing socket")?;
+        socket
+            .set_nonblocking(true)
+            .map_err(|_| "timing socket mode")?;
+        let io = TimedIo {
+            io: UdpSocketIo::new(socket, [0; 1153]).map_err(|_| "timing scratch")?,
+            clock: &clock,
+            ledger: &ledger,
+        };
+        let store = TimedStore {
+            store: FileStore::open(state_path, false)?,
+            clock: &clock,
+            ledger: &ledger,
+        };
+        read_campaign::run(
+            io,
+            |b| getrandom::fill(b).is_ok(),
+            || u64::try_from(clock.elapsed().as_nanos()).ok(),
+            || std::thread::sleep(Duration::from_millis(1)),
+            c,
+            store,
+            peer.into(),
+            run_id
+                .as_bytes()
+                .try_into()
+                .map_err(|_| "timing identity")?,
+            |observation| {
+                let mut l = ledger.borrow_mut();
+                if l.overflow {
+                    return Err("timing trace bound");
+                }
+                match observation {
+                    Observation::Preparation { recovery_ns, app_bytes } =>
+                        writeln!(report, "{{\"case\":\"preparation\",\"security_recovery_ns\":{recovery_ns},\"app_inline_bytes\":{app_bytes},\"output_bytes\":4096,\"trace_heap_bytes\":{}}}", l.events.capacity() * std::mem::size_of::<Event>()),
+                    Observation::Reservation { elapsed_ns } =>
+                        writeln!(report, "{{\"case\":\"sender_refill\",\"duration_ns\":{elapsed_ns}}}"),
+                    Observation::Operation(op) => {
+                        completed += 1;
+                        writeln!(report, "{{\"passed\":true,\"case\":\"complete_operation\",\"iteration\":{},\"path\":\"{}\",\"bytes\":{},\"start_ns\":{},\"elapsed_ns\":{},\"prepare_ns\":{},\"poll_ns\":{},\"checkpoint_ns\":{},\"take_ns\":{},\"verify_ns\":{},\"sleep_ns\":{},\"polls\":{},\"recv_ns\":{},\"send_ns\":{},\"state_read_ns\":{},\"state_commit_ns\":{},\"recv_calls\":{},\"state_reads\":{},\"state_commits\":{},\"events\":{:?}}}",
+                            op.iteration, op.path, op.bytes, op.start_ns, op.elapsed_ns, op.prepare_ns, op.poll_ns, op.checkpoint_ns, op.take_ns, op.verify_ns, op.wait_ns, op.polls, l.recv_ns, l.send_ns, l.read_ns, l.commit_ns, l.recv_calls, l.reads, l.commits, l.events)
+                    },
+                }.map_err(|_| "timing report")?;
+                l.reset();
+                Ok(())
+            },
+        )
+    })();
+    let passed = result.is_ok();
+    writeln!(report, "{{\"passed\":{passed},\"case\":\"timing_campaign\",\"completed\":{},\"run_id\":\"{run_id}\",\"event_bound\":{EVENTS},\"method\":\"portable fixed-storage protected initiator; bounded host trace; authenticated durable client state; 1ms requested wait included; partial failures retained\"}}", completed).map_err(|_| "timing report")?;
+    report.sync_all().map_err(|_| "timing report sync")?;
+    result
 }
 struct TimedStore<'a> {
     store: FileStore,
@@ -105,144 +171,6 @@ impl Store for TimedStore<'_> {
     }
 }
 
-pub(super) fn campaign(
-    c: &Credentials,
-    state_path: &Path,
-    peer: SocketAddr,
-    run_id: &str,
-    report_path: &Path,
-) -> Result<()> {
-    let mut report =
-        File::create_new(report_path).map_err(|_| "timing report exists/unavailable")?;
-    let result = measure(c, state_path, peer, run_id, &mut report);
-    if result.is_err() {
-        let _ = writeln!(
-            report,
-            "{{\"passed\":false,\"case\":\"timing_campaign\",\"reason\":\"refused; partial observations retained\"}}"
-        );
-        let _ = report.sync_all();
-    }
-    result
-}
-fn measure(
-    c: &Credentials,
-    state_path: &Path,
-    peer: SocketAddr,
-    run_id: &str,
-    report: &mut File,
-) -> Result<()> {
-    let clock = Instant::now();
-    let ledger = RefCell::new(Ledger {
-        events: Vec::with_capacity(EVENTS),
-        ..Ledger::default()
-    });
-    let store = TimedStore {
-        store: FileStore::open(state_path, false)?,
-        clock: &clock,
-        ledger: &ledger,
-    };
-    let (mut state, context) = State::recover(store, c).map_err(|_| "timing state recovery")?;
-    let recovery_ns = clock.elapsed().as_nanos() as u64;
-    let socket = UdpSocket::bind("0.0.0.0:0").map_err(|_| "timing socket")?;
-    socket
-        .set_nonblocking(true)
-        .map_err(|_| "timing socket mode")?;
-    let io = TimedIo {
-        io: UdpSocketIo::new(socket, [0; 1153]).map_err(|_| "timing scratch")?,
-        clock: &clock,
-        ledger: &ledger,
-    };
-    let mut app = App::profile::<profiles::Constrained>()
-        .block_wise::<true>()
-        .full_responses()
-        .randomness(|b| getrandom::fill(b).is_ok())
-        .oscore(context)
-        .bind(io)
-        .map_err(|_| "timing bind")?;
-    let mut output = [0; 4096];
-    writeln!(report, "{{\"case\":\"preparation\",\"security_recovery_ns\":{recovery_ns},\"app_inline_bytes\":{},\"trace_heap_bytes\":{},\"output_bytes\":4096,\"method\":\"fixed Coaptic storage; host trace heap bounded and reserved before operation timing; recovery/reservation includes durable host state\"}}", std::mem::size_of_val(&app), ledger.borrow().events.capacity() * std::mem::size_of::<Event>()).map_err(|_| "timing report")?;
-    for iteration in 0..8 {
-        for (path, expected) in [
-            ("identity", run_id.as_bytes()),
-            ("test", &b"coaptic"[..]),
-            ("large", &[0x5a; 2000][..]),
-        ] {
-            let remaining = app
-                .oscore()
-                .ok_or("timing context")?
-                .sender_reservation_end()
-                .ok_or("timing sender bound")?
-                .saturating_sub(app.oscore().unwrap().sender_seq());
-            // Explicit reservation cost is outside this read operation and remains
-            // separately reported. Never omit the durable reservation itself.
-            if remaining < 8 {
-                let start = clock.elapsed().as_nanos() as u64;
-                state
-                    .refill(app.oscore_mut().ok_or("timing context")?)
-                    .map_err(|_| "timing refill")?;
-                writeln!(
-                    report,
-                    "{{\"case\":\"sender_refill\",\"duration_ns\":{}}}",
-                    clock.elapsed().as_nanos() as u64 - start
-                )
-                .map_err(|_| "timing report")?;
-            }
-            ledger.borrow_mut().reset();
-            let start = clock.elapsed().as_nanos() as u64;
-            let call = app
-                .get(path)
-                .to(peer.into())
-                .send(clock.elapsed().as_millis() as u64)
-                .map_err(|_| "timing request")?;
-            let prepared = clock.elapsed().as_nanos() as u64 - start;
-            let mut poll_ns = 0;
-            let mut checkpoint_ns = 0;
-            let mut take_ns = 0;
-            let mut sleep_ns = 0;
-            let mut polls = 0;
-            loop {
-                if clock.elapsed().as_nanos() as u64 - start >= 5_000_000_000 {
-                    return Err("timing deadline");
-                }
-                let phase = Instant::now();
-                app.poll(clock.elapsed().as_millis() as u64)
-                    .map_err(|_| "timing poll")?;
-                poll_ns += phase.elapsed().as_nanos() as u64;
-                polls += 1;
-                let phase = Instant::now();
-                state
-                    .checkpoint(app.oscore().ok_or("timing context")?.replay_checkpoint())
-                    .map_err(|_| "timing checkpoint")?;
-                checkpoint_ns += phase.elapsed().as_nanos() as u64;
-                let phase = Instant::now();
-                let reply = app
-                    .take_response_into(call, &mut output)
-                    .map_err(|_| "timing output")?;
-                take_ns += phase.elapsed().as_nanos() as u64;
-                if let Some(reply) = reply {
-                    let phase = Instant::now();
-                    let reply = reply.map_err(|_| "timing response")?;
-                    verify(&reply, expected)?;
-                    let verify_ns = phase.elapsed().as_nanos() as u64;
-                    let elapsed = clock.elapsed().as_nanos() as u64 - start;
-                    let l = ledger.borrow();
-                    if l.overflow {
-                        return Err("timing trace bound");
-                    }
-                    writeln!(report, "{{\"passed\":true,\"case\":\"complete_operation\",\"iteration\":{iteration},\"path\":\"{path}\",\"bytes\":{},\"start_ns\":{start},\"elapsed_ns\":{elapsed},\"prepare_ns\":{prepared},\"poll_ns\":{poll_ns},\"checkpoint_ns\":{checkpoint_ns},\"take_ns\":{take_ns},\"verify_ns\":{verify_ns},\"sleep_ns\":{sleep_ns},\"polls\":{polls},\"recv_ns\":{},\"send_ns\":{},\"state_read_ns\":{},\"state_commit_ns\":{},\"recv_calls\":{},\"state_reads\":{},\"state_commits\":{},\"events\":{:?}}}", expected.len(), l.recv_ns, l.send_ns, l.read_ns, l.commit_ns, l.recv_calls, l.reads, l.commits, l.events).map_err(|_| "timing report")?;
-                    break;
-                }
-                let phase = Instant::now();
-                std::thread::sleep(Duration::from_millis(1));
-                sleep_ns += phase.elapsed().as_nanos() as u64;
-            }
-        }
-    }
-    writeln!(report, "{{\"passed\":true,\"case\":\"timing_campaign\",\"completed\":24,\"run_id\":\"{run_id}\",\"event_bound\":{EVENTS},\"method\":\"instrumented protected fixed-storage host; durable client checkpoint and 1ms requested sleep included; poll includes transport/crypto; state read/commit nested in checkpoint; independent clocks; no one-way network claim\"}}").map_err(|_| "timing report")?;
-    report.sync_all().map_err(|_| "timing report sync")?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,14 +197,5 @@ mod tests {
     fn packet_metadata_is_bounded_without_recording_body() {
         assert_eq!(mid(&[]), 65536);
         assert_eq!(mid(&[0x44, 1, 0xab, 0xcd, 0xff]), 0xabcd);
-    }
-    #[test]
-    fn complete_representation_refuses_wrong_code_corruption_and_short_body_then_recovers() {
-        let valid = coaptic::Response::content(b"coaptic");
-        assert!(verify(&valid, b"coaptic").is_ok());
-        assert!(verify(&valid.payload_borrowed(b"coaptix"), b"coaptic").is_err());
-        assert!(verify(&valid.payload_borrowed(b"coap"), b"coaptic").is_err());
-        assert!(verify(&coaptic::Response::not_found(), b"coaptic").is_err());
-        assert!(verify(&valid, b"coaptic").is_ok());
     }
 }
