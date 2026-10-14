@@ -52,7 +52,20 @@ Keep plaintext/protected and volatile/durable profiles separate. Request and
 response packets within one operation do not establish both initiator roles.
 For LAN role reversal, use an explicitly scoped authenticated host service and
 temporary inbound firewall access restricted to the reserved device and exact
-host executable. The existing `timing-server` command remains loopback-only.
+host executable. `timing-server` remains loopback-only. For the LAN role use:
+
+```text
+waveshare-peer timing-server-lan LOCAL_IPV4:PORT CREDENTIALS STATE REPORT RUN_ID REMOTE_IPV4
+```
+
+Both addresses must be explicit private IPv4 addresses and differ; wildcard,
+public, IPv6 and port-zero binds refuse. Only packets from the configured remote
+address reach Coaptic, and sends to any other address refuse. OSCORE authentication
+is still required. Source-address filtering is not peer authentication. The
+finite 30-second lifetime, trace bound and exclusively owned authenticated
+durable state also apply to this mode. Do not copy device credentials/state into
+a loopback control, or replace the configured firewall executable with an
+unverified build. No firewall rule is installed by the driver.
 
 For device-side diagnostics only, compile the ESPHome C++ adapter with
 `COAPTIC_TIMING_TRACE`. This retains at most 512 events in caller-owned adapter

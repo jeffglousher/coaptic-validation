@@ -159,9 +159,9 @@ fn verify_saved_identity(c: &Credentials, bytes: &[u8]) -> Result<()> {
 }
 fn run() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 7 {
+    if args.len() != 7 && !(args.len() == 8 && args[1] == "timing-server-lan") {
         return Err(
-            "usage: waveshare-peer provision|check|replay|raw-udp|timing|timing-server ADDRESS CREDENTIALS STATE SAVED_WIRE_OR_REPORT RUN_ID",
+            "usage: waveshare-peer MODE ADDRESS CREDENTIALS STATE SAVED_WIRE_OR_REPORT RUN_ID [REMOTE_IPV4 for timing-server-lan]",
         );
     }
     let c = credentials(Path::new(&args[3]))?;
@@ -179,7 +179,15 @@ fn run() -> Result<()> {
     probe
         .set_read_timeout(Some(Duration::from_millis(500)))
         .map_err(|_| "probe timeout")?;
-    if !["check", "replay", "raw-udp", "timing", "timing-server"].contains(&args[1].as_str())
+    if ![
+        "check",
+        "replay",
+        "raw-udp",
+        "timing",
+        "timing-server",
+        "timing-server-lan",
+    ]
+    .contains(&args[1].as_str())
         || args[6].len() != 32
         || !args[6].bytes().all(|b| b.is_ascii_hexdigit())
     {
@@ -189,7 +197,29 @@ fn run() -> Result<()> {
         return timing::campaign(&c, Path::new(&args[4]), peer, &args[6], Path::new(&args[5]));
     }
     if args[1] == "timing-server" {
-        return timing_server::run(&c, Path::new(&args[4]), peer, &args[6], Path::new(&args[5]));
+        return timing_server::run(
+            &c,
+            Path::new(&args[4]),
+            peer,
+            &args[6],
+            Path::new(&args[5]),
+            None,
+        );
+    }
+    if args[1] == "timing-server-lan" {
+        let remote = args
+            .get(7)
+            .ok_or("timing remote scope")?
+            .parse()
+            .map_err(|_| "timing remote IPv4 scope")?;
+        return timing_server::run(
+            &c,
+            Path::new(&args[4]),
+            peer,
+            &args[6],
+            Path::new(&args[5]),
+            Some(remote),
+        );
     }
     let store = FileStore::open(Path::new(&args[4]), false)?;
     let (mut state, context) = State::recover(store, &c).map_err(|_| "host security recovery")?;

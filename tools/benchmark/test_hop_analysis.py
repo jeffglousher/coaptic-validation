@@ -35,6 +35,8 @@ class HopAnalysisTests(unittest.TestCase):
     def test_complete_trace_and_independent_epoch_shift_preserve_durations(self):
         client, server = fixture()
         baseline = analyze(client, server)
+        server["run_id"] = "a" * 32
+        self.assertEqual(analyze(client, server)["summary"], baseline["summary"])
         self.assertEqual(baseline["request_response_exchanges"], 32)
         self.assertEqual(baseline["datagrams"], 64)
         self.assertEqual(baseline["complete_operations"], 24)
@@ -57,6 +59,7 @@ class HopAnalysisTests(unittest.TestCase):
             lambda c, s: c[0].__setitem__("bytes", 32.0),
             lambda c, s: c[-1].__setitem__("completed", 24.0),
             lambda c, s: c[3].__setitem__("iteration", 0),
+            lambda c, s: s.__setitem__("run_id", "b" * 32),
         ):
             with self.subTest(mutation=mutation):
                 c, s = copy.deepcopy(original_client), copy.deepcopy(original_server)

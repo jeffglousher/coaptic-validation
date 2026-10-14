@@ -94,6 +94,8 @@ def analyze(client, server):
         raise ValueError("duplicate or missing operation identity")
     if "end" in server and server["end"]["run_id"] != final.get("run_id"):
         raise ValueError("host/device run mismatch")
+    if "run_id" in server and server["run_id"] != final.get("run_id"):
+        raise ValueError("host/server run mismatch")
     se = server_events(server)
     sr, st = packets(se, 1), packets(se, 2)
     if len(sr) != 32 or set(sr) != set(st):

@@ -1,9 +1,29 @@
-//! Same constrained protected fixed-storage service on loopback. Read/commit
+//! Same constrained protected fixed-storage service with explicit address scope. Read/commit
 //! and UDP intervals are nested in ready-poll intervals, as on the device.
 //! This diagnostic spin-polls; it is not a recommended host scheduling policy.
 use super::*;
 use coaptic_esphome_probe::security_state::{Error, RECORD_BYTES, Store};
 use std::cell::{Cell, RefCell};
+use std::net::Ipv4Addr;
+
+fn validate_scope(address: SocketAddr, remote: Option<Ipv4Addr>) -> Result<()> {
+    match (address, remote) {
+        (SocketAddr::V4(local), None) if local.ip().is_loopback() && local.port() != 0 => Ok(()),
+        (SocketAddr::V4(local), Some(remote))
+            if local.ip().is_private()
+                && remote.is_private()
+                && local.ip() != &remote
+                && local.port() != 0 =>
+        {
+            Ok(())
+        }
+        _ => Err("timing server requires loopback or explicit private local/remote scope"),
+    }
+}
+
+fn allowed(peer: Endpoint, remote: Option<Ipv4Addr>) -> bool {
+    remote.is_none_or(|remote| peer.as_ipv4().is_some_and(|(ip, _)| ip == remote.octets()))
+}
 
 const LIMIT: usize = 512;
 type Event = [u64; 5];
@@ -25,13 +45,19 @@ struct Io<'a> {
     socket: UdpSocketIo<[u8; 1153]>,
     clock: &'a Instant,
     trace: &'a RefCell<Trace>,
+    remote: Option<Ipv4Addr>,
+    refused_sources: &'a Cell<u64>,
 }
 impl DatagramIo for Io<'_> {
     type Error = std::io::Error;
     fn recv(&mut self, bytes: &mut [u8]) -> std::io::Result<Option<(usize, Endpoint)>> {
         let start = self.clock.elapsed().as_nanos() as u64;
         let result = self.socket.recv(bytes);
-        if let Ok(Some((n, _))) = result {
+        if let Ok(Some((n, peer))) = result {
+            if !allowed(peer, self.remote) {
+                self.refused_sources.set(self.refused_sources.get() + 1);
+                return Ok(None);
+            }
             let duration = self.clock.elapsed().as_nanos() as u64 - start;
             let mid = bytes
                 .get(2..4)
@@ -43,6 +69,12 @@ impl DatagramIo for Io<'_> {
         result
     }
     fn send(&mut self, peer: Endpoint, bytes: &[u8]) -> std::io::Result<usize> {
+        if !allowed(peer, self.remote) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "timing peer scope",
+            ));
+        }
         let start = self.clock.elapsed().as_nanos() as u64;
         let result = self.socket.send(peer, bytes);
         let duration = self.clock.elapsed().as_nanos() as u64 - start;
@@ -92,10 +124,9 @@ pub(super) fn run(
     address: SocketAddr,
     run_id: &str,
     report: &Path,
+    remote: Option<Ipv4Addr>,
 ) -> Result<()> {
-    if !address.ip().is_loopback() {
-        return Err("timing server is loopback only");
-    }
+    validate_scope(address, remote)?;
     let mut report =
         File::create_new(report).map_err(|_| "timing server report exists/unavailable")?;
     let started = Instant::now();
@@ -108,10 +139,13 @@ pub(super) fn run(
     socket
         .set_nonblocking(true)
         .map_err(|_| "timing server socket mode")?;
+    let refused_sources = Cell::new(0);
     let io = Io {
         socket: UdpSocketIo::new(socket, [0; 1153]).map_err(|_| "timing server scratch")?,
         clock: &started,
         trace: &trace,
+        remote,
+        refused_sources: &refused_sources,
     };
     let store = Durable {
         store: FileStore::open(state, false)?,
@@ -151,7 +185,7 @@ pub(super) fn run(
     );
     let trace = trace.borrow();
     let passed = result.is_ok() && !trace.overflow && trace.rx >= 32;
-    writeln!(report, "{{\"passed\":{passed},\"case\":\"timing_loopback_server\",\"event_bound\":{LIMIT},\"trace_heap_bytes\":{},\"received\":{},\"overflow\":{},\"events\":{:?},\"method\":\"same protected constrained service; fixed core storage; authenticated durable host file; spin-poll diagnostic; nested intervals; no throughput or CPU efficiency claim\"}}", trace.rows.capacity() * std::mem::size_of::<Event>(), trace.rx, trace.overflow, trace.rows).map_err(|_| "timing server report")?;
+    writeln!(report, "{{\"passed\":{passed},\"case\":\"timing_host_server\",\"run_id\":\"{run_id}\",\"refused_sources\":{},\"event_bound\":{LIMIT},\"trace_heap_bytes\":{},\"received\":{},\"overflow\":{},\"events\":{:?},\"method\":\"same protected constrained service; fixed core storage; authenticated durable host file; spin-poll diagnostic; nested intervals; no throughput or CPU efficiency claim\"}}", refused_sources.get(), trace.rows.capacity() * std::mem::size_of::<Event>(), trace.rx, trace.overflow, trace.rows).map_err(|_| "timing server report")?;
     report.sync_all().map_err(|_| "timing server report sync")?;
     if passed {
         Ok(())
@@ -163,6 +197,81 @@ pub(super) fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn excluded_udp_source_never_reaches_protocol_or_receives_a_reply() {
+        let listener = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let trace = RefCell::new(Trace {
+            rows: Vec::with_capacity(LIMIT),
+            overflow: false,
+            rx: 0,
+        });
+        let refused = Cell::new(0);
+        let clock = Instant::now();
+        let mut io = Io {
+            socket: UdpSocketIo::new(listener, [0; 1153]).unwrap(),
+            clock: &clock,
+            trace: &trace,
+            remote: Some(Ipv4Addr::LOCALHOST),
+            refused_sources: &refused,
+        };
+        let foreign = UdpSocket::bind("127.0.0.2:0").unwrap();
+        foreign.send_to(&[0x40, 1, 0x12, 0x34], address).unwrap();
+        let mut bytes = [0; 1152];
+        while refused.get() == 0 {
+            assert!(clock.elapsed() < Duration::from_secs(2));
+            assert!(io.recv(&mut bytes).unwrap().is_none());
+            std::thread::yield_now();
+        }
+        assert_eq!(trace.borrow().rx, 0);
+        assert!(trace.borrow().rows.is_empty());
+        assert_eq!(
+            io.send(foreign.local_addr().unwrap().into(), b"forbidden")
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        let valid = UdpSocket::bind("127.0.0.1:0").unwrap();
+        valid.send_to(&[0x40, 1, 0x56, 0x78], address).unwrap();
+        loop {
+            assert!(clock.elapsed() < Duration::from_secs(2));
+            if let Some((size, peer)) = io.recv(&mut bytes).unwrap() {
+                assert_eq!(size, 4);
+                assert_eq!(peer, valid.local_addr().unwrap().into());
+                assert_eq!(trace.borrow().rx, 1);
+                break;
+            }
+            std::thread::yield_now();
+        }
+    }
+    #[test]
+    fn network_scope_refuses_wildcards_public_addresses_and_other_peers() {
+        let remote = Ipv4Addr::new(192, 168, 1, 144);
+        assert!(validate_scope("127.0.0.1:5683".parse().unwrap(), None).is_ok());
+        assert!(validate_scope("192.168.1.134:5683".parse().unwrap(), Some(remote)).is_ok());
+        for address in [
+            "0.0.0.0:5683",
+            "192.168.1.134:0",
+            "8.8.8.8:5683",
+            "[::1]:5683",
+        ] {
+            assert!(validate_scope(address.parse().unwrap(), Some(remote)).is_err());
+        }
+        assert!(validate_scope("192.168.1.134:5683".parse().unwrap(), None).is_err());
+        assert!(
+            validate_scope(
+                "192.168.1.134:5683".parse().unwrap(),
+                Some(Ipv4Addr::new(8, 8, 8, 8))
+            )
+            .is_err()
+        );
+        assert!(allowed(Endpoint::v4(remote.octets(), 12345), Some(remote)));
+        assert!(!allowed(
+            Endpoint::v4([192, 168, 1, 145], 12345),
+            Some(remote)
+        ));
+    }
     #[test]
     fn server_trace_limit_refuses_overflow_without_extending_storage() {
         let mut trace = Trace {
