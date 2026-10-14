@@ -40,3 +40,8 @@ panic = "abort"
 name = "waveshare-peer"
 path = "src/bin/waveshare_peer.rs"
 required-features = ["network", "oscore", "host"]
+
+[[bin]]
+name = "checkpoint-cost"
+path = "src/bin/checkpoint_cost.rs"
+required-features = ["network", "oscore", "host"]

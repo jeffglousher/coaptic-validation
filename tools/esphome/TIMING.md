@@ -100,6 +100,26 @@ complete campaign. Spin polling is an instrumented diagnostic policy, not a
 lower-CPU performance recommendation. PC file commits and device NVS commits are
 different storage surfaces; their costs must remain visible and separately named.
 
+## Isolated checkpoint cost
+
+```sh
+cargo run --locked --release --manifest-path tools/esphome/rust/Cargo.toml --features network,oscore,host --bin checkpoint-cost
+```
+
+This finite diagnostic runs seven batches of 20,000 advancing checkpoints using
+a fixed volatile record store and public fixture keys, without sockets or files.
+It reports the complete adapter checkpoint span and independently times context
+derivation. The latter is a control, not an additive stage or proof of CPU-cycle
+attribution. Setup/recovery is outside the measured loop. Every checkpoint still
+performs the read-current/commit/readback sequence, with counts checked after
+each batch. The comparison guard is shared with core replay restoration; it needs
+no key derivation, second security context, allocation or extra persistent memory.
+
+Retain compiler, both source revisions, lockfiles, source/binary hashes, process
+order, all batches and original failures. Use balanced before/after process order
+and unchanged fixtures. These host elapsed-time measurements do not qualify
+durable I/O, network latency, MCU execution, application effects or flash recovery.
+
 Correlate one complete session with:
 
 ```sh
