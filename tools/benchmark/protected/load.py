@@ -20,6 +20,20 @@ class DriverError(Exception):
     pass
 
 
+# One immutable window covers any payload accepted by recv(65535), including
+# every phase of the fixture's 251-byte period. Comparison still checks every
+# byte; Python-level per-byte arithmetic is outside the measured hot path.
+_MAX_RECEIVE = 65535
+_FIXTURE_WINDOW = bytes(range(251)) * ((_MAX_RECEIVE + 250 + 250) // 251)
+
+
+def body_matches(body, offset):
+    if offset < 0 or not 0 < len(body) <= _MAX_RECEIVE:
+        return False
+    start = offset % 251
+    return body == _FIXTURE_WINDOW[start:start + len(body)]
+
+
 def check_body(message, offset, size, etag, requested_block=None):
     counts = {}
     for option in message.opt.option_list():
@@ -37,7 +51,7 @@ def check_body(message, offset, size, etag, requested_block=None):
     if etag is not None and current != etag:
         raise ValueError("changed representation ETag")
     body = message.payload
-    if not body or offset + len(body) > size or any(v != (offset + i) % 251 for i, v in enumerate(body)):
+    if offset + len(body) > size or not body_matches(body, offset):
         raise ValueError("representation mismatch")
     block = message.opt.block2
     if block is None:
@@ -113,7 +127,7 @@ class Worker:
                 if remaining <= 0:
                     raise TimeoutError("complete representation deadline")
                 self.socket.settimeout(remaining)
-                wire = self.socket.recv(65535)
+                wire = self.socket.recv(_MAX_RECEIVE)
                 response = aiocoap.Message.decode(wire)
                 if wire == bytes([0x60, 0, mid >> 8, mid & 255]):
                     if self.args.mode != "con":

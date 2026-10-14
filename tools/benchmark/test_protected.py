@@ -12,11 +12,33 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "protected"))
 import aiocoap
 from aiocoap.message import Direction
 from context import Context
-from load import DriverError, Worker, check_body, run
+from load import DriverError, Worker, body_matches, check_body, run
 import aiocoap_server
 
 
 class ProtectedTests(unittest.TestCase):
+    def test_fixture_comparison_all_period_phases_and_datagram_bounds(self):
+        for offset in range(251):
+            for length in (1, 250, 251, 252, 1024):
+                body = bytes((offset + i) % 251 for i in range(length))
+                self.assertTrue(body_matches(body, offset))
+                self.assertTrue(body_matches(body, offset + 251 * 4000))
+        for offset in (0, 1, 250):
+            body = bytes((offset + i) % 251 for i in range(65535))
+            self.assertTrue(body_matches(body, offset))
+            self.assertFalse(body_matches(body + b"x", offset))
+        self.assertFalse(body_matches(b"", 0))
+        self.assertFalse(body_matches(b"\xfa", -1))
+
+    def test_fixture_comparison_refuses_each_changed_byte_and_recovers(self):
+        offset = 65024
+        valid = bytes((offset + i) % 251 for i in range(1024))
+        for position in range(len(valid)):
+            changed = bytearray(valid)
+            changed[position] ^= 1
+            self.assertFalse(body_matches(bytes(changed), offset))
+        self.assertTrue(body_matches(valid, offset))
+
     def test_uvloop_selection_runs_the_requested_backend(self):
         backend = Mock()
         with patch.dict(sys.modules, uvloop=backend), patch.object(aiocoap_server, "serve", new=Mock(return_value="fixture")):

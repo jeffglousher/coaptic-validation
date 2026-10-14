@@ -42,6 +42,11 @@ Pass `--matched-oscore` to preparation to add Coaptic and aiocoap native OSCORE
 servers alongside plaintext controls. This matrix uses one external Python UDP
 driver for both security profiles, with independent aiocoap cryptography:
 
+The driver validates fixture bytes with a bounded immutable periodic window
+(66,013 bytes) and native byte comparison. Every received payload byte remains
+checked. Driver revisions change measured client overhead: compare runs with
+the same driver revision and never attribute that change to the server library.
+
 ```sh
 python -m pip install -r tools/benchmark/protected/requirements.txt
 python tools/benchmark/prepare.py --matched-oscore --peers coaptic,coap-rs,coap-lite-codec,aiocoap --output target/matched-oscore-manifest.json
