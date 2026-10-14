@@ -4,6 +4,8 @@
 //! normal process/device restart separately from flash/power-loss/rollback.
 #[path = "waveshare_peer/raw_udp.rs"]
 mod raw_udp;
+#[path = "waveshare_peer/timing.rs"]
+mod timing;
 
 use coaptic::message::{Message, MessageId, Opt, Token, Type, decode};
 use coaptic::oscore::SecurityContext;
@@ -157,7 +159,7 @@ fn run() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
     if args.len() != 7 {
         return Err(
-            "usage: waveshare-peer provision|check|replay|raw-udp ADDRESS CREDENTIALS STATE SAVED_WIRE RUN_ID",
+            "usage: waveshare-peer provision|check|replay|raw-udp|timing ADDRESS CREDENTIALS STATE SAVED_WIRE_OR_REPORT RUN_ID",
         );
     }
     let c = credentials(Path::new(&args[3]))?;
@@ -175,11 +177,14 @@ fn run() -> Result<()> {
     probe
         .set_read_timeout(Some(Duration::from_millis(500)))
         .map_err(|_| "probe timeout")?;
-    if !["check", "replay", "raw-udp"].contains(&args[1].as_str())
+    if !["check", "replay", "raw-udp", "timing"].contains(&args[1].as_str())
         || args[6].len() != 32
         || !args[6].bytes().all(|b| b.is_ascii_hexdigit())
     {
         return Err("network mode/run identity");
+    }
+    if args[1] == "timing" {
+        return timing::campaign(&c, Path::new(&args[4]), peer, &args[6], Path::new(&args[5]));
     }
     let store = FileStore::open(Path::new(&args[4]), false)?;
     let (mut state, context) = State::recover(store, &c).map_err(|_| "host security recovery")?;

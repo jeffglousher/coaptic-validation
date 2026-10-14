@@ -17,6 +17,42 @@ namespace esphome::coaptic_network {
 
 static constexpr const char *TAG = "coaptic_network";
 
+#ifdef COAPTIC_TIMING_TRACE
+void CoapticNetwork::trace_event_(uint8_t kind, uint64_t start, uint64_t duration,
+                                  uint32_t bytes, uint32_t mid, int8_t result) {
+  if (trace_frozen_.load(std::memory_order_acquire)) return;
+  const uint32_t index = trace_count_.load(std::memory_order_relaxed);
+  if (index >= TRACE_EVENTS) {
+    trace_overflow_.store(true, std::memory_order_release);
+    return;
+  }
+  trace_[index] = {start, duration, bytes, mid, kind, result};
+  trace_last_ms_.store(static_cast<uint32_t>((start + duration) / 1000), std::memory_order_release);
+  trace_count_.store(index + 1, std::memory_order_release);
+}
+
+void CoapticNetwork::trace_dump_() {
+  if (trace_frozen_.load(std::memory_order_acquire) || rx_.load() == 0) return;
+  const uint32_t last = trace_last_ms_.load(std::memory_order_acquire);
+  const uint32_t now = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+  if (now - last < 2000) return;
+  // Freeze after a quiet interval. The worker publishes each completed entry
+  // with release ordering; the snapshot includes only published immutable rows.
+  trace_frozen_.store(true, std::memory_order_release);
+  const uint32_t count = trace_count_.load(std::memory_order_acquire);
+  for (uint32_t i = 0; i < count; ++i) {
+    const auto &row = trace_[i];
+    ESP_LOGI(TAG, "COAPTIC_TIMING {\"run_id\":\"%s\",\"index\":%lu,\"kind\":%u,\"at_us\":%llu,\"duration_us\":%llu,\"bytes\":%lu,\"mid\":%lu,\"result\":%d}",
+             run_id_.c_str(), static_cast<unsigned long>(i), row.kind,
+             static_cast<unsigned long long>(row.at_us), static_cast<unsigned long long>(row.duration_us),
+             static_cast<unsigned long>(row.bytes), static_cast<unsigned long>(row.mid), row.result);
+  }
+  ESP_LOGI(TAG, "COAPTIC_TIMING_END {\"run_id\":\"%s\",\"events\":%lu,\"overflow\":%s,\"trace_bytes\":%u}",
+           run_id_.c_str(), static_cast<unsigned long>(count), trace_overflow_.load() ? "true" : "false",
+           static_cast<unsigned>(sizeof(trace_)));
+}
+#endif
+
 void CoapticNetwork::loop() {
   if (!started_) {
     if (!network::is_connected() && !wifi::global_wifi_component->is_ap_active())
@@ -55,6 +91,9 @@ void CoapticNetwork::loop() {
   }
   if (task_ == nullptr)
     return;
+#ifdef COAPTIC_TIMING_TRACE
+  trace_dump_();
+#endif
   if (result_.load(std::memory_order_acquire) != 0) {
     vTaskDelete(task_);
     task_ = nullptr;
@@ -100,6 +139,9 @@ void CoapticNetwork::run_(void *argument) {
 }
 
 int32_t CoapticNetwork::receive(uint8_t *bytes, uint32_t capacity, uint64_t *peer) {
+#ifdef COAPTIC_TIMING_TRACE
+  const uint64_t trace_start = static_cast<uint64_t>(esp_timer_get_time());
+#endif
   uint8_t packet[2048];
   sockaddr_in address{};
   socklen_t size = sizeof(address);
@@ -114,10 +156,17 @@ int32_t CoapticNetwork::receive(uint8_t *bytes, uint32_t capacity, uint64_t *pee
   }
   std::memcpy(bytes, packet, length);
   *peer = (static_cast<uint64_t>(ntohl(address.sin_addr.s_addr)) << 16) | ntohs(address.sin_port);
+#ifdef COAPTIC_TIMING_TRACE
+  trace_event_(1, trace_start, static_cast<uint64_t>(esp_timer_get_time()) - trace_start,
+               length, length >= 4 ? (static_cast<uint32_t>(bytes[2]) << 8) | bytes[3] : 65536, 1);
+#endif
   return length;
 }
 
 int32_t CoapticNetwork::send(const uint8_t *bytes, uint32_t length, uint64_t peer) {
+#ifdef COAPTIC_TIMING_TRACE
+  const uint64_t trace_start = static_cast<uint64_t>(esp_timer_get_time());
+#endif
   sockaddr_in address{};
   address.sin_family = AF_INET;
   address.sin_addr.s_addr = htonl(static_cast<uint32_t>(peer >> 16));
@@ -125,10 +174,22 @@ int32_t CoapticNetwork::send(const uint8_t *bytes, uint32_t length, uint64_t pee
   int sent = sendto(socket_, bytes, length, 0, reinterpret_cast<sockaddr *>(&address), sizeof(address));
   if (sent == static_cast<int>(length))
     tx_.store(tx_.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
+#ifdef COAPTIC_TIMING_TRACE
+  trace_event_(2, trace_start, static_cast<uint64_t>(esp_timer_get_time()) - trace_start,
+               length, length >= 4 ? (static_cast<uint32_t>(bytes[2]) << 8) | bytes[3] : 65536,
+               sent == static_cast<int>(length) ? 1 : -1);
+#endif
   return sent;
 }
 
 uint64_t CoapticNetwork::clock() {
+#ifdef COAPTIC_TIMING_TRACE
+  const uint64_t trace_clock_start = static_cast<uint64_t>(esp_timer_get_time());
+  if (trace_poll_start_us_ != 0) {
+    trace_event_(6, trace_poll_start_us_, trace_clock_start - trace_poll_start_us_, 0, 65536, 1);
+    trace_poll_start_us_ = 0;
+  }
+#endif
   if (stop_.load(std::memory_order_acquire))
     return UINT64_MAX;
   if (ready_burst_ >= 32) {
@@ -142,6 +203,9 @@ uint64_t CoapticNetwork::clock() {
   timeval timeout{0, 10000};
   const int ready = select(socket_ + 1, &read_set, nullptr, nullptr, &timeout);
   const uint64_t now_us = static_cast<uint64_t>(esp_timer_get_time());
+#ifdef COAPTIC_TIMING_TRACE
+  if (ready > 0) trace_event_(5, trace_clock_start, now_us - trace_clock_start, 0, 65536, 1);
+#endif
   if (ready > 0) {
     ready_burst_++;
   } else {
@@ -159,6 +223,9 @@ uint64_t CoapticNetwork::clock() {
     stack_checked_us_ = now_us;
   }
   polls_.fetch_add(1, std::memory_order_relaxed);
+#ifdef COAPTIC_TIMING_TRACE
+  if (ready > 0) trace_poll_start_us_ = static_cast<uint64_t>(esp_timer_get_time());
+#endif
   return stop_.load(std::memory_order_acquire) ? UINT64_MAX : static_cast<uint64_t>(esp_timer_get_time() / 1000);
 }
 
@@ -179,6 +246,10 @@ bool CoapticNetwork::security_config(uint8_t *bytes, uint32_t length) {
 }
 
 int32_t CoapticNetwork::read_security(uint8_t *bytes, uint32_t length) {
+#ifdef COAPTIC_TIMING_TRACE
+  const uint64_t trace_start = static_cast<uint64_t>(esp_timer_get_time());
+  const auto read = [&]() -> int32_t {
+#endif
   if (bytes == nullptr || length != 100) return -1;
   if (security_handle_ == 0 && nvs_open("coaptic_sec", NVS_READWRITE, &security_handle_) != ESP_OK) return -1;
   size_t stored = 0;
@@ -186,11 +257,27 @@ int32_t CoapticNetwork::read_security(uint8_t *bytes, uint32_t length) {
   if (status == ESP_ERR_NVS_NOT_FOUND) return 0;
   if (status != ESP_OK || stored != length) return -1;
   return nvs_get_blob(security_handle_, "state_v1", bytes, &stored) == ESP_OK && stored == length ? 1 : -1;
+#ifdef COAPTIC_TIMING_TRACE
+  };
+  const int32_t result = read();
+  trace_event_(3, trace_start, static_cast<uint64_t>(esp_timer_get_time()) - trace_start, length, 65536, result);
+  return result;
+#endif
 }
 
 bool CoapticNetwork::commit_security(const uint8_t *bytes, uint32_t length) {
+#ifdef COAPTIC_TIMING_TRACE
+  const uint64_t trace_start = static_cast<uint64_t>(esp_timer_get_time());
+  const auto commit = [&]() -> bool {
+#endif
   if (bytes == nullptr || length != 100 || security_handle_ == 0) return false;
   return nvs_set_blob(security_handle_, "state_v1", bytes, length) == ESP_OK && nvs_commit(security_handle_) == ESP_OK;
+#ifdef COAPTIC_TIMING_TRACE
+  };
+  const bool result = commit();
+  trace_event_(4, trace_start, static_cast<uint64_t>(esp_timer_get_time()) - trace_start, length, 65536, result ? 1 : -1);
+  return result;
+#endif
 }
 
 int32_t CoapticNetwork::telemetry_config(uint8_t *bytes, uint32_t capacity) {
