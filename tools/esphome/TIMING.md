@@ -53,3 +53,21 @@ the server result. Only the combined verified client/server trace establishes a
 complete campaign. Spin polling is an instrumented diagnostic policy, not a
 lower-CPU performance recommendation. PC file commits and device NVS commits are
 different storage surfaces; their costs must remain visible and separately named.
+
+Correlate one complete session with:
+
+```sh
+python tools/benchmark/hop_analysis.py --client HOST.jsonl --server DEVICE.json --output ANALYSIS.json
+python -m unittest discover -s tools/benchmark -p test_hop_analysis.py -v
+```
+
+`DEVICE.json` contains the complete `COAPTIC_TIMING_END` record as `end` and
+ordered timing records as `events`. A loopback server report is accepted directly.
+The analyzer requires all 24 operations and 32 uniquely correlated request/response
+exchanges (64 UDP datagrams),
+matching wire lengths, one durable commit with two reads per request, and matching
+host/device run identities. It rejects missing, failed, overflowed, ambiguous,
+out-of-order or partially verified data. Successful reports retain every hop and
+summarize observed means, medians and ranges; small samples are not tail
+qualification. Client phase totals, corresponding server service spans and
+transport/wait residuals are separate nested views of the same elapsed time.
