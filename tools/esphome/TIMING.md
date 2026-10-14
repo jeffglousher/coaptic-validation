@@ -15,6 +15,8 @@ complete-byte verification and actual requested-1-ms sleep durations. UDP
 receive/send and state read/commit intervals are nested within those stages:
 do not add the nested totals to their parent totals. Poll includes protocol
 parsing, authentication, blockwise processing and transport calls.
+The first UDP send can occur during request preparation; subtracting all UDP
+time from poll time alone is invalid. Use the recorded event boundaries.
 Initialization/recovery and sender-range refills are reported separately.
 Datagram events contain timestamps, lengths and Message IDs, never payloads or
 credentials. An event overflow refuses the result.
@@ -39,3 +41,15 @@ do not subtract their timestamps to claim one-way latency. Device receive-to-
 send service time can be compared with the corresponding host round trip;
 the residual combines network delivery, queueing, scheduling and unobserved
 boundaries. It is not a measurement of radio airtime or either one-way hop.
+
+`waveshare-peer timing-server 127.0.0.1:PORT CREDENTIALS STATE REPORT RUN_ID`
+runs the same protected constrained service on the PC with a durable host file.
+Provision a fresh, isolated pair of host/server credentials and state explicitly
+for loopback; never reuse the device's keys or state there. The server traces
+receive/send, state read/commit and ready-poll intervals, reserves at most 512
+events before startup, and stops after 32 received packets followed by two seconds
+of quiet or a 30-second deadline. Fewer than 32 packets or trace overflow refuses
+the server result. Only the combined verified client/server trace establishes a
+complete campaign. Spin polling is an instrumented diagnostic policy, not a
+lower-CPU performance recommendation. PC file commits and device NVS commits are
+different storage surfaces; their costs must remain visible and separately named.
