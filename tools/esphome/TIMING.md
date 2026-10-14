@@ -21,6 +21,39 @@ Initialization/recovery and sender-range refills are reported separately.
 Datagram events contain timestamps, lengths and Message IDs, never payloads or
 credentials. An event overflow refuses the result.
 
+The initiator algorithm is `rust/src/read_campaign.rs`, shared independently of
+the host adapter. It uses fixed storage without `std` or allocation, accepts
+caller-owned I/O/storage, entropy, a monotonic nanosecond clock and a bounded
+wait callback, and verifies every complete body. The host `timing` command calls
+this algorithm with a requested 1 ms wait. A five-second deadline and a 100,000
+poll bound independently prevent an unanswered operation or a frozen clock from
+running forever. Clock regression/stop, transport/storage/report failures and
+wrong identities or bodies refuse the campaign; partial observations remain.
+Instrumentation and extra clock reads affect results, so retain the executable
+identity and measure observer overhead before comparing revisions.
+
+The comparison matrix has four role configurations:
+
+- PC loopback, host initiator and constrained service.
+- PC loopback, constrained initiator algorithm and host service.
+- LAN, PC initiator and ESP32-S3 service.
+- LAN, ESP32-S3 initiator and PC service.
+
+Each uses the same identity, small and complete 2000-byte GET workload, with
+the same authenticated durable security-state requirements. Host execution of
+the constrained algorithm is a role control, not ESP32 emulation. The ESP32-S3
+is the qualification platform; it does not restrict the library to that MCU.
+Do not label the last configuration measured until the initiator is integrated
+into verified firmware and its complete trace is correlated with the host.
+The retained reverse telemetry POST/receipt test has additional application
+journaling semantics and is a separate workload, not a matched GET result.
+
+Keep plaintext/protected and volatile/durable profiles separate. Request and
+response packets within one operation do not establish both initiator roles.
+For LAN role reversal, use an explicitly scoped authenticated host service and
+temporary inbound firewall access restricted to the reserved device and exact
+host executable. The existing `timing-server` command remains loopback-only.
+
 For device-side diagnostics only, compile the ESPHome C++ adapter with
 `COAPTIC_TIMING_TRACE`. This retains at most 512 events in caller-owned adapter
 memory and dumps them through the encrypted ESPHome API after two seconds of
