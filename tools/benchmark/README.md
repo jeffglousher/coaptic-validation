@@ -37,6 +37,14 @@ configuration: command fields are argv arrays, never shell strings.
 
 ## Matched protected CoAP
 
+Comparative qualification requires reviewed tuning for every selected peer,
+matched security/protocol semantics and explicit CPU and memory budgets. The
+supplied fixtures are preliminary configurations, not evidence that every
+candidate uses its fastest configuration. Coaptic-only diagnostics and changes
+to driver scheduling cannot establish a cross-library advantage. Record client
+and server CPU, steady/peak memory, complete-operation latency/tails and verified
+goodput; retain setup and allocator/kernel accounting limitations.
+
 Install `tools/benchmark/protected/requirements.txt` in the benchmark environment.
 Pass `--matched-oscore` to preparation to add Coaptic and aiocoap native OSCORE
 servers alongside plaintext controls. This matrix uses one external Python UDP
@@ -63,6 +71,33 @@ sender sequence ranges. Test credentials are confined to a temporary directory
 and removed after the server exits; they are not retained in reports. This is
 process-lifetime benchmarking, without enrollment, durable counters or crash
 recovery. The fixtures and driver accept only IPv4 loopback.
+
+### Native complete-operation diagnostic
+
+The bench-native-client executable uses the Coaptic client against the loopback
+fixture. It times sending through complete-response assembly and exact status,
+format, ETag and body verification; OSCORE authentication is included. It
+reserves bounded storage before timing and enforces an aggregate requested heap
+quota. Results separate core heap quota, App inline state (including UDP scratch),
+verification buffers and timing storage. Allocator overhead, stack peaks and
+kernel socket memory require separate accounting.
+
+~~~sh
+cargo build --release --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server
+python tools/benchmark/native_diagnostic.py --server target/benchmark-native/release/bench-rust-server --client target/benchmark-native/release/bench-native-client --policy spin --security oscore --output native-cost.json
+~~~
+
+Use the existing Cargo target path selected for the build; add .exe on Windows.
+The runner generates fresh pairwise credentials per process and retains CPU/RSS
+samples outside operation clocks through the gated interface. CPU counters are
+quantized; resource windows include control overhead and peak RSS covers process
+lifetime. The spin policy consumes CPU while awaiting replies. The sleep1 policy
+intentionally inserts a 1 ms per-poll delay to diagnose scheduling costs; it is
+not a competing-library configuration or a recommended optimization. Neither
+policy is a production runtime recommendation. This diagnostic uses Coaptic at
+both ends, has one outstanding operation, and does not replace the independent
+matched driver, interoperability checks, durable-recovery qualification or
+comparative campaigns.
 
 Both protected servers use a 32-entry replay window. One shared driver identity
 serializes sequence reservation through UDP dispatch, preventing local sender
