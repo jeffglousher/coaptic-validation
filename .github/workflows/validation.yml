@@ -656,5 +656,7 @@ jobs:
         run: |
           cargo fmt --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server -- --check
           cargo clippy --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server --all-targets -- -D warnings
+          cargo test --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server --bin bench-native-client
           cargo build --release --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server
           python tools/benchmark/protected/network_check.py --server target/benchmark-native/release/bench-rust-server
+          python tools/benchmark/native_check.py --server target/benchmark-native/release/bench-rust-server --client target/benchmark-native/release/bench-native-client
