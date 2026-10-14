@@ -65,6 +65,23 @@ class CoapticNetwork : public Component {
   uint32_t peer_address_{0}, telemetry_timeout_{0};
   uint16_t peer_port_{0};
   int32_t format_{-1};
+#ifdef COAPTIC_TIMING_TRACE
+  // Diagnostic only: one bounded capture after boot. No packet contents or keys.
+  static constexpr uint32_t TRACE_EVENTS = 512;
+  struct TraceEvent {
+    uint64_t at_us, duration_us;
+    uint32_t bytes, mid;
+    uint8_t kind;
+    int8_t result;
+  };
+  TraceEvent trace_[TRACE_EVENTS]{};
+  std::atomic<uint32_t> trace_count_{0};
+  std::atomic<bool> trace_frozen_{false}, trace_overflow_{false};
+  std::atomic<uint32_t> trace_last_ms_{0};
+  uint64_t trace_poll_start_us_{0};
+  void trace_event_(uint8_t kind, uint64_t start, uint64_t duration, uint32_t bytes, uint32_t mid, int8_t result);
+  void trace_dump_();
+#endif
 };
 
 }
