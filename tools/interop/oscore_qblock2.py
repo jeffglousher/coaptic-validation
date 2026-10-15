@@ -1,9 +1,39 @@
-"""Authenticated independent Q-Block2 baseline; loss qualification is separate."""
+"""Authenticated independent Q-Block2 baseline and finite loopback recovery."""
 from oscore_qblock1 import request_plain, response_plain, require, incoming
 from aiocoap import oscore
 
 
-def baseline_grade(trace, result, endpoints, *, partial=False):
+def loopback_endpoint(value, family):
+    require(family in ("ipv4", "ipv6"), "unsupported protected address family")
+    ipv6 = family == "ipv6"
+    require(isinstance(value, (list, tuple)) and len(value) == (4 if ipv6 else 2)
+            and value[0] == ("::1" if ipv6 else "127.0.0.1")
+            and type(value[1]) is int and 0 < value[1] < 65536
+            and (not ipv6 or all(type(part) is int and part == 0 for part in value[2:])),
+            "not exact loopback endpoint with zero flow/scope")
+    return tuple(value)
+
+
+def relay_endpoints(relay, family):
+    import socket
+    endpoints = {"front": relay.front.getsockname(), "back": relay.back.getsockname(), "server": relay.dest}
+    if family == "ipv6":
+        endpoints["family"] = "AF_INET6" if relay.front.family == relay.back.family == socket.AF_INET6 else "wrong"
+        endpoints["v6only"] = [sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY)
+                               for sock in (relay.front, relay.back)]
+    return endpoints
+
+
+def require_relay_family(endpoints, family):
+    require(family in ("ipv4", "ipv6"), "unsupported protected address family")
+    if family == "ipv6":
+        only = endpoints.get("v6only")
+        require(endpoints.get("family") == "AF_INET6" and isinstance(only, list)
+                and len(only) == 2 and all(type(value) is int and value == 1 for value in only),
+                "relay sockets not proven IPv6-only")
+
+
+def baseline_grade(trace, result, endpoints, *, partial=False, family="ipv4"):
     from run import LARGE, decoded_options, block1_fields, packet_token, expect
     if partial:
         from run import expect_refusal
@@ -12,11 +42,9 @@ def baseline_grade(trace, result, endpoints, *, partial=False):
     else:
         expect(result, 69, LARGE)
     require(1 <= len(trace) <= 256, "baseline trace outside bound")
+    require_relay_family(endpoints, family)
     def endpoint(value):
-        require(isinstance(value, (list, tuple)) and len(value) == 2
-                and value[0] == "127.0.0.1" and type(value[1]) is int
-                and 0 < value[1] < 65536, "not exact IPv4 loopback endpoint")
-        return tuple(value)
+        return loopback_endpoint(value, family)
     front, back, server = (endpoint(endpoints[k]) for k in ("front", "back", "server"))
     client = endpoint(trace[0]["source"])
     require(len({front, back, server, client}) == 4, "overlapping endpoint owners")
@@ -84,8 +112,9 @@ def baseline_grade(trace, result, endpoints, *, partial=False):
             request_pending = False
             forms.append("piggybacked content")
         else:
+            # Message IDs belong to their sender/endpoint (RFC 7252 section 4.4).
             require(ty == 0 and not request_pending and server_pending is None
-                    and mid not in response_mids and mid not in request_mids,
+                    and mid not in response_mids,
                     "separate CON violates owner/NSTART")
             server_pending = mid
             response_mids.add(mid)
@@ -131,16 +160,14 @@ def later_response(wire, trace):
     return int(plain.code) == 69 and len(q) == 1 and block1_fields(q[0])[0] == 1
 
 
-def campaign_grade(trace, result, endpoints, mode):
+def campaign_grade(trace, result, endpoints, mode, *, family="ipv4"):
     """Finite pinned CON form: intact later-response loss, never synthetic recovery."""
     from run import LARGE, decoded_options, packet_token, coap_payload, expect_refusal
     require(mode in ("baseline", "drop-once", "drop-permanent", "wrong-key"), "unknown campaign mode")
     require(1 <= len(trace) <= 256, "campaign trace outside bound")
+    require_relay_family(endpoints, family)
     def endpoint(value):
-        require(isinstance(value, (list, tuple)) and len(value) == 2
-                and value[0] == "127.0.0.1" and type(value[1]) is int
-                and 0 < value[1] < 65536, "not exact IPv4 endpoint")
-        return tuple(value)
+        return loopback_endpoint(value, family)
     front, back, server = (endpoint(endpoints[k]) for k in ("front", "back", "server"))
     client = endpoint(trace[0]["source"])
     require(len({front, back, server, client}) == 4, "overlapping owners")
@@ -190,7 +217,7 @@ def campaign_grade(trace, result, endpoints, mode):
         return {"mode": mode, "delivered_body_bytes": 0, "unprotected_decryption_refusals": 1,
                 "outcome": "protocol timeout; no authenticated response"}
     if mode == "baseline":
-        proof = baseline_grade(trace, result, endpoints)
+        proof = baseline_grade(trace, result, endpoints, family=family)
         require(proof["response_forms"] == ["empty request ACK", "separate CON content", "separate CON content"]
                 and proof["request_count"] == 1, "not observed pinned CON form")
         return {"mode": mode, **proof, "delivered_body_bytes": 2000}
@@ -216,7 +243,7 @@ def campaign_grade(trace, result, endpoints, mode):
                 for option in plain.opt.option_list():
                     options.setdefault(int(option.number), []).append(option.encode())
                 old_tag = [o.encode() for o in prior.opt.option_list() if int(o.number) == 4]
-                require((wire[0] >> 4) & 3 == 0 and wire[2:4] not in (req[2:4], first[2:4])
+                require((wire[0] >> 4) & 3 == 0 and wire[2:4] != first[2:4]
                         and packet_token(wire) == packet_token(req) and set(decoded_options(wire)) == {9}, "lost CON ownership")
                 require(int(plain.code) == 69 and plain.payload == LARGE[1024:]
                         and set(options) <= {4, 12, 14, 28, 31} and options.get(4) == old_tag
@@ -253,7 +280,7 @@ def campaign_grade(trace, result, endpoints, mode):
             delivered.append(row)
     require(lost is not None and retries >= 1, "no actual retransmission")
     require((drops == 1 and forwards == 1) if mode == "drop-once" else (drops >= 2 and forwards == 0), "loss schedule mismatch")
-    proof = baseline_grade(delivered, result, endpoints, partial=timeout)
+    proof = baseline_grade(delivered, result, endpoints, partial=timeout, family=family)
     require(proof["request_count"] == 1 and proof["response_forms"] ==
             (["empty request ACK", "separate CON content"] if timeout else
              ["empty request ACK", "separate CON content", "separate CON content"]), "changed CON form")
@@ -263,47 +290,52 @@ def campaign_grade(trace, result, endpoints, mode):
             "partial_evidence_scope": "authenticated forwarded prefix plus exact first-block ACK; not client-buffer instrumentation", "outcome": "protocol timeout after authenticated partial body" if timeout else "complete 2000-byte response"}
 
 
-def campaign(client, server, record, patch):
+def campaign(client, server, record, patch, *, family="ipv4"):
     from run import Proxy, Server, request, expect
+    require(family in ("ipv4", "ipv6"), "unsupported protected address family")
+    record["family"] = family
     record["schedules"] = []
-    with Server(server, "oscore") as service:
+    with Server(server, "oscore", family=family) as service:
         record["server_ready"] = service.ready
         require(service.ready.get("libcoap_patch_sha256") == patch["patch_sha256"], "peer patch identity mismatch")
-        record["setup"] = request(client, "oscore", service.number, sequence=0)
+        record["setup"] = request(client, "oscore", service.number, sequence=0, family=family)
         expect(record["setup"])
         for index, (mode, fault) in enumerate((("baseline", "pass"), ("drop-once", "drop-oscore-q2-once"),
                 ("drop-permanent", "drop-oscore-q2-permanent"), ("wrong-key", "pass"), ("baseline", "pass")), 1):
             current = {"mode": mode, "sequence_start": index * 100}
             record["schedules"].append(current)
-            relay = Proxy(service.number, fault)
+            relay = Proxy(service.number, fault, family=family)
             try:
                 with relay:
-                    current["endpoints"] = {"front": relay.front.getsockname(), "back": relay.back.getsockname(), "server": relay.dest}
+                    current["endpoints"] = relay_endpoints(relay, family)
                     current["result"] = request(client, "oscore", relay.number, path="large", sequence=index * 100,
                                                 timeout=700 if mode == "wrong-key" else 6500, qblock2=True,
-                                                key="incorrect" if mode == "wrong-key" else "sesame")
+                                                key="incorrect" if mode == "wrong-key" else "sesame", family=family)
             finally:
                 current["trace"] = relay.trace
-            current["proof"] = campaign_grade(current["trace"], current["result"], current["endpoints"], mode)
-    record["proof"] = campaign_review(record)
+            current["proof"] = campaign_grade(current["trace"], current["result"], current["endpoints"], mode, family=family)
+    record["proof"] = campaign_review(record, family=family)
     record["complete"] = True
 
 
-def campaign_review(record):
+def campaign_review(record, *, family="ipv4"):
     """Regrade every retained case and require fresh bindings on one server."""
     from run import expect
+    require(record.get("family", "ipv4") == family, "campaign address family changed")
     expect(record["setup"])
     schedules = record["schedules"]
     modes = ["baseline", "drop-once", "drop-permanent", "wrong-key", "baseline"]
     require(len(schedules) == len(modes), "incomplete five-schedule campaign")
     require(record["server_ready"].get("transport") == "oscore", "server not protected")
     server_port = record["server_ready"]["port"]
+    server_endpoint = loopback_endpoint(("::1", server_port, 0, 0) if family == "ipv6"
+                                        else ("127.0.0.1", server_port), family)
     proofs, requests, response_pivs = [], set(), set()
     for index, (case, mode) in enumerate(zip(schedules, modes), 1):
         require(case["mode"] == mode and case["sequence_start"] == index * 100, "changed campaign order/sequence")
-        require(case["endpoints"]["server"] == ("127.0.0.1", server_port)
-                or case["endpoints"]["server"] == ["127.0.0.1", server_port], "server changed during recovery")
-        proof = campaign_grade(case["trace"], case["result"], case["endpoints"], mode)
+        require(loopback_endpoint(case["endpoints"]["server"], family) == server_endpoint,
+                "server changed during recovery")
+        proof = campaign_grade(case["trace"], case["result"], case["endpoints"], mode, family=family)
         require(proof == case["proof"], "retained proof differs from actual trace")
         wire = bytes.fromhex(case["trace"][0]["hex"])
         _, binding = request_plain(wire, wrong_key=mode == "wrong-key")
@@ -320,29 +352,31 @@ def campaign_review(record):
                 response_pivs.add(piv)
                 seen.add(wire)
         proofs.append(proof)
-    return {"same_server": ["127.0.0.1", server_port], "schedules": modes,
+    return {"same_server": list(server_endpoint), "schedules": modes,
             "fresh_request_bindings": len(requests), "distinct_server_pivs": len(response_pivs),
             "final_recovery_bytes": proofs[-1]["delivered_body_bytes"],
-            "scope": "finite IPv4 CON Q2 run; no sustained, routed, NON or multi-peer qualification"}
+            "scope": f"finite {family.replace('ip', 'IP')} CON Q2 run; no sustained, routed, NON or multi-peer qualification"}
 
 
-def baseline(client, server, record, patch=None):
+def baseline(client, server, record, patch=None, *, family="ipv4"):
     from run import Proxy, Server, request, expect
-    with Server(server, "oscore") as service:
+    require(family in ("ipv4", "ipv6"), "unsupported protected address family")
+    record["family"] = family
+    with Server(server, "oscore", family=family) as service:
         if patch is not None:
             record["server_ready"] = service.ready
             require(service.ready.get("libcoap_patch_sha256") == patch["patch_sha256"],
                     "server binary does not identify the expected dependency patch")
-        record["setup"] = request(client, "oscore", service.number, sequence=0)
+        record["setup"] = request(client, "oscore", service.number, sequence=0, family=family)
         expect(record["setup"])
-        relay = Proxy(service.number, "pass")
+        relay = Proxy(service.number, "pass", family=family)
         try:
             with relay:
-                record["endpoints"] = {"front": relay.front.getsockname(), "back": relay.back.getsockname(), "server": relay.dest}
-                record["result"] = request(client, "oscore", relay.number, path="large", sequence=100, timeout=6500, qblock2=True)
+                record["endpoints"] = relay_endpoints(relay, family)
+                record["result"] = request(client, "oscore", relay.number, path="large", sequence=100, timeout=6500, qblock2=True, family=family)
         finally:
             record["trace"] = relay.trace
-        record["proof"] = baseline_grade(record["trace"], record["result"], record["endpoints"])
+        record["proof"] = baseline_grade(record["trace"], record["result"], record["endpoints"], family=family)
 
 
 def main():
@@ -359,12 +393,13 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--libcoap-patch-manifest", type=Path)
     parser.add_argument("--campaign", action="store_true", help="run reviewed finite loss/refusal/recovery schedules")
+    parser.add_argument("--family", choices=("ipv4", "ipv6"), default="ipv4")
     args = parser.parse_args()
     peers = {"coaptic": args.coaptic.resolve(), "libcoap": args.libcoap.resolve()}
     patch = (json.loads(args.libcoap_patch_manifest.read_text(encoding="utf-8"))
              if args.libcoap_patch_manifest else None)
     report = {"libcoap_patch": patch, "schema": "coaptic-protected-qblock2-campaign/1" if args.campaign else "coaptic-protected-qblock2-baseline/1", **source_identity(),
-              "platform": platform.platform(), "qualification_complete": False,
+              "platform": platform.platform(), "family": args.family, "qualification_complete": False,
               "scope": "baseline observation only; loss/refusal/recovery remain unqualified",
               "libcoap_source": "851533c3cf63d16984d370ce39d586ecb3694971",
               "executables": {name: {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
@@ -372,15 +407,15 @@ def main():
     report["baseline_passed"] = False
     report["campaign_passed"] = False if args.campaign else None
     try:
-        baseline(peers["coaptic"], peers["libcoap"], report["baseline"], patch)
+        baseline(peers["coaptic"], peers["libcoap"], report["baseline"], patch, family=args.family)
         report["baseline_passed"] = True
         if args.campaign:
             require(patch is not None, "campaign requires patched-peer provenance")
             report["campaign"] = {}
-            campaign(peers["coaptic"], peers["libcoap"], report["campaign"], patch)
+            campaign(peers["coaptic"], peers["libcoap"], report["campaign"], patch, family=args.family)
             report["campaign_passed"] = True
             report["qualification_complete"] = True
-            report["scope"] = "finite IPv4 CON protected Q2 later-response loss/refusal/recovery only"
+            report["scope"] = f"finite {args.family} loopback CON protected Q2 later-response loss/refusal/recovery only"
     except Exception as error:
         report["error"] = f"{type(error).__name__}: {error}"
     args.output.parent.mkdir(parents=True, exist_ok=True)

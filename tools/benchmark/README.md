@@ -35,6 +35,93 @@ results identify their asyncio event loop. Record and review the manifest's
 runtime tuning before a campaign. A manifest is trusted local executable
 configuration: command fields are argv arrays, never shell strings.
 
+## Matched protected CoAP
+
+Comparative qualification requires reviewed tuning for every selected peer,
+matched security/protocol semantics and explicit CPU and memory budgets. The
+supplied fixtures are preliminary configurations, not evidence that every
+candidate uses its fastest configuration. Coaptic-only diagnostics and changes
+to driver scheduling cannot establish a cross-library advantage. Record client
+and server CPU, steady/peak memory, complete-operation latency/tails and verified
+goodput; retain setup and allocator/kernel accounting limitations.
+
+Install `tools/benchmark/protected/requirements.txt` in the benchmark environment.
+Pass `--matched-oscore` to preparation to add Coaptic and aiocoap native OSCORE
+servers alongside plaintext controls. This matrix uses one external Python UDP
+driver for both security profiles, with independent aiocoap cryptography:
+
+The driver validates fixture bytes with a bounded immutable periodic window
+(66,013 bytes) and native byte comparison. Every received payload byte remains
+checked. Driver revisions change measured client overhead: compare runs with
+the same driver revision and never attribute that change to the server library.
+
+```sh
+python -m pip install -r tools/benchmark/protected/requirements.txt
+python tools/benchmark/prepare.py --matched-oscore --peers coaptic,coap-rs,coap-lite-codec,aiocoap --output target/matched-oscore-manifest.json
+python tools/benchmark/campaign.py plan --manifest target/matched-oscore-manifest.json --output target/matched-oscore --windows 10 --seed 20261013
+python tools/benchmark/campaign.py run --campaign target/matched-oscore --window 0
+python tools/benchmark/campaign.py analyze --campaign target/matched-oscore --reference coaptic --output target/matched-plaintext-report.json
+python tools/benchmark/campaign.py analyze --campaign target/matched-oscore --reference coaptic-oscore --output target/matched-oscore-report.json
+```
+
+Run every scheduled window with the declared session gap. Small and blockwise
+smokes cover each security stratum. OSCORE uses RFC 8613 AES-CCM-16-64-128 and
+HKDF-SHA-256, fresh secret/salt per cell, and disjoint readiness and measured
+sender sequence ranges. Test credentials are confined to a temporary directory
+and removed after the server exits; they are not retained in reports. This is
+process-lifetime benchmarking, without enrollment, durable counters or crash
+recovery. The fixtures and driver accept only IPv4 loopback.
+
+### Native complete-operation diagnostic
+
+The bench-native-client executable uses the Coaptic client against the loopback
+fixture. It times sending through complete-response assembly and exact status,
+format, ETag and body verification; OSCORE authentication is included. It
+reserves bounded storage before timing and enforces an aggregate requested heap
+quota. Results separate core heap quota, App inline state (including UDP scratch),
+verification buffers and timing storage. Allocator overhead, stack peaks and
+kernel socket memory require separate accounting.
+
+~~~sh
+cargo build --release --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server --target-dir target/benchmark-native
+python tools/benchmark/native_diagnostic.py --server target/benchmark-native/release/bench-rust-server --client target/benchmark-native/release/bench-native-client --policy spin --security oscore --output native-cost.json
+~~~
+
+Substitute an existing compatible target in the build and binary paths; add .exe
+on Windows. Reuse that target for subsequent runs.
+The runner generates fresh pairwise credentials per process and retains CPU/RSS
+samples outside operation clocks through the gated interface. CPU counters are
+quantized; resource windows include control overhead and peak RSS covers process
+lifetime. The spin policy consumes CPU while awaiting replies. The sleep1 policy
+intentionally inserts a 1 ms per-poll delay to diagnose scheduling costs; it is
+not a competing-library configuration or a recommended optimization. Neither
+policy is a production runtime recommendation. This diagnostic uses Coaptic at
+both ends, has one outstanding operation, and does not replace the independent
+matched driver, interoperability checks, durable-recovery qualification or
+comparative campaigns.
+
+Both protected servers use a 32-entry replay window. One shared driver identity
+serializes sequence reservation through UDP dispatch, preventing local sender
+thread scheduling from manufacturing wider reordering before packets enter
+the network. This preserves independent outstanding exchanges per worker.
+Preparation requires the pinned resource sampler and hashes its dependency tree.
+
+Completions require authenticated responses bound to their request, successful
+status, Content-Format, stable ETag, valid Block2 ranges and every expected byte.
+Unprotected application responses fail the protected driver. Authentication,
+byte validation, Python scheduling and GIL contention are included in latency
+and wall time. These results describe the matched closed-loop configuration;
+they do not establish server saturation or compare directly with timings from
+the native Rust driver. Keep the native driver for a separate plaintext campaign
+and for matched historical regression measurements.
+
+The manifest explicitly records selected peers without an OSCORE fixture and
+the absent DTLS benchmark path. coap-rs and coap-lite have no native OSCORE path
+in this harness; libcoap has native OSCORE but its benchmark fixture is currently
+plaintext. HTTP/3 TLS remains a separate protocol. No unsupported combination
+is treated as a successful encrypted result. Preparation records library/suite
+revisions, cleanliness, lockfile, crypto versions and dependency hashes.
+
 ## Cheap check
 
 With prepared executables, this checks four small requests per peer plus one

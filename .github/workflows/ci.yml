@@ -7,7 +7,7 @@ on:
     inputs:
       library_revision:
         description: Full Coaptic commit SHA
-        default: "5dd9f0b6675e157cbf7b81320866456c9cc862b8"
+        default: "d41ccbb3c0c3d61598603bef36959af6f78c0e26"
         type: string
 permissions:
   contents: read
@@ -20,4 +20,4 @@ jobs:
     with:
       suite_revision: ${{ github.sha }}
       library_repository: jeffglousher/coaptic
-      library_revision: ${{ inputs.library_revision || '5dd9f0b6675e157cbf7b81320866456c9cc862b8' }}
+      library_revision: ${{ inputs.library_revision || 'd41ccbb3c0c3d61598603bef36959af6f78c0e26' }}

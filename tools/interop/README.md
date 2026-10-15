@@ -175,6 +175,62 @@ routed/scoped networking, hardware or sustained availability. The original RFC
 7252 section 4.6 and RFC 7959 block-size rules remain separate from this finite
 fault schedule.
 
+A separate protected IPv4/IPv6 classic Block2 campaign uses a 256-byte unchanged
+UDP datagram cap: complete 2000-byte baseline, a small protected control under
+the cap, oversized-response loss with exact server retransmission and protocol
+timeout, then complete fresh-client recovery on the same server after removing
+the cap. Run:
+
+```sh
+python tools/interop/oscore_relay_cap.py --coaptic PATH --libcoap PATH --output REPORT.json --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json
+```
+
+Add `--family ipv6` for the separate IPv6 loopback campaign. Its report must
+prove IPv6-only relay sockets and exact `::1` endpoint ownership; IPv4 fallback,
+mapped addresses and nonzero scope/flow identifiers refuse qualification.
+
+The maintained aiocoap decoder checks request binding, inner options and body,
+ACK ownership and unchanged retries. These finite schedules require their own
+exact-source hosted report; they do not qualify adaptive PMTU, ICMP, routed
+networks or sustained availability. See [#495](https://github.com/jeffglousher/coaptic/issues/495)
+and [#499](https://github.com/jeffglousher/coaptic/issues/499).
+
+Protected Observe has a separate finite duplicate-delivery campaign:
+
+```sh
+python tools/interop/oscore_observe.py --coaptic PATH --libcoap PATH --output REPORT.json --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json
+```
+
+Three fresh client sessions share one server: baseline counter values `0,1,2`,
+an intact stale-notification replay during `2,3,4`, then fresh recovery `4,5,6`.
+The replay must arrive after the middle value and before the final valid update,
+without consuming a client observation result. The oracle authenticates the
+registration, notifications and controlled updates and checks their ownership
+and timing. This proves finite duplicate application-delivery refusal, without
+attributing it to OSCORE replay-window or CoAP duplicate suppression alone.
+Exact-source reports are required; routed networks, physical devices and
+sustained availability remain outside [#501](https://github.com/jeffglousher/coaptic/issues/501).
+
+Use `--family ipv6` for the corresponding `::1` campaign (#507); IPv4 remains
+the default. Every observer, writer and readback relay requires AF_INET6,
+IPV6_V6ONLY and exact four-field `::1` owners with integer zero flow/scope
+identifiers. Reports are retained separately as `oscore-observe-campaign.json`
+and `oscore-observe-ipv6-campaign.json`. Actual exact-source hosted execution and
+independent authentication are required for either interoperability claim.
+Nonzero zones and routed networks remain separate qualification.
+
+Ordinary writer/readback evidence must have four distinct client/front/back/server
+owners (#508). Explicit server response PIVs must be unique across forwarded
+notifications, writers and readbacks through all three sessions (#509). The
+one exact intact stale replay remains repeated delivery of existing ciphertext;
+it is not new server generation. Request-bound implicit-response nonces remain
+valid. Both stale-delivery and cancellation campaigns share canonical explicit
+PIV validation: leading zero octets refuse, except the single-byte encoding of
+zero. A zero-prefixed alias of an authenticated nonce must not evade uniqueness.
+Authenticated synthetic counterexamples reproduced both earlier oracle
+false passes; their refusal tests correct qualification tooling without changing
+core protocol behavior or claiming actual peer traffic reused a nonce.
+
 The `oscore-qblock1-recovery:coaptic->libcoap` case uses the pinned libcoap
 OpenSSL/OSCORE build over IPv4 loopback. Its offline aiocoap oracle authenticates
 inner Q-Block1 options and every slice of the 2000-byte upload; it rejects a
@@ -197,6 +253,19 @@ python -m unittest discover -s tools/interop -p 'oscore_qblock1_tests.py'
 
 This finite fixture uses public RFC 8613 test keys, not production credentials,
 enrollment or a sustained-availability qualification.
+
+The separate `oscore_qblock1.py --family ipv6` campaign checks the same six
+schedules over `::1`. Supply `--coaptic PATH --libcoap PATH --output REPORT.json`
+and `--libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json`.
+The CLI defaults to IPv4; the existing IPv4 process case remains enabled.
+Reports retain exact source and binary identities, the dependency patch, IPv6-only
+socket settings and complete endpoint tuples. The authenticated grader checks
+request bindings, unchanged retries, five application effects and fresh recovery.
+A timeout after permanent reply loss remains an unknown client outcome despite
+an independently observed fixture effect; these counters are not durable receipts.
+Exact-source hosted reports are required for qualification. Synthetic tests do
+not establish peer interoperability, and loopback results do not qualify routed
+networks, scoped addresses, hardware or sustained availability. See [#494](https://github.com/jeffglousher/coaptic/issues/494).
 
 The first hosted campaign (run `38129603008`, artifact `11698328540`) completed
 the baseline upload but the original piggyback-only oracle refused libcoap's
@@ -295,10 +364,69 @@ requires the pinned peer's exact unprotected 4.00 diagnostic (RFC 8613 section
 server PIVs across the five exchanges establish fresh same-server recovery.
 Different relay ports mean this is not a same-endpoint stale-transfer expiry test.
 
-Hosted execution is required before claiming this campaign passed. The existing
-180-case inventory remains unchanged. The separate retained campaign report is
-limited to IPv4 loopback, CON, SZX 1,024 and this explicitly patched peer; it does
-not qualify NON, other peers, routed networks, sustained availability, or all
-OSCORE/Q-Block combinations. The mandatory lifetime sanitizer gate remains before
-all patched traffic. Original unpatched failure evidence remains applicable to
+Use `--family ipv6` for the corresponding `::1` loopback campaign tracked in
+[#492](https://github.com/jeffglousher/coaptic/issues/492); the default remains
+`--family ipv4`. Every server, relay and request uses the selected family. The
+IPv6 report requires AF_INET6 and IPV6_V6ONLY on both relay sockets, exact
+four-field `::1` endpoint ownership, and integer zero flow and scope fields.
+Mapped IPv4 addresses and family fallback refuse qualification. The protected
+setup GET and five captured exchanges exercise the selected server; no plaintext
+reachability probe is substituted for protected traffic.
+
+Hosted execution and independent authentication of the exact-source capture are
+required before claiming either family passed. The existing 181-case inventory
+remains unchanged. The separate `oscore-qblock2-campaign.json` and
+`oscore-qblock2-ipv6-campaign.json` reports retain their own sources, executable
+hashes, selected family, traces and outcome, including failures. Synthetic tests
+qualify the evidence oracle, not peer interoperability. These finite campaigns
+are limited to loopback, CON, SZX 1,024 and this explicitly patched peer; they do
+not qualify NON, other peers, nonzero IPv6 zones, routed networks, sustained
+availability, or all OSCORE/Q-Block combinations. The mandatory lifetime sanitizer
+gate remains before all patched traffic. Original unpatched failure evidence remains applicable to
 the unmodified upstream revision.
+
+### Protected Observe explicit cancellation
+
+`oscore_observe_cancel.py` qualifies the existing `Outgoing::deregister_call`
+API against the pinned libcoap OSCORE counter fixture (#503). One Coaptic process
+keeps the same App and UDP socket through registration, one notification,
+explicit cancellation, a three-second poll interval, and fresh registration
+with two later notifications. The complete representations are `0,1,1,2,3,4`;
+the repeated `1` is the ordinary cancellation GET response.
+
+The oracle authenticates the Inner Observe=1 and counter target, checks matching
+registration/cancellation Tokens and distinct request bindings, and requires
+the cancellation response and its transport controls to settle. The ordinary
+cancellation GET reply carries Outer Changed and authenticated Inner
+Content; an observational Outer Content reply refuses this proof. An independent
+protected POST and complete authenticated GET readback confirm the counter
+changes to `2` during the quiet interval, with no observer traffic before fresh
+registration and at least 500 milliseconds observed after the completed readback.
+Fresh registration must use a different Token and deliver all
+three current representations on the same live server. This is a bounded absence
+observation, not a claim that the server can never send another notification.
+
+The pinned aiocoap 0.4.16 decoder normalizes cancellation by removing Observe
+from its returned request. The oracle uses its post-decrypt hook and message
+decoder to retain and check the authenticated Inner option before normalization;
+an Outer Observe option alone does not qualify cancellation. Synthetic mutation
+tests refuse missing ACKs, wrong owners, altered identity/bindings, notifications
+during the quiet interval, missing updates/readback, and incomplete recovery.
+Supervisor failures retain partial traces and stop the owned client.
+
+Required hosted execution retains `oscore-observe-cancellation.json`, exact clean
+library/suite sources, prepared lock hashes, libcoap source/patch and executable
+hashes. The local Windows libcoap build lacks OSCORE and cannot qualify this
+campaign. The existing 181-case inventory and literal plugtest statuses remain
+unchanged. The default is the finite IPv4 loopback fixture. Use `--family ipv6`
+for the corresponding `::1` lifecycle (#505), retained separately as
+`oscore-observe-cancellation-ipv6.json`. Both relay sockets must report AF_INET6
+and IPV6_V6ONLY, and every phase requires exact four-field `::1` owners with
+integer zero flow/scope identifiers. Mixed families, mapped IPv4 addresses,
+truncated tuples and substituted owners refuse qualification. Focused native
+socket and authenticated synthetic tests check this evidence contract;
+actual exact-source hosted traffic must independently pass before claiming
+IPv6 interoperability. These loopback cases do not qualify scoped IPv6 zones.
+Enrollment, power-loss,
+routed networks, physical-device behavior and sustained availability remain
+unqualified.

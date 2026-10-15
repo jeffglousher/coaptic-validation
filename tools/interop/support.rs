@@ -27,6 +27,7 @@ pub struct Args {
     pub q_block2: bool,
     pub q_block2_non: bool,
     pub observe: bool,
+    pub observe_cancel: bool,
     pub echo: bool,
     pub replay: Option<(u64, u32)>,
     pub jsonpatch: bool,
@@ -38,6 +39,7 @@ impl Args {
             (false, false, false, false, false);
         let mut replay = None;
         let mut q_block2_non = false;
+        let mut observe_cancel = false;
         while let Some(flag) = a.last().cloned() {
             match flag.as_str() {
                 "qblock1" => q_block1 = true,
@@ -47,6 +49,10 @@ impl Args {
                     q_block2_non = true;
                 }
                 "observe" => observe = true,
+                "observe-cancel" => {
+                    observe = true;
+                    observe_cancel = true;
+                }
                 "echo" => echo = true,
                 "jsonpatch" => jsonpatch = true,
                 _ => {
@@ -99,7 +105,7 @@ impl Args {
         if hex.len() > 8192 || hex.len() % 2 != 0 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err("invalid bounded payload hex".into());
         }
-        let payload = (0..hex.len())
+        let payload: Vec<u8> = (0..hex.len())
             .step_by(2)
             .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("checked hex"))
             .collect();
@@ -123,6 +129,22 @@ impl Args {
             .map(|value| value.parse::<u64>())
             .transpose()?
             .unwrap_or(0);
+        if observe_cancel
+            && (a[0] != "client"
+                || a[1] != "oscore"
+                || a[4] != "counter"
+                || method != 1
+                || !payload.is_empty()
+                || q_block1
+                || q_block2
+                || echo
+                || replay.is_some()
+                || jsonpatch)
+        {
+            return Err(
+                "observe-cancel requires a protected counter GET without other modes".into(),
+            );
+        }
         if sequence >= (1u64 << 40) {
             return Err("OSCORE sequence exceeds 40 bits".into());
         }
@@ -142,6 +164,7 @@ impl Args {
             q_block2,
             q_block2_non,
             observe,
+            observe_cancel,
             echo,
             replay,
             jsonpatch,

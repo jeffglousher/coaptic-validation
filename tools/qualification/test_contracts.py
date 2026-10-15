@@ -16,7 +16,7 @@ class ContractEvidenceTests(unittest.TestCase):
         self.assertEqual(result["manifest_sha256"], hashlib.sha256(raw).hexdigest())
         contracts = {row["id"]: row for row in result["requirements"]}
         for identity in ("conditional-upload-refusal", "fragmented-if-match", "classic-block1-if-none-match",
-                         "classic-block1-error-no-response", "qblock1-if-none-match", "fragmented-fetch-etag", "qblock1-server-error-no-response", "deferred-fetch-validator", "bounded-dedup-history", "qblock1-fetch-etag", "qblock1-con-success-no-response", "deferred-qblock2-snapshot", "deferred-qblock2-repeated-selection", "oscore-context-replacement-lifecycle", "deferred-qblock2-initial-selectors", "qblock1-non-success-pacing", "deferred-observe-registration"):
+                         "classic-block1-error-no-response", "qblock1-if-none-match", "fragmented-fetch-etag", "qblock1-server-error-no-response", "deferred-fetch-validator", "bounded-dedup-history", "qblock1-fetch-etag", "qblock1-con-success-no-response", "deferred-qblock2-snapshot", "deferred-qblock2-repeated-selection", "oscore-context-replacement-lifecycle", "deferred-qblock2-initial-selectors", "qblock1-non-success-pacing", "deferred-observe-registration", "selected-observe-registration-refusal", "deferred-observe-initial-block2", "observe-block2-size-preference"):
             self.assertIn(identity, contracts)
             for name in contracts[identity]["tests"]:
                 for replacement in ("", f"test {name} ... ignored", f"test {name} ... FAILED"):
@@ -30,6 +30,12 @@ class ContractEvidenceTests(unittest.TestCase):
         manifest = json.loads(MANIFEST.read_bytes())
         names = {name for row in manifest["requirements"] for name in row["tests"]}
         for identity, current, old in (
+            ("deferred-observe-initial-block2",
+             "deferred_observe_block2_nonzero_and_q_requests_stay_refused_then_recover",
+             "deferred_observe_block2_explicit_block_requests_stay_refused_then_recover"),
+            ("deferred-observe-registration",
+             "deferred_observe_large_initial_without_etag_refuses_available_body_storage",
+             "deferred_observe_large_initial_never_uses_available_block_body_storage"),
             ("conditional-upload-refusal",
              "app::tests::fragmented_etag_refuses_instead_of_becoming_unconditional",
              "app::tests::fragmented_if_none_match_and_etag_refuse_instead_of_becoming_unconditional"),
