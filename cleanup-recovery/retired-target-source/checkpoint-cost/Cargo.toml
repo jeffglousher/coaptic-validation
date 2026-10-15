@@ -1,0 +1,14 @@
+[package]
+name = "coaptic-checkpoint-cost"
+version = "0.0.0"
+edition = "2024"
+publish = false
+[workspace]
+[dependencies]
+coaptic-esphome-probe = { path = "../../tools/esphome/rust", features = ["network", "oscore", "host"] }
+coaptic = { path = "../../coaptic", default-features = false, features = ["oscore", "std"] }
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"

@@ -1,0 +1,8 @@
+[workspace]
+members = ["driver", "servers", "profile"]
+default-members = ["driver", "servers"]
+resolver = "2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

@@ -1,0 +1,11 @@
+Candidate: `93155b5e4db000f4506e83405de732b5b7e0cc6f`; library `9a96d9bab679078f7f009746f69c35ad8e883d51`; both clean.
+
+The retained pilot at suite `68bed08` completed six matched and six native-regression sessions, with 27 additional matched cells retained from the interrupted seventh session. It recorded three measured one-second deadline misses and one warmup miss in Coaptic's protected 64 KiB/concurrency-16 profile. No observations were overwritten or relabelled.
+
+Inspection found a configuration mismatch: Coaptic's compiled replay window is 32 entries, while the new independent fixture used 128. The shared driver identity released its sequence lock before UDP dispatch, allowing local sender scheduling to create out-of-order sequences. The pilot environment also lacked the optional resource sampler. These are explicit pilot limitations; the misses do not establish a production-library defect or an optimization gain.
+
+The final candidate aligns both protected replay windows at 32 entries, queries and checks the native compiled security profile, and serializes shared-identity reservation through UDP dispatch. It requires and hashes the pinned resource sampler. A fresh isolated benchmark environment preserves the original shared qualification environment. Wrong-key socket checks now use an unseen sequence to distinguish authentication refusal from replay refusal.
+
+Focused verification passed 46 Python tests, real UDP success/refusal/recovery against both protected fixtures, warning-free native Clippy and formatting, a 16-cell per-security smoke, and all four protected 64 KiB/concurrency-16 CON/NON preflight cells with zero request or warmup failures. Native current/5039 binaries share identical fixture source, compiler, lockfile, features and resource configuration. Binaries are frozen independently of build caches.
+
+A separate final ten-session matched campaign and serial source-regression campaign have started. The pilot remains separate from final inference. Both campaigns retain the unchanged one-second deadline, actual intervals, failures and source/dependency/environment identities. DTLS, impairment, HTTP/3, hardware and saturation qualification remain in #341.
