@@ -83,9 +83,12 @@ struct Record {
 }
 impl Record {
     fn encode(self, credentials: &Credentials) -> [u8; RECORD_BYTES] {
+        self.encode_bound(credentials, &credentials.identity())
+    }
+    fn encode_bound(self, credentials: &Credentials, identity: &[u8]) -> [u8; RECORD_BYTES] {
         let mut bytes = [0; RECORD_BYTES];
         bytes[..8].copy_from_slice(MAGIC);
-        bytes[8..40].copy_from_slice(&credentials.identity());
+        bytes[8..40].copy_from_slice(identity);
         bytes[40..48].copy_from_slice(&self.end.to_be_bytes());
         let (left, bits) = self.replay.parts();
         bytes[48..56].copy_from_slice(&left.to_be_bytes());
@@ -140,10 +143,15 @@ pub fn provision(store: &mut impl Store, credentials: &Credentials) -> Result<()
     Ok(())
 }
 
+/// Live state retains one additional fixed 100-byte authenticated record.
+/// Storage reads and exact durable readback still occur at every changed barrier.
 pub struct State<'a, S> {
     store: S,
     credentials: &'a Credentials,
     record: Record,
+    // Exact authenticated recovery/readback bytes. Fixed storage avoids repeating
+    // the context identity and old-record HMAC on every persistence barrier.
+    committed: [u8; RECORD_BYTES],
     poisoned: bool,
 }
 
@@ -177,6 +185,7 @@ impl<'a, S: Store> State<'a, S> {
             store,
             credentials,
             record,
+            committed: bytes,
             poisoned: false,
         };
         state.refill(&mut context)?;
@@ -191,8 +200,8 @@ impl<'a, S: Store> State<'a, S> {
             .generation
             .checked_add(1)
             .ok_or(Error::Exhausted)?;
-        let bytes = next.encode(self.credentials);
-        let expected = self.record.encode(self.credentials);
+        let bytes = next.encode_bound(self.credentials, &self.committed[8..40]);
+        let expected = self.committed;
         let result = self
             .store
             .read()
@@ -214,6 +223,7 @@ impl<'a, S: Store> State<'a, S> {
         }
         result?;
         self.record = next;
+        self.committed = bytes;
         Ok(())
     }
     /// Only pass the live context returned together with this state by recover.
@@ -304,6 +314,39 @@ mod tests {
             recipient: 2,
         }
     }
+    #[test]
+    fn cached_record_matches_each_durable_barrier_and_refuses_external_corruption() {
+        let c = credentials();
+        for changed in 0..RECORD_BYTES {
+            let mut m = Memory::default();
+            provision(&mut m, &c).unwrap();
+            let (mut state, _) = State::recover(m.clone(), &c).unwrap();
+            for left in 1..=3 {
+                state
+                    .checkpoint(ReplayCheckpoint::from_parts(left, 1).unwrap())
+                    .unwrap();
+                assert_eq!(Some(state.committed), m.0.borrow().bytes);
+                assert_eq!(state.committed, state.record.encode(&c));
+            }
+            let committed = state.committed;
+            let generation = state.generation();
+            let writes = m.0.borrow().writes;
+            m.0.borrow_mut().bytes.as_mut().unwrap()[changed] ^= 1;
+            let next = ReplayCheckpoint::from_parts(4, 1).unwrap();
+            assert_eq!(state.checkpoint(next), Err(Error::Unavailable));
+            assert_eq!(state.committed, committed);
+            assert_eq!(state.generation(), generation);
+            assert_eq!(m.0.borrow().writes, writes);
+            assert_eq!(state.checkpoint(next), Err(Error::Poisoned));
+            assert!(matches!(State::recover(m.clone(), &c), Err(Error::Corrupt)));
+            // Only restoring the exact committed bytes permits a fresh recovery.
+            m.0.borrow_mut().bytes = Some(committed);
+            let (mut recovered, _) = State::recover(m, &c).unwrap();
+            recovered.checkpoint(next).unwrap();
+            assert_eq!(recovered.committed, recovered.record.encode(&c));
+        }
+    }
+
     #[test]
     fn offline_verification_authenticates_without_reserving_or_writing() {
         let c = credentials();
@@ -445,8 +488,12 @@ mod tests {
         let mut m = Memory::default();
         provision(&mut m, &c).unwrap();
         let (mut s, mut ctx) = State::recover(m.clone(), &c).unwrap();
+        let committed = s.committed;
+        let generation = s.generation();
         m.0.borrow_mut().lose_ack = true;
         assert_eq!(s.refill(&mut ctx), Err(Error::Unavailable));
+        assert_eq!(s.committed, committed);
+        assert_eq!(s.generation(), generation);
         assert_eq!(ctx.sender_reservation_end(), Some(256));
         assert_eq!(
             s.checkpoint(ReplayCheckpoint::from_parts(0, 1).unwrap()),

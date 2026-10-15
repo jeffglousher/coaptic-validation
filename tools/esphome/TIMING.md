@@ -113,7 +113,13 @@ derivation. The latter is a control, not an additive stage or proof of CPU-cycle
 attribution. Setup/recovery is outside the measured loop. Every checkpoint still
 performs the read-current/commit/readback sequence, with counts checked after
 each batch. The comparison guard is shared with core replay restoration; it needs
-no key derivation, second security context, allocation or extra persistent memory.
+no key derivation, second security context, allocation or extra durable-storage bytes.
+The live state retains one fixed 100-byte copy of the last authenticated record.
+Its context identity and old-record tag are reused; each new record still gets a
+fresh HMAC. The cache advances only after successful durable commit and exact
+readback. External changes still refuse before writing and poison the session;
+failed or ambiguous writes require authenticated recovery. Report the complete
+`state_bytes` cost on the measured target because layout and padding vary.
 
 Retain compiler, both source revisions, lockfiles, source/binary hashes, process
 order, all batches and original failures. Use balanced before/after process order
