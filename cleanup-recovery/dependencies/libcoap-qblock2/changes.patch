@@ -1,0 +1,159 @@
+diff --git a/include/coap3/coap_pdu_internal.h b/include/coap3/coap_pdu_internal.h
+index 2e8a451d7e7922066f1c58cfd61275f7e0179ba6..095d670072bdf95b43ab664cbb33a2ab78ad61a9 100644
+--- a/include/coap3/coap_pdu_internal.h
++++ b/include/coap3/coap_pdu_internal.h
+@@ -173,6 +173,10 @@ struct coap_pdu_t {
+   size_t body_total;        /**< Holds body data total size */
+   coap_lg_xmit_t *lg_xmit;  /**< Holds ptr to lg_xmit if sending a set of
+                                  blocks */
++#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
++  uint32_t oscore_q_block2; /**< Packed inner Q-Block2 continuation for encrypted
++                                UDP CON; zero means none. lg_xmit is weak. */
++#endif
+   coap_session_t *session;  /**< Session responsible for PDU or NULL */
+   coap_binary_t *data_free; /**< Data to be freed off by coap_delete_pdu() */
+ };
+diff --git a/src/coap_block.c b/src/coap_block.c
+index 07dedd56c92b2efd39065350baad66023aa32bb3..0d5c7f7cf80b6559c9bda1f627d75f5f67d5fb51 100644
+--- a/src/coap_block.c
++++ b/src/coap_block.c
+@@ -2351,6 +2351,27 @@ coap_block_delete_lg_xmit(coap_session_t *session,
+   if (lg_xmit == NULL)
+     return;
+ 
++#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
++  /* Revoke every queued encrypted continuation before release callbacks/free.
++   * Clearing both fields prevents a reused allocation from acquiring an old ACK.
++   * These are the two owners of a queued UDP CON PDU. */
++  {
++    coap_queue_t *q;
++    LL_FOREACH(session->context->sendqueue, q) {
++      if (q->session == session && q->pdu &&
++          q->pdu->oscore_q_block2 && q->pdu->lg_xmit == lg_xmit) {
++        q->pdu->lg_xmit = NULL;
++        q->pdu->oscore_q_block2 = 0;
++      }
++    }
++    LL_FOREACH(session->delayqueue, q) {
++      if (q->pdu && q->pdu->oscore_q_block2 && q->pdu->lg_xmit == lg_xmit) {
++        q->pdu->lg_xmit = NULL;
++        q->pdu->oscore_q_block2 = 0;
++      }
++    }
++  }
++#endif
+   if (lg_xmit->release_func) {
+     coap_lock_callback(session->context, lg_xmit->release_func(session, lg_xmit->app_ptr));
+   }
+diff --git a/src/coap_net.c b/src/coap_net.c
+index 18e61c871c88faa7e3c81ed661b6026c6ac2f0a7..5bb18003c72bd7f12a643b3c4f86f5c1c979f641 100644
+--- a/src/coap_net.c
++++ b/src/coap_net.c
+@@ -1845,14 +1845,35 @@ coap_send_internal(coap_session_t *session, coap_pdu_t *pdu) {
+   if (session->oscore_encryption &&
+       pdu->type != COAP_MESSAGE_RST &&
+       !(pdu->type == COAP_MESSAGE_ACK && pdu->code == COAP_EMPTY_CODE)) {
+-    /* Refactor PDU as appropriate RFC8613 */
++    /* Q-Block2 can send several distinct responses to one request. Each
++     * response must use a fresh sender PIV; retries retain the ciphertext.
++     * Use the existing RFC8613 sender-sequence path, not the request nonce. */
++    oscore_partial_iv_t send_iv = OSCORE_SEND_NO_IV;
++#if COAP_Q_BLOCK_SUPPORT
++    if (COAP_PDU_IS_RESPONSE(pdu) &&
++        coap_check_option(pdu, COAP_OPTION_Q_BLOCK2, &opt_iter))
++      send_iv = OSCORE_SEND_PARTIAL_IV;
++#endif
+     coap_pdu_t *osc_pdu = coap_oscore_new_pdu_encrypted_lkd(session, pdu, NULL,
+-                                                            0);
++                                                        send_iv);
+ 
+     if (osc_pdu == NULL) {
+       coap_log_warn("OSCORE: PDU could not be encrypted\n");
+       goto error;
+     }
++#if COAP_Q_BLOCK_SUPPORT
++    /* Retransmit ciphertext unchanged, but retain the inner continuation.
++     * The large-transfer template already owns the plaintext options/body.
++     * Only UDP server CON Q-Block2 needs this ACK-driven continuation. */
++    if (session->proto == COAP_PROTO_UDP && osc_pdu->type == COAP_MESSAGE_CON &&
++        COAP_PDU_IS_RESPONSE(pdu) && pdu->lg_xmit) {
++      coap_block_b_t q;
++      if (coap_get_block_b(session, pdu, COAP_OPTION_Q_BLOCK2, &q) && q.m) {
++        osc_pdu->lg_xmit = pdu->lg_xmit;
++        osc_pdu->oscore_q_block2 = (q.num << 4) | (q.m << 3) | q.szx;
++      }
++    }
++#endif
+     bytes_written = coap_send_pdu(session, osc_pdu, NULL);
+     coap_delete_pdu_lkd(pdu);
+     pdu = osc_pdu;
+@@ -4006,9 +4027,15 @@ coap_dispatch(coap_context_t *context, coap_session_t *session,
+ 
+     if (sent && session->con_active) {
+       session->con_active--;
+-      if (session->state == COAP_SESSION_STATE_ESTABLISHED)
+-        /* Flush out any entries on session->delayqueue */
+-        coap_session_connected(session);
++      if (session->state == COAP_SESSION_STATE_ESTABLISHED) {
++#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
++        /* Consume this new continuation before delayed-send callbacks can
++         * invalidate its removed local sendqueue node. Legacy order is unchanged. */
++        if (!(session->proto == COAP_PROTO_UDP &&
++              sent->pdu->oscore_q_block2 && sent->pdu->lg_xmit && pdu->code == 0))
++#endif
++          coap_session_connected(session);
++      }
+     }
+     if (coap_option_check_critical(session, pdu, &opt_filter) == 0) {
+       packet_is_bad = 1;
+@@ -4028,6 +4055,36 @@ coap_dispatch(coap_context_t *context, coap_session_t *session,
+ #if COAP_Q_BLOCK_SUPPORT
+       if (sent) {
+         coap_block_b_t block;
++#if COAP_OSCORE_SUPPORT
++        if (session->proto == COAP_PROTO_UDP && sent->pdu->oscore_q_block2 &&
++            sent->pdu->lg_xmit) {
++          coap_lg_xmit_t *lg;
++          /* Expiry clears all queued aliases before freeing the transfer.
++           * Also require current membership before dereferencing a weak link. */
++          LL_FOREACH(session->lg_xmit, lg) {
++            if (lg == sent->pdu->lg_xmit) {
++              coap_pdu_t plain = lg->pdu;
++              uint32_t q = sent->pdu->oscore_q_block2;
++              memset(&block, 0, sizeof(block));
++              block.num = q >> 4;
++              block.m = (q >> 3) & 1;
++              block.szx = q & 7;
++              block.aszx = block.szx;
++              plain.type = COAP_MESSAGE_CON;
++              plain.actual_token = sent->pdu->actual_token;
++              plain.oscore_q_block2 = 0;
++              coap_send_q_blocks(session, lg, block, &plain, COAP_SEND_SKIP_PDU);
++              break;
++            }
++          }
++        }
++#endif
++
++#if COAP_OSCORE_SUPPORT
++        if (session->proto == COAP_PROTO_UDP && sent->pdu->oscore_q_block2 &&
++            sent->pdu->lg_xmit && session->state == COAP_SESSION_STATE_ESTABLISHED)
++          coap_session_connected(session);
++#endif
+ 
+         if (sent->pdu->type == COAP_MESSAGE_CON &&
+             COAP_PROTO_NOT_RELIABLE(session->proto) &&
+diff --git a/src/coap_pdu.c b/src/coap_pdu.c
+index 46028203f6f36615491f14a962d2031302aae5b8..05fa6d652642b8327e39734e6f64c6e9a663acb0 100644
+--- a/src/coap_pdu.c
++++ b/src/coap_pdu.c
+@@ -62,6 +62,9 @@ coap_pdu_clear(coap_pdu_t *pdu, size_t size) {
+   pdu->body_offset = 0;
+   pdu->body_total = 0;
+   pdu->lg_xmit = NULL;
++#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
++  pdu->oscore_q_block2 = 0;
++#endif
+   pdu->session = NULL;
+   pdu->data_free = NULL;
+ }

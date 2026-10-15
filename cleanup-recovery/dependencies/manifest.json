@@ -1,0 +1,126 @@
+[
+  {
+    "label": "libedhoc-logging",
+    "source_root": "D:\\codex-work\\coaptic-provisioning-lifecycle\\target\\provisioning-candidates\\libedhoc",
+    "base_commit": "0363bd3af02265e919e888b60ccffb4606b68f16",
+    "patch_sha256": "62a1d35341998b4e6ad60a9def3c08c5fb998b5853aa03cbc41909c82ac94168",
+    "files": {
+      "backends/log/include/edhoc_backend_log.h": {
+        "sha256": "dbb4f309b913470cabb51ae34f52c29f47bf951fd78eb28b355ba5ab98b1f357",
+        "archived_path": "cleanup-recovery/dependencies/libedhoc-logging/files/backends/log/include/edhoc_backend_log.h"
+      }
+    }
+  },
+  {
+    "label": "libcoap-transfer",
+    "source_root": "D:\\codex-work\\coaptic-validation-oscore-transfer\\target\\libcoap-transfer",
+    "base_commit": "851533c3cf63d16984d370ce39d586ecb3694971",
+    "patch_sha256": "b7e7f02ec5b622cce14530d9e289e991308e8492816526001a8e4b878ea2303f",
+    "files": {
+      "include/coap3/coap_block_internal.h": {
+        "sha256": "c5f890117c9fa3a2f4e1294f219fa3593ab3405c57f86f00aa2d41311ae38d17",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer/files/include/coap3/coap_block_internal.h"
+      },
+      "include/coap3/coap_pdu_internal.h": {
+        "sha256": "5e3d53cf2fdf42cef4fe4f8db6c9ea296a47ffec8051c2404443b76020210b81",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer/files/include/coap3/coap_pdu_internal.h"
+      },
+      "include/coap3/coap_session_internal.h": {
+        "sha256": "858f2c15e70e59f753f0ba091ca4fed841d7138f1ea3fbb6edea0863898a603b",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer/files/include/coap3/coap_session_internal.h"
+      },
+      "include/oscore/oscore_context.h": {
+        "sha256": "39b519832f3ae207e544f506f65f33ea65c337e109a2e13a4da15efcb261e7c9",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer/files/include/oscore/oscore_context.h"
+      },
+      "src/coap_block.c": {
+        "sha256": "72137b70d3c25bb0069a43598c3c935376ff80693027a82117779a2f9afd846d",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer/files/src/coap_block.c"
+      },
+      "src/coap_net.c": {
+        "sha256": "40e66ac00611eabc9a66c045728f54a29c045d0cd9fbf2828781cc6fbeaf2f87",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer/files/src/coap_net.c"
+      },
+      "src/coap_oscore.c": {
+        "sha256": "083dd113f1300e878ccf3ac63e0ae3167908bd54d1b4a7287667461027ba5cc8",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer/files/src/coap_oscore.c"
+      },
+      "src/coap_pdu.c": {
+        "sha256": "7bfb921f200f1e051bb787cf0177addb893abc07c08fe39b6db2c05c2d3c25bb",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer/files/src/coap_pdu.c"
+      },
+      "src/coap_session.c": {
+        "sha256": "a0023696e12768424df714a3b507416fa13129c00d503972b86b43afd2744530",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer/files/src/coap_session.c"
+      }
+    }
+  },
+  {
+    "label": "libcoap-transfer-verification",
+    "source_root": "D:\\codex-work\\coaptic-validation-oscore-transfer\\target\\source-verify-f99",
+    "base_commit": "851533c3cf63d16984d370ce39d586ecb3694971",
+    "patch_sha256": "4ec2cc77e87fe3689e8f79765b1f40de10e19ff910f91d005edf3a45f1699f57",
+    "files": {
+      "include/coap3/coap_block_internal.h": {
+        "sha256": "7b28ecfbf791aac4a5eb37177f6a92fa35341c3460cbec42b4e449593ca42489",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer-verification/files/include/coap3/coap_block_internal.h"
+      },
+      "include/coap3/coap_pdu_internal.h": {
+        "sha256": "81450c571d480f3b5fd2ca7235c73db290fd9fe142d1eb2cd1a74f80df86373f",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer-verification/files/include/coap3/coap_pdu_internal.h"
+      },
+      "include/coap3/coap_session_internal.h": {
+        "sha256": "e11f851122d579d429aebcb89fed9929ea12423dd64c761d1bcd229f3f1872c7",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer-verification/files/include/coap3/coap_session_internal.h"
+      },
+      "include/oscore/oscore_context.h": {
+        "sha256": "b5288ffbcaf474e204d04008a4b92d21e2796f2115ba2f27e166cf6bc315a3fb",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer-verification/files/include/oscore/oscore_context.h"
+      },
+      "src/coap_block.c": {
+        "sha256": "f5d6b9836f546f9fc4ae1fcc9927049b0e9a95d5d45581a9f48925389649693c",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer-verification/files/src/coap_block.c"
+      },
+      "src/coap_net.c": {
+        "sha256": "a5108574ab5b267b242aa5c1f37b1cec2c1d8c7fc68d6decd4b1c092fc37c6bb",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer-verification/files/src/coap_net.c"
+      },
+      "src/coap_oscore.c": {
+        "sha256": "6b85e8dbfc132fdcd293a3da00f5c0c16dc600162c0650020aca0fae09139c64",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer-verification/files/src/coap_oscore.c"
+      },
+      "src/coap_pdu.c": {
+        "sha256": "dc88e976be629b00f7683e734dd0de301f56ff0e2fae39154ba9c909e733bdf0",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer-verification/files/src/coap_pdu.c"
+      },
+      "src/coap_session.c": {
+        "sha256": "55ec5bc1331f7a9e8d00c217d198fc94e4f029a0185f36404d04ff709e082e47",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-transfer-verification/files/src/coap_session.c"
+      }
+    }
+  },
+  {
+    "label": "libcoap-qblock2",
+    "source_root": "D:\\codex-work\\coaptic-validation-oscore-qblock2\\target\\libcoap-qblock-patch",
+    "base_commit": "851533c3cf63d16984d370ce39d586ecb3694971",
+    "patch_sha256": "ef265277c3b8ea06d9ccc1c855d70052d42afe2a2defc809084a93437fb2f169",
+    "files": {
+      "include/coap3/coap_pdu_internal.h": {
+        "sha256": "bd0c926e663f933417934596c15e8bec1d608d780738c6ff1247f90128095355",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-qblock2/files/include/coap3/coap_pdu_internal.h"
+      },
+      "src/coap_block.c": {
+        "sha256": "345923d4fe666e50274c112d602695e0f31df0d46eaa05b903a400a6080a5050",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-qblock2/files/src/coap_block.c"
+      },
+      "src/coap_net.c": {
+        "sha256": "03b4d9bee90047469deab38d0667ea3b5e584d722a220b8e117256ddfaae09f1",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-qblock2/files/src/coap_net.c"
+      },
+      "src/coap_pdu.c": {
+        "sha256": "f1d75ca9c44e3ac923d97c7eebb628ecdb459b02bd2f8fea22527e276404f91b",
+        "archived_path": "cleanup-recovery/dependencies/libcoap-qblock2/files/src/coap_pdu.c"
+      }
+    }
+  }
+]

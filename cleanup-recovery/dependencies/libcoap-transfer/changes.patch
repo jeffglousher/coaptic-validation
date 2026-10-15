@@ -1,0 +1,1006 @@
+diff --git a/include/coap3/coap_block_internal.h b/include/coap3/coap_block_internal.h
+index 1e325c04718d742a57dcb559c11999c447702dc2..5b8e6bf535040c7c2a7582aa9c0d0625b06635a8 100644
+--- a/include/coap3/coap_block_internal.h
++++ b/include/coap3/coap_block_internal.h
+@@ -155,6 +155,10 @@ struct coap_lg_xmit_t {
+     coap_l_block1_t b1;
+     coap_l_block2_t b2;
+   } b;
++#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
++  oscore_association_t *oscore_binding; /**< Owned immutable snapshot, not hashed. */
++  uint64_t oscore_generation; /**< Never wraps during a transfer lifetime. */
++#endif
+   coap_lg_crcv_t *lg_crcv; /**< The lg_crcv associated with this blocked xmit */
+   coap_pdu_t pdu;        /**< skeletal PDU */
+   coap_tick_t last_payload; /**< Last time MAX_PAYLOAD was sent or 0 */
+@@ -544,6 +548,16 @@ void coap_check_update_token(coap_session_t *session, coap_pdu_t *pdu);
+ #define coap_check_update_token(a,b)
+ #endif /* ! COAP_CLIENT_SUPPORT */
+ 
++#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
++/* Internal protected UDP Q2 ownership. Capture is transactional; revoke precedes
++ * callbacks/context destruction. These helpers never own the recipient context. */
++int coap_q_bind_response(coap_session_t *session, coap_lg_xmit_t *lg,
++                         coap_pdu_t *response);
++void coap_q_revoke_binding(coap_session_t *session, coap_lg_xmit_t *lg);
++oscore_association_t *coap_q_response_binding(coap_session_t *session,
++                                              const coap_pdu_t *pdu);
++#endif
++
+ /** @} */
+ 
+ #endif /* COAP_BLOCK_INTERNAL_H_ */
+diff --git a/include/coap3/coap_pdu_internal.h b/include/coap3/coap_pdu_internal.h
+index 2e8a451d7e7922066f1c58cfd61275f7e0179ba6..114aa6614936e7520d46561d8a4ab8bd9b0fb17b 100644
+--- a/include/coap3/coap_pdu_internal.h
++++ b/include/coap3/coap_pdu_internal.h
+@@ -173,6 +173,14 @@ struct coap_pdu_t {
+   size_t body_total;        /**< Holds body data total size */
+   coap_lg_xmit_t *lg_xmit;  /**< Holds ptr to lg_xmit if sending a set of
+                                  blocks */
++#if COAP_OSCORE_SUPPORT
++  uint64_t oscore_request_generation; /**< Originating authenticated request. */
++#endif
++#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
++  uint64_t oscore_q_generation; /**< Exact owned request binding, zero if absent. */
++  uint32_t oscore_q_block2; /**< Packed inner Q-Block2 continuation for encrypted
++                                UDP CON; zero means none. lg_xmit is weak. */
++#endif
+   coap_session_t *session;  /**< Session responsible for PDU or NULL */
+   coap_binary_t *data_free; /**< Data to be freed off by coap_delete_pdu() */
+ };
+diff --git a/include/coap3/coap_session_internal.h b/include/coap3/coap_session_internal.h
+index e42b911e20e4efb044b784e21ffe846ab611ebf8..9d78b8e57157af097fbc844519a2574e2483d469 100644
+--- a/include/coap3/coap_session_internal.h
++++ b/include/coap3/coap_session_internal.h
+@@ -186,6 +186,11 @@ struct coap_session_t {
+                                        close */
+   uint8_t csm_not_seen;           /**< Set if timeout waiting for CSM */
+ #if COAP_OSCORE_SUPPORT
++  uint64_t oscore_request_generation; /**< No reuse, including recipient replacement. */
++#if COAP_Q_BLOCK_SUPPORT
++  uint64_t oscore_q_generation; /**< Monotonic across transfer allocation reuse. */
++  unsigned int oscore_q_encrypting; /**< Dynamic recipient removal refuses while set. */
++#endif
+   uint8_t oscore_encryption;      /**< OSCORE is used for this session  */
+   COAP_OSCORE_B_2_STEP b_2_step;  /**< Appendix B.2 negotiation step */
+   oscore_recipient_ctx_t *recipient_ctx; /**< OSCORE recipient context
+diff --git a/include/oscore/oscore_context.h b/include/oscore/oscore_context.h
+index 021262278e055eb44e7e9a2a1eb1e99e288a5e91..0ea4055c54c2ba9033bf516d40772f0a2d144974 100644
+--- a/include/oscore/oscore_context.h
++++ b/include/oscore/oscore_context.h
+@@ -148,6 +148,7 @@ struct oscore_association_t {
+   coap_bin_const_t *nonce;
+   coap_bin_const_t *partial_iv;
+   coap_bin_const_t *obs_partial_iv;
++  uint64_t request_generation; /**< Authenticated server request instance. */
+   coap_tick_t last_seen;
+   uint8_t is_observe;
+ };
+diff --git a/src/coap_block.c b/src/coap_block.c
+index 07dedd56c92b2efd39065350baad66023aa32bb3..ccb72c21f429db372e5f85e3a1ea516f6ca3c7cb 100644
+--- a/src/coap_block.c
++++ b/src/coap_block.c
+@@ -1822,6 +1822,9 @@ coap_send_q_blocks(coap_session_t *session,
+   uint8_t ltoken[8];
+   size_t ltoken_length;
+   uint32_t delayqueue_cnt = 0;
++#if COAP_OSCORE_SUPPORT
++  uint64_t q_generation = pdu->oscore_q_generation;
++#endif
+ 
+   if (!lg_xmit) {
+     if (send_pdu == COAP_SEND_INC_PDU)
+@@ -1863,6 +1866,15 @@ coap_send_q_blocks(coap_session_t *session,
+     block_pdu = coap_pdu_duplicate_lkd(pdu, session,
+                                        ltoken_length,
+                                        ptoken, &drop_options);
++#if COAP_OSCORE_SUPPORT
++    if (block_pdu)
++      block_pdu->oscore_q_generation = pdu->oscore_q_generation;
++#endif
++    if (!block_pdu) {
++      if (send_pdu == COAP_SEND_INC_PDU)
++        coap_delete_pdu_lkd(pdu);
++      return COAP_INVALID_MID;
++    }
+     if (block_pdu->type == COAP_MESSAGE_ACK)
+       block_pdu->type = COAP_MESSAGE_CON;
+   }
+@@ -1875,6 +1887,20 @@ coap_send_q_blocks(coap_session_t *session,
+     return COAP_INVALID_MID;
+   }
+ 
++#if COAP_OSCORE_SUPPORT
++  if (q_generation) {
++    coap_lg_xmit_t *current;
++    LL_FOREACH(session->lg_xmit, current) {
++      if (current == lg_xmit && current->oscore_binding &&
++          current->oscore_generation == q_generation)
++        break;
++    }
++    if (!current) {
++      coap_delete_pdu_lkd(block_pdu);
++      return COAP_INVALID_MID;
++    }
++  }
++#endif
+   while (block_pdu) {
+     coap_pdu_t *t_pdu = NULL;
+     uint8_t buf[8];
+@@ -1906,6 +1932,10 @@ coap_send_q_blocks(coap_session_t *session,
+       t_pdu = coap_pdu_duplicate_lkd(block_pdu, session,
+                                      ltoken_length, ptoken, &drop_options);
+     }
++#if COAP_OSCORE_SUPPORT
++    if (t_pdu)
++      t_pdu->oscore_q_generation = block_pdu->oscore_q_generation;
++#endif
+     if (!coap_update_option(block_pdu, lg_xmit->option,
+                             coap_encode_var_safe(buf,
+                                                  sizeof(buf),
+@@ -1938,6 +1968,20 @@ coap_send_q_blocks(coap_session_t *session,
+       coap_delete_pdu_lkd(t_pdu);
+       return COAP_INVALID_MID;
+     }
++#if COAP_OSCORE_SUPPORT
++    if (q_generation) {
++      coap_lg_xmit_t *current;
++      LL_FOREACH(session->lg_xmit, current) {
++        if (current == lg_xmit && current->oscore_binding &&
++            current->oscore_generation == q_generation)
++          break;
++      }
++      if (!current) {
++        coap_delete_pdu_lkd(t_pdu);
++        return COAP_INVALID_MID;
++      }
++    }
++#endif
+     block_pdu = t_pdu;
+   }
+   if (!block.m) {
+@@ -2153,6 +2197,14 @@ coap_send_q_block2(coap_session_t *session,
+                           lg_xmit->b.b2.query ? lg_xmit->b.b2.query : &empty))
+       break;
+   }
++#if COAP_OSCORE_SUPPORT
++  if (session->oscore_encryption &&
++      !coap_q_bind_response(session, lg_xmit, response)) {
++    if (send_response == COAP_SEND_INC_PDU)
++      coap_delete_pdu_lkd(response);
++    return COAP_INVALID_MID;
++  }
++#endif
+   return coap_send_q_blocks(session, lg_xmit, block, response, send_response);
+ }
+ #endif /* COAP_Q_BLOCK_SUPPORT */
+@@ -2345,12 +2397,104 @@ coap_block_delete_lg_srcv(coap_session_t *session,
+ }
+ #endif /* COAP_SERVER_SUPPORT */
+ 
++#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
++void
++coap_q_revoke_binding(coap_session_t *session, coap_lg_xmit_t *lg) {
++  coap_queue_t *q;
++  LL_FOREACH(session->context->sendqueue, q) {
++    if (q->session == session && q->pdu && q->pdu->lg_xmit == lg) {
++      q->pdu->lg_xmit = NULL;
++      q->pdu->oscore_q_block2 = 0;
++      /* Keep generation nonzero: a not-yet-encrypted stale PDU must fail,
++       * never fall back to the current token association. */
++    }
++  }
++  LL_FOREACH(session->delayqueue, q) {
++    if (q->pdu && q->pdu->lg_xmit == lg) {
++      q->pdu->lg_xmit = NULL;
++      q->pdu->oscore_q_block2 = 0;
++    }
++  }
++  oscore_free_association(lg->oscore_binding);
++  lg->oscore_binding = NULL;
++  /* Retired template must not fall back to a newer token association if an
++   * already-scheduled timer reaches it. A fresh request explicitly rebinds. */
++  lg->last_payload = 0;
++}
++
++oscore_association_t *
++coap_q_response_binding(coap_session_t *session, const coap_pdu_t *pdu) {
++  coap_lg_xmit_t *lg;
++  if (!pdu->oscore_q_generation || !pdu->lg_xmit)
++    return NULL;
++  LL_FOREACH(session->lg_xmit, lg) {
++    if (lg == pdu->lg_xmit && lg->oscore_binding &&
++        lg->oscore_generation == pdu->oscore_q_generation &&
++        coap_binary_equal(lg->oscore_binding->token, &pdu->actual_token))
++      return lg->oscore_binding;
++  }
++  return NULL;
++}
++
++int
++coap_q_bind_response(coap_session_t *session, coap_lg_xmit_t *lg,
++                      coap_pdu_t *response) {
++  oscore_association_t *source, *copy;
++  coap_opt_iterator_t opt_iter;
++  if (!session->oscore_encryption)
++    return 1;
++  /* This repair qualifies ordinary UDP CON responses only. Refuse unsupported
++   * ownership before transmission rather than borrowing Observe or NON state. */
++  if (!lg || lg->option != COAP_OPTION_Q_BLOCK2 ||
++      session->proto != COAP_PROTO_UDP ||
++      (response->type != COAP_MESSAGE_CON && response->type != COAP_MESSAGE_ACK) ||
++      coap_check_option(response, COAP_OPTION_OBSERVE, &opt_iter) ||
++      session->oscore_q_generation == UINT64_MAX)
++    return 0;
++  source = oscore_find_association(session, &response->actual_token);
++  if (!source || !response->oscore_request_generation ||
++      source->request_generation != response->oscore_request_generation ||
++      source->is_observe || !source->recipient_ctx ||
++      !source->aad || !source->nonce || !source->partial_iv ||
++      source->token->length > 8 || source->aad->length > 200 ||
++      source->nonce->length != 13 || source->partial_iv->length > 8)
++    return 0;
++  copy = coap_malloc_type(COAP_STRING, sizeof(*copy));
++  if (!copy)
++    return 0;
++  memset(copy, 0, sizeof(*copy));
++  copy->recipient_ctx = source->recipient_ctx;
++  copy->request_generation = source->request_generation;
++  copy->token = coap_new_bin_const(source->token->s, source->token->length);
++  copy->aad = coap_new_bin_const(source->aad->s, source->aad->length);
++  copy->nonce = coap_new_bin_const(source->nonce->s, source->nonce->length);
++  copy->partial_iv = coap_new_bin_const(source->partial_iv->s, source->partial_iv->length);
++  if (!copy->token || !copy->aad || !copy->nonce || !copy->partial_iv) {
++    oscore_free_association(copy);
++    return 0;
++  }
++  /* All allocation completed. Revoking old continuation markers before changing
++   * generation prevents an older ACK from using this new authenticated request. */
++  coap_q_revoke_binding(session, lg);
++  lg->oscore_binding = copy;
++  oscore_delete_association(session, source);
++  lg->oscore_generation = ++session->oscore_q_generation;
++  response->lg_xmit = lg;
++  response->oscore_q_generation = lg->oscore_generation;
++  lg->pdu.oscore_q_generation = lg->oscore_generation;
++  return 1;
++}
++#endif
++
+ void
+ coap_block_delete_lg_xmit(coap_session_t *session,
+                           coap_lg_xmit_t *lg_xmit) {
+   if (lg_xmit == NULL)
+     return;
+ 
++#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
++  coap_q_revoke_binding(session, lg_xmit);
++#endif
+   if (lg_xmit->release_func) {
+     coap_lock_callback(session->context, lg_xmit->release_func(session, lg_xmit->app_ptr));
+   }
+@@ -2596,6 +2740,16 @@ coap_handle_request_send_block(coap_session_t *session,
+     request_cnt = 1;
+   }
+ 
++#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
++  if (session->oscore_encryption && block_opt == COAP_OPTION_Q_BLOCK2) {
++    /* This bounded repair accepts one explicit cached block per fresh request.
++     * Multiple selectors / M=1 cached bursts have extra callback ownership and
++     * original-token semantics; refuse them before binding or response output. */
++    if (request_cnt != 1 || out_blocks[0].is_continue ||
++        !coap_q_bind_response(session, lg_xmit, response))
++      goto internal_issue;
++  }
++#endif
+   for (i = 0; i < request_cnt; i++) {
+     uint8_t buf[8];
+ 
+@@ -2640,6 +2794,12 @@ coap_handle_request_send_block(coap_session_t *session,
+       }
+       out_pdu = response;
+     }
++#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
++    if (session->oscore_encryption && block_opt == COAP_OPTION_Q_BLOCK2) {
++      out_pdu->lg_xmit = lg_xmit;
++      out_pdu->oscore_q_generation = response->oscore_q_generation;
++    }
++#endif
+     if (pdu->type == COAP_MESSAGE_NON)
+       out_pdu->type = COAP_MESSAGE_NON;
+     if (block.bert) {
+diff --git a/src/coap_net.c b/src/coap_net.c
+index 18e61c871c88faa7e3c81ed661b6026c6ac2f0a7..74ba4871b8a3942bc1560bbb145763462611778c 100644
+--- a/src/coap_net.c
++++ b/src/coap_net.c
+@@ -760,7 +760,11 @@ coap_free_context_lkd(coap_context_t *context) {
+   coap_delete_all_resources(context);
+ #endif /* COAP_SERVER_SUPPORT */
+ 
+-  coap_delete_all(context->sendqueue);
++  {
++    coap_queue_t *queue = context->sendqueue;
++    context->sendqueue = NULL;
++    coap_delete_all(queue);
++  }
+ 
+ #ifdef WITH_LWIP
+   context->sendqueue = NULL;
+@@ -1845,14 +1849,36 @@ coap_send_internal(coap_session_t *session, coap_pdu_t *pdu) {
+   if (session->oscore_encryption &&
+       pdu->type != COAP_MESSAGE_RST &&
+       !(pdu->type == COAP_MESSAGE_ACK && pdu->code == COAP_EMPTY_CODE)) {
+-    /* Refactor PDU as appropriate RFC8613 */
++    /* Q-Block2 can send several distinct responses to one request. Each
++     * response must use a fresh sender PIV; retries retain the ciphertext.
++     * Use the existing RFC8613 sender-sequence path, not the request nonce. */
++    oscore_partial_iv_t send_iv = OSCORE_SEND_NO_IV;
++#if COAP_Q_BLOCK_SUPPORT
++    if (COAP_PDU_IS_RESPONSE(pdu) &&
++        coap_check_option(pdu, COAP_OPTION_Q_BLOCK2, &opt_iter))
++      send_iv = OSCORE_SEND_PARTIAL_IV;
++#endif
+     coap_pdu_t *osc_pdu = coap_oscore_new_pdu_encrypted_lkd(session, pdu, NULL,
+-                                                            0);
++                                                        send_iv);
+ 
+     if (osc_pdu == NULL) {
+       coap_log_warn("OSCORE: PDU could not be encrypted\n");
+       goto error;
+     }
++#if COAP_Q_BLOCK_SUPPORT
++    /* Retransmit ciphertext unchanged, but retain the inner continuation.
++     * The large-transfer template already owns the plaintext options/body.
++     * Only UDP server CON Q-Block2 needs this ACK-driven continuation. */
++    if (session->proto == COAP_PROTO_UDP && osc_pdu->type == COAP_MESSAGE_CON &&
++        COAP_PDU_IS_RESPONSE(pdu) && pdu->lg_xmit) {
++      coap_block_b_t q;
++      if (coap_get_block_b(session, pdu, COAP_OPTION_Q_BLOCK2, &q)) {
++        osc_pdu->lg_xmit = pdu->lg_xmit;
++        osc_pdu->oscore_q_generation = pdu->oscore_q_generation;
++        osc_pdu->oscore_q_block2 = 0x80000000U | (q.num << 4) | (q.m << 3) | q.szx;
++      }
++    }
++#endif
+     bytes_written = coap_send_pdu(session, osc_pdu, NULL);
+     coap_delete_pdu_lkd(pdu);
+     pdu = osc_pdu;
+@@ -3354,6 +3380,11 @@ handle_request(coap_context_t *context, coap_session_t *session, coap_pdu_t *pdu
+     goto fail_response;
+   }
+   response->session = session;
++#if COAP_OSCORE_SUPPORT
++  /* Stamp before application callbacks. Generic/async PDU copies deliberately
++   * do not acquire a current request identity by looking up its token. */
++  response->oscore_request_generation = pdu->oscore_request_generation;
++#endif
+ #if COAP_ASYNC_SUPPORT
+   /* If handling a separate response, need CON, not ACK response */
+   if (async && pdu->type == COAP_MESSAGE_CON)
+@@ -3524,6 +3555,20 @@ handle_request(coap_context_t *context, coap_session_t *session, coap_pdu_t *pdu
+   }
+ 
+ skip_handler:
++#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
++  if (session->oscore_encryption &&
++      coap_check_option(pdu, COAP_OPTION_Q_BLOCK2, &opt_iter) &&
++      !coap_q_response_binding(session, response)) {
++    oscore_association_t *origin =
++        oscore_find_association(session, &response->actual_token);
++    /* A cached refusal or asynchronous copy must not encrypt even an error
++     * under a newer same-token request. Check before protected response output;
++     * upstream proxy/async paths may already have acknowledged the request. */
++    if (!response->oscore_request_generation || !origin ||
++        origin->request_generation != response->oscore_request_generation)
++      goto drop_it_no_debug;
++  }
++#endif
+   if (send_early_empty_ack &&
+       response->type == COAP_MESSAGE_ACK) {
+     /* Response is now separate - convert to CON as needed */
+@@ -4006,9 +4051,15 @@ coap_dispatch(coap_context_t *context, coap_session_t *session,
+ 
+     if (sent && session->con_active) {
+       session->con_active--;
+-      if (session->state == COAP_SESSION_STATE_ESTABLISHED)
+-        /* Flush out any entries on session->delayqueue */
+-        coap_session_connected(session);
++      if (session->state == COAP_SESSION_STATE_ESTABLISHED) {
++#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
++        /* Consume this new continuation before delayed-send callbacks can
++         * invalidate its removed local sendqueue node. Legacy order is unchanged. */
++        if (!(session->proto == COAP_PROTO_UDP &&
++              sent->pdu->oscore_q_block2 && sent->pdu->lg_xmit && pdu->code == 0))
++#endif
++          coap_session_connected(session);
++      }
+     }
+     if (coap_option_check_critical(session, pdu, &opt_filter) == 0) {
+       packet_is_bad = 1;
+@@ -4028,6 +4079,43 @@ coap_dispatch(coap_context_t *context, coap_session_t *session,
+ #if COAP_Q_BLOCK_SUPPORT
+       if (sent) {
+         coap_block_b_t block;
++#if COAP_OSCORE_SUPPORT
++        if (session->proto == COAP_PROTO_UDP && sent->pdu->oscore_q_block2 &&
++            sent->pdu->lg_xmit) {
++          coap_lg_xmit_t *lg;
++          coap_lg_xmit_t *expected = sent->pdu->lg_xmit;
++          uint64_t generation = sent->pdu->oscore_q_generation;
++          uint32_t q = sent->pdu->oscore_q_block2;
++          /* A popped node is not covered by queue invalidation. Consume its
++           * capability before callbacks and never dereference it afterwards. */
++          sent->pdu->lg_xmit = NULL;
++          sent->pdu->oscore_q_block2 = 0;
++          sent->pdu->oscore_q_generation = 0;
++          LL_FOREACH(session->lg_xmit, lg) {
++            if (lg == expected && lg->oscore_binding &&
++                lg->oscore_generation == generation &&
++                coap_binary_equal(lg->oscore_binding->token, &sent->pdu->actual_token)) {
++              coap_pdu_t plain = lg->pdu;
++              memset(&block, 0, sizeof(block));
++              block.num = (q & 0x7fffffffU) >> 4;
++              block.m = (q >> 3) & 1;
++              block.szx = q & 7;
++              block.aszx = block.szx;
++              plain.type = COAP_MESSAGE_CON;
++              plain.actual_token = sent->pdu->actual_token;
++              plain.oscore_q_block2 = 0;
++              plain.oscore_q_generation = generation;
++              if (block.m)
++                coap_send_q_blocks(session, lg, block, &plain, COAP_SEND_SKIP_PDU);
++              else
++                coap_q_revoke_binding(session, lg);
++              break;
++            }
++          }
++          if (session->state == COAP_SESSION_STATE_ESTABLISHED)
++            coap_session_connected(session);
++        }
++#endif
+ 
+         if (sent->pdu->type == COAP_MESSAGE_CON &&
+             COAP_PROTO_NOT_RELIABLE(session->proto) &&
+diff --git a/src/coap_oscore.c b/src/coap_oscore.c
+index a1d45920b344330fc7fbd99bedb634a04fbb38d5..b53fc1edc813e763a255708587cd9f5ae56cca4e 100644
+--- a/src/coap_oscore.c
++++ b/src/coap_oscore.c
+@@ -22,6 +22,7 @@
+ 
+ #if COAP_OSCORE_SUPPORT
+ #include <ctype.h>
++#include <limits.h>
+ 
+ #define AAD_BUF_LEN 200 /* length of aad_buffer */
+ 
+@@ -341,6 +342,13 @@ coap_oscore_new_pdu_encrypted_lkd(coap_session_t *session,
+   int doing_observe = 0;
+   uint32_t observe_value = 0;
+   oscore_association_t *association = NULL;
++  int transfer_binding = 0;
++#if COAP_Q_BLOCK_SUPPORT
++  oscore_association_t binding_copy;
++  uint8_t binding_aad[200], binding_nonce[13], binding_piv[8];
++  coap_bin_const_t saved_aad, saved_nonce, saved_piv;
++  int q_encrypting = 0;
++#endif
+   oscore_sender_ctx_t *snd_ctx;
+   uint8_t external_aad_buffer[200];
+   coap_bin_const_t external_aad;
+@@ -383,7 +391,30 @@ coap_oscore_new_pdu_encrypted_lkd(coap_session_t *session,
+      * RFC8613 8.3 Step 1. Protecting the server's response
+      * Get the Sender Context
+      */
+-    association = oscore_find_association(session, &pdu_token);
++#if COAP_Q_BLOCK_SUPPORT
++    if (pdu->oscore_q_generation) {
++      association = coap_q_response_binding(session, pdu);
++      if (!association || session->oscore_q_encrypting == UINT_MAX)
++        goto error;
++      /* A callback may retire or replace this transfer. Keep the bounded request
++       * values on this stack; dynamic recipient removal is refused while used. */
++      binding_copy = *association;
++      memcpy(binding_aad, association->aad->s, association->aad->length);
++      saved_aad.s = binding_aad; saved_aad.length = association->aad->length;
++      memcpy(binding_nonce, association->nonce->s, association->nonce->length);
++      saved_nonce.s = binding_nonce; saved_nonce.length = association->nonce->length;
++      memcpy(binding_piv, association->partial_iv->s, association->partial_iv->length);
++      saved_piv.s = binding_piv; saved_piv.length = association->partial_iv->length;
++      binding_copy.aad = &saved_aad;
++      binding_copy.nonce = &saved_nonce;
++      binding_copy.partial_iv = &saved_piv;
++      association = &binding_copy;
++      session->oscore_q_encrypting++;
++      q_encrypting = 1;
++      transfer_binding = 1;
++    } else
++#endif
++      association = oscore_find_association(session, &pdu_token);
+     if (association == NULL)
+       goto error;
+ 
+@@ -663,7 +694,7 @@ coap_oscore_new_pdu_encrypted_lkd(coap_session_t *session,
+   coap_delete_pdu_lkd(plain_pdu);
+   plain_pdu = NULL;
+ 
+-  if (association && association->is_observe == 0)
++  if (association && !transfer_binding && association->is_observe == 0)
+     oscore_delete_association(session, association);
+   association = NULL;
+ 
+@@ -745,9 +776,23 @@ coap_oscore_new_pdu_encrypted_lkd(coap_session_t *session,
+     }
+     session->done_b_1_2 = 1;
+   }
++#if COAP_Q_BLOCK_SUPPORT
++  if (q_encrypting) {
++    session->oscore_q_encrypting--;
++    q_encrypting = 0;
++    /* A retired generation cannot publish a newly encoded response. Any sender
++     * sequence consumed during the attempt remains consumed. */
++    if (!coap_q_response_binding(session, pdu))
++      goto error;
++  }
++#endif
+   return osc_pdu;
+ 
+ error:
++#if COAP_Q_BLOCK_SUPPORT
++  if (q_encrypting)
++    session->oscore_q_encrypting--;
++#endif
+   if (ciphertext_buffer)
+     coap_free_type(COAP_OSCORE_BUF, ciphertext_buffer);
+   coap_delete_pdu_lkd(osc_pdu);
+@@ -841,7 +886,9 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+   size_t encrypt_len;
+   size_t tag_len;
+   oscore_recipient_ctx_t *rcp_ctx = NULL;
++  oscore_recipient_ctx_t request_replay; /* Borrowed view; replay scalars only. */
+   oscore_association_t *association = NULL;
++  int request_observe = 0;
+   uint8_t external_aad_buffer[100];
+   coap_bin_const_t external_aad;
+   oscore_sender_ctx_t *snd_ctx = NULL;
+@@ -849,6 +896,10 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+   coap_pdu_t *sent_pdu = NULL;
+ #endif /* COAP_CLIENT_SUPPORT */
+ 
++  /* No identity reuse after exhaustion, and no replay/context/output mutation. */
++  if (coap_request && session->oscore_request_generation == UINT64_MAX)
++    return NULL;
++
+   opt = coap_check_option(pdu, COAP_OPTION_OSCORE, &opt_iter);
+   assert(opt);
+   if (opt == NULL)
+@@ -1047,8 +1098,12 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+      * Requires in COSE object as appropriate
+      *   partial_iv (as received)
+      */
+-    if (rcp_ctx->initial_state == 0 &&
+-        !oscore_validate_sender_seq(rcp_ctx, cose)) {
++    /* Validate against a stack view. Zero-valued replay state is meaningful;
++     * no failure or error-response callback may observe an uncommitted update.
++     * No ownership or destructor operation uses this borrowed view. */
++    request_replay = *rcp_ctx;
++    if (request_replay.initial_state == 0 &&
++        !oscore_validate_sender_seq(&request_replay, cose)) {
+       coap_log_warn("OSCORE: Replayed or old message\n");
+       build_and_send_error_pdu(session,
+                                pdu,
+@@ -1059,10 +1114,10 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+                                0);
+       goto error_no_ack;
+     }
+-    if (rcp_ctx->initial_state == 1) {
++    if (request_replay.initial_state == 1) {
+       incoming_seq =
+           coap_decode_var_bytes8(cose->partial_iv.s, cose->partial_iv.length);
+-      rcp_ctx->last_seq = incoming_seq;
++      request_replay.last_seq = incoming_seq;
+     }
+   } else { /* !coap_request */
+     /*
+@@ -1202,39 +1257,6 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+     nonce.length = 13;
+     oscore_generate_nonce(cose, osc_ctx, nonce_buffer, 13);
+     cose_encrypt0_set_nonce(cose, &nonce);
+-    /*
+-     * Set up an association for use in the response
+-     */
+-    association = oscore_find_association(session, &pdu_token);
+-    if (association) {
+-      /* Refresh the association */
+-      coap_delete_bin_const(association->nonce);
+-      association->nonce =
+-          coap_new_bin_const(cose->nonce.s, cose->nonce.length);
+-      if (association->nonce == NULL)
+-        goto error;
+-      coap_delete_bin_const(association->partial_iv);
+-      association->partial_iv =
+-          coap_new_bin_const(cose->partial_iv.s, cose->partial_iv.length);
+-      if (association->partial_iv == NULL)
+-        goto error;
+-      coap_delete_bin_const(association->aad);
+-      association->aad = coap_new_bin_const(cose->aad.s, cose->aad.length);
+-      if (association->aad == NULL)
+-        goto error;
+-      association->recipient_ctx = rcp_ctx;
+-    } else if (!oscore_new_association(session,
+-                                       NULL,
+-                                       &pdu_token,
+-                                       rcp_ctx,
+-                                       &cose->aad,
+-                                       &cose->nonce,
+-                                       &cose->partial_iv,
+-                                       0)) {
+-      goto error;
+-    }
+-    /* So association is not released when handling decrypt */
+-    association = NULL;
+   } else { /* ! coap_request */
+     /* Need to do nonce before AAD because of different partial_iv */
+     /*
+@@ -1397,7 +1419,6 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+                                NULL,
+                                NULL,
+                                0);
+-      oscore_roll_back_seq(rcp_ctx);
+       goto error_no_ack;
+     } else {
+       coap_handle_event_lkd(session->context,
+@@ -1409,42 +1430,6 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+ 
+   assert((size_t)pltxt_size < pdu->alloc_size + pdu->max_hdr_size);
+ 
+-  /* Appendix B.2 Trap */
+-  if (session->b_2_step == COAP_OSCORE_B_2_STEP_2) {
+-    /* Need to update Security Context with new (R2 || ID1) ID Context */
+-    coap_binary_t *kc =
+-        coap_new_binary(sizeof(session->oscore_r2) + cose->kid_context.length);
+-    coap_bin_const_t oscore_r2;
+-
+-    if (kc == NULL) {
+-      if (!coap_request)
+-        coap_handle_event_lkd(session->context,
+-                              COAP_EVENT_OSCORE_INTERNAL_ERROR,
+-                              session);
+-      goto error;
+-    }
+-
+-    coap_prng_lkd(&session->oscore_r2, sizeof(session->oscore_r2));
+-    memcpy(kc->s, &session->oscore_r2, sizeof(session->oscore_r2));
+-    memcpy(&kc->s[sizeof(session->oscore_r2)],
+-           cose->kid_context.s,
+-           cose->kid_context.length);
+-
+-    coap_log_oscore("Appendix B.2 server step 2 (R2 || ID1)\n");
+-    oscore_update_ctx(osc_ctx, (coap_bin_const_t *)kc);
+-
+-    oscore_r2.length = sizeof(session->oscore_r2);
+-    oscore_r2.s = (const uint8_t *)&session->oscore_r2;
+-    coap_log_oscore("Appendix B.2 server step 2 plain response\n");
+-    build_and_send_error_pdu(session,
+-                             pdu,
+-                             COAP_RESPONSE_CODE(401),
+-                             NULL,
+-                             NULL,
+-                             &oscore_r2,
+-                             1);
+-    goto error_no_ack;
+-  }
+ #if COAP_CLIENT_SUPPORT
+   if (session->b_2_step == COAP_OSCORE_B_2_STEP_3) {
+     coap_log_oscore("Appendix B.2 client step 3 (R2 || R3)\n");
+@@ -1498,55 +1483,19 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+   }
+ #endif /* COAP_CLIENT_SUPPORT */
+ 
+-#if COAP_SERVER_SUPPORT
+-  /* Appendix B.1.2 request Trap */
+-  if (coap_request && osc_ctx->rfc8613_b_1_2) {
+-    if (rcp_ctx->initial_state == 1) {
+-      opt = coap_check_option(plain_pdu, COAP_OPTION_ECHO, &opt_iter);
+-      if (opt) {
+-        /* Verify Client is genuine */
+-        if (coap_opt_length(opt) == 8 &&
+-            memcmp(coap_opt_value(opt), rcp_ctx->echo_value, 8) == 0) {
+-          if (!oscore_validate_sender_seq(rcp_ctx, cose)) {
+-            coap_log_warn("OSCORE: Replayed or old message\n");
+-            build_and_send_error_pdu(session,
+-                                     pdu,
+-                                     COAP_RESPONSE_CODE(401),
+-                                     "Replay detected",
+-                                     NULL,
+-                                     NULL,
+-                                     0);
+-            goto error_no_ack;
+-          }
+-        } else
+-          goto error;
+-      } else {
+-        /* RFC 8163 Appendix B.1.2 */
+-        if (session->b_2_step == COAP_OSCORE_B_2_STEP_4) {
+-          session->b_2_step = COAP_OSCORE_B_2_NONE;
+-          coap_log_oscore("Appendix B.2 server finished\n");
+-        }
+-        coap_prng_lkd(rcp_ctx->echo_value, sizeof(rcp_ctx->echo_value));
+-        coap_log_oscore("Appendix B.1.2 server plain response\n");
+-        build_and_send_error_pdu(session,
+-                                 pdu,
+-                                 COAP_RESPONSE_CODE(401),
+-                                 NULL,
+-                                 rcp_ctx->echo_value,
+-                                 NULL,
+-                                 1);
+-        goto error_no_ack;
+-      }
+-    }
+-  }
+-#endif /* COAP_SERVER_SUPPORT */
+-
+   /*
+    * 8.2 Step 7 / 8.4 Step 6.
+    * Add decrypted Code, options and payload
+    * [OSCORE option not copied across previously]
+    */
+ 
++  if (coap_request) {
++    plain_pdu->code = plain_pdu->token[0];
++    plain_pdu->actual_token.s = plain_pdu->token;
++    if (!coap_pdu_parse_opt(plain_pdu))
++      goto error;
++  }
++
+   /* PDU code is pseudo plain_pdu token */
+   decrypt_pdu->code = plain_pdu->token[0];
+ 
+@@ -1577,11 +1526,7 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+         doing_resp_observe = 1;
+         break;
+       }
+-      association = oscore_find_association(session, &pdu_token);
+-      if (association) {
+-        association->is_observe = 1;
+-        association = NULL;
+-      }
++      request_observe = 1;
+     /* Fall Through */
+     default:
+       if (!coap_insert_option(decrypt_pdu,
+@@ -1629,6 +1574,112 @@ coap_oscore_decrypt_pdu(coap_session_t *session,
+     goto error;
+   }
+ 
++  if (coap_request) {
++    oscore_association_t *previous, *fresh;
++    /* Authentication and the entire inner PDU decode succeeded. Allocate the
++     * replacement before touching a prior same-token request. No failed MAC,
++     * option decode, allocation or counter exhaustion can retire its proof. */
++    if (session->oscore_request_generation == UINT64_MAX)
++      goto error;
++    previous = oscore_find_association(session, &pdu_token);
++    if (!oscore_new_association(session, NULL, &pdu_token, rcp_ctx,
++                                &cose->aad, &cose->nonce, &cose->partial_iv,
++                                request_observe || (previous && previous->is_observe)))
++      goto error;
++    fresh = oscore_find_association(session, &pdu_token);
++    assert(fresh && fresh != previous);
++    /* Commit only after the full inner decode and every association allocation.
++     * Failed MAC/decoding/allocation cannot consume a receive sequence. */
++    rcp_ctx->last_seq = request_replay.last_seq;
++    rcp_ctx->sliding_window = request_replay.sliding_window;
++    rcp_ctx->initial_state = request_replay.initial_state;
++    rcp_ctx->rollback_last_seq = request_replay.rollback_last_seq;
++    rcp_ctx->rollback_sliding_window = request_replay.rollback_sliding_window;
++    fresh->request_generation = ++session->oscore_request_generation;
++    decrypt_pdu->oscore_request_generation = fresh->request_generation;
++    if (previous)
++      oscore_delete_association(session, previous);
++  }
++
++  /* Appendix B.2 Trap */
++  if (session->b_2_step == COAP_OSCORE_B_2_STEP_2) {
++    /* Need to update Security Context with new (R2 || ID1) ID Context */
++    coap_binary_t *kc =
++        coap_new_binary(sizeof(session->oscore_r2) + cose->kid_context.length);
++    coap_bin_const_t oscore_r2;
++
++    if (kc == NULL) {
++      if (!coap_request)
++        coap_handle_event_lkd(session->context,
++                              COAP_EVENT_OSCORE_INTERNAL_ERROR,
++                              session);
++      goto error;
++    }
++
++    coap_prng_lkd(&session->oscore_r2, sizeof(session->oscore_r2));
++    memcpy(kc->s, &session->oscore_r2, sizeof(session->oscore_r2));
++    memcpy(&kc->s[sizeof(session->oscore_r2)],
++           cose->kid_context.s,
++           cose->kid_context.length);
++
++    coap_log_oscore("Appendix B.2 server step 2 (R2 || ID1)\n");
++    oscore_update_ctx(osc_ctx, (coap_bin_const_t *)kc);
++
++    oscore_r2.length = sizeof(session->oscore_r2);
++    oscore_r2.s = (const uint8_t *)&session->oscore_r2;
++    coap_log_oscore("Appendix B.2 server step 2 plain response\n");
++    build_and_send_error_pdu(session,
++                             pdu,
++                             COAP_RESPONSE_CODE(401),
++                             NULL,
++                             NULL,
++                             &oscore_r2,
++                             1);
++    goto error_no_ack;
++  }
++#if COAP_SERVER_SUPPORT
++  /* Appendix B.1.2 request Trap */
++  if (coap_request && osc_ctx->rfc8613_b_1_2) {
++    if (rcp_ctx->initial_state == 1) {
++      opt = coap_check_option(decrypt_pdu, COAP_OPTION_ECHO, &opt_iter);
++      if (opt) {
++        /* Verify Client is genuine */
++        if (coap_opt_length(opt) == 8 &&
++            memcmp(coap_opt_value(opt), rcp_ctx->echo_value, 8) == 0) {
++          if (!oscore_validate_sender_seq(rcp_ctx, cose)) {
++            coap_log_warn("OSCORE: Replayed or old message\n");
++            build_and_send_error_pdu(session,
++                                     pdu,
++                                     COAP_RESPONSE_CODE(401),
++                                     "Replay detected",
++                                     NULL,
++                                     NULL,
++                                     0);
++            goto error_no_ack;
++          }
++        } else
++          goto error;
++      } else {
++        /* RFC 8163 Appendix B.1.2 */
++        if (session->b_2_step == COAP_OSCORE_B_2_STEP_4) {
++          session->b_2_step = COAP_OSCORE_B_2_NONE;
++          coap_log_oscore("Appendix B.2 server finished\n");
++        }
++        coap_prng_lkd(rcp_ctx->echo_value, sizeof(rcp_ctx->echo_value));
++        coap_log_oscore("Appendix B.1.2 server plain response\n");
++        build_and_send_error_pdu(session,
++                                 pdu,
++                                 COAP_RESPONSE_CODE(401),
++                                 NULL,
++                                 rcp_ctx->echo_value,
++                                 NULL,
++                                 1);
++        goto error_no_ack;
++      }
++    }
++  }
++#endif /* COAP_SERVER_SUPPORT */
++
+   if (session->b_2_step != COAP_OSCORE_B_2_NONE) {
+     session->b_2_step = COAP_OSCORE_B_2_NONE;
+     coap_log_oscore("Appendix B.2 client finished\n");
+@@ -2092,8 +2143,79 @@ error:
+   return NULL;
+ }
+ 
++#if COAP_Q_BLOCK_SUPPORT
++static void
++revoke_q_session(coap_session_t *session, const oscore_ctx_t *owner,
++                 const coap_bin_const_t *recipient_id) {
++  coap_lg_xmit_t *lg;
++  oscore_association_t *association, *tmp;
++  /* Delete-before-bind must not leave an ordinary request association pointing
++   * at the recipient that is about to be freed. A recreated same-ID recipient
++   * requires a fresh authenticated association, never address-based revival. */
++  OSCORE_ASSOCIATIONS_ITER_SAFE(session->associations, association, tmp) {
++    oscore_recipient_ctx_t *recipient = association->recipient_ctx;
++    if (recipient && (!owner || recipient->osc_ctx == owner) &&
++        (!recipient_id || coap_binary_equal(recipient_id, recipient->recipient_id)))
++      oscore_delete_association(session, association);
++  }
++  if (session->recipient_ctx &&
++      (!owner || session->recipient_ctx->osc_ctx == owner) &&
++      (!recipient_id || coap_binary_equal(recipient_id,
++                                        session->recipient_ctx->recipient_id)))
++    session->recipient_ctx = NULL;
++  LL_FOREACH(session->lg_xmit, lg) {
++    if (lg->oscore_binding &&
++        (!owner || lg->oscore_binding->recipient_ctx->osc_ctx == owner) &&
++        (!recipient_id || coap_binary_equal(recipient_id,
++            lg->oscore_binding->recipient_ctx->recipient_id)))
++      coap_q_revoke_binding(session, lg);
++  }
++}
++
++static int
++q_context_encrypting(coap_context_t *context) {
++  coap_session_t *session, *tmp;
++#if COAP_SERVER_SUPPORT
++  coap_endpoint_t *ep;
++  LL_FOREACH(context->endpoint, ep) {
++    SESSIONS_ITER_SAFE(ep->sessions, session, tmp) {
++      if (session->oscore_q_encrypting)
++        return 1;
++    }
++  }
++#endif
++#if COAP_CLIENT_SUPPORT
++  SESSIONS_ITER_SAFE(context->sessions, session, tmp) {
++    if (session->oscore_q_encrypting)
++      return 1;
++  }
++#endif
++  return 0;
++}
++
++static void
++revoke_q_context(coap_context_t *context, const oscore_ctx_t *owner,
++                 const coap_bin_const_t *recipient_id) {
++  coap_session_t *session, *tmp;
++#if COAP_SERVER_SUPPORT
++  coap_endpoint_t *ep;
++  LL_FOREACH(context->endpoint, ep) {
++    SESSIONS_ITER_SAFE(ep->sessions, session, tmp)
++      revoke_q_session(session, owner, recipient_id);
++  }
++#endif
++#if COAP_CLIENT_SUPPORT
++  SESSIONS_ITER_SAFE(context->sessions, session, tmp)
++    revoke_q_session(session, owner, recipient_id);
++#endif
++}
++#endif
++
+ void
+ coap_delete_all_oscore(coap_context_t *c_context) {
++#if COAP_Q_BLOCK_SUPPORT
++  revoke_q_context(c_context, NULL, NULL);
++#endif
+   oscore_free_contexts(c_context);
+ }
+ 
+@@ -2205,6 +2327,11 @@ coap_delete_oscore_recipient_lkd(coap_context_t *context,
+   coap_lock_check_locked(context);
+   if (context->p_osc_ctx == NULL)
+     return 0;
++#if COAP_Q_BLOCK_SUPPORT
++  if (q_context_encrypting(context))
++    return 0;
++  revoke_q_context(context, context->p_osc_ctx, recipient_id);
++#endif
+   return oscore_delete_recipient(context->p_osc_ctx, recipient_id);
+ }
+ 
+diff --git a/src/coap_pdu.c b/src/coap_pdu.c
+index 46028203f6f36615491f14a962d2031302aae5b8..67e5406174ad3179f22c8e02865a047962d7e0dd 100644
+--- a/src/coap_pdu.c
++++ b/src/coap_pdu.c
+@@ -62,6 +62,13 @@ coap_pdu_clear(coap_pdu_t *pdu, size_t size) {
+   pdu->body_offset = 0;
+   pdu->body_total = 0;
+   pdu->lg_xmit = NULL;
++#if COAP_OSCORE_SUPPORT
++  pdu->oscore_request_generation = 0;
++#endif
++#if COAP_OSCORE_SUPPORT && COAP_Q_BLOCK_SUPPORT
++  pdu->oscore_q_block2 = 0;
++  pdu->oscore_q_generation = 0;
++#endif
+   pdu->session = NULL;
+   pdu->data_free = NULL;
+ }
+diff --git a/src/coap_session.c b/src/coap_session.c
+index bb78feb6b575f17db7a357053256d18a856d3ae9..dfd8542f22d93728eb62b33d65c87c1468d67fa5 100644
+--- a/src/coap_session.c
++++ b/src/coap_session.c
+@@ -538,6 +538,7 @@ coap_session_mfree(coap_session_t *session) {
+   }
+ #endif /* COAP_SERVER_SUPPORT */
+   LL_FOREACH_SAFE(session->delayqueue, q, tmp) {
++    LL_DELETE(session->delayqueue, q);
+     if (q->pdu->type==COAP_MESSAGE_CON && session->context->nack_handler) {
+       coap_check_update_token(session, q->pdu);
+       coap_lock_callback(session->context,
