@@ -1,0 +1,7 @@
+Q-Block2 requests with M=0 previously sent a window or no response instead of the selected block. Initial nonzero selections also started at NUM=0. Selective exchanges now use the requested range, and non-aligned M=1 requests stop at the current payload-set boundary. Cached recovery preserves the outstanding window; temporary handler snapshots are released after success or failure. The whole-body client builder sets M=1 as required by RFC 9177 section 4.4. Two older window tests were corrected to request a window explicitly.
+
+Evidence: literal option bytes verify exact NUM/M/SZX, body ranges, ETag, Size2, Token and MID; repeated requests exceed pool capacity without retaining snapshots; cached single/tail recovery leaves window state unchanged; changed SZX and out-of-range requests refuse without sending or leaking state. Existing whole-body assembly and continuation identity tests pass.
+
+Validation at 7725a46: all 15 CONTRIBUTING checks plus plaintext and OSCORE dogfood baselines passed locally (575 all-feature library unit tests). The 31 enabled Windows independent process cases passed with 100 benchmark samples per pairing; five native-C DTLS cases are explicitly excluded. These process cases are regression evidence, not Q-Block interoperability qualification.
+
+Remaining under #201: repeated Q-Block2 selection, full timed/paced recovery, Q-Block1 missing-response handling, protected Q lifecycle and retained-body expiry. No full Q-Block conformance claim. Independent Q peers remain #200.

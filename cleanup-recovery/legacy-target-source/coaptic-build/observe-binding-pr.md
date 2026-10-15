@@ -1,0 +1,7 @@
+Block2/Q-Block2 download follow-ups no longer repeat Observe=0. OSCORE retains the original registration reference and notification replay history separately from the latest body-request reference; response authentication attempts at most those two bindings with one fixed scratch buffer. A response authenticated against a non-registration request cannot introduce Inner Observe. Per-request no-PIV Q response admission remains separate from the registration's notification budget.
+
+The regression first failed because a block follow-up re-registered. It now proves exact two-block assembly, a subsequent notification under the original registration, rejection of the older notification and cleanup. Binding tests cover classic/Q follow-ups at all four live slots, corruption, both valid references, refusal of superseded download references, preserved notification freshness, distinct no-PIV budgets, fifth-Token saturation and reuse.
+
+Validation at 873d4d1: all 15 CONTRIBUTING checks plus both two-iteration dogfood baselines pass on Windows MSVC; 637 all-feature library tests and nine footprint tests. SecurityContext is 360 host bytes with four bounded registration/download pairs. Logs D:\coaptic-build\observe-binding-validation-*.log. Hosted checks required before merge. RFC sources: RFC 7959 section 2.6 and RFC 8613 section 4.1.3.5. Older concurrent download requests, complete large server notification lifecycle and independent Observe peers remain open.
+
+Refs #201. Depends on #267.

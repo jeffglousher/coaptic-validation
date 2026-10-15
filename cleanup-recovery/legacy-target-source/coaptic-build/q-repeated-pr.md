@@ -1,0 +1,9 @@
+Repeated Q-Block2 recovery requests previously used only the first option. Retain a borrowed request view, validate all values and ordering before dispatch, preflight every starting range, and emit the requested union once even when M=1 tails overlap later selections. A cached transfer's window is preserved; temporary snapshots are released. Error responses no longer enter cached successful-body continuation.
+
+RFC 9177 sections 4.2/4.4/4.5 drive refusal tests: non-increasing NUMs and inconsistent SZX produce 4.00; malformed/UDP-BERT options, repeated Q-Block1, repeated whole-body/Continue requests, Observe on repeated recovery, and mixed classic/Q options produce 4.02 before handler invocation. Later out-of-range body selections produce the existing typed local refusal before any payload output.
+
+Tests cover fresh and cached disjoint/overlapping/final-tail selections, exact payload ranges/ETag/Size2/unique MIDs, unchanged cached windows, malformed later options and no handler effects. Protected repeated selections verify exact Inner ranges and distinct response PIVs. No option array, heap allocation or retained request copy enters the library: work is bounded by the datagram and body, and the union is scanned in ascending order.
+
+Validation: all 15 CONTRIBUTING checks, both dogfood baselines and source-bound seeded qualification passed locally (583 all-feature library unit tests). The first no-default-features check caught a test-only std dependency; fixtures now use bounded OptionsBuilder storage and the complete matrix passed. Hosted CI provides cross-target and independent-process regression evidence.
+
+Contributes to #201, without full Q conformance claims. Timed/paced recovery, homogeneous message-type batches, Q-Block1 acknowledgment/missing-response handling, retained-body expiry and Q Observe remain open. Independent Q peer evidence remains #200.

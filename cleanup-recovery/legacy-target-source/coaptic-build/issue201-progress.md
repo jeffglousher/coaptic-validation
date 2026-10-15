@@ -1,0 +1,3 @@
+Merged progress: #206 requires and retains explicit Q-Block1 Request-Tags, rejects active same-peer reuse and malformed/missing App tags, and binds received upload bodies to exact bounded operation metadata. It also refuses fragmented requests when assembly is disabled. #207 preserves empty Uri-Query values across upload/download continuations and rejects oversized UDP datagrams while accepting exact-fit packets. Positive/refusal/recovery tests cover these boundaries. Local IPv4/IPv6 loopback socket tests passed; scoped-link qualification remains open.
+
+All required local/CI checks and Linux process checks passed on both PRs. Broader App contracts below remain open; these merges do not establish complete RFC/Q-Block conformance.

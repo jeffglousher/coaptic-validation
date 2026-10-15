@@ -1,0 +1,7 @@
+Late/duplicate Observe notifications could replace newer client state. The client now applies RFC 7641 section 3.4 serial-number ordering, including wraparound and the strict greater-than-128-seconds fallback. Stale CON notifications are still acknowledged, without refreshing Max-Age, replacing queued data, or changing block assembly. The first accepted block establishes ordering before the complete representation arrives.
+
+OSCORE notification ordering remains based on authenticated Partial IVs. Decoding now retains Inner Observe and ignores Outer Observe as required by RFC 8613 section 4.1.3.5.2, including protection of registration/deregistration semantics. Protected notification Inner Observe is empty; it must not be mistaken for a duplicate serial number.
+
+Validation at 3398b71: all eleven CONTRIBUTING.md checks plus both plaintext/OSCORE dogfood baselines passed (521 all-feature library tests). New cases cover CON/NON, read/unread queued replies, duplicate/stale/new values, both half-range ambiguities, wraparound, 128000/128001 ms boundaries, unchanged lifetime on refusal, stale first-block rejection, newer protected notifications and old/duplicate PIV refusal, and altered Outer Observe values on requests/responses.
+
+Sources: RFC 7641 section 3.4, RFC 7959 section 2.6, RFC 8613 section 4.1.3.5.2. Contributes to #201/#202. Independent Observe interoperability, full large-notification lifecycle and expiry/re-registration remain open; these unit/harness proofs are not full conformance. Linux process validation is supplied by CI.

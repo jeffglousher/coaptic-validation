@@ -1,0 +1,9 @@
+The independent process suite previously covered GET, Block2 and counter POST without a complete method workflow. Add five IPv4 UDP pairings (self-pair and both directions with coap-rs/libcoap), each with 29 literal status/body/state checks: PUT creation/replacement, POST append, PATCH changes, repeated iPATCH idempotence, FETCH selection and DELETE. Invalid selections/patches and individual/aggregate 64-byte overflow must leave prior state unchanged.
+
+All three separate executables now accept bounded payload hex and seven method names. Rust peers share only the application fixture logic; their CoAP codecs remain independent. C implements the fixture separately through libcoap APIs. PATCH +suffix, iPATCH =replacement and FETCH value use the documented private octet-stream fixture contract; no JSON Patch or arbitrary-format conformance claim. Manifest inventory is 41 total cases, 36 enabled with five explicit local C-DTLS exclusions. An adversarial runner test rejects Created without successful state readback.
+
+Validation at ecdb1ff: all 15 CONTRIBUTING checks, both two-iteration dogfood baselines, peer clippy, native CMake Release build and 16 Python runner tests passed. Both Rust peers built Release. Full Windows process run passed all 36 enabled scenarios and retained 100 fresh GET timing samples for each of eight pairings, source clean. Report D:\coaptic-build\methods-process.json; logs D:\coaptic-build\methods-validation-*.log. Timings are smoke measurements on a shared validation host, not maximum throughput or controlled performance comparisons. Hosted Linux covers native C DTLS before merge.
+
+Still unqualified: method workflows over DTLS/IPv6, conditions/full option negotiation, standardized patch formats, Observe, OSCORE and full RFC/ETSI coverage. These remain explicit in the manifest.
+
+Refs #200 and #202. Depends on #253.

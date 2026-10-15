@@ -1,0 +1,9 @@
+A valid RFC 9177 4.08 application/missing-blocks+cbor-seq response ended a NON Q-Block1 upload instead of requesting retransmission. App now keeps the upload active and reissues only the named previously sent ranges, preserving method, path, queries, Accept, Content-Format, Echo, Request-Tag, Size1 and NUM/M/SZX.
+
+Preflight the entire report before output. Empty/malformed/non-ascending/duplicate reports, more than MAX_PAYLOADS (10) entries, and unsent or out-of-range NUMs are silently discarded. Ordinary 4.08 without this format remains a final remote error. Partial reissue-send failures return ContinuationFailed and reclaim the call. Protected missing-block reports retain the binding for validation/replay checks and fresh protected retries.
+
+Evidence: exact disjoint ranges and unchanged transfer window; malformed CBOR/order/bounds, invalid later NUM, wrong peer/token and later valid recovery; 12 repeated error/short-send cases at each of two output positions preserving an unrelated call; authenticated/corrupt/replayed reports bound to the latest request, valid protected reissue and final response cleanup. This is scripted same-library crypto evidence, not independent OSCORE interoperability or all request-binding choices.
+
+Validation: all 15 CONTRIBUTING checks and both two-iteration dogfood comparisons passed at 0a43221 before clean rebase to 5af058e4bb0bebe983900992ea070e432cb7a2b6. All-features inventory: 606 passing unit tests. Windows MSVC stable Rust 1.97.1 and Rust 1.85 checks. Hosted CI retains Linux/process/seeded/cross-build evidence.
+
+Related: #201. Reports are bounded to ten NUMs per exchange. Endpoint-wide congestion/NON pacing, replay/duplicate recovery scheduling beyond the tested surface, timed protected server recovery, arbitrary earlier request references and Q Observe remain open. No full Q-Block conformance claim.

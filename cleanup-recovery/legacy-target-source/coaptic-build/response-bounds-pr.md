@@ -1,0 +1,7 @@
+Handler response builders silently truncated ETags and dropped empty/excess Location options, which could change representation identity or the created-resource URI. Preserve valid empty Location values; reject ETags outside 1..8 bytes, Location values over 255 bytes, more than eight values per Location option, and forbidden dot path segments.
+
+Response::validate exposes the first typed ResponseError; invalid intent remains invalid even after subsequent valid setters. App checks before separate ACKs, Observe registration/notification state changes, or wire output. Refusal releases RX and completed upload-body slots. Existing fluent builders remain available; callers construct a fresh response to recover.
+
+Positive/refusal proof: ETag 1/8 vs 0/9 bytes; Location 255 vs 256 bytes and 8 vs 9 values including empties; literal dot-segment rejection; exact wire metadata at both accepted limits; repeated invalid requests beyond pool capacity; no ACK or Observe registration; invalid notification preserves observer state; corrected response/notification works; completed upload body released on handler response error.
+
+All eleven CONTRIBUTING.md checks passed at 84d2db0 (504 all-feature library tests), including DTLS+OSCORE harness, no-default, Clippy, rustdoc, package and both Rust 1.85 builds. Rebased tree is unchanged. Linux CI required before merge. No new dependency or heap allocation; existing footprint bounds pass. Client metadata retention remains separate work under #201.

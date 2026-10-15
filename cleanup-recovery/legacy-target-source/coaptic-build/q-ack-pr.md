@@ -1,0 +1,7 @@
+Incomplete Q-Block1 uploads previously received 2.31 for every payload, including CON traffic. Apply RFC 9177 section 4.3: empty ACK for incomplete CON, silence for partial NON sets, and 2.31 with the acknowledged Q-Block1 NUM after a complete NON payload set. Duplicate payloads preserve assembly instead of producing 4.08. Retain empty ACKs before sending so an admitted protected request can recover from a transport failure.
+
+Evidence: literal NUM9/M1/SZX0 Continue option; all-CON and all-NON eleven-payload uploads; out-of-order holes and duplicate payloads; exact protected retransmissions; injected ACK-send failure; exact assembled bytes, one final handler effect and body-pool cleanup. Updated older tests whose expected per-payload Continue behavior contradicted the RFC.
+
+Validation at 01bfa08b0d9c862b15c1ce1ed84b49b2b14ef841: all 15 CONTRIBUTING checks, including the five feature configurations, DTLS/OSCORE harness, docs, package and Rust 1.85 checks; both two-iteration plaintext/OSCORE dogfood comparisons. Full all-features unit inventory: 588 passing. Local Windows MSVC, stable Rust 1.97.1; Linux/process/cross-target results are retained by CI. Cross builds establish code generation only.
+
+Related: #201. This closes the named inbound acknowledgement behavior, not full Q-Block conformance. Mixed-type outgoing batches, congestion control, client missing-block recovery, timed protected recovery and Q Observe remain open. Independent process cases do not qualify Q-Block.

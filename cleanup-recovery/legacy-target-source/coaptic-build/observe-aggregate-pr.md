@@ -1,0 +1,7 @@
+Observe subscriptions with the same peer/cache-key target now return the existing Call without sending another registration or changing its deadline, queued response or protected replay state. FETCH payloads distinguish selections; ETag, NoCacheKey options and block controls do not create duplicate target subscriptions. The caller shares the single response stream among consumers. Explicit reregister_call remains the way to refresh; cancellation ends that shared Call. Unsupported Observe methods are refused before I/O.
+
+Tests cover repeated GET/FETCH aggregation, query order, distinct query/Accept/format/selection, full four-Call capacity, retained deadlines, exact cancellation, protected queued reply and sequence/replay preservation, terminal relation replacement, and repeated refusal of five non-read methods. The prior test expecting two identical wire subscriptions was corrected to the RFC 7641 section 3.1 requirement. RFC 8132 section 2.3.2 supplies the FETCH cache-key rule.
+
+Validation at 04d1448: all 15 CONTRIBUTING checks and both two-iteration dogfood baselines pass on Windows MSVC; 641 all-feature library tests. Packaging initially hit a transient crates.io DNS failure and passed on retry; source unchanged. Logs D:\coaptic-build\observe-aggregate-validation-*.log. Hosted checks required before merge. No additional retained storage; no claim of independent-peer Observe or full proxy caching qualification.
+
+Refs #201. Depends on #269.

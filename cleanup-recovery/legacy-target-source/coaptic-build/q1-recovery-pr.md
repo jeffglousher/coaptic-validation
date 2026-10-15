@@ -1,0 +1,7 @@
+Timed server Q-Block1 recovery now retains the highest authenticated request Partial IV and its Token in the body sidecar. Missing-block reports use that request reference and a fresh response Partial IV. Reordered older requests cannot replace it; newly protected valid duplicate payloads can update it. Completion/expiry releases the reference. Advanced manually seeded bodies without authentication context still refuse recovery instead of emitting plaintext.
+
+Eight explicit scenarios cover reordered payloads, same/changing Tokens, authenticated duplicates, corrupted payload rejection, failed report sends, bounded retry expiry/reuse and exact body completion with one handler effect. A separate exhaustion test consumes the last response sequence, then verifies refusal without plaintext/TX leaks until body expiry. Fixed sidecar cost: 24 bytes with OSCORE (96 across Default body slots), no added field without OSCORE, no heap allocation. Existing footprint limits pass.
+
+Validation at a27d301: all 15 CONTRIBUTING checks and both two-iteration dogfood baselines pass on Windows MSVC; 627 all-feature library tests and seven footprint checks. Logs D:\coaptic-build\q1-recovery-validation-*.log. Hosted checks required before merge. Independent protected Q interoperability, retention of all outstanding client request references and endpoint-wide congestion control remain unqualified.
+
+Refs #201. Depends on #261.

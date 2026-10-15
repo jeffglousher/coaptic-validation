@@ -1,0 +1,7 @@
+The std UDP adapter now receives with one extra byte before copying into an Engine slot. Exact-capacity packets succeed; larger packets fail rather than exposing a valid-looking truncated prefix. Oversize refusal releases the RX slot and preserves service for the next datagram. Built-in profile buffers use 1,473 bytes of stack scratch; larger buffers use a fallible temporary allocation of buffer length plus one. Native socket errors remain intact.
+
+Empty Uri-Query options now retain their meaning and position on original requests and Block1/Q-Block1/Block2 continuations. They count toward the existing eight-option bound.
+
+Validation: 484 all-feature library tests; no-default/all-feature required matrix, both Clippy configurations, harness dtls+oscore Clippy/tests, rustdoc, clean committed-source packaging, Rust 1.85 checks, plain and OSCORE dogfood baseline checks, rebuilt release peers. Socket tests run actual IPv4 and IPv6 loopback, zero/exact/oversized capacities, heap fallback, refusal/no exposed prefix, idle receive and recovery. Query tests inspect actual continuation packets and empty-value overflow refusal. Logs: D:\coaptic-build\udp-query-validation-*.log and udp-query-tests.log. Native independent process suite is running; Linux CI is required before merge. No scoped-link IPv6 or embedded runtime claim.
+
+Partial closure of #201/#202; the broader protocol and qualification audit remains open.

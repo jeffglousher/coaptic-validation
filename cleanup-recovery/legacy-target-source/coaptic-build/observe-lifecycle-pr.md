@@ -1,0 +1,7 @@
+Max-Age previously removed Observe relations and could end CON delivery before retransmission completed. It now expires only representation freshness. Client and server relations remain active, pending notifications and congestion holds survive freshness expiry, and CON notification acknowledgment or actual retransmission exhaustion controls delivery lifetime.
+
+A final response without Observe now ends the client subscription even after its registration exchange has gone. An unsolicited Observe option on an ordinary request does not create a subscription. Unrecognized plaintext CON responses receive Reset. Received timestamps and Max-Age remain available for caller freshness decisions; expiry is not reported as a fabricated remote error.
+
+Validation at d643ffa57283b20d8319844311a7b9874494b45d: all eleven required local checks plus both dogfood baselines passed (525 all-feature library tests). Tests cover Max-Age zero, later plain/protected notifications, twelve repeated subscription/final-response cycles, late CON Reset, unsolicited subscriptions, retained NON pacing, CON ACK versus all four retries and give-up, and a signaled notification exactly at freshness expiry. Linux process checks remain CI evidence, not independent Observe qualification.
+
+Source: RFC 7641 sections 3.3.1, 3.5, 3.6 and 4.5; RFC 7252 retransmission state. Contributes to #201/#202. Content-Format continuity, terminal server notifications, full large-notification/re-registration and independent peer cases remain open.

@@ -1,0 +1,7 @@
+Qualify ordinary protected Q-Block2 response batches with fresh response Partial IVs and request bindings retained through assembly. Authenticated Q payloads use the bounded recipient replay window; duplicates and corrupted ciphertext do not terminate the Call. Collection/cancellation releases the binding. The advanced no-new-PIV response API now states its single-distinct-response responsibility explicitly.
+
+Tests cover two-block App-to-App protected responses in both delivery orders, final-block-first assembly, corruption before acceptance, replay before and after completion, six transfers per ordering (beyond binding capacity), exact body recovery and slot/binding cleanup. A lower-level peer proves compatibility with one no-PIV response followed by a fresh-PIV response. Sequence exhaustion after one protected payload fails closed and releases the temporary server body.
+
+Validation at dc22add: all 15 CONTRIBUTING commands, both dogfood baselines and the source-bound seeded runner passed locally (578 all-feature library unit tests). Rebase onto merged #239 preserves the same tree. Hosted checks provide separate cross-target code-generation and independent-process regression evidence.
+
+Scope remains precise: ordinary Q response batches, a 32-sequence recipient replay window, and the named tests. Timed protected recovery still refuses explicitly; Q Observe, broader window/loss/congestion behavior and independent OSCORE interoperability remain #201/#200. No full Q/OSCORE conformance claim.

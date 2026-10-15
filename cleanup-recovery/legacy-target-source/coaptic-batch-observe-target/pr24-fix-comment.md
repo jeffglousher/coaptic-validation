@@ -1,0 +1,3 @@
+﻿CI at ad19256 exposed a stale assertion in the previous NON reset qualification: it required OBS_06 to remain globally skipped even after this PR enables the separate complete CON/restart fixture. All 44 library tests and 15 interop tests passed before that assertion failed.
+
+Replaced it with a stronger direct refusal: the retained NON capture must fail the literal OBS_06 grader. The original NON success/refusal coverage remains intact. Focused observe_reset passed (18.66s), scoped Clippy and formatting/diff checks passed. The failed job log is retained locally as pr24-failed-app-job.log; no check was disabled.

@@ -1,0 +1,5 @@
+Extends all seven method workflows to IPv6 PSK DTLS in five peer pairings. Every exchange traverses AF_INET6/IPV6_V6ONLY relay sockets and retains datagrams. The 29 ordered method/state steps preserve exact readback after wrong-key PUT, invalid selection/patch and state-overflow refusals. The raw IPv6 UDP probe is never sent to a DTLS listener.
+
+Validation at 505aafd: all 17 local checks, 23 supervisor/accounting tests and 58/58 enabled Windows process cases passed. Rust peers were rebuilt in Release at this source; 11 native C-DTLS cases are explicitly excluded locally. Evidence: ipv6-dtls-methods-windows.json and ipv6-dtls-methods-validation-1 through -17. Hosted Linux must pass all 69 cases before merge, including both C-DTLS method directions.
+
+The suite now has twenty method workflows across IPv4/IPv6 UDP and PSK DTLS. Fixture PATCH/iPATCH use private octet-stream syntax; this does not qualify standard patch formats, arbitrary options/conditions, scoped addresses, DTLS loss or full RFC 8132. Advances #200. Reviewed no-fallback wire proof, wrong-key result classification, exact state effects, fixture limits and transport exclusions.

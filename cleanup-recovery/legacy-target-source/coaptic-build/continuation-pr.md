@@ -1,0 +1,7 @@
+When a Block1, Block2 or Q-Block continuation cannot be sent, App now retires the local call immediately with CallFailure::ContinuationFailed. Poll retains the detailed transport/encoding/capacity error. Cleanup reclaims partial receive/upload bodies, client bindings and outstanding request datagrams; remote application effects remain uncertain. Request cleanup filters out server response datagrams and upload cleanup checks its transfer role.
+
+Proofs: classic upload/download, CON/NON, transport errors and short sends, twelve repeated cycles, immediate typed completion, zero retained transfer buffers and an unrelated live call. Equivalent protected classic cases verify binding cleanup and monotonic sender sequence progression. Q-Block2 tests receive an entire ten-block window and fail the next window request. These do not claim full Q recovery or independent protected block interoperability.
+
+Validation at de1205e1ae6a2ca8862253337e86527af6dfb762: all 11 CONTRIBUTING checks, both dogfood baselines, 557 library unit tests and all 26 enabled Windows process cases passed. Five C-peer DTLS cases explicitly excluded by the local build. Logs D:\coaptic-build\continuation-validation-*.log and clean-source continuation-process.json retained. Linux CI required. Reviewed lifecycle, transport failures, bounds, security-state ownership, API documentation and evidence limits.
+
+Advances #201 and #202. Publication remains parked.

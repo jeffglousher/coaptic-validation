@@ -1,0 +1,5 @@
+Adds continuous library execution on Windows and macOS in six feature configurations, using pinned Rust 1.97.1 and source-bound JSON artifacts. Empty runs, failed commands and timeouts cannot pass; later configurations still run after a failure.
+
+Validation: all 17 required local checks passed at 67c3755 (before the parent-only squash rebase); the six-mode Windows qualification and five supervisor refusal/accounting tests passed. Logs: host-platform-validation-1 through -17 and host-platform-windows.json. CI must establish the new hosted Windows/macOS results before merge.
+
+Scope: library unit, integration and rustdoc tests only. This does not qualify independent process/DTLS adapters on macOS/Windows, host MSRV, device execution, target stack or full RFC/branch coverage. Advances #202 without closing its remaining acceptance criteria. Reviewed failure accounting, reproducibility, dependency pins, retained evidence and claim boundaries.

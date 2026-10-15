@@ -1,0 +1,9 @@
+Q-Block1 uploads started with a CON payload and then sent subsequent payloads as NON, contrary to RFC 9177 section 7. Confirmable uploads now send one CON payload at a time and advance only after taking its matching pending ACK. A completely acknowledged payload set opens the next window. NON uploads retain bounded all-NON sets.
+
+ACK continuation failures produce CallFailure::ContinuationFailed and reclaim upload/request state. Wrong-peer, wrong-MID and duplicate ACKs cannot advance the upload. Final empty ACKs preserve the wait for the final application response. Public rustdoc describes the per-upload policy without claiming endpoint-wide NSTART qualification.
+
+Tests: literal payload bytes and same CON type, matching/refused ACKs, final completion and cleanup; 11,000-byte/11-payload custom-profile upload crossing a full set; 12 repeated error/short-send continuations preserving an unrelated call; six protected end-to-end uploads with deliberately lost ACKs and byte-identical retransmission, exact body and one handler effect; 12 protected continuation failures with binding cleanup and increasing sender sequence. Earlier initial-burst failure tests now explicitly use NON for multi-payload initial sends.
+
+Validation: all 15 CONTRIBUTING commands and both two-iteration dogfood comparisons passed at 4a48954 before clean rebase to 87f42581a74e85ae1705d07f0962143b400d60ba. All-features inventory: 600 passing unit tests. Windows MSVC stable Rust 1.97.1 plus Rust 1.85 core/all-feature checks. CI retains Linux/process/seeded/cross-build evidence. Independent process cases still do not qualify Q-Block.
+
+Related: #201. Server Q-Block2 message-type policy, endpoint-wide congestion control, NON pacing, client missing-block reissue, timed protected recovery and Q Observe remain open.

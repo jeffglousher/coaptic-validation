@@ -1,0 +1,18 @@
+App plugtest scenarios could report PASS without exercising required steps, and the grader accepted absent DTLS evidence. This change reports incomplete scenarios explicitly and rejects missing, injected, truncated or contradictory grading evidence. It also fixes PCAP byte order and IPv4 framing and refuses short or oversized datagram-send reports while retaining the packet for retry.
+
+Exact discovery assertions exposed a library defect: Block2 continuations lost Uri-Query and Accept. The client now retains those values in order, with explicit bounds (eight query values, 255 bytes each, 256 bytes total) and refusal before sending. This adds approximately 1.1 KiB per App on this 64-bit host; the footprint contract accounts for the bounded state. Seven LINK TDs check complete assembled results, required Content-Format, and exclusion of nonmatching resources across three peer pairs. LINK_04/09 remain incomplete. The App inventory with DTLS enabled is 27 runnable TDs and 61 skips, including 29 future 6LoWPAN cases. Integration entry-point counts do not count skipped scenarios as conformance passes.
+
+IPv6 endpoint identity now retains scope identifiers; Endpoint::V6 has a third field, with v6_scoped and scope_id helpers. Flow information remains excluded. PCAP output explicitly refuses unsupported IPv6 and oversized datagrams instead of fabricating IPv4 records. This is conversion/identity proof, not IPv6 network interoperability qualification.
+
+OSCORE contexts are no longer Clone; set_sender_seq now returns Result and refuses rollback or values beyond the exhausted sentinel. Debug output is redacted. Echo timestamp checks refuse future timestamps and clock rollback. These changes do not establish authenticated Echo validation, crash-safe OSCORE persistence or replay-state recovery.
+
+Validation:
+- At 401f69b: full all-feature and no-default-feature library suites, doctests, 33 harness unit tests and 12 integration entry points (explicit scenario skips), all three Clippy configurations, rustdoc, package and both Rust 1.85 checks pass. All-feature library unit tests: 471. Compile-fail tests include context non-clonability.
+- At 2e39ebe: both MSRV configurations, both dogfood baseline checks, Python runner tests and Windows Release process suite pass (20 cases, 100 samples per timed pairing; local libcoap UDP only). Report: D:/coaptic-build/discovery-process-windows-final.json.
+- Linux CI at 2e39ebe passed all jobs, including all 22 process cases: https://github.com/jeffglousher/coaptic/actions/runs/35467448935 . Report retained locally under D:/coaptic-build/hardening-linux-2e39ebe/.
+- Linux CI at 25c1d1d failed 2 of 22 process cases: dtls:coaptic->coap-rs failed at zero-based sample 99; dtls:coap-rs->coaptic failed at sample 34. Successful samples were retained, with no throughput reported for failed pairs. All other jobs passed. Run: https://github.com/jeffglousher/coaptic/actions/runs/35467686667 . Report retained under D:/coaptic-build/hardening-linux-25c1d1d/.
+- Linux CI must be dispatched manually for this stacked PR because the PR trigger targets main only.
+
+New refusal tests cover malformed capture evidence, contradictory payload constraints, discovery omissions/extras/duplicates/truncation, wrong Content-Format, incomplete sends, query bounds without I/O, sender-counter rollback, and future timestamps. Positive tests include exact reconstructed Block2 body and query/Accept checks on every request.
+
+This PR is stacked on #198. A passing process run does not resolve the independently reproduced endpoint-reuse failure (#203). The wider audit remains open in #199, #200, #201 and #202. No full RFC-conformance claim, publication or release tags.

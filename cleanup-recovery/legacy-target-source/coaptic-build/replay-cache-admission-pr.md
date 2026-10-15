@@ -1,0 +1,5 @@
+Replay-cache admission previously attempted allocation before evicting a cached reply. A full cache therefore incremented saturation even when eviction immediately made the request succeed, producing a real dogfood baseline failure. Reclaim an eligible cached pin before allocation; a pool occupied by non-evictable work still makes one failed allocation and records saturation.
+
+Validation at 931d098: the new regression failed on the old implementation and passes with the fix. It distinguishes both ownership cases, verifies the evicted request retains an empty ACK, and checks occupancy/accounting. All 17 local checks passed, including 651 all-feature unit tests and unchanged plain/OSCORE dogfood baselines. Logs: replay-cache-admission-validation-1 through -17; original hosted failure retained in big-endian-host-test-failure.log. Hosted checks must pass before merge.
+
+Reviewed single-owner pool admission, eviction eligibility, actual failure accounting, replay preservation, cleanup and baseline integrity. No metric threshold, baseline, dependency or pool size is changed. Advances #201 and unblocks #284 qualification.

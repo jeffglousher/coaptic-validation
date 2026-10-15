@@ -1,0 +1,7 @@
+Adds eight IPv4 UDP fault/restart scenarios with Coaptic as client against the independent Rust and C servers. Lost replies must cause byte-identical retransmission; duplicated requests and loss must preserve the exact final idempotent PUT state. Blackholes require protocol refusal and restart checks explicitly expect fresh in-memory state. Existing non-idempotent POST duplicate-suppression tests against Coaptic remain strict.
+
+Exploratory POST tests produced two effects in both alternative fixtures under loss/duplication. These failures remain recorded in alternative-faults-windows.json and an explicit capability gap; passing PUT cases do not claim server duplicate suppression. No response cache was added to the alternatives to mask the finding.
+
+Validation at 97fef24 before parent-only squash rebase: all 17 local checks, 21 supervisor/accounting tests and 55/55 Windows enabled process cases passed. Nine C-DTLS cases are explicitly excluded locally. Release Rust peers were built at 53ee9ec; subsequent changes are Python/docs only. Evidence: alternative-client-faults-windows.json and alternative-client-faults-validation-1 through -17. Hosted Linux must pass all 64 cases before merge.
+
+Advances #200; full DTLS/IPv6 faults, compound schedules and alternative non-idempotent suppression remain unqualified. Reviewed both roles, exact effects, refusal classification, evidence boundaries and unchanged native dependencies.
