@@ -2,6 +2,8 @@
 mod conn_test;
 mod final_flight;
 #[cfg(test)]
+mod gcm_record_policy_test;
+#[cfg(test)]
 mod record_policy_test;
 
 use final_flight::FinalFlightHandle;
@@ -77,7 +79,7 @@ struct ConnReaderContext {
 }
 
 // Authentication failure is distinct from identity lookup. RFC6347 permits
-// discard or fatal bad_record_mac. Only CCM/CCM8 error typing is qualified here;
+// discard or fatal bad_record_mac. Only CCM/CCM8/GCM error typing is qualified here;
 // other PSK suites retain their preexisting alert classification.
 fn record_decrypt_alert(
     id: crate::cipher_suite::CipherSuiteId,
@@ -88,16 +90,18 @@ fn record_decrypt_alert(
     if !psk {
         return None;
     }
-    let ccm = matches!(
+    let typed_aead = matches!(
         id,
-        CipherSuiteId::Tls_Psk_With_Aes_128_Ccm | CipherSuiteId::Tls_Psk_With_Aes_128_Ccm_8
+        CipherSuiteId::Tls_Psk_With_Aes_128_Ccm
+            | CipherSuiteId::Tls_Psk_With_Aes_128_Ccm_8
+            | CipherSuiteId::Tls_Psk_With_Aes_128_Gcm_Sha256
     );
-    if ccm && !matches!(error, Error::ErrInvalidMac) {
+    if typed_aead && !matches!(error, Error::ErrInvalidMac) {
         return None;
     }
     Some(Alert {
         alert_level: AlertLevel::Fatal,
-        alert_description: if ccm {
+        alert_description: if typed_aead {
             AlertDescription::BadRecordMac
         } else {
             AlertDescription::UnknownPskIdentity

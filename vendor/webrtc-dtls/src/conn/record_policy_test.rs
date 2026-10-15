@@ -135,13 +135,6 @@ async fn record_policy_non_psk_authentication_retains_silent_discard() {
 #[test]
 fn record_policy_other_psk_and_non_psk_classification_is_preserved() {
     let error = Error::Other("test-only cipher failure".into());
-    let alert =
-        record_decrypt_alert(CipherSuiteId::Tls_Psk_With_Aes_128_Gcm_Sha256, true, &error).unwrap();
-    assert_eq!(alert.alert_level, AlertLevel::Fatal);
-    assert_eq!(
-        alert.alert_description,
-        AlertDescription::UnknownPskIdentity
-    );
     assert!(record_decrypt_alert(
         CipherSuiteId::Tls_Ecdhe_Ecdsa_With_Aes_256_Cbc_Sha,
         false,
@@ -149,6 +142,7 @@ fn record_policy_other_psk_and_non_psk_classification_is_preserved() {
     )
     .is_none());
     for id in [
+        CipherSuiteId::Tls_Psk_With_Aes_128_Gcm_Sha256,
         CipherSuiteId::Tls_Psk_With_Aes_128_Ccm,
         CipherSuiteId::Tls_Psk_With_Aes_128_Ccm_8,
     ] {

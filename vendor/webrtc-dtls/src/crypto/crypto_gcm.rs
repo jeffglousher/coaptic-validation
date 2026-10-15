@@ -101,6 +101,9 @@ impl CryptoGcm {
 
         let out = &r[RECORD_LAYER_HEADER_SIZE + 8..];
 
+        if out.len() < CRYPTO_GCM_TAG_LENGTH {
+            return Err(Error::ErrInvalidPacketLength);
+        }
         let additional_data = generate_aead_additional_data(&h, out.len() - CRYPTO_GCM_TAG_LENGTH);
 
         let mut buffer: Vec<u8> = Vec::new();
@@ -108,12 +111,56 @@ impl CryptoGcm {
 
         self.remote_gcm
             .decrypt_in_place(nonce, &additional_data, &mut buffer)
-            .map_err(|e| Error::Other(e.to_string()))?;
+            .map_err(|_| Error::ErrInvalidMac)?;
 
         let mut d = Vec::with_capacity(RECORD_LAYER_HEADER_SIZE + buffer.len());
         d.extend_from_slice(&r[..RECORD_LAYER_HEADER_SIZE]);
         d.extend_from_slice(&buffer);
 
         Ok(d)
+    }
+}
+
+#[cfg(test)]
+mod record_policy_tests {
+    use super::*;
+
+    #[test]
+    fn gcm_authentication_is_typed_and_valid_record_recovers() {
+        let sender = CryptoGcm::new(&[0x11; 16], &[0x22; 4], &[0x11; 16], &[0x22; 4]);
+        let wrong = CryptoGcm::new(&[0x33; 16], &[0x22; 4], &[0x33; 16], &[0x22; 4]);
+        let header = RecordLayerHeader {
+            content_type: ContentType::ApplicationData,
+            protocol_version: PROTOCOL_VERSION1_2,
+            epoch: 1,
+            sequence_number: 7,
+            content_len: 4,
+        };
+        let mut plain = Vec::new();
+        header.marshal(&mut plain).unwrap();
+        plain.extend_from_slice(b"test");
+        let wire = sender.encrypt(&header, &plain).unwrap();
+        assert_eq!(wrong.decrypt(&wire).unwrap_err(), Error::ErrInvalidMac);
+        assert_eq!(
+            &sender.decrypt(&wire).unwrap()[RECORD_LAYER_HEADER_SIZE..],
+            b"test"
+        );
+    }
+    #[test]
+    fn gcm_short_record_refuses_without_tag_length_underflow() {
+        let gcm = CryptoGcm::new(&[0x11; 16], &[0x22; 4], &[0x11; 16], &[0x22; 4]);
+        for length in 0..8 + CRYPTO_GCM_TAG_LENGTH {
+            let header = RecordLayerHeader {
+                content_type: ContentType::ApplicationData,
+                protocol_version: PROTOCOL_VERSION1_2,
+                epoch: 1,
+                sequence_number: 7,
+                content_len: length as u16,
+            };
+            let mut wire = Vec::new();
+            header.marshal(&mut wire).unwrap();
+            wire.resize(RECORD_LAYER_HEADER_SIZE + length, 0);
+            assert!(gcm.decrypt(&wire).is_err(), "short record must refuse");
+        }
     }
 }
