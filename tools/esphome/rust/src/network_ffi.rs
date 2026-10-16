@@ -196,9 +196,24 @@ pub unsafe extern "C" fn coaptic_network_run(context: *mut c_void, id: *const u8
     if context.is_null() || id.is_null() {
         return -1;
     }
+    let mode = unsafe { coaptic_security_mode(context) };
+    #[cfg(feature = "pairing")]
+    if mode == 5 {
+        return if pairing_ffi::run(context).is_ok() {
+            0
+        } else {
+            -11
+        };
+    }
+    unsafe { run_legacy(context, id, mode) }
+}
+
+// Keep the legacy App's large construction frame off the paired worker's stack.
+// Both profiles fit individually; reserving both frames on a dispatch path does not.
+#[inline(never)]
+unsafe fn run_legacy(context: *mut c_void, id: *const u8, mode: u32) -> i32 {
     let mut run_id = [0; 32];
     run_id.copy_from_slice(unsafe { core::slice::from_raw_parts(id, 32) });
-    let mode = unsafe { coaptic_security_mode(context) };
     let random =
         |bytes: &mut [u8]| unsafe { coaptic_socket_random(bytes.as_mut_ptr(), bytes.len() as u32) };
     let clock = || {
@@ -206,8 +221,6 @@ pub unsafe extern "C" fn coaptic_network_run(context: *mut c_void, id: *const u8
         (now != u64::MAX).then_some(now)
     };
     let result = match mode {
-        #[cfg(feature = "pairing")]
-        5 => pairing_ffi::run(context, random, clock),
         0 => super::network::run(Socket(context), random, clock, &run_id),
         #[cfg(feature = "oscore")]
         1..=4 => {
@@ -341,15 +354,15 @@ mod pairing_ffi {
         }
     }
 
-    pub(super) fn run(
-        context: *mut c_void,
-        random: fn(&mut [u8]) -> bool,
-        clock: impl FnMut() -> Option<u64>,
-    ) -> Result<(), &'static str> {
+    #[inline(never)]
+    pub(super) fn run(context: *mut c_void) -> Result<(), &'static str> {
         crate::pairing::run(
             || Socket(context),
-            random,
-            clock,
+            |bytes| unsafe { coaptic_socket_random(bytes.as_mut_ptr(), bytes.len() as u32) },
+            || {
+                let now = unsafe { coaptic_socket_clock(context) };
+                (now != u64::MAX).then_some(now)
+            },
             Nvs(context),
             Usb(context),
         )
