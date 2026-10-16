@@ -20,6 +20,9 @@ class CoapticNetwork : public Component {
     sender_ = sender; recipient_ = recipient; security_mode_ = provision ? 2 : 1;
   }
   uint32_t security_mode() const { return security_mode_; }
+  void set_pairing() { security_mode_ = 5; }
+  int32_t read_pairing(uint8_t *bytes, uint32_t capacity);
+  bool commit_pairing(const uint8_t *bytes, uint32_t length);
   bool security_config(uint8_t *bytes, uint32_t length);
   int32_t read_security(uint8_t *bytes, uint32_t length);
   bool commit_security(const uint8_t *bytes, uint32_t length);
@@ -60,6 +63,7 @@ class CoapticNetwork : public Component {
   uint8_t sender_{1}, recipient_{2};
   uint32_t security_mode_{0};
   nvs_handle_t security_handle_{0};
+  nvs_handle_t pairing_handle_{0};
   std::string principal_, resource_, operation_, payload_;
   uint8_t principal_kid_{0};
   uint32_t peer_address_{0}, telemetry_timeout_{0};

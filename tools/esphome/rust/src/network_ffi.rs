@@ -206,6 +206,8 @@ pub unsafe extern "C" fn coaptic_network_run(context: *mut c_void, id: *const u8
         (now != u64::MAX).then_some(now)
     };
     let result = match mode {
+        #[cfg(feature = "pairing")]
+        5 => pairing_ffi::run(context, random, clock),
         0 => super::network::run(Socket(context), random, clock, &run_id),
         #[cfg(feature = "oscore")]
         1..=4 => {
@@ -260,5 +262,97 @@ pub unsafe extern "C" fn coaptic_network_run(context: *mut c_void, id: *const u8
         Err("pending provisioning") => -9,
         Err("telemetry stopped") => -10,
         Err(_) => -1,
+    }
+}
+
+#[cfg(feature = "pairing")]
+mod pairing_ffi {
+    use super::*;
+    use crate::pairing::{Console, Error, Store};
+
+    unsafe extern "C" {
+        fn coaptic_pairing_read(context: *mut c_void, bytes: *mut u8, capacity: u32) -> i32;
+        fn coaptic_pairing_commit(context: *mut c_void, bytes: *const u8, length: u32) -> bool;
+        fn coaptic_pairing_console_read(context: *mut c_void, bytes: *mut u8, capacity: u32)
+        -> i32;
+        fn coaptic_pairing_console_write(
+            context: *mut c_void,
+            bytes: *const u8,
+            length: u32,
+        ) -> bool;
+        fn coaptic_pairing_restart(context: *mut c_void);
+        fn coaptic_pairing_event(context: *mut c_void, event: u32);
+    }
+
+    struct Nvs(*mut c_void);
+    impl Store for Nvs {
+        fn read(&mut self, output: &mut [u8; crate::pairing::STORE_BYTES]) -> Result<usize, Error> {
+            let length =
+                unsafe { coaptic_pairing_read(self.0, output.as_mut_ptr(), output.len() as u32) };
+            if length < 0 || length as usize > output.len() {
+                return Err(Error::Storage);
+            }
+            Ok(length as usize)
+        }
+        fn commit(&mut self, expected: &[u8], next: &[u8]) -> Result<(), Error> {
+            use zeroize::Zeroizing;
+            let mut current = Zeroizing::new([0; crate::pairing::STORE_BYTES]);
+            let len = self.read(&mut current)?;
+            if &current[..len] != expected {
+                return Err(Error::Storage);
+            }
+            if !unsafe { coaptic_pairing_commit(self.0, next.as_ptr(), next.len() as u32) } {
+                return Err(Error::Storage);
+            }
+            current.fill(0);
+            let len = self.read(&mut current)?;
+            if &current[..len] != next {
+                return Err(Error::Storage);
+            }
+            Ok(())
+        }
+    }
+
+    struct Usb(*mut c_void);
+    impl Console for Usb {
+        fn read(&mut self, bytes: &mut [u8]) -> Result<usize, Error> {
+            let len = unsafe {
+                coaptic_pairing_console_read(self.0, bytes.as_mut_ptr(), bytes.len() as u32)
+            };
+            if len < 0 || len as usize > bytes.len() {
+                return Err(Error::Console);
+            }
+            Ok(len as usize)
+        }
+        fn write(&mut self, bytes: &[u8]) -> Result<(), Error> {
+            if unsafe { coaptic_pairing_console_write(self.0, bytes.as_ptr(), bytes.len() as u32) }
+            {
+                Ok(())
+            } else {
+                Err(Error::Console)
+            }
+        }
+        fn restart(&mut self) -> Result<(), Error> {
+            unsafe { coaptic_pairing_restart(self.0) };
+            Ok(())
+        }
+        fn event(&mut self, event: u32) {
+            unsafe { coaptic_pairing_event(self.0, event) };
+        }
+    }
+
+    pub(super) fn run(
+        context: *mut c_void,
+        random: fn(&mut [u8]) -> bool,
+        clock: impl FnMut() -> Option<u64>,
+    ) -> Result<(), &'static str> {
+        crate::pairing::run(
+            || Socket(context),
+            random,
+            clock,
+            Nvs(context),
+            Usb(context),
+        )
+        .map_err(|_| "pairing stopped")
     }
 }

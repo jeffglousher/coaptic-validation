@@ -130,12 +130,14 @@ dependencies = [
 name = "coaptic-esphome-probe"
 version = "0.0.0"
 dependencies = [
+ "blake3",
  "coaptic",
  "critical-section",
  "getrandom",
  "hmac 0.13.0",
  "qualification-no-std",
  "sha2",
+ "zeroize",
 ]
 
 [[package]]

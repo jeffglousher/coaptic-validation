@@ -64,6 +64,32 @@ def telemetry_config(config, provision=False):
 
 
 class ConfigurationRefusalTests(unittest.TestCase):
+    def test_pairing_has_exclusive_usb_and_exact_archive_features(self):
+        for change in ["source", "bundled", "logger", "mixed", "privilege", "archive"]:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                config = network_configuration(root, "bundled" if change in {"bundled", "archive"} else "source")
+                network = config["coaptic_network"]
+                del network["allow_plaintext"]
+                network["pairing"] = {"privileged_usb": change != "privilege"}
+                config["logger"] = {"hardware_uart": "USB_SERIAL_JTAG", "baud_rate": 115200 if change == "logger" else 0}
+                if change == "mixed":
+                    network["allow_plaintext"] = True
+                if change in {"bundled", "archive"}:
+                    _, marker, report = archive_fixture(root, config)
+                    if change == "bundled":
+                        report["features"] += ["oscore", "pairing"]
+                    marker.write_text(json.dumps(report), encoding="utf-8")
+                path = root / "network.yaml"
+                path.write_text(json.dumps(config), encoding="utf-8")
+                result = subprocess.run([sys.executable, "-m", "esphome", "compile", str(path), "--only-generate"],
+                                        capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode == 0, change in {"source", "bundled"}, result.stdout + result.stderr)
+                if result.returncode == 0:
+                    generated = (root / "build/src/main.cpp").read_text()
+                    self.assertIn("set_pairing()", generated)
+                    self.assertNotIn("set_oscore(", generated)
+
     def test_telemetry_source_bundled_and_external_modes_generate(self):
         for runtime, provision in [("source", False), ("source", True), ("bundled", False),
                                    ("bundled", True), ("external", False)]:
