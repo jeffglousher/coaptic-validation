@@ -21,10 +21,13 @@ def main():
     parser.add_argument("--expected-library-revision", required=True)
     parser.add_argument("--oscore", action="store_true")
     parser.add_argument("--telemetry", action="store_true")
+    parser.add_argument("--pairing", action="store_true")
     args = parser.parse_args()
     if args.telemetry and not args.oscore:
         parser.error("--telemetry requires --oscore")
-    features = FEATURES + (["oscore"] if args.oscore else []) + (["telemetry"] if args.telemetry else [])
+    if args.pairing and args.telemetry:
+        parser.error("--pairing and --telemetry select separate runtime modes")
+    features = FEATURES + (["oscore"] if args.oscore or args.pairing else []) + (["telemetry"] if args.telemetry else []) + (["pairing"] if args.pairing else [])
     try:
         source = build_source(args.expected_library_revision)
     except ValueError as error:

@@ -1,0 +1,14 @@
+; Private NVS custody record. Never transmit this blob to the host or logs.
+; The final digest detects accidental corruption; it does not resist physical rollback.
+device-pairing-custody = [
+  version: 1, kid: 0..255, private_scalar: bstr .size 32,
+  public_pairing: bstr, endpoint: (bstr .size 6 / null), integrity: bstr .size 32
+]
+; public_pairing is the library pairing-record CBOR.
+; endpoint is IPv4(4) || port-big-endian(2), or null before first pairing.
+; integrity=BLAKE3 derive-key("coaptic device custody integrity v1", preceding bytes).
+; The endpoint with the lexicographically greater pinned principal initiates EDHOC.
+
+; Development protected sample and exact echo receipt. Sent only after EDHOC.
+paired-sample = [version: 1, device: bstr .size 32, at-ms: uint]
+paired-sample-receipt = paired-sample

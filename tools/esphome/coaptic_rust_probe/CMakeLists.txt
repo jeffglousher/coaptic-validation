@@ -31,6 +31,9 @@ endif()
 if(COAPTIC_TELEMETRY)
   list(APPEND COAPTIC_FEATURE_ARGS --features telemetry)
 endif()
+if(COAPTIC_PAIRING)
+  list(APPEND COAPTIC_FEATURE_ARGS --features pairing)
+endif()
 
 add_custom_target(coaptic_rust_build
   COMMAND "${CMAKE_COMMAND}" -E env "CARGO_TARGET_DIR=${COAPTIC_RUST_DIR}" CARGO_INCREMENTAL=0

@@ -5,6 +5,10 @@
 #include "esphome/core/log.h"
 #include "esp_random.h"
 #include "esp_timer.h"
+#ifdef COAPTIC_PAIRING
+#include "driver/usb_serial_jtag.h"
+#include "esp_system.h"
+#endif
 #include "lwip/sockets.h"
 #include <cerrno>
 #include <cstring>
@@ -55,9 +59,21 @@ void CoapticNetwork::trace_dump_() {
 
 void CoapticNetwork::loop() {
   if (!started_) {
-    if (!network::is_connected() && !wifi::global_wifi_component->is_ap_active())
+    if (security_mode_ != 5 && !network::is_connected() && !wifi::global_wifi_component->is_ap_active())
       return;
     started_ = true;
+#ifdef COAPTIC_PAIRING
+    if (security_mode_ == 5 && !usb_serial_jtag_is_driver_installed()) {
+      usb_serial_jtag_driver_config_t usb_config{};
+      usb_config.rx_buffer_size = 1024;
+      usb_config.tx_buffer_size = 1024;
+      if (usb_serial_jtag_driver_install(&usb_config) != ESP_OK) {
+        ESP_LOGE(TAG, "COAPTIC_PAIRING_FAIL USB setup");
+        mark_failed();
+        return;
+      }
+    }
+#endif
     if (security_mode_ != 2 && security_mode_ != 4) {
     socket_ = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     sockaddr_in address{};
@@ -131,6 +147,10 @@ void CoapticNetwork::run_(void *argument) {
   if (self->security_handle_ != 0) {
     nvs_close(self->security_handle_);
     self->security_handle_ = 0;
+  }
+  if (self->pairing_handle_ != 0) {
+    nvs_close(self->pairing_handle_);
+    self->pairing_handle_ = 0;
   }
   self->result_.store(result == 0 ? 1 : static_cast<uint32_t>(-result) + 1, std::memory_order_release);
   for (;;) {
@@ -330,6 +350,21 @@ bool CoapticNetwork::commit_pending(const uint8_t *bytes, uint32_t length) {
   return nvs_set_blob(security_handle_, "pending_v1", bytes, length) == ESP_OK && nvs_commit(security_handle_) == ESP_OK;
 }
 
+int32_t CoapticNetwork::read_pairing(uint8_t *bytes, uint32_t capacity) {
+  if (security_mode_ != 5 || bytes == nullptr || capacity < 320) return -1;
+  if (pairing_handle_ == 0 && nvs_open("coaptic_pair", NVS_READWRITE, &pairing_handle_) != ESP_OK) return -1;
+  size_t length = 0;
+  const esp_err_t status = nvs_get_blob(pairing_handle_, "custody_v1", nullptr, &length);
+  if (status == ESP_ERR_NVS_NOT_FOUND) return 0;
+  if (status != ESP_OK || length == 0 || length > 320) return -1;
+  return nvs_get_blob(pairing_handle_, "custody_v1", bytes, &length) == ESP_OK ? static_cast<int32_t>(length) : -1;
+}
+
+bool CoapticNetwork::commit_pairing(const uint8_t *bytes, uint32_t length) {
+  if (security_mode_ != 5 || bytes == nullptr || length == 0 || length > 320 || pairing_handle_ == 0) return false;
+  return nvs_set_blob(pairing_handle_, "custody_v1", bytes, length) == ESP_OK && nvs_commit(pairing_handle_) == ESP_OK;
+}
+
 void CoapticNetwork::on_shutdown() {
   stop_.store(true, std::memory_order_release);
   for (uint32_t waited = 0; task_ != nullptr && waited < 1000; waited += 10) {
@@ -387,3 +422,27 @@ extern "C" int32_t coaptic_pending_read(void *context, uint8_t *bytes, uint32_t 
 extern "C" bool coaptic_pending_commit(void *context, const uint8_t *bytes, uint32_t length) {
   return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->commit_pending(bytes, length);
 }
+
+#ifdef COAPTIC_PAIRING
+extern "C" int32_t coaptic_pairing_read(void *context, uint8_t *bytes, uint32_t capacity) {
+  return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->read_pairing(bytes, capacity);
+}
+extern "C" bool coaptic_pairing_commit(void *context, const uint8_t *bytes, uint32_t length) {
+  return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->commit_pairing(bytes, length);
+}
+extern "C" int32_t coaptic_pairing_console_read(void *, uint8_t *bytes, uint32_t capacity) {
+  if (bytes == nullptr || capacity == 0 || capacity > 512) return -1;
+  return usb_serial_jtag_read_bytes(bytes, capacity, 0);
+}
+extern "C" bool coaptic_pairing_console_write(void *, const uint8_t *bytes, uint32_t length) {
+  if (bytes == nullptr || length == 0 || length > 518) return false;
+  return usb_serial_jtag_write_bytes(bytes, length, pdMS_TO_TICKS(250)) == static_cast<int>(length);
+}
+extern "C" void coaptic_pairing_restart(void *) {
+  usb_serial_jtag_wait_tx_done(pdMS_TO_TICKS(250));
+  esp_restart();
+}
+extern "C" void coaptic_pairing_event(void *, uint32_t event) {
+  ESP_LOGI("coaptic_network", "COAPTIC_PAIRING_EVENT %lu", static_cast<unsigned long>(event));
+}
+#endif

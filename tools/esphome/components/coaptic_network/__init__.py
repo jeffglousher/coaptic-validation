@@ -8,6 +8,7 @@ import esphome.codegen as cg
 from esphome.components import esp32
 from esphome.components.esp32.const import VARIANT_ESP32C3, VARIANT_ESP32C6, VARIANT_ESP32S3
 import esphome.config_validation as cv
+import esphome.final_validate as fv
 from esphome.const import CONF_ID
 from esphome.core import CORE
 
@@ -47,8 +48,8 @@ def fixed_hex(length):
 
 
 def validate_security(config):
-    if bool(config.get("oscore")) == config["allow_plaintext"]:
-        raise cv.Invalid("select protected oscore or explicit allow_plaintext, never both")
+    if sum([bool(config.get("oscore")), config["allow_plaintext"], "pairing" in config]) != 1:
+        raise cv.Invalid("select protected oscore, privileged pairing or explicit allow_plaintext; exactly one is required")
     if "oscore" in config and config["oscore"]["sender_id"] == config["oscore"]["recipient_id"]:
         raise cv.Invalid("OSCORE Sender and Recipient IDs must differ")
     if "telemetry" in config:
@@ -100,8 +101,9 @@ def validate_runtime(config):
                 raise cv.Invalid("Coaptic Rust archive lockfile provenance mismatch")
             if (report["target"] != "xtensa-esp32s3-none-elf" or
                     report["features"] != ["network", "standalone"] +
-                    (["oscore"] if "oscore" in config else []) +
-                    (["telemetry"] if "telemetry" in config else [])):
+                    (["oscore"] if "oscore" in config or "pairing" in config else []) +
+                    (["telemetry"] if "telemetry" in config else []) +
+                    (["pairing"] if "pairing" in config else [])):
                 raise cv.Invalid("Coaptic Rust archive target or features mismatch")
             if hashlib.sha256((root / "libcoaptic_esphome_probe.a").read_bytes()).hexdigest() != report["archive_sha256"]:
                 raise cv.Invalid("Coaptic Rust archive checksum mismatch")
@@ -119,6 +121,9 @@ CONFIG_SCHEMA = cv.All(
         cv.Optional("expected_library_revision"): source_revision,
         cv.Optional("expected_suite_revision"): source_revision,
         cv.Optional("allow_plaintext", default=False): cv.boolean,
+        cv.Optional("pairing"): cv.Schema({
+            cv.Required("privileged_usb"): cv.All(cv.boolean, cv.one_of(True)),
+        }),
         cv.Optional("oscore"): cv.Schema({
             cv.Required("master_secret"): fixed_hex(32),
             cv.Required("master_salt"): fixed_hex(16),
@@ -152,11 +157,25 @@ CONFIG_SCHEMA = cv.All(
 )
 
 
+def validate_pairing_console(config):
+    if "pairing" in config:
+        logger = fv.full_config.get()["logger"]
+        if logger.get("hardware_uart") == "USB_SERIAL_JTAG" and logger["baud_rate"] != 0:
+            raise cv.Invalid("pairing needs exclusive USB: set logger baud_rate to 0 or use another UART")
+    return config
+
+
+FINAL_VALIDATE_SCHEMA = validate_pairing_console
+
+
 async def to_code(config):
     component = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(component, config)
     cg.add(component.set_run_id(config["run_id"]))
     cg.add(component.set_port(config["port"]))
+    if "pairing" in config:
+        cg.add(component.set_pairing())
+        cg.add_define("COAPTIC_PAIRING")
     if "oscore" in config:
         security = config["oscore"]
         cg.add(component.set_oscore(security["master_secret"], security["master_salt"],
@@ -183,5 +202,6 @@ async def to_code(config):
     esp32.add_idf_component(name="coaptic_rust_probe", path=str(rust_component))
     cg.add_cmake_arg("COAPTIC_RUST_MANIFEST", str(root / "rust" / "Cargo.toml"))
     cg.add_cmake_arg("COAPTIC_NETWORK", "ON")
-    cg.add_cmake_arg("COAPTIC_OSCORE", "ON" if "oscore" in config else "OFF")
+    cg.add_cmake_arg("COAPTIC_OSCORE", "ON" if "oscore" in config or "pairing" in config else "OFF")
+    cg.add_cmake_arg("COAPTIC_PAIRING", "ON" if "pairing" in config else "OFF")
     cg.add_cmake_arg("COAPTIC_TELEMETRY", "ON" if "telemetry" in config else "OFF")
