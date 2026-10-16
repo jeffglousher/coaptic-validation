@@ -143,7 +143,7 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
     if device.is_some() {
         console.event(1);
     }
-    let mut decoder = CommissioningDecoder::new();
+    let mut decoder = ConsoleFrames::new();
     let mut clock = CheckedClock::new(|| clock().ok_or(()));
     let mut pending = None;
     loop {
@@ -153,7 +153,7 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
         let request = if let Some(request) = pending.take() {
             Some(request)
         } else {
-            receive(&mut console, &mut decoder)?
+            receive(&mut console, &mut decoder, now)?
         };
         if let Some(request) = request {
             match request {
@@ -264,24 +264,62 @@ fn next_time<F: FnMut() -> Result<u64, ()>>(
     }
 }
 
+struct ConsoleFrames {
+    decoder: CommissioningDecoder,
+    last_byte: Option<u64>,
+}
+
+impl ConsoleFrames {
+    fn new() -> Self {
+        Self {
+            decoder: CommissioningDecoder::new(),
+            last_byte: None,
+        }
+    }
+}
+
 fn receive(
     console: &mut impl Console,
-    decoder: &mut CommissioningDecoder,
+    frames: &mut ConsoleFrames,
+    now: u64,
 ) -> Result<Option<CommissioningRequest>, Error> {
+    // A disconnected sender can leave a partial frame. Expire it after one
+    // second without a byte, so the next host can inspect without rebooting.
+    // This bounds transport framing only; hardware approval happens before a
+    // complete update is sent and retains its separate commissioning deadline.
+    if frames
+        .last_byte
+        .is_some_and(|last| now.saturating_sub(last) >= 1000)
+    {
+        *frames = ConsoleFrames::new();
+    }
     // One byte per read preserves bytes following a complete command. Work is
     // capped at64 bytes per scheduler iteration, including console log noise.
     for _ in 0..64 {
         let mut byte = [0];
-        match console.read(&mut byte)? {
-            0 => break,
-            1 => {
-                if let Some(payload) = decoder.feed(byte[0]) {
-                    return CommissioningRequest::decode(payload)
-                        .map(Some)
-                        .map_err(|_| Error::Protocol);
+        match console.read(&mut byte) {
+            // A disconnected host must not stop local management or network
+            // service. The next scheduler iteration can inspect current state.
+            Err(Error::Console) => {
+                *frames = ConsoleFrames::new();
+                break;
+            }
+            Ok(0) => break,
+            Ok(1) => {
+                frames.last_byte = Some(now);
+                if let Some(payload) = frames.decoder.feed(byte[0]) {
+                    frames.last_byte = None;
+                    return match CommissioningRequest::decode(payload) {
+                        Ok(request) => Ok(Some(request)),
+                        Err(_) => {
+                            send(console, &CommissioningReply::Refused(5))?;
+                            Ok(None)
+                        }
+                    };
                 }
             }
-            _ => return Err(Error::Console),
+            Ok(_) => return Err(Error::Console),
+            Err(error) => return Err(error),
         }
     }
     Ok(None)
@@ -293,7 +331,13 @@ fn send(console: &mut impl Console, reply: &CommissioningReply) -> Result<(), Er
     let mut frame = [0; 518];
     let len =
         CommissioningDecoder::frame(&payload[..len], &mut frame).map_err(|_| Error::Protocol)?;
-    console.write(&frame[..len])
+    match console.write(&frame[..len]) {
+        // A lost reply cannot undo a confirmed write, and is not a reason to
+        // disable USB. Never retry the mutation: let a fresh inspection recover
+        // the committed state. Serialization and non-console failures stay fatal.
+        Err(Error::Console) => Ok(()),
+        result => result,
+    }
 }
 
 fn permissions(write: bool) -> [u8; 32] {
@@ -313,7 +357,7 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
     random: fn(&mut [u8]) -> bool,
     clock: &mut CheckedClock<F>,
     console: &mut impl Console,
-    decoder: &mut CommissioningDecoder,
+    decoder: &mut ConsoleFrames,
 ) -> Result<Option<CommissioningRequest>, Error> {
     let endpoint = device.endpoint.ok_or(Error::Storage)?;
     let peer = device
@@ -366,7 +410,7 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
         let Some(now) = next_time(clock)? else {
             return Ok(None);
         };
-        if let Some(request) = receive(console, decoder)? {
+        if let Some(request) = receive(console, decoder, now)? {
             if matches!(request, CommissioningRequest::Inspect) {
                 send(console, &device.reply())?;
             } else {
@@ -721,6 +765,8 @@ mod tests {
         replies: Rc<RefCell<Vec<CommissioningReply>>>,
         prior: Option<coaptic::provisioning::EnrollmentPolicy>,
         peer: coaptic::provisioning::PinnedPeer,
+        read_failure: bool,
+        lose_committed_reply: bool,
     }
     impl Usb {
         fn enqueue(&mut self, request: CommissioningRequest) {
@@ -733,6 +779,10 @@ mod tests {
     }
     impl Console for Usb {
         fn read(&mut self, bytes: &mut [u8]) -> Result<usize, Error> {
+            if self.read_failure {
+                self.read_failure = false;
+                return Err(Error::Console);
+            }
             if let Some(byte) = self.incoming.pop_front() {
                 bytes[0] = byte;
                 Ok(1)
@@ -749,6 +799,12 @@ mod tests {
                 }
             }
             let reply = reply.unwrap();
+            if self.lose_committed_reply && matches!(reply, CommissioningReply::Committed(_)) {
+                self.lose_committed_reply = false;
+                self.plan = Plan::Inspect;
+                self.enqueue(CommissioningRequest::Inspect);
+                return Err(Error::Console);
+            }
             match &reply {
                 CommissioningReply::State { record, .. } => {
                     self.prior = record.policy().cloned();
@@ -791,6 +847,16 @@ mod tests {
         store: Rc<RefCell<Memory>>,
         plan: Plan,
     ) -> (Result<(), Error>, Vec<CommissioningReply>) {
+        campaign_with_faults(store, plan, false, false, false)
+    }
+
+    fn campaign_with_faults(
+        store: Rc<RefCell<Memory>>,
+        plan: Plan,
+        read_failure: bool,
+        lose_committed_reply: bool,
+        malformed: bool,
+    ) -> (Result<(), Error>, Vec<CommissioningReply>) {
         let replies = Rc::new(RefCell::new(Vec::new()));
         let peer = Identity::from_private_key([2; 32], 2).unwrap().peer();
         let mut console = Usb {
@@ -799,7 +865,15 @@ mod tests {
             replies: replies.clone(),
             prior: None,
             peer,
+            read_failure,
+            lose_committed_reply,
         };
+        if malformed {
+            let mut frame = [0; 16];
+            // Framing is valid; the canonical CBOR request action is unsupported.
+            let len = CommissioningDecoder::frame(&[0x82, 1, 99], &mut frame).unwrap();
+            console.incoming.extend(&frame[..len]);
+        }
         console.enqueue(if matches!(plan, Plan::Pair) {
             CommissioningRequest::Initialize { kid: 17 }
         } else {
@@ -818,6 +892,77 @@ mod tests {
         );
         let output = replies.borrow().clone();
         (result, output)
+    }
+
+    #[test]
+    fn malformed_request_is_refused_and_next_inspection_preserves_exact_custody() {
+        let mut memory = Memory::default();
+        Device::initialize(&mut memory, 17, random).unwrap();
+        let before = memory.bytes.clone();
+        let store = Rc::new(RefCell::new(memory));
+        let (result, replies) =
+            campaign_with_faults(store.clone(), Plan::Inspect, false, false, true);
+        assert_eq!(result, Ok(()));
+        assert!(matches!(
+            replies.first(),
+            Some(CommissioningReply::Refused(5))
+        ));
+        assert!(
+            matches!(replies.last(), Some(CommissioningReply::State { record, .. }) if record.revision() == 1 && !record.enabled())
+        );
+        assert_eq!(store.borrow().bytes, before);
+    }
+
+    #[test]
+    fn fragmented_command_survives_short_gaps_and_abandoned_frame_expires() {
+        for abandoned in [false, true] {
+            let mut console = Usb {
+                plan: Plan::Inspect,
+                incoming: VecDeque::new(),
+                replies: Rc::new(RefCell::new(Vec::new())),
+                prior: None,
+                peer: Identity::from_private_key([2; 32], 2).unwrap().peer(),
+                read_failure: false,
+                lose_committed_reply: false,
+            };
+            let mut frame = [0; 16];
+            let len = CommissioningDecoder::frame(&[0x82, 1, 0], &mut frame).unwrap();
+            console.incoming.extend(&frame[..7]);
+            let mut frames = ConsoleFrames::new();
+            assert!(receive(&mut console, &mut frames, 0).unwrap().is_none());
+            if abandoned {
+                console.incoming.extend(&frame[..len]);
+            } else {
+                console.incoming.extend(&frame[7..len]);
+            }
+            let now = if abandoned { 1000 } else { 999 };
+            assert!(matches!(
+                receive(&mut console, &mut frames, now).unwrap(),
+                Some(CommissioningRequest::Inspect)
+            ));
+        }
+    }
+
+    #[test]
+    fn console_read_failure_and_lost_commit_reply_allow_inspection_without_restarting() {
+        let store = Rc::new(RefCell::new(Memory::default()));
+        let (result, replies) = campaign_with_faults(store.clone(), Plan::Pair, true, true, false);
+        assert_eq!(result, Ok(()));
+        assert!(
+            !replies
+                .iter()
+                .any(|reply| matches!(reply, CommissioningReply::Committed(_)))
+        );
+        assert!(
+            matches!(replies.last(), Some(CommissioningReply::State { record, .. }) if record.enabled() && record.revision() == 2)
+        );
+        let recovered = Device::recover(&mut Shared(store)).unwrap().unwrap();
+        assert_eq!(recovered.identity.peer().kid(), 17);
+        assert_eq!(recovered.pairing.checkpoint().revision(), 2);
+        assert_eq!(
+            recovered.pairing.checkpoint().policy().unwrap().owner(),
+            &[7; 32]
+        );
     }
 
     #[test]
