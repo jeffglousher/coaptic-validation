@@ -6,6 +6,8 @@
 //! normal restart; physical flash rollback/custody hardening is a separate option.
 //! A single complete CBOR blob commits the private identity, public policy and
 //! endpoint together. Failed or uncertain writes stop every live session.
+//! The greater pinned principal initiates; the other responds, avoiding startup
+//! collisions without another user setting. Both monitor authenticated liveness.
 #![forbid(unsafe_code)]
 
 use coaptic::platform::{CheckedClock, ClockError};
@@ -319,6 +321,7 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
         .peer()
         .map_err(|_| Error::Network)?
         .principal();
+    let initiates = device.identity.peer().principal().fingerprint() > peer.fingerprint();
     let permission = device
         .pairing
         .checkpoint()
@@ -341,9 +344,12 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
         start,
     )
     .map_err(|_| Error::Network)?;
-    match connection.connect(start) {
-        Ok(()) | Err(ManagedError::Recovery(_) | ManagedError::Busy | ManagedError::Capacity) => {}
-        Err(_) => return Err(Error::Network),
+    if initiates {
+        match connection.connect(start) {
+            Ok(())
+            | Err(ManagedError::Recovery(_) | ManagedError::Busy | ManagedError::Capacity) => {}
+            Err(_) => return Err(Error::Network),
+        }
     }
     let mut retry_at = start.saturating_add(30_000);
     let mut next_probe = start;
@@ -448,7 +454,7 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
             retry_at = now;
             next_probe = now.saturating_add(5_000);
         }
-        if call.is_none() && now >= retry_at {
+        if initiates && call.is_none() && now >= retry_at {
             match connection.connect(now) {
                 Ok(()) => retry_at = now.saturating_add(30_000),
                 Err(ManagedError::Busy | ManagedError::Capacity) => {
