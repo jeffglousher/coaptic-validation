@@ -348,6 +348,7 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
     let mut retry_at = start.saturating_add(30_000);
     let mut next_probe = start;
     let mut call = None;
+    let mut call_started = start;
     let mut connected_reported = false;
     let mut failed_polls = 0u8;
     let mut reply = [0; 128];
@@ -396,11 +397,20 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
                 }
             }
         }
-        if let Some(current) = call
-            && let Some(response) = connection
-                .take_response_into(current, &mut reply, now)
-                .map_err(|_| Error::Network)?
-        {
+        let response = if let Some(current) = call {
+            match connection.take_response_into(current, &mut reply, now) {
+                Ok(response) => response,
+                Err(ManagedError::StaleHandle) => {
+                    call = None;
+                    next_probe = now;
+                    None
+                }
+                Err(_) => return Err(Error::Network),
+            }
+        } else {
+            None
+        };
+        if let Some(response) = response {
             call = None;
             match response {
                 Ok(response)
@@ -428,6 +438,16 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
                 }
             }
         }
+        if let Some(current) = call
+            && now.saturating_sub(call_started) >= 10_000
+        {
+            connection
+                .cancel(current, now)
+                .map_err(|_| Error::Network)?;
+            call = None;
+            retry_at = now;
+            next_probe = now.saturating_add(5_000);
+        }
         if call.is_none() && now >= retry_at {
             match connection.connect(now) {
                 Ok(()) => retry_at = now.saturating_add(30_000),
@@ -447,7 +467,10 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
                 (Method::Get, "identity", &[][..], None)
             };
             match connection.request(method, path, payload, format, now) {
-                Ok(request) => call = Some(request),
+                Ok(request) => {
+                    call = Some(request);
+                    call_started = now;
+                }
                 Err(ManagedError::Busy | ManagedError::NotConnected)
                 | Err(ManagedError::Application(coaptic::app::Error::Io(_))) => {}
                 Err(_) => return Err(Error::Network),
