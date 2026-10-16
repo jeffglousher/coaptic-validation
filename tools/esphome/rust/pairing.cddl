@@ -7,3 +7,7 @@ device-pairing-custody = [
 ; public_pairing is the library pairing-record CBOR.
 ; endpoint is IPv4(4) || port-big-endian(2), or null before first pairing.
 ; integrity=BLAKE3 derive-key("coaptic device custody integrity v1", preceding bytes).
+
+; Development protected sample and exact echo receipt. Sent only after EDHOC.
+paired-sample = [version: 1, device: bstr .size 32, at-ms: uint]
+paired-sample-receipt = paired-sample

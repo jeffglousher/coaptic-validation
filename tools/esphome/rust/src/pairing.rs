@@ -14,7 +14,7 @@ use coaptic::provisioning::{
     ManagedConnection, ManagedError, PairingCommitError, PairingRecord,
 };
 use coaptic::storage::DatagramIo;
-use coaptic::{Code, Endpoint, Method, Response, profiles};
+use coaptic::{Code, ContentFormat, Endpoint, Method, Response, profiles};
 use zeroize::Zeroizing;
 
 pub const STORE_BYTES: usize = 320;
@@ -42,7 +42,7 @@ pub trait Console {
     fn read(&mut self, bytes: &mut [u8]) -> Result<usize, Error>;
     fn write(&mut self, bytes: &[u8]) -> Result<(), Error>;
     fn restart(&mut self) -> Result<(), Error>;
-    /// Public counters only: 1 recovered, 2 initialized, 3 connected, 4 heartbeat.
+    /// Public counters only: 1 recovered, 2 initialized, 3 connected, 4 receipt.
     fn event(&mut self, event: u32);
 }
 
@@ -314,6 +314,11 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
     decoder: &mut CommissioningDecoder,
 ) -> Result<Option<CommissioningRequest>, Error> {
     let endpoint = device.endpoint.ok_or(Error::Storage)?;
+    let peer = device
+        .pairing
+        .peer()
+        .map_err(|_| Error::Network)?
+        .principal();
     let permission = device
         .pairing
         .checkpoint()
@@ -346,6 +351,10 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
     let mut connected_reported = false;
     let mut failed_polls = 0u8;
     let mut reply = [0; 128];
+    let mut sample = [0; 45];
+    sample[..4].copy_from_slice(&[0x83, 1, 0x58, 32]);
+    sample[4..36].copy_from_slice(device.identity.peer().principal().fingerprint());
+    sample[36] = 0x1b;
     loop {
         let Some(now) = next_time(clock)? else {
             return Ok(None);
@@ -397,12 +406,11 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
                 Ok(response)
                     if response.code() == Code::CONTENT
                         && response.payload()
-                            == device
-                                .pairing
-                                .peer()
-                                .map_err(|_| Error::Network)?
-                                .principal()
-                                .fingerprint() =>
+                            == if write {
+                                &sample[..]
+                            } else {
+                                peer.fingerprint()
+                            } =>
                 {
                     if !connected_reported {
                         console.event(3);
@@ -430,7 +438,15 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
             }
         }
         if call.is_none() && connection.is_connected() && now >= next_probe {
-            match connection.request(Method::Get, "identity", &[], None, now) {
+            // A small native CBOR sample receives an exact protected receipt.
+            // Read-only pairing uses an authenticated identity read instead.
+            sample[37..].copy_from_slice(&now.to_be_bytes());
+            let (method, path, payload, format) = if write {
+                (Method::Post, "echo", &sample[..], Some(ContentFormat::CBOR))
+            } else {
+                (Method::Get, "identity", &[][..], None)
+            };
+            match connection.request(method, path, payload, format, now) {
                 Ok(request) => call = Some(request),
                 Err(ManagedError::Busy | ManagedError::NotConnected)
                 | Err(ManagedError::Application(coaptic::app::Error::Io(_))) => {}
