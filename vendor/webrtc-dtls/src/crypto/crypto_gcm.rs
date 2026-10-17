@@ -100,6 +100,9 @@ impl CryptoGcm {
         let nonce = GenericArray::from_slice(&nonce);
 
         let out = &r[RECORD_LAYER_HEADER_SIZE + 8..];
+        if out.len() < CRYPTO_GCM_TAG_LENGTH {
+            return Err(Error::ErrInvalidPacketLength);
+        }
 
         let additional_data = generate_aead_additional_data(&h, out.len() - CRYPTO_GCM_TAG_LENGTH);
 
@@ -108,12 +111,57 @@ impl CryptoGcm {
 
         self.remote_gcm
             .decrypt_in_place(nonce, &additional_data, &mut buffer)
-            .map_err(|e| Error::Other(e.to_string()))?;
+            .map_err(|_| Error::ErrInvalidMac)?;
 
         let mut d = Vec::with_capacity(RECORD_LAYER_HEADER_SIZE + buffer.len());
         d.extend_from_slice(&r[..RECORD_LAYER_HEADER_SIZE]);
         d.extend_from_slice(&buffer);
 
         Ok(d)
+    }
+}
+
+#[cfg(test)]
+mod record_policy_tests {
+    use super::*;
+
+    fn header(len: usize) -> RecordLayerHeader {
+        RecordLayerHeader {
+            content_type: ContentType::ApplicationData,
+            protocol_version: PROTOCOL_VERSION1_2,
+            epoch: 1,
+            sequence_number: 7,
+            content_len: len as u16,
+        }
+    }
+
+    #[test]
+    fn gcm_short_records_refuse_without_underflow() {
+        let gcm = CryptoGcm::new(&[1; 16], &[2; 4], &[1; 16], &[2; 4]);
+        for length in 0..8 + CRYPTO_GCM_TAG_LENGTH {
+            let mut wire = Vec::new();
+            header(length).marshal(&mut wire).unwrap();
+            wire.resize(RECORD_LAYER_HEADER_SIZE + length, 0);
+            assert!(gcm.decrypt(&wire).is_err());
+        }
+    }
+
+    #[test]
+    fn gcm_authentication_refuses_and_valid_record_recovers() {
+        let gcm = CryptoGcm::new(&[1; 16], &[2; 4], &[1; 16], &[2; 4]);
+        let wrong = CryptoGcm::new(&[3; 16], &[2; 4], &[3; 16], &[2; 4]);
+        for payload in [b"".as_slice(), b"test".as_slice()] {
+            let h = header(payload.len());
+            let mut plain = Vec::new();
+            h.marshal(&mut plain).unwrap();
+            plain.extend_from_slice(payload);
+            let encrypted = gcm.encrypt(&h, &plain).unwrap();
+            assert_eq!(wrong.decrypt(&encrypted).unwrap_err(), Error::ErrInvalidMac);
+            let mut tampered = encrypted.clone();
+            *tampered.last_mut().unwrap() ^= 1;
+            assert_eq!(gcm.decrypt(&tampered).unwrap_err(), Error::ErrInvalidMac);
+            let opened = gcm.decrypt(&encrypted).unwrap();
+            assert_eq!(&opened[RECORD_LAYER_HEADER_SIZE..], payload);
+        }
     }
 }
