@@ -37,8 +37,10 @@ impl Store for Missing {
     }
 }
 struct BrokenIo;
-impl DatagramIo for BrokenIo {
+impl coaptic::storage::DatagramTransport for BrokenIo {
     type Error = ();
+}
+impl DatagramIo for BrokenIo {
     fn recv(&mut self, _: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
         Err(())
     }

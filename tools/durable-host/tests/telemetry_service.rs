@@ -23,8 +23,10 @@ struct Io {
     incoming: Packets,
     outgoing: Packets,
 }
-impl DatagramIo for Io {
+impl coaptic::storage::DatagramTransport for Io {
     type Error = ();
+}
+impl DatagramIo for Io {
     fn recv(&mut self, bytes: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
         Ok(self.incoming.borrow_mut().pop_front().map(|wire| {
             bytes[..wire.len()].copy_from_slice(&wire);
@@ -231,8 +233,10 @@ fn durable_service_refuses_invalid_traffic_then_recovers_and_deduplicates_after_
     std::fs::remove_file(path).unwrap();
 }
 struct NoIo;
-impl DatagramIo for NoIo {
+impl coaptic::storage::DatagramTransport for NoIo {
     type Error = ();
+}
+impl DatagramIo for NoIo {
     fn recv(&mut self, _: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
         panic!("unexpected receive")
     }

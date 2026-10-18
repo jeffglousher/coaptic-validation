@@ -28,8 +28,10 @@ struct CaptureIo {
     first: [u8; 1152],
     length: usize,
 }
-impl DatagramIo for CaptureIo {
+impl coaptic::storage::DatagramTransport for CaptureIo {
     type Error = std::io::Error;
+}
+impl DatagramIo for CaptureIo {
     fn recv(&mut self, bytes: &mut [u8]) -> std::io::Result<Option<(usize, Endpoint)>> {
         self.io.recv(bytes)
     }

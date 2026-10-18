@@ -42,8 +42,10 @@ struct TimedIo<'a> {
     clock: &'a Instant,
     ledger: &'a RefCell<Ledger>,
 }
-impl DatagramIo for TimedIo<'_> {
+impl coaptic::storage::DatagramTransport for TimedIo<'_> {
     type Error = std::io::Error;
+}
+impl DatagramIo for TimedIo<'_> {
     fn recv(&mut self, bytes: &mut [u8]) -> std::io::Result<Option<(usize, Endpoint)>> {
         let start = self.clock.elapsed().as_nanos() as u64;
         let result = self.io.recv(bytes);

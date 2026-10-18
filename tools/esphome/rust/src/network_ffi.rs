@@ -46,8 +46,10 @@ unsafe impl critical_section::Impl for EspHomeCriticalSection {
 }
 
 struct Socket(*mut c_void);
-impl DatagramIo for Socket {
+impl coaptic::storage::DatagramTransport for Socket {
     type Error = ();
+}
+impl DatagramIo for Socket {
     fn recv(&mut self, bytes: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
         let mut peer = 0;
         let size = unsafe {

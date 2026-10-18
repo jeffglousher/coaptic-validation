@@ -113,9 +113,10 @@ struct Packets {
 
 struct ProbeIo(Rc<RefCell<Packets>>);
 
-impl DatagramIo for ProbeIo {
+impl coaptic::storage::DatagramTransport for ProbeIo {
     type Error = &'static str;
-
+}
+impl DatagramIo for ProbeIo {
     fn recv(&mut self, buf: &mut [u8]) -> Result<Option<(usize, Endpoint)>, Self::Error> {
         let mut packets = self.0.borrow_mut();
         let Some(n) = packets.input_len.take() else {
@@ -390,9 +391,10 @@ struct TimedSocket {
     times: Rc<RefCell<TransportTimes>>,
 }
 
-impl DatagramIo for TimedSocket {
+impl coaptic::storage::DatagramTransport for TimedSocket {
     type Error = std::io::Error;
-
+}
+impl DatagramIo for TimedSocket {
     fn recv(&mut self, buf: &mut [u8]) -> Result<Option<(usize, Endpoint)>, Self::Error> {
         let started = Instant::now();
         let outcome = DatagramIo::recv(&mut self.socket, buf);

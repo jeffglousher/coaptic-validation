@@ -797,8 +797,10 @@ mod tests {
         }
     }
     struct Io;
-    impl DatagramIo for Io {
+    impl coaptic::storage::DatagramTransport for Io {
         type Error = ();
+    }
+    impl DatagramIo for Io {
         fn recv(&mut self, _: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
             Ok(None)
         }

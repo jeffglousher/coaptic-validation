@@ -49,9 +49,10 @@ impl AdmissionRegistry for Registry {
 #[derive(Default)]
 struct Sink(Vec<(Endpoint, Vec<u8>)>);
 
-impl DatagramIo for Sink {
+impl coaptic::storage::DatagramTransport for Sink {
     type Error = u8;
-
+}
+impl DatagramIo for Sink {
     fn recv(&mut self, _: &mut [u8]) -> Result<Option<(usize, Endpoint)>, u8> {
         panic!("caller owns receive scheduling")
     }

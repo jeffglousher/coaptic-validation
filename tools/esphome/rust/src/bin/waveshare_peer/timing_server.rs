@@ -48,8 +48,10 @@ struct Io<'a> {
     remote: Option<Ipv4Addr>,
     refused_sources: &'a Cell<u64>,
 }
-impl DatagramIo for Io<'_> {
+impl coaptic::storage::DatagramTransport for Io<'_> {
     type Error = std::io::Error;
+}
+impl DatagramIo for Io<'_> {
     fn recv(&mut self, bytes: &mut [u8]) -> std::io::Result<Option<(usize, Endpoint)>> {
         let start = self.clock.elapsed().as_nanos() as u64;
         let result = self.socket.recv(bytes);

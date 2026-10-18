@@ -268,8 +268,10 @@ mod tests {
     use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
     struct Idle;
-    impl DatagramIo for Idle {
+    impl coaptic::storage::DatagramTransport for Idle {
         type Error = ();
+    }
+    impl DatagramIo for Idle {
         fn recv(&mut self, _: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
             Ok(None)
         }
@@ -284,8 +286,10 @@ mod tests {
         fail: bool,
     }
 
-    impl DatagramIo for Scripted {
+    impl coaptic::storage::DatagramTransport for Scripted {
         type Error = ();
+    }
+    impl DatagramIo for Scripted {
         fn recv(&mut self, bytes: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
             if self.fail {
                 return Err(());
@@ -310,8 +314,10 @@ mod tests {
         registrations: VecDeque<(u64, Vec<u8>)>,
         sent: TimedPackets,
     }
-    impl DatagramIo for OfflineObserver {
+    impl coaptic::storage::DatagramTransport for OfflineObserver {
         type Error = ();
+    }
+    impl DatagramIo for OfflineObserver {
         fn recv(&mut self, bytes: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
             if let Some(packet) = self.ack.take() {
                 bytes[..packet.len()].copy_from_slice(&packet);
@@ -451,8 +457,10 @@ mod tests {
     }
 
     struct Tracked(Scripted, Rc<Cell<usize>>);
-    impl DatagramIo for Tracked {
+    impl coaptic::storage::DatagramTransport for Tracked {
         type Error = ();
+    }
+    impl DatagramIo for Tracked {
         fn recv(&mut self, b: &mut [u8]) -> Result<Option<(usize, coaptic::Endpoint)>, ()> {
             self.1.set(self.1.get() + 1);
             self.0.recv(b)

@@ -10,8 +10,10 @@ use coaptic::{App, Endpoint, Request, Response, get, profiles};
 struct ProbeIo<'a> {
     incoming: Option<&'a [u8]>,
 }
-impl DatagramIo for ProbeIo<'_> {
+impl coaptic::storage::DatagramTransport for ProbeIo<'_> {
     type Error = ();
+}
+impl DatagramIo for ProbeIo<'_> {
     fn recv(&mut self, bytes: &mut [u8]) -> Result<Option<(usize, Endpoint)>, Self::Error> {
         let Some(packet) = self.incoming.take() else {
             return Ok(None);
@@ -75,8 +77,10 @@ struct LoopIo {
     count: usize,
 }
 
-impl DatagramIo for LoopIo {
+impl coaptic::storage::DatagramTransport for LoopIo {
     type Error = ();
+}
+impl DatagramIo for LoopIo {
     fn recv(&mut self, bytes: &mut [u8]) -> Result<Option<(usize, Endpoint)>, Self::Error> {
         if self.count == 0 {
             return Ok(None);

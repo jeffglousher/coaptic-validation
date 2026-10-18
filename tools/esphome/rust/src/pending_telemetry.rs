@@ -365,8 +365,10 @@ mod tests {
             sends: Rc<Cell<usize>>,
             reset: bool,
         }
-        impl DatagramIo for Faults {
+        impl coaptic::storage::DatagramTransport for Faults {
             type Error = ();
+        }
+        impl DatagramIo for Faults {
             fn recv(&mut self, _: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
                 let count = self.reads.get() + 1;
                 self.reads.set(count);

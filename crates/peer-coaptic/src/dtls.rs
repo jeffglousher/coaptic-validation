@@ -117,8 +117,10 @@ impl Drop for DtlsIo {
         self.routes.lock().expect("routes").clear();
     }
 }
-impl DatagramIo for DtlsIo {
+impl coaptic::storage::DatagramTransport for DtlsIo {
     type Error = std::io::Error;
+}
+impl DatagramIo for DtlsIo {
     fn recv(&mut self, buf: &mut [u8]) -> Result<Option<(usize, Endpoint)>, Self::Error> {
         match self.incoming.try_recv() {
             Ok((peer, bytes)) => {
