@@ -5,7 +5,7 @@ use core::{
     task::{Context, Poll, Waker},
 };
 
-struct NativeOnly(Scripted);
+pub(super) struct NativeOnly(pub(super) Scripted);
 impl coaptic::storage::DatagramTransport for NativeOnly {
     type Error = ();
 }
@@ -26,7 +26,7 @@ impl AsyncDatagramIo for NativeOnly {
     }
 }
 
-struct Timer(Rc<Cell<u64>>);
+pub(super) struct Timer(pub(super) Rc<Cell<u64>>);
 impl AsyncTimer for Timer {
     async fn wait_until(&mut self, deadline: u64) {
         core::future::poll_fn(|_| {
@@ -42,7 +42,7 @@ impl AsyncTimer for Timer {
 
 // Simulated external clock interrupts advance both independent timer sources.
 // The finite driver also catches a service that never returns to its executor.
-fn drive<F: Future>(future: F, now: &Cell<u64>) -> F::Output {
+pub(super) fn drive<F: Future>(future: F, now: &Cell<u64>) -> F::Output {
     let mut future = core::pin::pin!(future);
     let mut cx = Context::from_waker(Waker::noop());
     for tick in 0..1000 {

@@ -746,6 +746,60 @@ mod tests {
             wire[..n].to_vec()
         }
 
+        #[cfg(feature = "async-network")]
+        #[test]
+        fn native_async_checkpoint_failure_and_restart_preserve_replay_authority() {
+            use super::async_tests::{NativeOnly, Timer, drive};
+            let _test = TEST_LOCK.lock().unwrap();
+            let mut store = Memory::default();
+            provision(&mut store, &credentials()).unwrap();
+            store.0.borrow_mut().lose_ack_at = Some(3);
+            let mut peer = SecurityContext::derive(peer_credentials().parameters()).unwrap();
+            let packet = protected_request(&mut peer, 2, coaptic::Code::GET, "test", &[]);
+            for fail in [true, false] {
+                if !fail {
+                    store.0.borrow_mut().lose_ack_at = None;
+                }
+                let now = Rc::new(Cell::new(0));
+                let out = Rc::new(RefCell::new(Vec::new()));
+                let io = NativeOnly(Scripted {
+                    incoming: [packet.clone()].into(),
+                    outgoing: out.clone(),
+                    fail: false,
+                });
+                let mut protocol = Timer(now.clone());
+                let mut local = Timer(now.clone());
+                let credentials = credentials();
+                let result = drive(
+                    run_protected_async(
+                        io,
+                        |b| {
+                            b.fill(0x39);
+                            true
+                        },
+                        || (now.get() < 500).then_some(now.get()),
+                        &[1; 32],
+                        (&mut protocol, &mut local),
+                        &credentials,
+                        store.clone(),
+                    ),
+                    &now,
+                );
+                assert_eq!(
+                    result,
+                    if fail {
+                        Err("security checkpoint")
+                    } else {
+                        Ok(())
+                    }
+                );
+                assert!(
+                    out.borrow().is_empty(),
+                    "ambiguous durable commit must not release a response or replay effect"
+                );
+            }
+        }
+
         #[test]
         fn protected_offline_observer_reclaims_and_new_security_epoch_registers() {
             let _test = TEST_LOCK.lock().unwrap();
