@@ -111,14 +111,18 @@ class ConfigurationRefusalTests(unittest.TestCase):
                     self.assertNotIn("set_oscore(", generated)
 
     def test_telemetry_source_bundled_and_external_modes_generate(self):
-        for runtime, provision in [("source", False), ("source", True), ("bundled", False),
-                                   ("bundled", True), ("external", False)]:
+        for runtime, provision, asynchronous in [("source", False, False), ("source", True, False),
+                ("bundled", False, False), ("bundled", True, False), ("external", False, False),
+                ("source", False, True), ("bundled", True, True)]:
             with self.subTest(runtime=runtime, provision=provision), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 config = telemetry_config(network_configuration(root, runtime), provision)
+                config["coaptic_network"]["async_network"] = asynchronous
                 if runtime == "bundled":
                     _, marker, report = archive_fixture(root, config)
                     report["features"] += ["oscore", "telemetry"]
+                    if asynchronous:
+                        report["features"].append("async-network")
                     marker.write_text(json.dumps(report), encoding="utf-8")
                 path = root / "network.yaml"
                 path.write_text(json.dumps(config), encoding="utf-8")
