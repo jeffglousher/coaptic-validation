@@ -44,7 +44,8 @@ pub trait Console {
     fn read(&mut self, bytes: &mut [u8]) -> Result<usize, Error>;
     fn write(&mut self, bytes: &[u8]) -> Result<(), Error>;
     fn restart(&mut self) -> Result<(), Error>;
-    /// Public counters only: 1 recovered, 2 initialized, 3 connected, 4 receipt.
+    /// Public counters only: 1 recovered, 2 initialized, 3 connected, 4 receipt,
+    /// 5 network stopped (USB remains available for inspection/restart).
     fn event(&mut self, event: u32);
 }
 
@@ -146,6 +147,7 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
     let mut decoder = ConsoleFrames::new();
     let mut clock = CheckedClock::new(|| clock().ok_or(()));
     let mut pending = None;
+    let mut network_stopped = false;
     loop {
         let Some(now) = next_time(&mut clock)? else {
             return Ok(());
@@ -212,6 +214,7 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
                             device.stored = next;
                             device.stored_len = next_len;
                             device.endpoint = Some(endpoint);
+                            network_stopped = false;
                             send(
                                 &mut console,
                                 &CommissioningReply::Committed(device.pairing.checkpoint().clone()),
@@ -236,19 +239,29 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
         }
         if let Some(device) = &device
             && device.pairing.checkpoint().enabled()
+            && !network_stopped
         {
             // Returning a management request drops all old protocol caches,
             // exchanges and sessions before any policy mutation above.
-            pending = session(
+            let result = session(
                 device,
                 socket(),
                 random,
                 &mut clock,
                 &mut console,
                 &mut decoder,
-            )?;
-            if pending.is_none() {
-                return Ok(());
+            );
+            match result {
+                Ok(Some(request)) => pending = Some(request),
+                Ok(None) => return Ok(()),
+                Err(Error::Network) => {
+                    // Drop the failed volatile owner, but keep USB administration.
+                    // Do not repeatedly discard protocol history on remote input:
+                    // only an explicit restart or committed policy update resumes it.
+                    network_stopped = true;
+                    console.event(5);
+                }
+                Err(error) => return Err(error),
             }
         }
     }
@@ -449,8 +462,11 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
             Err(ManagedError::Recovery(_)) => {}
             // A radio/link outage must not terminate USB management or require
             // another approval. This owner retains its encrypted call and timers.
-            Err(ManagedError::Application(coaptic::app::Error::Io(_))) => {}
-            Err(ManagedError::Trust(_) | ManagedError::Clock) => return Err(Error::Network),
+            Err(ManagedError::Application(
+                coaptic::app::Error::Io(_) | coaptic::app::Error::Saturated,
+            )) => {}
+            Err(ManagedError::Clock) => return Err(Error::Clock),
+            Err(ManagedError::Trust(_)) => return Err(Error::Network),
             Err(_) => {
                 failed_polls = failed_polls.saturating_add(1);
                 if failed_polls >= 32 {
@@ -553,7 +569,13 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
                     call_started = now;
                 }
                 Err(ManagedError::Busy | ManagedError::NotConnected)
-                | Err(ManagedError::Application(coaptic::app::Error::Io(_))) => {}
+                | Err(ManagedError::Application(
+                    coaptic::app::Error::Io(_) | coaptic::app::Error::Saturated,
+                )) => {
+                    // Observe and application calls share the bounded packet pools.
+                    // Admission pressure leaves the session intact and retries later.
+                    next_probe = now.saturating_add(1_000);
+                }
                 Err(_) => return Err(Error::Network),
             }
         }
@@ -923,6 +945,105 @@ mod tests {
         );
         let output = replies.borrow().clone();
         (result, output)
+    }
+
+    #[test]
+    fn failed_session_keeps_usb_available_without_restarting_network_or_writing_custody() {
+        let first = Identity::from_private_key([1; 32], 17).unwrap();
+        let second = Identity::from_private_key([2; 32], 18).unwrap();
+        let (identity, private, peer) =
+            if first.peer().principal().fingerprint() > second.peer().principal().fingerprint() {
+                (first, [1; 32], second.peer())
+            } else {
+                (second, [2; 32], first.peer())
+            };
+        let record = PairingRecord::unpaired(&identity, [9; 32]).unwrap();
+        let mut pairing = LocalPairing::restore(&identity, record).unwrap();
+        let challenge = pairing.begin(&identity, 0, random).unwrap();
+        let policy =
+            coaptic::provisioning::EnrollmentPolicy::new(peer.clone(), [7; 32], permissions(true))
+                .unwrap();
+        coaptic::provisioning::PairingUpdate::new(challenge, policy, false)
+            .apply(&mut pairing, 1, |_, _| Ok::<_, ()>(()))
+            .unwrap();
+        let mut stored = [0; STORE_BYTES];
+        let len = encode_store(
+            &private,
+            identity.peer().kid(),
+            pairing.checkpoint(),
+            Some(Endpoint::v4([127, 0, 0, 1], 5683)),
+            &mut stored,
+        )
+        .unwrap();
+        let memory = Rc::new(RefCell::new(Memory {
+            bytes: stored[..len].to_vec(),
+            uncertain: false,
+        }));
+        let before = memory.borrow().bytes.clone();
+        let replies = Rc::new(RefCell::new(Vec::new()));
+        struct FaultUsb {
+            inner: Usb,
+            faults: usize,
+            reads: usize,
+        }
+        impl Console for FaultUsb {
+            fn read(&mut self, bytes: &mut [u8]) -> Result<usize, Error> {
+                self.reads += 1;
+                if self.reads == 2 {
+                    // Inject a fatal session result after the outer USB poll.
+                    return Err(Error::Network);
+                }
+                self.inner.read(bytes)
+            }
+            fn write(&mut self, bytes: &[u8]) -> Result<(), Error> {
+                self.inner.write(bytes)
+            }
+            fn restart(&mut self) -> Result<(), Error> {
+                Ok(())
+            }
+            fn event(&mut self, event: u32) {
+                if event == 5 {
+                    self.faults += 1;
+                    assert_eq!(self.faults, 1);
+                    self.inner.enqueue(CommissioningRequest::Inspect);
+                }
+            }
+        }
+        let console = FaultUsb {
+            inner: Usb {
+                plan: Plan::Inspect,
+                incoming: VecDeque::new(),
+                replies: replies.clone(),
+                prior: None,
+                peer,
+                read_failure: false,
+                lose_committed_reply: false,
+            },
+            faults: 0,
+            reads: 0,
+        };
+        let mut now = 1;
+        let mut owners = 0;
+        let result = run(
+            || {
+                owners += 1;
+                Io
+            },
+            |_| false,
+            || {
+                now += 1;
+                (now < 100).then_some(now)
+            },
+            Shared(memory.clone()),
+            console,
+        );
+        assert_eq!(result, Ok(()));
+        assert_eq!(owners, 1);
+        assert!(
+            matches!(replies.borrow().as_slice(), [CommissioningReply::State { record, .. }]
+            if record.enabled() && record.revision() == 2)
+        );
+        assert_eq!(memory.borrow().bytes, before);
     }
 
     #[test]
