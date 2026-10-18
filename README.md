@@ -256,6 +256,13 @@ The default synchronous integration remains available. The async driver adds
 no packet queue or payload staging buffer; ESP-IDF owns native select/eventfd
 bookkeeping. Its metadata and retained future have independent compile-time
 ceilings, and startup logs their actual sizes for the built configuration.
+The async task reserves 192 KiB; the synchronous task reserves 96 KiB. The larger
+async budget includes coroutine initialization and poll frames in addition to
+the retained root future. A 64 KiB future ceiling does not bound the whole task:
+the Xtensa pairing build requires approximately 162 KiB across those frames.
+Task allocation failure refuses startup, and runtime logs report the observed
+stack high-water mark. Native SDK heap and initialization peaks are separate
+from the App/pool and future-size measurements.
 
 The reserved ESPHome integration keeps its existing ESP-IDF/lwIP socket and
 FreeRTOS task. [Embassy's executor](https://github.com/embassy-rs/embassy/tree/main/embassy-executor)
