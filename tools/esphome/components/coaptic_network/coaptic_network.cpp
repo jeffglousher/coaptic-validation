@@ -5,6 +5,7 @@
 #include "esphome/core/log.h"
 #include "esp_random.h"
 #include "esp_timer.h"
+#include "esp_vfs_eventfd.h"
 #ifdef COAPTIC_PAIRING
 #include "driver/usb_serial_jtag.h"
 #include "esp_system.h"
@@ -20,6 +21,11 @@ extern "C" int32_t coaptic_network_run(void *context, const uint8_t *id);
 namespace esphome::coaptic_network {
 
 static constexpr const char *TAG = "coaptic_network";
+
+// One process-lifetime descriptor, allocated only when the optional Rust driver
+// is claimed. Wakers contain no component pointer. Never close/reuse this fd:
+// retained external wakers must remain safe after a driver exits.
+static std::atomic<int> async_event_fd{-1};
 
 #ifdef COAPTIC_TIMING_TRACE
 void CoapticNetwork::trace_event_(uint8_t kind, uint64_t start, uint64_t duration,
@@ -162,19 +168,24 @@ int32_t CoapticNetwork::receive(uint8_t *bytes, uint32_t capacity, uint64_t *pee
 #ifdef COAPTIC_TIMING_TRACE
   const uint64_t trace_start = static_cast<uint64_t>(esp_timer_get_time());
 #endif
-  uint8_t packet[2048];
+  // lwIP recvmsg reports MSG_TRUNC and the original UDP datagram length.
+  // Receive directly into the borrowed Coaptic slot; no packet-sized staging.
   sockaddr_in address{};
-  socklen_t size = sizeof(address);
-  int length = recvfrom(socket_, packet, sizeof(packet), 0, reinterpret_cast<sockaddr *>(&address), &size);
+  iovec vector{bytes, capacity};
+  msghdr message{};
+  message.msg_name = &address;
+  message.msg_namelen = sizeof(address);
+  message.msg_iov = &vector;
+  message.msg_iovlen = 1;
+  int length = recvmsg(socket_, &message, 0);
   if (length < 0)
     return errno == EAGAIN || errno == EWOULDBLOCK ? -1 : -2;
   rx_.store(rx_.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
-  if (length >= sizeof(packet) || static_cast<uint32_t>(length) > capacity ||
-      size != sizeof(address) || address.sin_family != AF_INET) {
+  if ((message.msg_flags & MSG_TRUNC) != 0 || static_cast<uint32_t>(length) > capacity ||
+      message.msg_namelen != sizeof(address) || address.sin_family != AF_INET) {
     dropped_.store(dropped_.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
     return -1;
   }
-  std::memcpy(bytes, packet, length);
   *peer = (static_cast<uint64_t>(ntohl(address.sin_addr.s_addr)) << 16) | ntohs(address.sin_port);
 #ifdef COAPTIC_TIMING_TRACE
   trace_event_(1, trace_start, static_cast<uint64_t>(esp_timer_get_time()) - trace_start,
@@ -192,6 +203,7 @@ int32_t CoapticNetwork::send(const uint8_t *bytes, uint32_t length, uint64_t pee
   address.sin_addr.s_addr = htonl(static_cast<uint32_t>(peer >> 16));
   address.sin_port = htons(static_cast<uint16_t>(peer));
   int sent = sendto(socket_, bytes, length, 0, reinterpret_cast<sockaddr *>(&address), sizeof(address));
+  const bool would_block = sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK);
   if (sent == static_cast<int>(length))
     tx_.store(tx_.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
 #ifdef COAPTIC_TIMING_TRACE
@@ -199,7 +211,42 @@ int32_t CoapticNetwork::send(const uint8_t *bytes, uint32_t length, uint64_t pee
                length, length >= 4 ? (static_cast<uint32_t>(bytes[2]) << 8) | bytes[3] : 65536,
                sent == static_cast<int>(length) ? 1 : -1);
 #endif
-  return sent;
+  return would_block ? -3 : sent;
+}
+
+uint64_t CoapticNetwork::async_now() const {
+  return stop_.load(std::memory_order_acquire) ? UINT64_MAX : static_cast<uint64_t>(esp_timer_get_time() / 1000);
+}
+
+int32_t CoapticNetwork::async_wait(uint32_t interests, uint64_t deadline) {
+  const uint64_t now = async_now();
+  if (now == UINT64_MAX) return -2;
+  const int event = async_event_fd.load(std::memory_order_acquire);
+  if (event < 0 || socket_ < 0 || event >= FD_SETSIZE || socket_ >= FD_SETSIZE) return -1;
+  fd_set reads, writes;
+  FD_ZERO(&reads);
+  FD_ZERO(&writes);
+  FD_SET(event, &reads);
+  if ((interests & 1) != 0) FD_SET(socket_, &reads);
+  if ((interests & 2) != 0) FD_SET(socket_, &writes);
+  timeval timeout{};
+  timeval *timeout_ptr = nullptr;
+  if (deadline != UINT64_MAX) {
+    const uint64_t remaining = deadline > now ? deadline - now : 0;
+    // timeval's seconds may be 32 bit. Cap a long deadline without wrapping;
+    // the Rust timer rechecks the absolute clock before reporting completion.
+    timeout.tv_sec = static_cast<long>(remaining / 1000 > INT32_MAX ? INT32_MAX : remaining / 1000);
+    timeout.tv_usec = static_cast<long>((remaining % 1000) * 1000);
+    timeout_ptr = &timeout;
+  }
+  const int maximum = event > socket_ ? event : socket_;
+  const int ready = select(maximum + 1, &reads, &writes, nullptr, timeout_ptr);
+  if (ready < 0) return errno == EINTR ? 0 : -1;
+  if (FD_ISSET(event, &reads)) {
+    uint64_t count;
+    if (read(event, &count, sizeof(count)) != sizeof(count)) return -1;
+  }
+  return stop_.load(std::memory_order_acquire) ? -2 : 0;
 }
 
 uint64_t CoapticNetwork::clock() {
@@ -367,6 +414,11 @@ bool CoapticNetwork::commit_pairing(const uint8_t *bytes, uint32_t length) {
 
 void CoapticNetwork::on_shutdown() {
   stop_.store(true, std::memory_order_release);
+  const int event = async_event_fd.load(std::memory_order_acquire);
+  if (event >= 0) {
+    const uint64_t one = 1;
+    (void) write(event, &one, sizeof(one));
+  }
   for (uint32_t waited = 0; task_ != nullptr && waited < 1000; waited += 10) {
     if (result_.load(std::memory_order_acquire) != 0) {
       vTaskDelete(task_);
@@ -378,6 +430,36 @@ void CoapticNetwork::on_shutdown() {
 }
 
 }
+
+extern "C" bool coaptic_async_init() {
+  using namespace esphome::coaptic_network;
+  if (async_event_fd.load(std::memory_order_acquire) >= 0) return true;
+  // Respect an eventfd VFS already registered by another subsystem. The Rust
+  // singleton serializes these calls; global registration is never removed.
+  int event = eventfd(0, EFD_SUPPORT_ISR);
+  if (event < 0) {
+    const esp_vfs_eventfd_config_t config = ESP_VFS_EVENTD_CONFIG_DEFAULT();
+    if (esp_vfs_eventfd_register(&config) != ESP_OK) return false;
+    event = eventfd(0, EFD_SUPPORT_ISR);
+  }
+  if (event < 0) return false;
+  async_event_fd.store(event, std::memory_order_release);
+  return true;
+}
+extern "C" void coaptic_async_wake() {
+  const int event = esphome::coaptic_network::async_event_fd.load(std::memory_order_acquire);
+  if (event >= 0) {
+    const uint64_t one = 1;
+    (void) write(event, &one, sizeof(one));
+  }
+}
+extern "C" uint64_t coaptic_async_now(void *context) {
+  return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->async_now();
+}
+extern "C" int32_t coaptic_async_wait(void *context, uint32_t interests, uint64_t deadline) {
+  return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->async_wait(interests, deadline);
+}
+extern "C" void coaptic_async_yield() { vTaskDelay(1); }
 
 extern "C" int32_t coaptic_socket_recv(void *context, uint8_t *bytes, uint32_t capacity, uint64_t *peer) {
   return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->receive(bytes, capacity, peer);

@@ -41,6 +41,9 @@
 #[cfg(feature = "network")]
 pub mod network;
 
+#[cfg(all(feature = "async-network", any(target_os = "none", test)))]
+pub mod async_network;
+
 #[cfg(all(feature = "network", feature = "oscore"))]
 pub mod security_state;
 

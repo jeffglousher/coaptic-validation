@@ -43,6 +43,8 @@ class CoapticNetwork : public Component {
   int32_t receive(uint8_t *bytes, uint32_t capacity, uint64_t *peer);
   int32_t send(const uint8_t *bytes, uint32_t length, uint64_t peer);
   uint64_t clock();
+  uint64_t async_now() const;
+  int32_t async_wait(uint32_t interests, uint64_t deadline);
 
  protected:
   static void run_(void *argument);
