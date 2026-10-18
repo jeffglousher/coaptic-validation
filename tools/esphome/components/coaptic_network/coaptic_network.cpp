@@ -246,7 +246,12 @@ int32_t CoapticNetwork::async_wait(uint32_t interests, uint64_t deadline) {
     uint64_t count;
     if (read(event, &count, sizeof(count)) != sizeof(count)) return -1;
   }
-  return stop_.load(std::memory_order_acquire) ? -2 : 0;
+  if (stop_.load(std::memory_order_acquire)) return -2;
+  int32_t result = 0;
+  if (FD_ISSET(socket_, &reads)) result |= 1;
+  if (FD_ISSET(socket_, &writes)) result |= 2;
+  if (deadline != UINT64_MAX && async_now() >= deadline) result |= 4;
+  return result;
 }
 
 uint64_t CoapticNetwork::clock() {

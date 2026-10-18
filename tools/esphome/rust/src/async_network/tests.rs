@@ -49,7 +49,7 @@ extern "C" fn coaptic_async_wait(_: *mut c_void, interests: u32, deadline: u64) 
     if deadline != u64::MAX {
         state.now = deadline;
     }
-    0
+    interests as i32 | if deadline != u64::MAX { 4 } else { 0 }
 }
 #[unsafe(no_mangle)]
 extern "C" fn coaptic_async_yield() {}

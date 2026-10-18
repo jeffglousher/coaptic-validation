@@ -14,7 +14,7 @@
 //! not poll these transport futures because readiness wakes this driver's root.
 use coaptic::storage::{AsyncDatagramIo, DatagramTransport};
 use coaptic::{Endpoint, platform::AsyncTimer};
-use core::cell::Cell;
+use core::cell::{Cell, RefCell};
 use core::ffi::c_void;
 use core::future::{Future, poll_fn};
 use core::pin::pin;
@@ -57,6 +57,7 @@ pub struct Runtime {
     context: *mut c_void,
     interests: Cell<u32>,
     deadline: Cell<Option<u64>>,
+    wakers: [RefCell<Option<Waker>>; 3],
 }
 
 impl Runtime {
@@ -80,6 +81,7 @@ impl Runtime {
             context,
             interests: Cell::new(0),
             deadline: Cell::new(None),
+            wakers: core::array::from_fn(|_| RefCell::new(None)),
         })
     }
 
@@ -93,6 +95,25 @@ impl Runtime {
         match unsafe { coaptic_async_now(self.context) } {
             u64::MAX => Err(Error::Stopped),
             now => Ok(now),
+        }
+    }
+
+    fn register(&self, index: usize, waker: &Waker) {
+        let mut slot = self.wakers[index].borrow_mut();
+        match slot.as_mut() {
+            Some(previous) => previous.clone_from(waker),
+            None => *slot = Some(waker.clone()),
+        }
+    }
+
+    fn wake_ready(&self, ready: u32) {
+        for index in 0..3 {
+            if ready & (1 << index) != 0 {
+                let waker = self.wakers[index].borrow_mut().take();
+                if let Some(waker) = waker {
+                    waker.wake();
+                }
+            }
         }
     }
 }
@@ -146,8 +167,8 @@ impl Driver<'_> {
                     self.0.deadline.get().unwrap_or(u64::MAX),
                 )
             } {
-                0 => {}
                 -2 => return Err(Error::Stopped),
+                ready if ready >= 0 => self.0.wake_ready(ready as u32),
                 _ => return Err(Error::Io),
             }
         }
@@ -165,6 +186,9 @@ impl Drop for Interest<'_> {
         self.runtime
             .interests
             .set(self.runtime.interests.get() & !self.bit);
+        self.runtime.wakers[if self.bit == READ { 0 } else { 1 }]
+            .borrow_mut()
+            .take();
     }
 }
 impl DatagramTransport for Socket<'_> {
@@ -183,7 +207,7 @@ impl AsyncDatagramIo for Socket<'_> {
             runtime: self.0,
             bit: READ,
         };
-        poll_fn(|_| {
+        poll_fn(|context| {
             let mut peer = 0;
             let size = unsafe {
                 coaptic_socket_recv(
@@ -194,6 +218,7 @@ impl AsyncDatagramIo for Socket<'_> {
                 )
             };
             if size == -1 {
+                interest.runtime.register(0, context.waker());
                 interest
                     .runtime
                     .interests
@@ -221,11 +246,12 @@ impl AsyncDatagramIo for Socket<'_> {
             runtime: self.0,
             bit: WRITE,
         };
-        poll_fn(|_| {
+        poll_fn(|context| {
             let size = unsafe {
                 coaptic_socket_send(interest.runtime.context, bytes.as_ptr(), length, peer)
             };
             if size == -3 {
+                interest.runtime.register(1, context.waker());
                 interest
                     .runtime
                     .interests
@@ -248,13 +274,15 @@ struct Deadline<'a>(&'a Runtime);
 impl Drop for Deadline<'_> {
     fn drop(&mut self) {
         self.0.deadline.set(None);
+        self.0.wakers[2].borrow_mut().take();
     }
 }
 impl AsyncTimer for Timer<'_> {
     async fn wait_until(&mut self, deadline: u64) {
         let registration = Deadline(self.0);
-        poll_fn(|_| match registration.0.now() {
+        poll_fn(|context| match registration.0.now() {
             Ok(now) if now < deadline => {
+                registration.0.register(2, context.waker());
                 registration.0.deadline.set(Some(deadline));
                 Poll::Pending
             }
