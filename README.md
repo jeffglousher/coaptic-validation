@@ -257,6 +257,16 @@ no packet queue or payload staging buffer; ESP-IDF owns native select/eventfd
 bookkeeping. Its metadata and retained future have independent compile-time
 ceilings, and startup logs their actual sizes for the built configuration.
 
+The reserved ESPHome integration keeps its existing ESP-IDF/lwIP socket and
+FreeRTOS task. [Embassy's executor](https://github.com/embassy-rs/embassy/tree/main/embassy-executor)
+can support a custom RTOS platform, but that still needs a platform wake callback
+and sleep loop. This single-service adapter uses those existing task facilities
+directly. [Embassy-net](https://github.com/embassy-rs/embassy/tree/main/embassy-net)
+provides its own network stack; replacing the firmware's Wi-Fi/network ownership
+is unnecessary for this integration. Coaptic's portable async transport and timer
+traits remain executor-neutral. This ESPHome component permits one runtime;
+that platform choice does not restrict multiple Apps in other integrations.
+
 ESPHome tooling pins version 2026.9.1 and ESP-IDF 5.5.5. S3 compilation requires
 the `coaptic-esp-1.97` Espressif Rust toolchain. Generated archives stay out of
 git; bundled mode requires both expected source revisions and checks the archive
