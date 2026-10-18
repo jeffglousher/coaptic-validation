@@ -462,7 +462,9 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
             Err(ManagedError::Recovery(_)) => {}
             // A radio/link outage must not terminate USB management or require
             // another approval. This owner retains its encrypted call and timers.
-            Err(ManagedError::Application(coaptic::app::Error::Io(_))) => {}
+            Err(ManagedError::Application(
+                coaptic::app::Error::Io(_) | coaptic::app::Error::Saturated,
+            )) => {}
             Err(ManagedError::Clock) => return Err(Error::Clock),
             Err(ManagedError::Trust(_)) => return Err(Error::Network),
             Err(_) => {
@@ -567,7 +569,13 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
                     call_started = now;
                 }
                 Err(ManagedError::Busy | ManagedError::NotConnected)
-                | Err(ManagedError::Application(coaptic::app::Error::Io(_))) => {}
+                | Err(ManagedError::Application(
+                    coaptic::app::Error::Io(_) | coaptic::app::Error::Saturated,
+                )) => {
+                    // Observe and application calls share the bounded packet pools.
+                    // Admission pressure leaves the session intact and retries later.
+                    next_probe = now.saturating_add(1_000);
+                }
                 Err(_) => return Err(Error::Network),
             }
         }
