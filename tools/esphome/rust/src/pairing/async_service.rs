@@ -252,6 +252,31 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
     }
 }
 
+// Keep synchronous owner construction out of the coroutine poll frame. Its
+// temporary storage must not remain reserved during every network/console poll.
+#[inline(never)]
+fn connection<'a, T: AsyncDatagramIo>(
+    device: &'a Device,
+    socket: &'a mut T,
+    random: fn(&mut [u8]) -> bool,
+    endpoint: Endpoint,
+    start: u64,
+) -> Result<ManagedConnection<'a, Borrowed<'a, T>, profiles::Constrained>, Error> {
+    let mut connection = ManagedConnection::<_, profiles::Constrained>::from_local_pairing(
+        &device.identity,
+        &device.pairing,
+        endpoint,
+        Borrowed(socket),
+        random,
+        start,
+    )
+    .map_err(|_| Error::Network)?;
+    connection
+        .observable_manual("identity")
+        .map_err(|_| Error::Network)?;
+    Ok(connection)
+}
+
 async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
     device: &Device,
     socket: &mut T,
@@ -281,18 +306,7 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
     let Some(start) = next_time(clock)? else {
         return Ok(None);
     };
-    let mut connection = ManagedConnection::<_, profiles::Constrained>::from_local_pairing(
-        &device.identity,
-        &device.pairing,
-        endpoint,
-        Borrowed(socket),
-        random,
-        start,
-    )
-    .map_err(|_| Error::Network)?;
-    connection
-        .observable_manual("identity")
-        .map_err(|_| Error::Network)?;
+    let mut connection = connection(device, socket, random, endpoint, start)?;
     let mut subscription = ManagedSubscription::new("identity");
     if initiates {
         match connection.connect(start) {

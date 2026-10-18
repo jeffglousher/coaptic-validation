@@ -333,13 +333,13 @@ fn run_unprotected_async(
     let mut runtime =
         unsafe { crate::async_network::Runtime::new(context) }.map_err(|_| "async driver")?;
     let (socket, mut protocol, mut local, mut driver) = runtime.split();
-    match driver.run(crate::network::run_async(
+    match driver.run(core::pin::pin!(crate::network::run_async(
         socket,
         random,
         || async_clock(context),
         id,
         (&mut protocol, &mut local),
-    )) {
+    ))) {
         Ok(result) => result,
         Err(crate::async_network::Error::Stopped) => Ok(()),
         Err(_) => Err("async driver"),
@@ -358,7 +358,7 @@ fn run_telemetry_async(
         unsafe { crate::async_network::Runtime::new(context) }.map_err(|_| "async driver")?;
     let (socket, mut protocol, mut local, mut driver) = runtime.split();
     driver
-        .run(crate::protected_telemetry::run_async(
+        .run(core::pin::pin!(crate::protected_telemetry::run_async(
             socket,
             random,
             clock,
@@ -366,7 +366,7 @@ fn run_telemetry_async(
             Nvs(context),
             PendingNvs(context),
             (&mut protocol, &mut local),
-        ))
+        )))
         .map_err(|_| "telemetry stopped")?
         .map(|_| ())
         .map_err(|_| "telemetry stopped")
@@ -383,7 +383,7 @@ fn run_protected_async(
     let mut runtime =
         unsafe { crate::async_network::Runtime::new(context) }.map_err(|_| "async driver")?;
     let (socket, mut protocol, mut local, mut driver) = runtime.split();
-    match driver.run(crate::network::run_protected_async(
+    match driver.run(core::pin::pin!(crate::network::run_protected_async(
         socket,
         random,
         || async_clock(context),
@@ -391,7 +391,7 @@ fn run_protected_async(
         (&mut protocol, &mut local),
         credentials,
         Nvs(context),
-    )) {
+    ))) {
         Ok(result) => result,
         Err(crate::async_network::Error::Stopped) => Ok(()),
         Err(_) => Err("async driver"),
@@ -490,7 +490,7 @@ mod pairing_ffi {
             unsafe { crate::async_network::Runtime::new(context) }.map_err(|_| "async driver")?;
         let (socket, mut protocol, mut local, console_ready, mut driver) =
             runtime.split_with_console();
-        match driver.run(crate::pairing::run_async(
+        match driver.run(core::pin::pin!(crate::pairing::run_async(
             socket,
             |bytes| unsafe { coaptic_socket_random(bytes.as_mut_ptr(), bytes.len() as u32) },
             || async_clock(context),
@@ -498,7 +498,7 @@ mod pairing_ffi {
             Usb(context),
             (&mut protocol, &mut local),
             console_ready,
-        )) {
+        ))) {
             Ok(result) => result.map_err(|_| "pairing stopped"),
             Err(crate::async_network::Error::Stopped) => Ok(()),
             Err(_) => Err("async driver"),

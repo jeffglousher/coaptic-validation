@@ -1,4 +1,5 @@
 use super::*;
+use core::pin::pin;
 use std::sync::Mutex;
 
 static SERIAL: Mutex<()> = Mutex::new(());
@@ -117,7 +118,7 @@ fn receive_and_send_wait_for_readiness_without_staging() {
     STATE.lock().unwrap().expected_interest = READ;
     let mut bytes = [0; 4];
     assert_eq!(
-        driver.run(socket.recv(&mut bytes)),
+        driver.run(core::pin::pin!(socket.recv(&mut bytes))),
         Ok(Ok((4, Endpoint::v4([127, 0, 0, 1], 5683))))
     );
     assert_eq!(&bytes, b"recv");
@@ -129,7 +130,9 @@ fn receive_and_send_wait_for_readiness_without_staging() {
         state.expected_interest = WRITE;
     }
     assert_eq!(
-        driver.run(socket.send(Endpoint::v4([127, 0, 0, 1], 5683), b"send")),
+        driver.run(core::pin::pin!(
+            socket.send(Endpoint::v4([127, 0, 0, 1], 5683), b"send")
+        )),
         Ok(Ok(4))
     );
     assert_eq!(STATE.lock().unwrap().bytes, *b"send");
@@ -166,12 +169,12 @@ fn absolute_timer_and_stop_are_bounded() {
     let _serial = SERIAL.lock().unwrap();
     let mut runtime = runtime();
     let (_, mut timer, _, mut driver) = runtime.split();
-    assert_eq!(driver.run(timer.wait_until(25)), Ok(()));
+    assert_eq!(driver.run(core::pin::pin!(timer.wait_until(25))), Ok(()));
     assert_eq!(STATE.lock().unwrap().waits, 1);
     assert_eq!(driver.0.deadlines[0].get(), None);
     STATE.lock().unwrap().stopped = true;
     assert_eq!(
-        driver.run(core::future::pending::<()>()),
+        driver.run(core::pin::pin!(core::future::pending::<()>())),
         Err(Error::Stopped)
     );
 }
@@ -181,7 +184,7 @@ fn local_deadline_wakes_before_protocol_timer_and_cancels_both() {
     let _serial = SERIAL.lock().unwrap();
     let mut runtime = runtime();
     let (_, mut protocol, mut local, mut driver) = runtime.split();
-    let selected = driver.run(async {
+    let selected = driver.run(core::pin::pin!(async {
         let mut protocol = pin!(protocol.wait_until(100));
         let mut local = pin!(local.wait_until(25));
         poll_fn(|context| {
@@ -194,7 +197,7 @@ fn local_deadline_wakes_before_protocol_timer_and_cancels_both() {
             Poll::Pending
         })
         .await
-    });
+    }));
     assert_eq!(selected, Ok(1));
     assert_eq!(STATE.lock().unwrap().now, 25);
     assert_eq!(STATE.lock().unwrap().waits, 1);
@@ -209,7 +212,7 @@ fn console_readiness_never_consumes_a_byte_and_cancellation_removes_its_waker() 
     let mut runtime = runtime();
     let (_, _, _, mut console, mut driver) = runtime.split_with_console();
     STATE.lock().unwrap().expected_interest = CONSOLE;
-    assert_eq!(driver.run(console.wait()), Ok(Ok(())));
+    assert_eq!(driver.run(core::pin::pin!(console.wait())), Ok(Ok(())));
     assert_eq!(STATE.lock().unwrap().attempts, 0);
     assert_eq!(driver.0.interests.get(), 0);
     assert!(driver.0.wakers[4].borrow().is_none());

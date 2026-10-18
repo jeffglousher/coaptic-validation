@@ -17,7 +17,7 @@ use coaptic::{Endpoint, platform::AsyncTimer};
 use core::cell::{Cell, RefCell};
 use core::ffi::c_void;
 use core::future::{Future, poll_fn};
-use core::pin::pin;
+use core::pin::Pin;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
@@ -184,8 +184,10 @@ pub struct Driver<'a>(&'a Runtime);
 impl Driver<'_> {
     /// Sleep in select until socket readiness, deadline, external wake or stop.
     /// Ready/self-waking traffic yields to FreeRTOS after 32 root polls.
-    /// A stop or select error drops the root future before returning.
-    pub fn run<F: Future>(&mut self, future: F) -> Result<F::Output, Error> {
+    /// The caller pins and owns the root future; returning releases its borrow.
+    /// Borrowing avoids moving the large root through another task stack frame.
+    #[inline(never)]
+    pub fn run<F: Future>(&mut self, mut future: Pin<&mut F>) -> Result<F::Output, Error> {
         // Leave at least 32 KiB of the existing 96 KiB task stack outside the
         // retained root future. Native high-water qualification remains needed
         // for construction peaks and nested synchronous crypto/storage frames.
@@ -200,7 +202,6 @@ impl Driver<'_> {
         };
         let waker = unsafe { Waker::from_raw(raw_waker()) };
         let mut context = Context::from_waker(&waker);
-        let mut future = pin!(future);
         let mut burst = 0;
         loop {
             self.0.now()?;
