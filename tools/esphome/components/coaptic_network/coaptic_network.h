@@ -48,7 +48,13 @@ class CoapticNetwork : public Component {
 
  protected:
   static void run_(void *argument);
+#ifdef COAPTIC_ASYNC_NETWORK
+  // Includes retained future plus measured Xtensa coroutine construction/poll
+  // frames. A future-size ceiling alone does not bound the native task peak.
+  static constexpr uint32_t STACK_BYTES = 196608;
+#else
   static constexpr uint32_t STACK_BYTES = 98304;
+#endif
   TaskHandle_t task_{nullptr};
   int socket_{-1};
   uint16_t port_{5683};

@@ -188,9 +188,9 @@ impl Driver<'_> {
     /// Borrowing avoids moving the large root through another task stack frame.
     #[inline(never)]
     pub fn run<F: Future>(&mut self, mut future: Pin<&mut F>) -> Result<F::Output, Error> {
-        // Leave at least 32 KiB of the existing 96 KiB task stack outside the
-        // retained root future. Native high-water qualification remains needed
-        // for construction peaks and nested synchronous crypto/storage frames.
+        // Bound retained storage independently of the native task stack.
+        // Construction/poll and synchronous crypto/storage frames are additional;
+        // the ESPHome async task reserves 192 KiB and reports measured high-water.
         const {
             assert!(core::mem::size_of::<F>() <= 65_536);
         }
