@@ -3,8 +3,8 @@
 //! Socket calls borrow packet slots only for the duration of a nonblocking
 //! syscall. Pending futures retain no native pointer, so cancellation and even
 //! forgetting a future cannot leave DMA accessing a released slot. The driver
-//! uses the existing FreeRTOS task, one process-lifetime eventfd, two interest
-//! bits and two timer deadlines. There is no packet queue or boxed future.
+//! uses the existing FreeRTOS task, one process-lifetime eventfd, socket/optional
+//! console interests and two timer deadlines. There is no packet queue or boxed future.
 //! ESP-IDF itself allocates its eventfd/select bookkeeping; this is not a claim
 //! that the platform socket stack or task startup uses no allocator.
 //!
@@ -66,7 +66,7 @@ pub struct Runtime {
     wakers: [RefCell<Option<Waker>>; WAKER_SLOTS],
 }
 
-// Whole metadata ceiling, including alignment and all four owned wakers.
+// Whole metadata ceiling, including alignment and protocol/local/console wakers.
 const _: () =
     assert!(core::mem::size_of::<Runtime>() <= if cfg!(feature = "pairing") { 168 } else { 144 });
 

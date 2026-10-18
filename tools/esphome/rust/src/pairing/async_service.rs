@@ -64,7 +64,8 @@ fn retryable<E, C>(error: &ManagedAsyncError<E, C>) -> bool {
             | ManagedError::Capacity
             | ManagedError::Recovery(_),
         )
-        | ManagedAsyncError::Deadline => true,
+        | ManagedAsyncError::Deadline
+        | ManagedAsyncError::Call(AsyncCallError::ProgressRequired { .. }) => true,
         ManagedAsyncError::Recovery(RecoveryError::Bootstrap(PollError::Io(io))) => {
             matches!(io, AsyncIoError::Transport(_) | AsyncIoError::Deadline)
         }
