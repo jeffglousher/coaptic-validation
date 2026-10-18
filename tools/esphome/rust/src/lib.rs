@@ -136,6 +136,18 @@ fn panic(_: &core::panic::PanicInfo<'_>) -> ! {
     unsafe { abort() }
 }
 
+// A transport refusal (including truncation) does not terminate a service on its
+// own. Timers/local wakes do not disguise a consecutive receive error streak.
+#[cfg(feature = "async-network")]
+fn receive_failed<E>(wake: &Result<coaptic::app::AppWake, E>, failures: &mut u8) -> bool {
+    match wake {
+        Ok(coaptic::app::AppWake::Ingress) => *failures = 0,
+        Err(_) => *failures = failures.saturating_add(1),
+        _ => {}
+    }
+    *failures >= 32
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

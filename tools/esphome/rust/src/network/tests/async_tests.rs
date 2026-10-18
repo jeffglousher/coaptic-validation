@@ -12,6 +12,9 @@ impl coaptic::storage::DatagramTransport for NativeOnly {
 impl AsyncDatagramIo for NativeOnly {
     async fn recv(&mut self, bytes: &mut [u8]) -> Result<(usize, Endpoint), ()> {
         crate::cooperate().await;
+        if core::mem::take(&mut self.0.fail) {
+            return Err(());
+        }
         if let Some(packet) = self.0.incoming.pop_front() {
             bytes[..packet.len()].copy_from_slice(&packet);
             Ok((packet.len(), Endpoint::v4([192, 0, 2, 1], 5683)))
@@ -63,7 +66,7 @@ fn native_only_service_echoes_after_pending_io_and_releases_ownership() {
         let io = NativeOnly(Scripted {
             incoming: [request(9, coaptic::Code::POST, "echo", b"native async")].into(),
             outgoing: out.clone(),
-            fail: false,
+            fail: true,
         });
         let mut protocol = Timer(now.clone());
         let mut local = Timer(now.clone());

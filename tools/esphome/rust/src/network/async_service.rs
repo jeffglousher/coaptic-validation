@@ -49,6 +49,7 @@ pub async fn run_async<T: AsyncDatagramIo>(
     let mut next = 0;
     let mut confirm_at = 0;
     let mut errors = 0;
+    let mut receive_errors = 0;
     let mut tick = 0u32;
     let mut clock = CheckedClock::new(|| clock().ok_or(()));
     while let Some(now) = next_time(&mut clock)? {
@@ -111,9 +112,12 @@ pub async fn run_async<T: AsyncDatagramIo>(
         let Some(wait_at) = next_time(&mut clock)? else {
             return Ok(());
         };
-        app.wait_async(wait_at, protocol_timer, local_timer.wait_until(next))
-            .await
-            .map_err(|_| "receive")?;
+        let wake = app
+            .wait_async(wait_at, protocol_timer, local_timer.wait_until(next))
+            .await;
+        if crate::receive_failed(&wake, &mut receive_errors) {
+            return Err("receive");
+        }
     }
     Ok(())
 }
@@ -150,6 +154,7 @@ pub async fn run_protected_async<T: AsyncDatagramIo, S: crate::security_state::S
     let mut next = 0;
     let mut confirm_at = 0;
     let mut errors = 0;
+    let mut receive_errors = 0;
     let mut tick = 0u32;
     let mut clock = CheckedClock::new(|| clock().ok_or(()));
     while let Some(now) = next_time(&mut clock)? {
@@ -231,9 +236,12 @@ pub async fn run_protected_async<T: AsyncDatagramIo, S: crate::security_state::S
         let Some(wait_at) = next_time(&mut clock)? else {
             return Ok(());
         };
-        app.wait_async(wait_at, protocol_timer, local_timer.wait_until(next))
-            .await
-            .map_err(|_| "receive")?;
+        let wake = app
+            .wait_async(wait_at, protocol_timer, local_timer.wait_until(next))
+            .await;
+        if crate::receive_failed(&wake, &mut receive_errors) {
+            return Err("receive");
+        }
     }
     Ok(())
 }

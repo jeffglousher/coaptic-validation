@@ -307,6 +307,7 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
     let mut call_started = start;
     let mut connected_reported = false;
     let mut failed_polls = 0u8;
+    let mut receive_errors = 0;
     let mut reply = [0; 128];
     let mut sample = [0; 45];
     sample[..4].copy_from_slice(&[0x83, 1, 0x58, 32]);
@@ -514,14 +515,19 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
             include(due);
         }
         let mut local_error = None;
-        connection
+        let wake = connection
             .wait_async(wait_at, schedule.protocol, async {
                 if let Err(error) = local_ready(schedule.local, schedule.console, deadline).await {
                     local_error = Some(error);
                 }
             })
-            .await
-            .map_err(|_| Error::Network)?;
+            .await;
+        if matches!(&wake, Err(ManagedError::Clock)) {
+            return Err(Error::Network);
+        }
+        if crate::receive_failed(&wake, &mut receive_errors) {
+            return Err(Error::Network);
+        }
         if let Some(error) = local_error {
             return Err(error);
         }

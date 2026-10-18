@@ -228,6 +228,7 @@ pub async fn run_async<
             _ => Error::Send,
         })?;
     let mut failures = 0;
+    let mut receive_errors = 0;
     let mut output = [0; 56];
     loop {
         crate::cooperate().await;
@@ -294,9 +295,12 @@ pub async fn run_async<
         if now >= deadline {
             return Err(Error::Deadline);
         }
-        app.wait_async(now, protocol_timer, local_timer.wait_until(deadline))
-            .await
-            .map_err(|_| Error::Poll)?;
+        let wake = app
+            .wait_async(now, protocol_timer, local_timer.wait_until(deadline))
+            .await;
+        if crate::receive_failed(&wake, &mut receive_errors) {
+            return Err(Error::Poll);
+        }
     }
 }
 
