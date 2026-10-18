@@ -49,10 +49,19 @@ extern "C" fn coaptic_async_wait(_: *mut c_void, interests: u32, deadline: u64) 
     if deadline != u64::MAX {
         state.now = deadline;
     }
-    interests as i32 | if deadline != u64::MAX { 4 } else { 0 }
+    (interests as i32 & 3)
+        | if interests & 4 != 0 { 8 } else { 0 }
+        | if deadline != u64::MAX { 4 } else { 0 }
 }
 #[unsafe(no_mangle)]
 extern "C" fn coaptic_async_yield() {}
+#[unsafe(no_mangle)]
+extern "C" fn coaptic_async_storage(_: u32, _: u32) {}
+#[cfg(feature = "pairing")]
+#[unsafe(no_mangle)]
+extern "C" fn coaptic_async_console_ready() -> i32 {
+    i32::from(STATE.lock().unwrap().ready)
+}
 #[unsafe(no_mangle)]
 unsafe extern "C" fn coaptic_socket_recv(
     _: *mut c_void,
@@ -104,7 +113,7 @@ fn runtime() -> Runtime {
 fn receive_and_send_wait_for_readiness_without_staging() {
     let _serial = SERIAL.lock().unwrap();
     let mut runtime = runtime();
-    let (mut socket, _, mut driver) = runtime.split();
+    let (mut socket, _, _, mut driver) = runtime.split();
     STATE.lock().unwrap().expected_interest = READ;
     let mut bytes = [0; 4];
     assert_eq!(
@@ -131,7 +140,7 @@ fn receive_and_send_wait_for_readiness_without_staging() {
 fn cancelled_waits_remove_socket_and_timer_interests() {
     let _serial = SERIAL.lock().unwrap();
     let mut runtime = runtime();
-    let (mut socket, mut timer, driver) = runtime.split();
+    let (mut socket, mut timer, _, driver) = runtime.split();
     let waker = unsafe { Waker::from_raw(raw_waker()) };
     let mut context = Context::from_waker(&waker);
     let mut bytes = [0; 4];
@@ -144,9 +153,9 @@ fn cancelled_waits_remove_socket_and_timer_interests() {
     {
         let mut future = pin!(timer.wait_until(25));
         assert!(future.as_mut().poll(&mut context).is_pending());
-        assert_eq!(driver.0.deadline.get(), Some(25));
+        assert_eq!(driver.0.deadlines[0].get(), Some(25));
     }
-    assert_eq!(driver.0.deadline.get(), None);
+    assert_eq!(driver.0.deadlines[0].get(), None);
     // Drop before first poll never installs a readiness interest.
     drop(socket.recv(&mut bytes));
     assert_eq!(driver.0.interests.get(), 0);
@@ -156,15 +165,63 @@ fn cancelled_waits_remove_socket_and_timer_interests() {
 fn absolute_timer_and_stop_are_bounded() {
     let _serial = SERIAL.lock().unwrap();
     let mut runtime = runtime();
-    let (_, mut timer, mut driver) = runtime.split();
+    let (_, mut timer, _, mut driver) = runtime.split();
     assert_eq!(driver.run(timer.wait_until(25)), Ok(()));
     assert_eq!(STATE.lock().unwrap().waits, 1);
-    assert_eq!(driver.0.deadline.get(), None);
+    assert_eq!(driver.0.deadlines[0].get(), None);
     STATE.lock().unwrap().stopped = true;
     assert_eq!(
         driver.run(core::future::pending::<()>()),
         Err(Error::Stopped)
     );
+}
+
+#[test]
+fn local_deadline_wakes_before_protocol_timer_and_cancels_both() {
+    let _serial = SERIAL.lock().unwrap();
+    let mut runtime = runtime();
+    let (_, mut protocol, mut local, mut driver) = runtime.split();
+    let selected = driver.run(async {
+        let mut protocol = pin!(protocol.wait_until(100));
+        let mut local = pin!(local.wait_until(25));
+        poll_fn(|context| {
+            if local.as_mut().poll(context).is_ready() {
+                return Poll::Ready(1);
+            }
+            if protocol.as_mut().poll(context).is_ready() {
+                return Poll::Ready(2);
+            }
+            Poll::Pending
+        })
+        .await
+    });
+    assert_eq!(selected, Ok(1));
+    assert_eq!(STATE.lock().unwrap().now, 25);
+    assert_eq!(STATE.lock().unwrap().waits, 1);
+    assert!(driver.0.deadlines.iter().all(|slot| slot.get().is_none()));
+    assert!(driver.0.wakers.iter().all(|slot| slot.borrow().is_none()));
+}
+
+#[cfg(feature = "pairing")]
+#[test]
+fn console_readiness_never_consumes_a_byte_and_cancellation_removes_its_waker() {
+    let _serial = SERIAL.lock().unwrap();
+    let mut runtime = runtime();
+    let (_, _, _, mut console, mut driver) = runtime.split_with_console();
+    STATE.lock().unwrap().expected_interest = CONSOLE;
+    assert_eq!(driver.run(console.wait()), Ok(Ok(())));
+    assert_eq!(STATE.lock().unwrap().attempts, 0);
+    assert_eq!(driver.0.interests.get(), 0);
+    assert!(driver.0.wakers[4].borrow().is_none());
+    STATE.lock().unwrap().ready = false;
+    let waker = unsafe { Waker::from_raw(raw_waker()) };
+    let mut context = Context::from_waker(&waker);
+    {
+        let mut future = pin!(console.wait());
+        assert!(future.as_mut().poll(&mut context).is_pending());
+    }
+    assert_eq!(driver.0.interests.get(), 0);
+    assert!(driver.0.wakers[4].borrow().is_none());
 }
 
 #[test]

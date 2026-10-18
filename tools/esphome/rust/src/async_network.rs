@@ -4,7 +4,7 @@
 //! syscall. Pending futures retain no native pointer, so cancellation and even
 //! forgetting a future cannot leave DMA accessing a released slot. The driver
 //! uses the existing FreeRTOS task, one process-lifetime eventfd, two interest
-//! bits and one timer deadline. There is no packet queue or boxed future.
+//! bits and two timer deadlines. There is no packet queue or boxed future.
 //! ESP-IDF itself allocates its eventfd/select bookkeeping; this is not a claim
 //! that the platform socket stack or task startup uses no allocator.
 //!
@@ -27,6 +27,9 @@ unsafe extern "C" {
     fn coaptic_async_now(context: *mut c_void) -> u64;
     fn coaptic_async_wait(context: *mut c_void, interests: u32, deadline: u64) -> i32;
     fn coaptic_async_yield();
+    fn coaptic_async_storage(metadata: u32, future: u32);
+    #[cfg(feature = "pairing")]
+    fn coaptic_async_console_ready() -> i32;
     fn coaptic_socket_recv(
         context: *mut c_void,
         bytes: *mut u8,
@@ -40,6 +43,9 @@ unsafe extern "C" {
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 const READ: u32 = 1;
 const WRITE: u32 = 2;
+#[cfg(feature = "pairing")]
+const CONSOLE: u32 = 4;
+const WAKER_SLOTS: usize = if cfg!(feature = "pairing") { 5 } else { 4 };
 
 /// Refusal from the platform; a send failure can have ambiguous delivery.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -56,9 +62,13 @@ pub enum Error {
 pub struct Runtime {
     context: *mut c_void,
     interests: Cell<u32>,
-    deadline: Cell<Option<u64>>,
-    wakers: [RefCell<Option<Waker>>; 3],
+    deadlines: [Cell<Option<u64>>; 2],
+    wakers: [RefCell<Option<Waker>>; WAKER_SLOTS],
 }
+
+// Whole metadata ceiling, including alignment and all four owned wakers.
+const _: () =
+    assert!(core::mem::size_of::<Runtime>() <= if cfg!(feature = "pairing") { 168 } else { 144 });
 
 impl Runtime {
     /// Claim one live ESPHome component without starting a task or polling it.
@@ -80,15 +90,35 @@ impl Runtime {
         Ok(Self {
             context,
             interests: Cell::new(0),
-            deadline: Cell::new(None),
+            deadlines: core::array::from_fn(|_| Cell::new(None)),
             wakers: core::array::from_fn(|_| RefCell::new(None)),
         })
     }
 
-    /// Split one socket, one timer and its task driver. Their borrows prevent
+    /// Split one socket, protocol/local timers and its task driver. Their borrows prevent
     /// another split or runtime destruction while any operation remains live.
-    pub fn split(&mut self) -> (Socket<'_>, Timer<'_>, Driver<'_>) {
-        (Socket(self), Timer(self), Driver(self))
+    pub fn split(&mut self) -> (Socket<'_>, Timer<'_>, Timer<'_>, Driver<'_>) {
+        (Socket(self), Timer(self, 0), Timer(self, 1), Driver(self))
+    }
+
+    /// Include the reserved device's exclusive USB console readiness source.
+    #[cfg(feature = "pairing")]
+    pub fn split_with_console(
+        &mut self,
+    ) -> (
+        Socket<'_>,
+        Timer<'_>,
+        Timer<'_>,
+        ConsoleReady<'_>,
+        Driver<'_>,
+    ) {
+        (
+            Socket(self),
+            Timer(self, 0),
+            Timer(self, 1),
+            ConsoleReady(self),
+            Driver(self),
+        )
     }
 
     fn now(&self) -> Result<u64, Error> {
@@ -107,8 +137,18 @@ impl Runtime {
     }
 
     fn wake_ready(&self, ready: u32) {
-        for index in 0..3 {
-            if ready & (1 << index) != 0 {
+        for index in 0..WAKER_SLOTS {
+            let due = if index < 2 {
+                ready & (1 << index) != 0
+            } else if index == 4 {
+                ready & 8 != 0
+            } else {
+                ready & 4 != 0
+                    && self.deadlines[index - 2]
+                        .get()
+                        .is_some_and(|deadline| self.now().is_ok_and(|now| now >= deadline))
+            };
+            if due {
                 let waker = self.wakers[index].borrow_mut().take();
                 if let Some(waker) = waker {
                     waker.wake();
@@ -146,6 +186,18 @@ impl Driver<'_> {
     /// Ready/self-waking traffic yields to FreeRTOS after 32 root polls.
     /// A stop or select error drops the root future before returning.
     pub fn run<F: Future>(&mut self, future: F) -> Result<F::Output, Error> {
+        // Leave at least 32 KiB of the existing 96 KiB task stack outside the
+        // retained root future. Native high-water qualification remains needed
+        // for construction peaks and nested synchronous crypto/storage frames.
+        const {
+            assert!(core::mem::size_of::<F>() <= 65_536);
+        }
+        unsafe {
+            coaptic_async_storage(
+                core::mem::size_of::<Runtime>() as u32,
+                core::mem::size_of::<F>() as u32,
+            )
+        };
         let waker = unsafe { Waker::from_raw(raw_waker()) };
         let mut context = Context::from_waker(&waker);
         let mut future = pin!(future);
@@ -164,7 +216,12 @@ impl Driver<'_> {
                 coaptic_async_wait(
                     self.0.context,
                     self.0.interests.get(),
-                    self.0.deadline.get().unwrap_or(u64::MAX),
+                    self.0
+                        .deadlines
+                        .iter()
+                        .filter_map(Cell::get)
+                        .min()
+                        .unwrap_or(u64::MAX),
                 )
             } {
                 -2 => return Err(Error::Stopped),
@@ -186,9 +243,40 @@ impl Drop for Interest<'_> {
         self.runtime
             .interests
             .set(self.runtime.interests.get() & !self.bit);
-        self.runtime.wakers[if self.bit == READ { 0 } else { 1 }]
-            .borrow_mut()
-            .take();
+        self.runtime.wakers[match self.bit {
+            READ => 0,
+            WRITE => 1,
+            _ => 4,
+        }]
+        .borrow_mut()
+        .take();
+    }
+}
+
+/// Readiness only: commissioning bytes remain in the existing native USB ring.
+#[cfg(feature = "pairing")]
+pub struct ConsoleReady<'a>(&'a Runtime);
+#[cfg(feature = "pairing")]
+impl ConsoleReady<'_> {
+    /// Wait without reading ahead or staging a commissioning frame.
+    pub async fn wait(&mut self) -> Result<(), Error> {
+        let interest = Interest {
+            runtime: self.0,
+            bit: CONSOLE,
+        };
+        poll_fn(|context| match unsafe { coaptic_async_console_ready() } {
+            0 => {
+                interest.runtime.register(4, context.waker());
+                interest
+                    .runtime
+                    .interests
+                    .set(interest.runtime.interests.get() | CONSOLE);
+                Poll::Pending
+            }
+            1 => Poll::Ready(Ok(())),
+            _ => Poll::Ready(Err(Error::Io)),
+        })
+        .await
     }
 }
 impl DatagramTransport for Socket<'_> {
@@ -268,22 +356,22 @@ impl AsyncDatagramIo for Socket<'_> {
     }
 }
 
-/// Single cancel-safe absolute timer in ESP-IDF's monotonic millisecond domain.
-pub struct Timer<'a>(&'a Runtime);
-struct Deadline<'a>(&'a Runtime);
+/// One of two cancel-safe absolute timers in ESP-IDF's monotonic millisecond domain.
+pub struct Timer<'a>(&'a Runtime, usize);
+struct Deadline<'a>(&'a Runtime, usize);
 impl Drop for Deadline<'_> {
     fn drop(&mut self) {
-        self.0.deadline.set(None);
-        self.0.wakers[2].borrow_mut().take();
+        self.0.deadlines[self.1].set(None);
+        self.0.wakers[2 + self.1].borrow_mut().take();
     }
 }
 impl AsyncTimer for Timer<'_> {
     async fn wait_until(&mut self, deadline: u64) {
-        let registration = Deadline(self.0);
+        let registration = Deadline(self.0, self.1);
         poll_fn(|context| match registration.0.now() {
             Ok(now) if now < deadline => {
-                registration.0.register(2, context.waker());
-                registration.0.deadline.set(Some(deadline));
+                registration.0.register(2 + registration.1, context.waker());
+                registration.0.deadlines[registration.1].set(Some(deadline));
                 Poll::Pending
             }
             _ => Poll::Ready(()),

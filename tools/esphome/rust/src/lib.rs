@@ -41,6 +41,21 @@
 #[cfg(feature = "network")]
 pub mod network;
 
+#[cfg(feature = "async-network")]
+pub(crate) async fn cooperate() {
+    let mut yielded = false;
+    core::future::poll_fn(|context| {
+        if yielded {
+            core::task::Poll::Ready(())
+        } else {
+            yielded = true;
+            context.waker().wake_by_ref();
+            core::task::Poll::Pending
+        }
+    })
+    .await
+}
+
 #[cfg(all(feature = "async-network", any(target_os = "none", test)))]
 pub mod async_network;
 

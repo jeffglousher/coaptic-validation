@@ -20,6 +20,13 @@
 use coaptic::platform::{CheckedClock, ClockError};
 use coaptic::storage::DatagramIo;
 use coaptic::{App, Request, Response, get, post, profiles};
+#[cfg(feature = "async-network")]
+mod async_service;
+#[cfg(feature = "async-network")]
+pub use async_service::run_async;
+#[cfg(all(feature = "async-network", feature = "oscore"))]
+pub use async_service::run_protected_async;
+
 use core::cell::Cell;
 use core::sync::atomic::{AtomicU8, AtomicU32, Ordering};
 use critical_section::Mutex;
@@ -266,6 +273,9 @@ mod tests {
     use coaptic::Endpoint;
     use coaptic::message::{Message, MessageId, Opt, Token, Type, decode, encode};
     use std::{cell::RefCell, collections::VecDeque, rc::Rc};
+
+    #[cfg(feature = "async-network")]
+    mod async_tests;
 
     struct Idle;
     impl coaptic::storage::DatagramTransport for Idle {

@@ -64,6 +64,26 @@ def telemetry_config(config, provision=False):
 
 
 class ConfigurationRefusalTests(unittest.TestCase):
+    def test_async_network_enables_mixed_select_and_exact_archive_feature(self):
+        for runtime in ["source", "bundled"]:
+            with self.subTest(runtime=runtime), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                config = network_configuration(root, runtime)
+                config["coaptic_network"]["async_network"] = True
+                if runtime == "bundled":
+                    _, marker, report = archive_fixture(root, config)
+                    report["features"].append("async-network")
+                    marker.write_text(json.dumps(report), encoding="utf-8")
+                path = root / "network.yaml"
+                path.write_text(json.dumps(config), encoding="utf-8")
+                result = subprocess.run([sys.executable, "-m", "esphome", "compile", str(path), "--only-generate"],
+                                        capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                defaults = (root / "build" / ("sdkconfig." + config["esphome"]["name"])).read_text()
+                self.assertIn("CONFIG_VFS_SUPPORT_SELECT=y", defaults)
+                if runtime == "source":
+                    self.assertIn('set(COAPTIC_ASYNC_NETWORK "ON")', (root / "build/CMakeLists.txt").read_text())
+
     def test_pairing_has_exclusive_usb_and_exact_archive_features(self):
         for change in ["source", "bundled", "logger", "mixed", "privilege", "archive"]:
             with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:

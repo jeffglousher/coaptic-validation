@@ -1,17 +1,24 @@
 //! Synchronous borrowed-buffer boundary to ESPHome's owned lwIP socket.
+#[cfg(any(not(feature = "async-network"), feature = "telemetry"))]
 use coaptic::Endpoint;
+#[cfg(any(not(feature = "async-network"), feature = "telemetry"))]
 use coaptic::storage::DatagramIo;
 use core::ffi::c_void;
 
 unsafe extern "C" {
+    #[cfg(any(not(feature = "async-network"), feature = "telemetry"))]
     fn coaptic_socket_recv(
         context: *mut c_void,
         bytes: *mut u8,
         capacity: u32,
         peer: *mut u64,
     ) -> i32;
+    #[cfg(any(not(feature = "async-network"), feature = "telemetry"))]
     fn coaptic_socket_send(context: *mut c_void, bytes: *const u8, length: u32, peer: u64) -> i32;
+    #[cfg(any(not(feature = "async-network"), feature = "telemetry"))]
     fn coaptic_socket_clock(context: *mut c_void) -> u64;
+    #[cfg(feature = "async-network")]
+    fn coaptic_async_now(context: *mut c_void) -> u64;
     fn coaptic_security_mode(context: *mut c_void) -> u32;
     #[cfg(feature = "oscore")]
     fn coaptic_security_config(context: *mut c_void, bytes: *mut u8, length: u32) -> bool;
@@ -45,10 +52,13 @@ unsafe impl critical_section::Impl for EspHomeCriticalSection {
     }
 }
 
+#[cfg(any(not(feature = "async-network"), feature = "telemetry"))]
 struct Socket(*mut c_void);
+#[cfg(any(not(feature = "async-network"), feature = "telemetry"))]
 impl coaptic::storage::DatagramTransport for Socket {
     type Error = ();
 }
+#[cfg(any(not(feature = "async-network"), feature = "telemetry"))]
 impl DatagramIo for Socket {
     fn recv(&mut self, bytes: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
         let mut peer = 0;
@@ -218,12 +228,22 @@ unsafe fn run_legacy(context: *mut c_void, id: *const u8, mode: u32) -> i32 {
     run_id.copy_from_slice(unsafe { core::slice::from_raw_parts(id, 32) });
     let random =
         |bytes: &mut [u8]| unsafe { coaptic_socket_random(bytes.as_mut_ptr(), bytes.len() as u32) };
+    #[cfg(any(not(feature = "async-network"), feature = "telemetry"))]
     let clock = || {
         let now = unsafe { coaptic_socket_clock(context) };
         (now != u64::MAX).then_some(now)
     };
     let result = match mode {
-        0 => super::network::run(Socket(context), random, clock, &run_id),
+        0 => {
+            #[cfg(feature = "async-network")]
+            {
+                run_unprotected_async(context, random, &run_id)
+            }
+            #[cfg(not(feature = "async-network"))]
+            {
+                super::network::run(Socket(context), random, clock, &run_id)
+            }
+        }
         #[cfg(feature = "oscore")]
         1..=4 => {
             let mut bytes = [0; 66];
@@ -244,14 +264,21 @@ unsafe fn run_legacy(context: *mut c_void, id: *const u8, mode: u32) -> i32 {
                 super::security_state::provision(&mut Nvs(context), &credentials)
                     .map_err(|_| "provisioning")
             } else if mode == 1 {
-                super::network::run_protected(
-                    Socket(context),
-                    random,
-                    clock,
-                    &run_id,
-                    &credentials,
-                    Nvs(context),
-                )
+                #[cfg(feature = "async-network")]
+                {
+                    run_protected_async(context, random, &run_id, &credentials)
+                }
+                #[cfg(not(feature = "async-network"))]
+                {
+                    super::network::run_protected(
+                        Socket(context),
+                        random,
+                        clock,
+                        &run_id,
+                        &credentials,
+                        Nvs(context),
+                    )
+                }
             } else {
                 #[cfg(feature = "telemetry")]
                 {
@@ -277,6 +304,61 @@ unsafe fn run_legacy(context: *mut c_void, id: *const u8, mode: u32) -> i32 {
         Err("pending provisioning") => -9,
         Err("telemetry stopped") => -10,
         Err(_) => -1,
+    }
+}
+
+#[cfg(feature = "async-network")]
+fn async_clock(context: *mut c_void) -> Option<u64> {
+    let now = unsafe { coaptic_async_now(context) };
+    (now != u64::MAX).then_some(now)
+}
+
+#[cfg(feature = "async-network")]
+#[inline(never)]
+fn run_unprotected_async(
+    context: *mut c_void,
+    random: fn(&mut [u8]) -> bool,
+    id: &[u8; 32],
+) -> Result<(), &'static str> {
+    let mut runtime =
+        unsafe { crate::async_network::Runtime::new(context) }.map_err(|_| "async driver")?;
+    let (socket, mut protocol, mut local, mut driver) = runtime.split();
+    match driver.run(crate::network::run_async(
+        socket,
+        random,
+        || async_clock(context),
+        id,
+        (&mut protocol, &mut local),
+    )) {
+        Ok(result) => result,
+        Err(crate::async_network::Error::Stopped) => Ok(()),
+        Err(_) => Err("async driver"),
+    }
+}
+
+#[cfg(all(feature = "async-network", feature = "oscore"))]
+#[inline(never)]
+fn run_protected_async(
+    context: *mut c_void,
+    random: fn(&mut [u8]) -> bool,
+    id: &[u8; 32],
+    credentials: &crate::security_state::Credentials,
+) -> Result<(), &'static str> {
+    let mut runtime =
+        unsafe { crate::async_network::Runtime::new(context) }.map_err(|_| "async driver")?;
+    let (socket, mut protocol, mut local, mut driver) = runtime.split();
+    match driver.run(crate::network::run_protected_async(
+        socket,
+        random,
+        || async_clock(context),
+        id,
+        (&mut protocol, &mut local),
+        credentials,
+        Nvs(context),
+    )) {
+        Ok(result) => result,
+        Err(crate::async_network::Error::Stopped) => Ok(()),
+        Err(_) => Err("async driver"),
     }
 }
 
@@ -356,6 +438,38 @@ mod pairing_ffi {
         }
     }
 
+    #[cfg(feature = "async-network")]
+    impl crate::pairing::ConsoleWait for crate::async_network::ConsoleReady<'_> {
+        async fn wait(&mut self) -> Result<(), Error> {
+            crate::async_network::ConsoleReady::wait(self)
+                .await
+                .map_err(|_| Error::Console)
+        }
+    }
+
+    #[cfg(feature = "async-network")]
+    #[inline(never)]
+    pub(super) fn run(context: *mut c_void) -> Result<(), &'static str> {
+        let mut runtime =
+            unsafe { crate::async_network::Runtime::new(context) }.map_err(|_| "async driver")?;
+        let (socket, mut protocol, mut local, console_ready, mut driver) =
+            runtime.split_with_console();
+        match driver.run(crate::pairing::run_async(
+            socket,
+            |bytes| unsafe { coaptic_socket_random(bytes.as_mut_ptr(), bytes.len() as u32) },
+            || async_clock(context),
+            Nvs(context),
+            Usb(context),
+            (&mut protocol, &mut local),
+            console_ready,
+        )) {
+            Ok(result) => result.map_err(|_| "pairing stopped"),
+            Err(crate::async_network::Error::Stopped) => Ok(()),
+            Err(_) => Err("async driver"),
+        }
+    }
+
+    #[cfg(not(feature = "async-network"))]
     #[inline(never)]
     pub(super) fn run(context: *mut c_void) -> Result<(), &'static str> {
         crate::pairing::run(

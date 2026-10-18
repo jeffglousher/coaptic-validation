@@ -8,6 +8,7 @@
 #include "esp_vfs_eventfd.h"
 #ifdef COAPTIC_PAIRING
 #include "driver/usb_serial_jtag.h"
+#include "driver/usb_serial_jtag_select.h"
 #include "esp_system.h"
 #endif
 #include "lwip/sockets.h"
@@ -229,6 +230,15 @@ int32_t CoapticNetwork::async_wait(uint32_t interests, uint64_t deadline) {
   FD_SET(event, &reads);
   if ((interests & 1) != 0) FD_SET(socket_, &reads);
   if ((interests & 2) != 0) FD_SET(socket_, &writes);
+  if ((interests & 4) != 0) {
+#if defined(COAPTIC_PAIRING) && defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
+    // Borrow the configured console descriptor only for readiness. Actual
+    // reads remain the existing sole-owner raw USB driver calls.
+    FD_SET(STDIN_FILENO, &reads);
+#else
+    return -1;
+#endif
+  }
   timeval timeout{};
   timeval *timeout_ptr = nullptr;
   if (deadline != UINT64_MAX) {
@@ -242,6 +252,14 @@ int32_t CoapticNetwork::async_wait(uint32_t interests, uint64_t deadline) {
   const int maximum = event > socket_ ? event : socket_;
   const int ready = select(maximum + 1, &reads, &writes, nullptr, timeout_ptr);
   if (ready < 0) return errno == EINTR ? 0 : -1;
+  const uint64_t now_us = static_cast<uint64_t>(esp_timer_get_time());
+  if (stack_checked_us_ == 0 || now_us - stack_checked_us_ >= 1000000) {
+    const uint32_t free_bytes = uxTaskGetStackHighWaterMark(nullptr);
+    high_water_.store(free_bytes < STACK_BYTES ? STACK_BYTES - free_bytes : 0, std::memory_order_relaxed);
+    stack_checked_us_ = now_us;
+  }
+  polls_.fetch_add(1, std::memory_order_relaxed);
+  if (ready == 0) idle_waits_.fetch_add(1, std::memory_order_relaxed);
   if (FD_ISSET(event, &reads)) {
     uint64_t count;
     if (read(event, &count, sizeof(count)) != sizeof(count)) return -1;
@@ -250,6 +268,7 @@ int32_t CoapticNetwork::async_wait(uint32_t interests, uint64_t deadline) {
   int32_t result = 0;
   if (FD_ISSET(socket_, &reads)) result |= 1;
   if (FD_ISSET(socket_, &writes)) result |= 2;
+  if ((interests & 4) != 0 && FD_ISSET(STDIN_FILENO, &reads)) result |= 8;
   if (deadline != UINT64_MAX && async_now() >= deadline) result |= 4;
   return result;
 }
@@ -437,19 +456,25 @@ void CoapticNetwork::on_shutdown() {
 }
 
 extern "C" bool coaptic_async_init() {
+#ifndef CONFIG_VFS_SUPPORT_SELECT
+  // Socket-only select cannot monitor eventfd. Refuse instead of sleeping
+  // forever or polling when the platform was not built with mixed VFS select.
+  return false;
+#else
   using namespace esphome::coaptic_network;
   if (async_event_fd.load(std::memory_order_acquire) >= 0) return true;
   // Respect an eventfd VFS already registered by another subsystem. The Rust
   // singleton serializes these calls; global registration is never removed.
   int event = eventfd(0, EFD_SUPPORT_ISR);
   if (event < 0) {
-    const esp_vfs_eventfd_config_t config = ESP_VFS_EVENTD_CONFIG_DEFAULT();
+    const esp_vfs_eventfd_config_t config{1};
     if (esp_vfs_eventfd_register(&config) != ESP_OK) return false;
     event = eventfd(0, EFD_SUPPORT_ISR);
   }
   if (event < 0) return false;
   async_event_fd.store(event, std::memory_order_release);
   return true;
+#endif
 }
 extern "C" void coaptic_async_wake() {
   const int event = esphome::coaptic_network::async_event_fd.load(std::memory_order_acquire);
@@ -465,6 +490,20 @@ extern "C" int32_t coaptic_async_wait(void *context, uint32_t interests, uint64_
   return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->async_wait(interests, deadline);
 }
 extern "C" void coaptic_async_yield() { vTaskDelay(1); }
+extern "C" void coaptic_async_storage(uint32_t metadata, uint32_t future) {
+  ESP_LOGI("coaptic_network", "COAPTIC_ASYNC_LAYOUT metadata_bytes=%lu future_bytes=%lu",
+           static_cast<unsigned long>(metadata), static_cast<unsigned long>(future));
+}
+#ifdef COAPTIC_PAIRING
+extern "C" int32_t coaptic_async_console_ready() {
+#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+  if (!usb_serial_jtag_is_driver_installed()) return -1;
+  return usb_serial_jtag_get_read_bytes_available() > 0 ? 1 : 0;
+#else
+  return -1;
+#endif
+}
+#endif
 
 extern "C" int32_t coaptic_socket_recv(void *context, uint8_t *bytes, uint32_t capacity, uint64_t *peer) {
   return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->receive(bytes, capacity, peer);
