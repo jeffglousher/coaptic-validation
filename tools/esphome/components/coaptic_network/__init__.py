@@ -48,8 +48,6 @@ def fixed_hex(length):
 
 
 def validate_security(config):
-    if config.get("async_network") and "telemetry" in config:
-        raise cv.Invalid("async_network currently supports App service and pairing; durable telemetry keeps its synchronous adapter")
     if sum([bool(config.get("oscore")), config["allow_plaintext"], "pairing" in config]) != 1:
         raise cv.Invalid("select protected oscore, privileged pairing or explicit allow_plaintext; exactly one is required")
     if "oscore" in config and config["oscore"]["sender_id"] == config["oscore"]["recipient_id"]:

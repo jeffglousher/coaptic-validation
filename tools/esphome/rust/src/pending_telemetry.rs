@@ -340,6 +340,9 @@ mod tests {
     use coaptic::provisioning::PinnedPeer;
     use std::{cell::RefCell, rc::Rc};
 
+    #[cfg(feature = "async-network")]
+    mod async_tests;
+
     #[test]
     fn telemetry_poll_fault_bound_and_clock_stop_preserve_complete_pending_work() {
         use crate::{protected_telemetry as runner, security_state as security};
