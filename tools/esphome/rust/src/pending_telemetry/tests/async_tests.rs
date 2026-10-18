@@ -117,3 +117,117 @@ fn pending_send_deadline_and_post_accept_clock_failure_preserve_exact_operation(
         assert!(recovered.completion().unwrap().is_none());
     }
 }
+
+struct ReceiptPeer {
+    context: coaptic::oscore::SecurityContext,
+    receipt: Receipt,
+    reply: Option<Vec<u8>>,
+    sends: Rc<Cell<usize>>,
+}
+impl coaptic::storage::DatagramTransport for ReceiptPeer {
+    type Error = ();
+}
+impl AsyncDatagramIo for ReceiptPeer {
+    async fn recv(&mut self, bytes: &mut [u8]) -> Result<(usize, Endpoint), ()> {
+        crate::cooperate().await;
+        if let Some(reply) = self.reply.take() {
+            bytes[..reply.len()].copy_from_slice(&reply);
+            Ok((reply.len(), Endpoint::v4([192, 0, 2, 1], 5683)))
+        } else {
+            core::future::pending().await
+        }
+    }
+    async fn send(&mut self, _: Endpoint, bytes: &[u8]) -> Result<usize, ()> {
+        use coaptic::message::{Message, Type, decode};
+        crate::cooperate().await;
+        self.sends.set(self.sends.get() + 1);
+        let packet = decode(bytes).unwrap();
+        let mut scratch = [0; 1152];
+        let (opened, reference) = self
+            .context
+            .unprotect_request(&packet, &mut scratch)
+            .unwrap();
+        assert_eq!(opened.payload(), &[&[7; 16][..], &b"retained"[..]].concat());
+        let payload = self.receipt.encode();
+        let response = Message::new(
+            Type::Acknowledgement,
+            coaptic::Code::CHANGED,
+            packet.message_id(),
+        )
+        .with_token(packet.token())
+        .with_payload(&payload);
+        let mut wire = [0; 1152];
+        let length = self
+            .context
+            .protect_response(&response, reference, &mut wire)
+            .unwrap();
+        self.reply = Some(wire[..length].to_vec());
+        Ok(bytes.len())
+    }
+}
+
+#[test]
+fn authenticated_async_receipt_is_durable_and_restart_needs_no_network() {
+    let credentials = credentials();
+    let backend = initialized(&credentials);
+    let mut pending = Pending::recover(backend.clone(), &credentials, principal(1)).unwrap();
+    pending
+        .begin(OperationId::new([7; 16]), [3; 32], Some(42), b"retained")
+        .unwrap();
+    let expected = receipt(&pending);
+    drop(pending);
+    let mut peer_credentials = super::credentials();
+    core::mem::swap(
+        &mut peer_credentials.sender,
+        &mut peer_credentials.recipient,
+    );
+    let sends = Rc::new(Cell::new(0));
+    for restart in [false, true] {
+        let now = Rc::new(Cell::new(0));
+        let mut security = Security::default();
+        // A completed durable operation returns before even opening security state.
+        if !restart {
+            security::provision(&mut security, &credentials).unwrap();
+        }
+        let mut protocol = Timer(now.clone());
+        let mut local = Timer(now.clone());
+        let mut future = core::pin::pin!(runner::run_async(
+            ReceiptPeer {
+                context: coaptic::oscore::SecurityContext::derive(peer_credentials.parameters())
+                    .unwrap(),
+                receipt: expected,
+                reply: None,
+                sends: sends.clone(),
+            },
+            |b| {
+                b.fill(42);
+                true
+            },
+            || Some(now.get()),
+            runner::Service {
+                endpoint: Endpoint::v4([192, 0, 2, 1], 5683),
+                principal: principal(1),
+                resource: [3; 32],
+                credentials: &credentials,
+                timeout_ms: 100
+            },
+            security,
+            backend.clone(),
+            (&mut protocol, &mut local),
+        ));
+        let mut result = None;
+        let mut cx = Context::from_waker(Waker::noop());
+        for tick in 0..100 {
+            now.set(tick);
+            if let Poll::Ready(value) = future.as_mut().poll(&mut cx) {
+                result = Some(value);
+                break;
+            }
+        }
+        assert_eq!(result, Some(Ok(expected)));
+        assert_eq!(sends.get(), 1);
+        let recovered = Pending::recover(backend.clone(), &credentials, principal(1)).unwrap();
+        assert_eq!(recovered.completion().unwrap(), Some(expected));
+        assert!(recovered.pending().unwrap().is_none());
+    }
+}
