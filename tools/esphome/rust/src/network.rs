@@ -31,6 +31,9 @@ static TICKS: AtomicU32 = AtomicU32::new(0);
 static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 #[cfg(test)]
 static ECHO_CALLS: AtomicU32 = AtomicU32::new(0);
+// Integration policy: periodic CON bounds dead-observer retention to this
+// cadence plus the library's retry budget, provided the platform keeps polling.
+const OBSERVE_CONFIRM_MS: u64 = 30_000;
 const LARGE: [u8; 2000] = [0x5a; 2000];
 
 struct Owner;
@@ -123,7 +126,7 @@ pub fn run<T: DatagramIo>(
     let _owner = claim(id)?;
     let mut app = App::profile::<profiles::Constrained>()
         .randomness(random)
-        .allow_plaintext()
+        .allow_unprotected()
         .block_wise::<true>()
         .route("identity", get(identity))
         .route("test", get(test))
@@ -135,6 +138,7 @@ pub fn run<T: DatagramIo>(
         .bind(io)
         .map_err(|_| "bind")?;
     let mut next = 0;
+    let mut confirm_at = 0;
     let mut errors = 0;
     let mut tick = 0u32;
     let mut clock = CheckedClock::new(|| clock().ok_or(()));
@@ -150,7 +154,18 @@ pub fn run<T: DatagramIo>(
         if now >= next {
             tick = tick.wrapping_add(1);
             TICKS.store(tick, Ordering::Relaxed);
-            let _ = app.notify(now, &["ticks"], Response::content_copy(&tick.to_be_bytes()));
+            let response = Response::content_copy(&tick.to_be_bytes());
+            if now >= confirm_at {
+                // Keep CON due while pacing prevents delivery or the transport fails.
+                if app
+                    .notify_confirmable(now, &["ticks"], response)
+                    .is_ok_and(|n| n > 0)
+                {
+                    confirm_at = now.saturating_add(OBSERVE_CONFIRM_MS);
+                }
+            } else {
+                let _ = app.notify(now, &["ticks"], response);
+            }
             next = now.saturating_add(250);
         }
     }
@@ -190,6 +205,7 @@ pub fn run_protected<T: DatagramIo, S: super::security_state::Store>(
         .bind(io)
         .map_err(|_| "bind")?;
     let mut next = 0;
+    let mut confirm_at = 0;
     let mut errors = 0;
     let mut tick = 0u32;
     let mut clock = CheckedClock::new(|| clock().ok_or(()));
@@ -225,8 +241,19 @@ pub fn run_protected<T: DatagramIo, S: super::security_state::Store>(
             tick = tick.wrapping_add(1);
             TICKS.store(tick, Ordering::Relaxed);
             // notify does not receive or dispatch; sender range is already granted.
-            app.notify(now, &["ticks"], Response::content_copy(&tick.to_be_bytes()))
-                .map_err(|_| "notification")?;
+            let response = Response::content_copy(&tick.to_be_bytes());
+            if now >= confirm_at {
+                if app
+                    .notify_confirmable(now, &["ticks"], response)
+                    .map_err(|_| "notification")?
+                    > 0
+                {
+                    confirm_at = now.saturating_add(OBSERVE_CONFIRM_MS);
+                }
+            } else {
+                app.notify(now, &["ticks"], response)
+                    .map_err(|_| "notification")?;
+            }
             next = now.saturating_add(250);
         }
     }
@@ -271,6 +298,155 @@ mod tests {
         fn send(&mut self, _: Endpoint, bytes: &[u8]) -> Result<usize, ()> {
             self.outgoing.borrow_mut().push(bytes.to_vec());
             Ok(bytes.len())
+        }
+    }
+
+    type TimedPackets = Rc<RefCell<Vec<(u64, Vec<u8>)>>>;
+
+    struct OfflineObserver {
+        acknowledge: bool,
+        ack: Option<Vec<u8>>,
+        now: Rc<Cell<u64>>,
+        registrations: VecDeque<(u64, Vec<u8>)>,
+        sent: TimedPackets,
+    }
+    impl DatagramIo for OfflineObserver {
+        type Error = ();
+        fn recv(&mut self, bytes: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
+            if let Some(packet) = self.ack.take() {
+                bytes[..packet.len()].copy_from_slice(&packet);
+                return Ok(Some((packet.len(), Endpoint::v4([192, 0, 2, 1], 5683))));
+            }
+            if self
+                .registrations
+                .front()
+                .is_none_or(|(at, _)| *at > self.now.get())
+            {
+                return Ok(None);
+            }
+            let (_, packet) = self.registrations.pop_front().unwrap();
+            bytes[..packet.len()].copy_from_slice(&packet);
+            Ok(Some((packet.len(), Endpoint::v4([192, 0, 2, 1], 5683))))
+        }
+        fn send(&mut self, _: Endpoint, bytes: &[u8]) -> Result<usize, ()> {
+            let parsed = decode(bytes).unwrap();
+            if self.acknowledge && parsed.ty() == Type::Confirmable {
+                let mut packet = [0; 4];
+                let n = encode(&Message::empty_ack(parsed.message_id()), &mut packet).unwrap();
+                self.ack = Some(packet[..n].to_vec());
+            }
+            self.sent
+                .borrow_mut()
+                .push((self.now.get(), bytes.to_vec()));
+            Ok(bytes.len())
+        }
+    }
+
+    fn observe_request(mid: u16) -> Vec<u8> {
+        let options = [Opt::observe_register(), Opt::uri_path("ticks")];
+        let message = Message::new(Type::Confirmable, coaptic::Code::GET, MessageId::new(mid))
+            .with_token(Token::new(&[mid as u8]).unwrap())
+            .with_options(&options);
+        let mut bytes = [0; 1152];
+        let n = encode(&message, &mut bytes).unwrap();
+        bytes[..n].to_vec()
+    }
+
+    fn offline_io(
+        packets: Vec<Vec<u8>>,
+    ) -> (OfflineObserver, impl FnMut() -> Option<u64>, TimedPackets) {
+        let now = Rc::new(Cell::new(0));
+        let sent = Rc::new(RefCell::new(Vec::new()));
+        let io = OfflineObserver {
+            acknowledge: false,
+            ack: None,
+            now: now.clone(),
+            sent: sent.clone(),
+            registrations: packets
+                .into_iter()
+                .enumerate()
+                .map(|(i, p)| (i as u64 * 200_000, p))
+                .collect(),
+        };
+        let mut times = (0..800_000).step_by(250);
+        (
+            io,
+            move || {
+                let t = times.next()?;
+                now.set(t);
+                Some(t)
+            },
+            sent,
+        )
+    }
+
+    fn assert_offline_cleanup(sent: &[(u64, Vec<u8>)]) {
+        for cycle in 0..4u64 {
+            let packets: Vec<_> = sent
+                .iter()
+                .filter(|(at, _)| *at / 200_000 == cycle)
+                .collect();
+            // Four successive registrations exceed the two-observer pool. Each
+            // must succeed after the preceding abandoned relation is reclaimed.
+            assert_eq!(packets.len(), 6, "initial reply plus five CON attempts");
+            let first = decode(&packets[0].1).unwrap();
+            assert_eq!(first.ty(), Type::Acknowledgement);
+            for (at, bytes) in &packets[1..] {
+                let note = decode(bytes).unwrap();
+                assert_eq!(note.ty(), Type::Confirmable);
+                assert_eq!(note.token().as_bytes(), &[(cycle + 1) as u8]);
+                assert!(*at < cycle * 200_000 + 125_000);
+            }
+        }
+    }
+
+    #[test]
+    fn online_observer_is_confirmed_every_thirty_seconds() {
+        let _test = TEST_LOCK.lock().unwrap();
+        let (mut io, _, sent) = offline_io(vec![observe_request(1)]);
+        io.acknowledge = true;
+        let now = io.now.clone();
+        let mut times = [0, 1, 250, 30_000, 30_001, 60_000, 60_001].into_iter();
+        run(
+            io,
+            |b| {
+                b.fill(42);
+                true
+            },
+            || {
+                let t = times.next()?;
+                now.set(t);
+                Some(t)
+            },
+            &[1; 32],
+        )
+        .unwrap();
+        let confirmations: Vec<_> = sent
+            .borrow()
+            .iter()
+            .filter(|(_, p)| decode(p).unwrap().ty() == Type::Confirmable)
+            .map(|(at, _)| *at)
+            .collect();
+        assert_eq!(confirmations, [0, 30_000, 60_000]);
+    }
+
+    #[test]
+    fn offline_observer_is_reclaimed_and_fresh_registrations_resume() {
+        let _test = TEST_LOCK.lock().unwrap();
+        let (io, clock, sent) = offline_io((1..=4).map(observe_request).collect());
+        run(
+            io,
+            |b| {
+                b.fill(42);
+                true
+            },
+            clock,
+            &[1; 32],
+        )
+        .unwrap();
+        assert_offline_cleanup(&sent.borrow());
+        for (_, packet) in sent.borrow().iter() {
+            assert!(decode(packet).unwrap().observe().is_some());
         }
     }
 
@@ -550,6 +726,74 @@ mod tests {
             let mut wire = [0; 1152];
             let n = ctx.protect_request(&plain, &mut wire).unwrap();
             wire[..n].to_vec()
+        }
+
+        #[test]
+        fn protected_offline_observer_reclaims_and_new_security_epoch_registers() {
+            let _test = TEST_LOCK.lock().unwrap();
+            // Losing volatile security state requires fresh session keys. Run
+            // each epoch with a distinct secret, never reset counters on old keys.
+            for epoch in 0..2 {
+                let mut server = credentials();
+                server.secret[0] ^= epoch;
+                let mut client = credentials();
+                client.secret[0] ^= epoch;
+                core::mem::swap(&mut client.sender, &mut client.recipient);
+                let mut peer = SecurityContext::derive(client.parameters()).unwrap();
+                let mut verifier = SecurityContext::derive(server.parameters()).unwrap();
+                let mut references = Vec::new();
+                let packets = (1..=4)
+                    .map(|mid| {
+                        let options = [Opt::observe_register(), Opt::uri_path("ticks")];
+                        let plain = Message::new(
+                            Type::Confirmable,
+                            coaptic::Code::GET,
+                            MessageId::new(mid),
+                        )
+                        .with_token(Token::new(&[mid as u8]).unwrap())
+                        .with_options(&options);
+                        let mut wire = [0; 1152];
+                        let n = peer.protect_request(&plain, &mut wire).unwrap();
+                        let packet = wire[..n].to_vec();
+                        let mut scratch = [0; 1152];
+                        let (_, reference) = verifier
+                            .unprotect_request(&decode(&packet).unwrap(), &mut scratch)
+                            .unwrap();
+                        references.push(reference);
+                        packet
+                    })
+                    .collect();
+                let (io, clock, sent) = offline_io(packets);
+                let mut memory = Memory::default();
+                provision(&mut memory, &server).unwrap();
+                run_protected(
+                    io,
+                    |b| {
+                        b.fill(42);
+                        true
+                    },
+                    clock,
+                    &[1; 32],
+                    &server,
+                    memory,
+                )
+                .unwrap();
+                assert_offline_cleanup(&sent.borrow());
+                // Authenticate the first reply and first notification of each
+                // registration; the later CON attempts retransmit cached bytes.
+                for (cycle, reference) in references.iter().enumerate() {
+                    for index in [cycle * 6, cycle * 6 + 1] {
+                        let sent = sent.borrow();
+                        let parsed = decode(&sent[index].1).unwrap();
+                        let mut scratch = [0; 1152];
+                        let opened = peer
+                            .unprotect_response(&parsed, *reference, &mut scratch)
+                            .unwrap();
+                        assert!(opened.observe().is_some());
+                        assert_eq!(opened.code(), coaptic::Code::CONTENT);
+                    }
+                }
+            }
         }
 
         #[test]
