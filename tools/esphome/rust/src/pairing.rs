@@ -13,7 +13,7 @@
 use coaptic::platform::{CheckedClock, ClockError};
 use coaptic::provisioning::{
     CommissioningDecoder, CommissioningReply, CommissioningRequest, Identity, LocalPairing,
-    ManagedConnection, ManagedError, PairingCommitError, PairingRecord,
+    ManagedConnection, ManagedError, ManagedSubscription, PairingCommitError, PairingRecord,
 };
 use coaptic::storage::DatagramIo;
 use coaptic::{Code, ContentFormat, Endpoint, Method, Response, profiles};
@@ -388,6 +388,10 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
         start,
     )
     .map_err(|_| Error::Network)?;
+    connection
+        .observable_manual("identity")
+        .map_err(|_| Error::Network)?;
+    let mut subscription = ManagedSubscription::new("identity");
     if initiates {
         match connection.connect(start) {
             Ok(())
@@ -419,7 +423,14 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
         }
         match connection.poll_with(now, |_, request, _| {
             if request.path() == ["identity"] && request.method() == Some(Method::Get) {
-                Response::content_copy(device.identity.peer().principal().fingerprint())
+                let response =
+                    Response::content_copy(device.identity.peer().principal().fingerprint())
+                        .max_age(10);
+                if request.is_observe_register() {
+                    response.observe(0)
+                } else {
+                    response
+                }
             } else if request.path() == ["echo"] && request.method() == Some(Method::Post) {
                 if !write {
                     Response::new(Code::FORBIDDEN)
@@ -445,6 +456,26 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
                 if failed_polls >= 32 {
                     return Err(Error::Network);
                 }
+            }
+        }
+        if connection.is_connected() {
+            match connection.take_subscription_response_into(&mut subscription, &mut reply, now) {
+                Ok(Some(Ok(response)))
+                    if response.code() == Code::CONTENT
+                        && response.payload() == peer.fingerprint() => {}
+                Ok(None) => {}
+                Ok(Some(_)) => retry_at = now,
+                Err(
+                    ManagedError::Busy | ManagedError::NotConnected | ManagedError::StaleHandle,
+                ) => {}
+                Err(_) => return Err(Error::Network),
+            }
+            match connection.poll_subscription(&mut subscription, now) {
+                Ok(_) | Err(ManagedError::Busy | ManagedError::NotConnected) => {}
+                Err(ManagedError::Application(
+                    coaptic::app::Error::Io(_) | coaptic::app::Error::Saturated,
+                )) => {}
+                Err(_) => return Err(Error::Network),
             }
         }
         let response = if let Some(current) = call {
