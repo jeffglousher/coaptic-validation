@@ -146,16 +146,33 @@ jobs:
       - name: Unsupported-capability refusal leaves no interfaces
         run: |
           set -euo pipefail
+          # A root process with all capabilities dropped cannot bypass the
+          # runner home-directory permissions. Stage only these owned inputs
+          # under /tmp so refusal proves loader execution, not execve denial.
+          capability_dir=$(mktemp -d /tmp/coaptic-capability.XXXXXX)
+          trap 'rm -rf -- "$capability_dir"' EXIT
+          chmod 0755 "$capability_dir"
+          install -m 0755 "$RUNNER_TEMP/bpf-evidence/loader-normal" "$capability_dir/loader"
+          install -m 0644 "$RUNNER_TEMP/bpf-evidence/ingress.elf" "$capability_dir/ingress.elf"
+          cmp "$RUNNER_TEMP/bpf-evidence/loader-normal" "$capability_dir/loader"
+          cmp "$RUNNER_TEMP/bpf-evidence/ingress.elf" "$capability_dir/ingress.elf"
+          sha256sum "$capability_dir/loader" "$capability_dir/ingress.elf" > "$RUNNER_TEMP/bpf-evidence/capability-inputs.sha256"
           ip -j link show > "$RUNNER_TEMP/bpf-evidence/refusal-before.json"
           for drop in all cap_bpf,cap_sys_admin; do
             set +e
-            sudo capsh --drop="$drop" -- -c 'exec "$1" "$2" qualify 1' -- "$RUNNER_TEMP/bpf-evidence/loader-normal" "$RUNNER_TEMP/bpf-evidence/ingress.elf" > "$RUNNER_TEMP/bpf-evidence/capability-refusal-$drop.log" 2>&1
+            timeout 30s sudo capsh --drop="$drop" -- -c 'exec "$1" "$2" qualify 1' -- "$capability_dir/loader" "$capability_dir/ingress.elf" > "$RUNNER_TEMP/bpf-evidence/capability-refusal-$drop.log" 2>&1
             result=$?
             set -e
-            test "$result" -ne 0
+            test "$result" -eq 1
             ip -j link show > "$RUNNER_TEMP/bpf-evidence/refusal-after-$drop.json"
             cmp "$RUNNER_TEMP/bpf-evidence/refusal-before.json" "$RUNNER_TEMP/bpf-evidence/refusal-after-$drop.json"
             grep -Ei 'operation not permitted|permission denied' "$RUNNER_TEMP/bpf-evidence/capability-refusal-$drop.log"
+            if test "$drop" = all; then
+              grep -E '^Error: "ip \[' "$RUNNER_TEMP/bpf-evidence/capability-refusal-$drop.log"
+            else
+              grep -F 'OWNED_RECORD ' "$RUNNER_TEMP/bpf-evidence/capability-refusal-$drop.log"
+              grep -F 'Error: MapError(CreateError { name: "COUNTS",' "$RUNNER_TEMP/bpf-evidence/capability-refusal-$drop.log"
+            fi
           done
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
