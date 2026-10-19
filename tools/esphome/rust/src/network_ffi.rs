@@ -535,7 +535,7 @@ mod pairing_ffi {
             unsafe { crate::async_network::Runtime::new(context) }.map_err(|_| "async driver")?;
         let (socket, mut protocol, mut local, console_ready, mut driver) =
             runtime.split_with_console();
-        let worker = crate::pairing::run_async(
+        let worker = core::pin::pin!(crate::pairing::run_async(
             socket,
             |bytes| unsafe { coaptic_socket_random(bytes.as_mut_ptr(), bytes.len() as u32) },
             || async_clock(context),
@@ -553,10 +553,10 @@ mod pairing_ffi {
             coaptic_pairing_owner_sizes(
                 context,
                 crate::pairing::managed_owner_bytes::<crate::async_network::Socket<'_>>() as u32,
-                worker_bytes(&worker) as u32,
+                worker_bytes(worker.as_ref().get_ref()) as u32,
             );
         }
-        match driver.run(core::pin::pin!(worker)) {
+        match driver.run(worker) {
             Ok(result) => result.map_err(|_| "pairing stopped"),
             Err(crate::async_network::Error::Stopped) => Ok(()),
             Err(_) => Err("async driver"),
