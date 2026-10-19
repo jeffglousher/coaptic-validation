@@ -130,11 +130,11 @@ class Peer:
             self.record["cleanup_error"] = repr(error)
 
 
-def validate_completion(coaptic, independent, coaptic_role, connection_ids=(0, 1)):
+def validate_completion(coaptic, independent, coaptic_role, connection_ids=(0, 1), suite=2):
     require(coaptic is not None and coaptic.get("complete") is True, "missing Coaptic completion")
     require(independent is not None, "missing libedhoc exporter result")
     for result in (coaptic, independent):
-        require(result.get("method") == 3 and result.get("suite") == 2, "wrong EDHOC profile")
+        require(result.get("method") == 3 and result.get("suite") == suite, "wrong EDHOC profile")
         require(result.get("message4") is True, "message 4 was not confirmed")
     secret = binary_field(independent, "master_secret", 16)
     salt = binary_field(independent, "master_salt", 8)
@@ -162,7 +162,7 @@ def validate_completion(coaptic, independent, coaptic_role, connection_ids=(0, 1
     principal = blake3.blake3(local_credential, derive_key_context=DOMAIN).digest()
     require(hmac.compare_digest(binary_field(coaptic, "principal", 32), principal), "full principal mismatch")
     return {
-        "profile": "EDHOC method 3, suite 2, mandatory message 4, fixed mutual pins, no EAD",
+        "profile": f"EDHOC method 3, suite {suite}, mandatory message 4, fixed mutual pins",
         "coaptic_role": coaptic_role,
         "master_secret": secret.hex(),
         "master_salt": salt.hex(),
