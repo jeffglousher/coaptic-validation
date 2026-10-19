@@ -1,0 +1,8 @@
+[workspace]
+[package]
+name = "coaptic-ingress-classifier"
+version = "0.0.0"
+edition = "2024"
+publish = false
+[dependencies]
+coaptic = { path = "../../../coaptic", default-features = false }
