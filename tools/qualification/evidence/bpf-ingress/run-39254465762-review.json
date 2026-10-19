@@ -1,0 +1,53 @@
+{
+    "capability_all":  "actual loader ip link-add RTNETLINK EPERM",
+    "map_type":  "percpu_array",
+    "btf_sha256":  "95782433dc426daf8ebeb0acc1b04aed8f87168f67c1266f4d267aba7c22a8bf",
+    "kernel_short_frame_refusals_per_cycle":  1456,
+    "tested_cpus":  [
+                        0,
+                        1
+                    ],
+    "possible_cpus":  4,
+    "counter_checks":  "two CPUs concurrent8 each, zero loss, u64MAX saturation, out-of-range refusal",
+    "qualification_aya":  "temporary pinned Aya0.14 successful-verifier-log patch only; original/patched locks and source hashes retained",
+    "map_memlock_bytes":  464,
+    "per_cycle_counter_deltas":  [
+                                     4448,
+                                     2,
+                                     90,
+                                     16,
+                                     4556
+                                 ],
+    "schema":  "coaptic-bpf-pilot-review/1",
+    "lifecycle":  "instrumented reload, ordinary load, SIGKILL+wait+recorded identity cleanup in both loaders, concurrent parent ownership preserved",
+    "capability_bpf_sys_admin":  "actual loader COUNTS map creation EPERM after owned veth creation",
+    "limitations":  [
+                        "Observed hosted kernel, not pinned host or kernel binary hash",
+                        "AF_PACKET byte receipt, not UDP stack checksum validation or authenticated application delivery",
+                        "Finite observation-only SKB/XDP_PASS pilot; no NIC native-XDP/general availability/performance benefit claim"
+                    ],
+    "kernel":  "6.17.0-1022-azure",
+    "normal_loader_sha256":  "cad0dbd5d2877731ad80a2ba7c598e6c1104aa66a2b8bad83e007b74df059577",
+    "live_checks":  "IPv4/IPv6 checksummed unprotected and opaque protected samples, exact79/77/99/97 bytes before/attached/detached",
+    "callee_stack_bytes":  0,
+    "run_url":  "https://github.com/jeffglousher/coaptic-validation/actions/runs/39254465762",
+    "instrumented_cycles":  2,
+    "ordinary_cycles":  1,
+    "translated_instructions":  344,
+    "translated_bytes":  2752,
+    "image":  "20261012.334.1",
+    "artifact_url":  "https://github.com/jeffglousher/coaptic-validation/actions/runs/39254465762/artifacts/12187792308",
+    "all_interface_snapshots_sha256":  "c83edc9078c49f23f4ff594f302d22060095b1ce6a021f38f29f68db449ff4d9",
+    "companion":  "7d34275be771ee1b689c9005c2eb2745b74586e7",
+    "map_entries":  5,
+    "jit_bytes":  1816,
+    "stack_bytes":  352,
+    "verifier_processed_instructions":  610358,
+    "map_value_bytes":  8,
+    "program_memlock_bytes":  4096,
+    "core":  "244809ebcd852cfeaf912bd2f5ba5956b6495bfc",
+    "result":  "passed",
+    "artifact_sha256":  "4736cb7f3f13f9dea5d09ad2a033799fb76bc47849a3fb510cc9b14f367b2e3e",
+    "kernel_cases_per_cycle":  4556,
+    "elf_sha256":  "598ebc622ea76e0b23d818ba5c4a7b705403933c88e6f90a628bb160cd917ec2"
+}

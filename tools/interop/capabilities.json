@@ -4424,7 +4424,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "The process JSON Patch/merge-patch fixture intentionally implements only replace, remove or null of /n. This is an application-fixture limit, not an unfinished generic protocol parser or a promise of every application method/media codec.",
+      "reason": "The process JSON Patch/merge-patch fixture intentionally implements only replace, remove or null of /n. This is an application-fixture limit, not an unfinished generic protocol parser or a promise of every application method/media codec. Finite bootstrap option-envelope directions and selected Observe/query/FETCH boundaries are tracked separately in tools/interop/independent-profiles.json; no all-method/media/security cross-product is adopted.",
       "issue": 200,
       "executable_cases": []
     },
@@ -4525,7 +4525,7 @@
       "executable_cases": []
     },
     {
-      "feature": "scoped-ipv6-and-compound-network-faults",
+      "feature": "physical-network-and-other-platforms",
       "status": "unqualified",
       "role": "both",
       "transport_security": "all",
@@ -4536,8 +4536,8 @@
         "macos",
         "embedded"
       ],
-      "reason": "Loopback IPv4/IPv6 relay caps prove only the named finite loss/refusal/fresh-recovery schedules, including separately retained protected reports. They do not prove nonzero zone routing, real PMTU/ICMP behavior or compound faults on a named physical topology. Q3 requires actual interfaces/routes; no loopback substitution.",
-      "issue": 200,
+      "reason": "Selected Q3 is delivered: four hosted Linux scoped/routed roles plus compound-fault and actual host PMTU/ICMP refusal/fresh recovery; tools/qualification/evidence/scoped-routed/README.md retains exact source and socket/interface identities. These six cases do not establish physical LAN/ESP32 behavior, other OS network stacks or adaptive App PMTU. Those are separate from the completed finite host slice.",
+      "issue": 333,
       "executable_cases": []
     },
     {
@@ -4609,6 +4609,12 @@
       "status": "delivered-finite-independent-profile",
       "evidence": "tools/qualification/evidence/independent-edhoc/index.json; companion #95",
       "limits": "Method3 suites2/3 both roles, EAD, private-label exporters and six UDP error directions. Suite3 uses public custom native backend; native EAD callbacks are not claimed authenticated before callback. Device persistence/fault recovery is #333/#365."
+    },
+    {
+      "slice": "Q2 selected Observe/token and bootstrap option envelopes",
+      "status": "source-bound-secondary-inventory",
+      "evidence": "tools/interop/independent-profiles.json",
+      "limits": "Seven profile IDs plus four bootstrap groups/11 exact directions are independently counted; not added to the 181 run.py cases. All seven profile IDs and 11 bootstrap directions have exact passing selectors; prior failures and the unexplained transient Windows server exit remain retained in the index. Native EDHOC crypto with a custom envelope is not a full independent CoAP stack."
     }
   ]
 }

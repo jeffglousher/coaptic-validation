@@ -1,0 +1,318 @@
+{
+  "schema": "coaptic-independent-profile-inventory/1",
+  "scope": "Supplementary finite issue200 inventory; separate from the181 run.py cases and their evaluator. No sum is a whole-RFC/platform/completion claim.",
+  "policy": "Every declared direction has one exact result selector. Sources and receipt hashes qualify each result; missing, duplicate or failed results are not PASS. A reviewed unsupported fixture disposition is recorded as unsupported, never converted to PASS.",
+  "groups": {
+    "selected-observe": {
+      "runner": "tools/interop/profiles.py",
+      "independence": "Native libcoap CoAP stack versus Coaptic, plus separately labeled Python wire lifecycle controls."
+    },
+    "confirmable-q-observe": {
+      "runner": "tools/interop/profiles.py",
+      "independence": "Native libcoap CoAP stack versus Coaptic, plus Python exact missing-block control; actual MAX_PAYLOADS10,704-byte body, requested SZX6/1 -> negotiated1."
+    },
+    "protected-extended-token": {
+      "runner": "tools/interop/profiles.py",
+      "independence": "Native libcoap OSCORE stack versus Coaptic; independent aiocoap OSCORE authentication oracle retains full32/64-byte tokens."
+    },
+    "bootstrap-options": {
+      "runner": "tools/interop/edhoc_options.py",
+      "independence": "Native libedhoc cryptography with custom aiocoap CoAP envelope, not a complete independent native CoAP stack. Method3/suite2/message4 and fixed mutual credentials."
+    }
+  },
+  "receipts": {
+    "original-profiles": {
+      "path": "tools/qualification/evidence/independent-observe/first-run/result.json",
+      "sha256": "0651ee58b95f1d639e8b5da9f4e351ac05b018b89e416e1bfa785470918fd813",
+      "run": 39254030000,
+      "core": "7bb32c9467b791c9d5c5f159562b467407861773",
+      "companion": "f6151265c17d939a9a57e8c164fd095d1ca5b78d",
+      "summary": "Six Observe fixture failures and one protected-token PASS; original failures retained."
+    },
+    "bootstrap-options": {
+      "path": "tools/qualification/evidence/independent-edhoc/options-ce7e817-8f88d76.json",
+      "sha256": "9e5c1a08eae01b063f9dffd5d08ae7ee3c7f5819c8779e989fbfef3eefd8f710",
+      "core": "ce7e817db327446a7cda7e104e18e2e31734e0b5",
+      "companion": "8f88d76e8f814b4a58dddb8a0e72ba5eebcdcee8",
+      "summary": "Four finite groups,11 directions passed."
+    },
+    "windows-first": {
+      "path": "tools/qualification/evidence/independent-observe/windows-first/result.json",
+      "sha256": "e23f1c51222ea95ec5704fdaec53575442c6f5a66b0758f1b3b59135f715817a",
+      "core": "0bec951735a2c72b5d950d0636c68441250cf262",
+      "companion": "6de98bf637c495024183e736f69c2ef61fce755a",
+      "summary": "Two selected Observe passes; four failures retained, with core corrections and explicit native stateless FETCH configuration pending."
+    },
+    "windows-four": {
+      "path": "tools/qualification/evidence/independent-observe/windows-four/result.json",
+      "sha256": "c7f3afa883f75c9c8ac072c3b3cd623c451fddf705b7036caa780acc456885b9",
+      "core": "389d5ab84ae0b4df7fdb64bd46bf54b8ff6c19e4",
+      "companion": "ec8b26d2837570a23802e122c35970f14f274b83",
+      "summary": "Two reverse selected Observe passes; Q native client exchange completed all3epochs but ancillary rawcontrol M0 metadata check failed; reverseQ producer recorded held sent0. Original failures retained."
+    },
+    "windows-q-first": {
+      "path": "tools/qualification/evidence/independent-observe/windows-q-first/result.json",
+      "sha256": "0446e0bfa393642818eefc11cf001a064dfcb7d4ae01c697a6571c43ca9624a2",
+      "core": "389d5ab84ae0b4df7fdb64bd46bf54b8ff6c19e4",
+      "companion": "da96572c4c506195b023ecfbc5f2ffbb1f97316c",
+      "summary": "Both native peer exchanges completed three 704-byte epochs; retained raw lifecycle grading failures distinguish an exact repeated recovery block and a solicited cancellation response. Original failed statuses and captures remain unchanged."
+    },
+    "windows-q-controls": {
+      "path": "tools/qualification/evidence/independent-observe/windows-q-controls/result.json",
+      "sha256": "e808e173008dc51735b003a316628b6333c7eab6f76a04aacd29e9640f1b45de",
+      "core": "389d5ab84ae0b4df7fdb64bd46bf54b8ff6c19e4",
+      "companion": "208cb149fd9ceda8b27d99592db1c0572ff49977",
+      "summary": "Coaptic->libcoap passes complete peer/control profile. Reverse peer completes three representations but server exits before fresh request; raw lifecycle not reached. Failure retained pending exact exited-process diagnostic."
+    },
+    "windows-q-reverse": {
+      "path": "tools/qualification/evidence/independent-observe/windows-q-reverse/result.json",
+      "sha256": "47274949d8818ccd42a3c4ca40dc427342ff1d773b950d578545559a92f4ec4a",
+      "core": "389d5ab84ae0b4df7fdb64bd46bf54b8ff6c19e4",
+      "companion": "208cb149fd9ceda8b27d99592db1c0572ff49977",
+      "summary": "Reverse-only diagnostic capture passes peer and raw recovery/cancellation/fresh controls. Bounded stdout-on-exit wrapper changes no protocol/oracle; prior server exit did not recur and remains unexplained."
+    }
+  },
+  "cases": [
+    {
+      "id": "observe-selected-query:coaptic->libcoap",
+      "group": "selected-observe",
+      "selector": {
+        "id": "observe-selected-query:coaptic->libcoap"
+      },
+      "status": "passed",
+      "previous_receipt": "original-profiles",
+      "previous_status": "failed",
+      "security": "unprotected",
+      "receipt": "windows-first"
+    },
+    {
+      "id": "observe-selected-query:libcoap->coaptic",
+      "group": "selected-observe",
+      "selector": {
+        "id": "observe-selected-query:libcoap->coaptic"
+      },
+      "status": "passed",
+      "previous_receipt": "original-profiles",
+      "previous_status": "failed",
+      "security": "unprotected",
+      "receipt": "windows-four"
+    },
+    {
+      "id": "observe-selected-fetch:coaptic->libcoap",
+      "group": "selected-observe",
+      "selector": {
+        "id": "observe-selected-fetch:coaptic->libcoap"
+      },
+      "status": "passed",
+      "previous_receipt": "original-profiles",
+      "previous_status": "failed",
+      "security": "unprotected",
+      "receipt": "windows-first"
+    },
+    {
+      "id": "observe-selected-fetch:libcoap->coaptic",
+      "group": "selected-observe",
+      "selector": {
+        "id": "observe-selected-fetch:libcoap->coaptic"
+      },
+      "status": "passed",
+      "previous_receipt": "original-profiles",
+      "previous_status": "failed",
+      "security": "unprotected",
+      "receipt": "windows-four"
+    },
+    {
+      "id": "observe-con-q:coaptic->libcoap",
+      "group": "confirmable-q-observe",
+      "selector": {
+        "id": "observe-con-q:coaptic->libcoap"
+      },
+      "status": "passed",
+      "previous_receipt": "original-profiles",
+      "previous_status": "failed",
+      "security": "unprotected",
+      "receipt": "windows-q-controls"
+    },
+    {
+      "id": "observe-con-q:libcoap->coaptic",
+      "group": "confirmable-q-observe",
+      "selector": {
+        "id": "observe-con-q:libcoap->coaptic"
+      },
+      "status": "passed",
+      "previous_receipt": "original-profiles",
+      "previous_status": "failed",
+      "security": "unprotected",
+      "receipt": "windows-q-reverse"
+    },
+    {
+      "id": "protected-token-boundary:libcoap->coaptic",
+      "group": "protected-extended-token",
+      "selector": {
+        "id": "protected-token-boundary:libcoap->coaptic"
+      },
+      "status": "passed",
+      "receipt": "original-profiles",
+      "security": "oscore"
+    },
+    {
+      "id": "edhoc-options:elective-request:ACK",
+      "group": "bootstrap-options",
+      "selector": {
+        "group": "elective-request",
+        "response_type": 2,
+        "critical_stage": null,
+        "coaptic_role": "responder"
+      },
+      "status": "passed",
+      "receipt": "bootstrap-options",
+      "security": "edhoc-bootstrap+derived-oscore"
+    },
+    {
+      "id": "edhoc-options:critical-initial:ACK",
+      "group": "bootstrap-options",
+      "selector": {
+        "group": "critical-initial",
+        "response_type": 2,
+        "critical_stage": null,
+        "coaptic_role": "responder"
+      },
+      "status": "passed",
+      "receipt": "bootstrap-options",
+      "security": "edhoc-bootstrap+derived-oscore"
+    },
+    {
+      "id": "edhoc-options:elective-response:ACK",
+      "group": "bootstrap-options",
+      "selector": {
+        "group": "elective-response",
+        "response_type": 2,
+        "critical_stage": null,
+        "coaptic_role": "initiator"
+      },
+      "status": "passed",
+      "receipt": "bootstrap-options",
+      "security": "edhoc-bootstrap+derived-oscore"
+    },
+    {
+      "id": "edhoc-options:elective-response:CON",
+      "group": "bootstrap-options",
+      "selector": {
+        "group": "elective-response",
+        "response_type": 0,
+        "critical_stage": null,
+        "coaptic_role": "initiator"
+      },
+      "status": "passed",
+      "receipt": "bootstrap-options",
+      "security": "edhoc-bootstrap+derived-oscore"
+    },
+    {
+      "id": "edhoc-options:elective-response:NON",
+      "group": "bootstrap-options",
+      "selector": {
+        "group": "elective-response",
+        "response_type": 1,
+        "critical_stage": null,
+        "coaptic_role": "initiator"
+      },
+      "status": "passed",
+      "receipt": "bootstrap-options",
+      "security": "edhoc-bootstrap+derived-oscore"
+    },
+    {
+      "id": "edhoc-options:critical-response:ACK:2",
+      "group": "bootstrap-options",
+      "selector": {
+        "group": "critical-response",
+        "response_type": 2,
+        "critical_stage": 2,
+        "coaptic_role": "initiator"
+      },
+      "status": "passed",
+      "receipt": "bootstrap-options",
+      "security": "edhoc-bootstrap+derived-oscore"
+    },
+    {
+      "id": "edhoc-options:critical-response:CON:2",
+      "group": "bootstrap-options",
+      "selector": {
+        "group": "critical-response",
+        "response_type": 0,
+        "critical_stage": 2,
+        "coaptic_role": "initiator"
+      },
+      "status": "passed",
+      "receipt": "bootstrap-options",
+      "security": "edhoc-bootstrap+derived-oscore"
+    },
+    {
+      "id": "edhoc-options:critical-response:NON:2",
+      "group": "bootstrap-options",
+      "selector": {
+        "group": "critical-response",
+        "response_type": 1,
+        "critical_stage": 2,
+        "coaptic_role": "initiator"
+      },
+      "status": "passed",
+      "receipt": "bootstrap-options",
+      "security": "edhoc-bootstrap+derived-oscore"
+    },
+    {
+      "id": "edhoc-options:critical-response:ACK:4",
+      "group": "bootstrap-options",
+      "selector": {
+        "group": "critical-response",
+        "response_type": 2,
+        "critical_stage": 4,
+        "coaptic_role": "initiator"
+      },
+      "status": "passed",
+      "receipt": "bootstrap-options",
+      "security": "edhoc-bootstrap+derived-oscore"
+    },
+    {
+      "id": "edhoc-options:critical-response:CON:4",
+      "group": "bootstrap-options",
+      "selector": {
+        "group": "critical-response",
+        "response_type": 0,
+        "critical_stage": 4,
+        "coaptic_role": "initiator"
+      },
+      "status": "passed",
+      "receipt": "bootstrap-options",
+      "security": "edhoc-bootstrap+derived-oscore"
+    },
+    {
+      "id": "edhoc-options:critical-response:NON:4",
+      "group": "bootstrap-options",
+      "selector": {
+        "group": "critical-response",
+        "response_type": 1,
+        "critical_stage": 4,
+        "coaptic_role": "initiator"
+      },
+      "status": "passed",
+      "receipt": "bootstrap-options",
+      "security": "edhoc-bootstrap+derived-oscore"
+    }
+  ],
+  "cancelled_runs": [
+    {
+      "run": 39255898990,
+      "disposition": "cancelled while queued before Windows execution; zero test steps, no qualification result"
+    }
+  ],
+  "limitations": [
+    "The first208cb reverse capture exited the server with status1 before a fresh request; the reverse-only diagnostic pass did not reproduce the exit. Cause remains unproven; no transient-error policy was changed. This finite proof is not host-process stability qualification.",
+    "Each row retains its tested source pair; the inventory does not claim all rows were executed against the latest pair."
+  ],
+  "residual_issues": [
+    {
+      "url": "https://github.com/jeffglousher/coaptic-validation/issues/115",
+      "scope": "Unexplained intermittent Windows reverse cancellation server exit; exact failed and diagnostic-pass receipts retained, no inferred cause or adapter-policy change."
+    }
+  ]
+}
