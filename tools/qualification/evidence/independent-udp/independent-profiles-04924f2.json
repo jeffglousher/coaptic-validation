@@ -1,0 +1,1302 @@
+{
+  "schema": "coaptic-independent-profiles/1",
+  "source": "ac7b6b51449c5dc314be788b85c267d40d118655",
+  "dirty": false,
+  "suite_source": "04924f27a2c9713711b51ace624be595a43f025f",
+  "suite_dirty": false,
+  "suite_locks": {
+    "Cargo.lock": "f711ce82fa0c978951b004095f37ad2cc4b05c1ceabbff406646ba6c87ed934b",
+    "tools/benchmark/native/Cargo.lock": "eb16c47c2f3539aaa45bd82e4eab48f229b252183998857f6a80a6ffc7432075",
+    "tools/security-interop/Cargo.lock": "e12762939ad364280a46bc526683de74567855448bf0f4e6263d79bad32e0653",
+    "tools/security-profile/Cargo.lock": "278f01b25bc5f2e9aab89f1c53cdbb97e3f12ae6269d81452a36393755e9e8c5",
+    "tools/esphome/rust/Cargo.lock": "7661bf627e28c7ec2eda22a2212081ce5f6e4e5b80d29d2da3d92c25ff74551d",
+    "tools/qualification/esp32/Cargo.lock": "5fda0d74045b28886c9b5dead108857d87e64b405ce193eeb7e1255483ef0773",
+    "tools/durable-host/Cargo.lock": "40a13b28dc161217c0f84afa18c3b870a840b48ccea2acf7071b0ef34b4205cf"
+  },
+  "platform": "Windows-11-10.0.26200-SP0",
+  "executables": {
+    "coaptic": {
+      "path": "D:\\coaptic-batch-interop-target\\debug\\peer-coaptic.exe",
+      "sha256": "b6e92112500743a7646dc9857f097c8eee9158fd1bea0d7e46884e97d3bc5f6b"
+    },
+    "coap-rs": {
+      "path": "D:\\coaptic-batch-interop-target\\debug\\peer-coap-rs.exe",
+      "sha256": "79352c997bba01de47cc5d0ea77d726274fef0f58282d70e010c673fc7fbe43e"
+    },
+    "libcoap": {
+      "path": "D:\\coaptic-tools\\peer-libcoap-435b-msvc\\Release\\peer-libcoap.exe",
+      "sha256": "5b91036f4694584f8dfacb5e927210ce2159cda3ab5ee1f741c9383026ed42cf"
+    }
+  },
+  "build_record": {
+    "source": "ac7b6b51449c5dc314be788b85c267d40d118655",
+    "dirty": false,
+    "suite_source": "04924f27a2c9713711b51ace624be595a43f025f",
+    "suite_dirty": false,
+    "suite_locks": {
+      "Cargo.lock": "f711ce82fa0c978951b004095f37ad2cc4b05c1ceabbff406646ba6c87ed934b",
+      "tools/benchmark/native/Cargo.lock": "eb16c47c2f3539aaa45bd82e4eab48f229b252183998857f6a80a6ffc7432075",
+      "tools/security-interop/Cargo.lock": "e12762939ad364280a46bc526683de74567855448bf0f4e6263d79bad32e0653",
+      "tools/security-profile/Cargo.lock": "278f01b25bc5f2e9aab89f1c53cdbb97e3f12ae6269d81452a36393755e9e8c5",
+      "tools/esphome/rust/Cargo.lock": "7661bf627e28c7ec2eda22a2212081ce5f6e4e5b80d29d2da3d92c25ff74551d",
+      "tools/qualification/esp32/Cargo.lock": "5fda0d74045b28886c9b5dead108857d87e64b405ce193eeb7e1255483ef0773",
+      "tools/durable-host/Cargo.lock": "40a13b28dc161217c0f84afa18c3b870a840b48ccea2acf7071b0ef34b4205cf"
+    },
+    "executables": {
+      "coaptic": {
+        "path": "D:\\coaptic-batch-interop-target\\debug\\peer-coaptic.exe",
+        "sha256": "b6e92112500743a7646dc9857f097c8eee9158fd1bea0d7e46884e97d3bc5f6b"
+      },
+      "coap-rs": {
+        "path": "D:\\coaptic-batch-interop-target\\debug\\peer-coap-rs.exe",
+        "sha256": "79352c997bba01de47cc5d0ea77d726274fef0f58282d70e010c673fc7fbe43e"
+      },
+      "libcoap": {
+        "path": "D:\\coaptic-tools\\peer-libcoap-435b-msvc\\Release\\peer-libcoap.exe",
+        "sha256": "5b91036f4694584f8dfacb5e927210ce2159cda3ab5ee1f741c9383026ed42cf"
+      }
+    },
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-pc-windows-msvc\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+    "rust_command": "cargo +1.99.0 build -p peer-coaptic -p peer-coap-rs; debug=0 incremental=0 jobs=2",
+    "native": {
+      "source": "851533c3cf63d16984d370ce39d586ecb3694971",
+      "source_dirty": false,
+      "compiler": "MSVC 19.44.35228.0",
+      "configuration": "Release",
+      "dtls": false,
+      "oscore": false,
+      "qblock": true,
+      "cmake_command": "cmake -S tools/interop/libcoap -B D:/coaptic-tools/peer-libcoap-435b-msvc -DLIBCOAP_SOURCE=D:/coaptic-tools/libcoap-4.3.5b -DENABLE_DTLS=OFF -DENABLE_OSCORE=OFF; cmake --build D:/coaptic-tools/peer-libcoap-435b-msvc --config Release --parallel 2"
+    },
+    "host_peer_stack_reserved_bytes": 8388608,
+    "response_copy_capacity_bytes": 4096
+  },
+  "aiocoap": "0.4.16",
+  "security": "unprotected",
+  "capture_limit": 256,
+  "cases": [
+    {
+      "id": "metadata:coaptic->libcoap",
+      "passed": false,
+      "error": "AssertionError(\"peer refused: {'event': 'error', 'message': 'response buffer: Unavailable', 'schema': 'coaptic-peer/2', 'exit_code': 1}; b''\")",
+      "captures": [
+        [
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "4801765e5ba1bf5888dd8cd9bb2e77656c6c2d6b6e6f776e04636f7265",
+            "forwarded_hex": "4801765e5ba1bf5888dd8cd9bb2e77656c6c2d6b6e6f776e04636f7265",
+            "time_ns": 195164834208800,
+            "source": [
+              "127.0.0.1",
+              60216
+            ],
+            "destination": [
+              "127.0.0.1",
+              60213
+            ],
+            "relay": [
+              "127.0.0.1",
+              60215
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "6845765e5ba1bf5888dd8cd9c128ff3c2f746573743e2c3c2f6c617267653e2c3c2f636f756e7465723e3b6f62732c3c2f73656e736f723e3b7469746c653d22526f6f6d205c226f6e655c22223b737a3d39363b63743d2230203530223b69663d2273656e736f72223b72743d2274656d70657261747572652d632073656e736f72223b6f62732c3c2f6f62732d6c617267653e3b6f62732c3c2f657363617065642f61253246623e2c3c2f6d6574686f64733e2c3c2f75706c6f61643e2c3c2f70617463683e2c3c2f73657061726174653e",
+            "forwarded_hex": "6845765e5ba1bf5888dd8cd9c128ff3c2f746573743e2c3c2f6c617267653e2c3c2f636f756e7465723e3b6f62732c3c2f73656e736f723e3b7469746c653d22526f6f6d205c226f6e655c22223b737a3d39363b63743d2230203530223b69663d2273656e736f72223b72743d2274656d70657261747572652d632073656e736f72223b6f62732c3c2f6f62732d6c617267653e3b6f62732c3c2f657363617065642f61253246623e2c3c2f6d6574686f64733e2c3c2f75706c6f61643e2c3c2f70617463683e2c3c2f73657061726174653e",
+            "time_ns": 195164835392600,
+            "source": [
+              "127.0.0.1",
+              60213
+            ],
+            "destination": [
+              "127.0.0.1",
+              60216
+            ],
+            "relay": [
+              "127.0.0.1",
+              60214
+            ]
+          }
+        ]
+      ],
+      "commands": [
+        {
+          "argv": [
+            "D:\\coaptic-batch-interop-target\\debug\\peer-coaptic.exe",
+            "client",
+            "udp",
+            "60214",
+            "sesame",
+            ".well-known/core",
+            "GET",
+            "6000",
+            "ipv4",
+            ""
+          ],
+          "exit_code": 1,
+          "stdout": "{\"event\":\"error\",\"message\":\"response buffer: Unavailable\",\"schema\":\"coaptic-peer/2\"}\n",
+          "stderr": ""
+        }
+      ]
+    },
+    {
+      "id": "metadata:libcoap->coaptic",
+      "passed": true,
+      "evidence": {
+        "result": {
+          "schema": "coaptic-peer/2",
+          "event": "response",
+          "code": 69,
+          "payload_hex": "3c2f746573743e2c3c2f6c617267653e2c3c2f636f756e7465723e2c3c2f75706c6f61643e2c3c2f6d6574686f64733e2c3c2f73657061726174653e2c3c2f6661696c3e2c3c2f73656e736f723e3b72743d2274656d70657261747572652d632073656e736f72223b69663d2273656e736f72223b63743d2230203530223b737a3d39363b6f62733b7469746c653d22526f6f6d205c226f6e655c22222c3c2f657363617065642f61253246623e2c3c2f6f62732d6c617267653e2c3c2f70617463683e2c3c2f636f6e643e",
+          "elapsed_ns": 3769800,
+          "elapsed_us": 3769.8,
+          "clock": {
+            "name": "QueryPerformanceCounter",
+            "resolution_ns": 100
+          },
+          "exit_code": 0
+        },
+        "trace": [
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "410142f901bb2e77656c6c2d6b6e6f776e04636f7265e4000c47768fc9",
+            "forwarded_hex": "410142f901bb2e77656c6c2d6b6e6f776e04636f7265e4000c47768fc9",
+            "time_ns": 195164884845800,
+            "source": [
+              "127.0.0.1",
+              60220
+            ],
+            "destination": [
+              "127.0.0.1",
+              60217
+            ],
+            "relay": [
+              "127.0.0.1",
+              60219
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "614542f9014423f82e638128ff3c2f746573743e2c3c2f6c617267653e2c3c2f636f756e7465723e2c3c2f75706c6f61643e2c3c2f6d6574686f64733e2c3c2f73657061726174653e2c3c2f6661696c3e2c3c2f73656e736f723e3b72743d2274656d70657261747572652d632073656e736f72223b69663d2273656e736f72223b63743d2230203530223b737a3d39363b6f62733b7469746c653d22526f6f6d205c226f6e655c22222c3c2f657363617065642f61253246623e2c3c2f6f62732d6c617267653e2c3c2f70617463683e2c3c2f636f6e643e",
+            "forwarded_hex": "614542f9014423f82e638128ff3c2f746573743e2c3c2f6c617267653e2c3c2f636f756e7465723e2c3c2f75706c6f61643e2c3c2f6d6574686f64733e2c3c2f73657061726174653e2c3c2f6661696c3e2c3c2f73656e736f723e3b72743d2274656d70657261747572652d632073656e736f72223b69663d2273656e736f72223b63743d2230203530223b737a3d39363b6f62733b7469746c653d22526f6f6d205c226f6e655c22222c3c2f657363617065642f61253246623e2c3c2f6f62732d6c617267653e2c3c2f70617463683e2c3c2f636f6e643e",
+            "time_ns": 195164886551700,
+            "source": [
+              "127.0.0.1",
+              60217
+            ],
+            "destination": [
+              "127.0.0.1",
+              60220
+            ],
+            "relay": [
+              "127.0.0.1",
+              60218
+            ]
+          }
+        ],
+        "fresh": {
+          "schema": "coaptic-peer/2",
+          "event": "response",
+          "code": 69,
+          "payload_hex": "636f72652d746573742d7061796c6f6164",
+          "elapsed_ns": 3689900,
+          "elapsed_us": 3689.9,
+          "clock": {
+            "name": "QueryPerformanceCounter",
+            "resolution_ns": 100
+          },
+          "host_total_ns": 16396500,
+          "host_total_us": 16396.5,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "uri:libcoap->coaptic",
+      "passed": true,
+      "evidence": {
+        "result": {
+          "schema": "coaptic-peer/2",
+          "event": "response",
+          "code": 69,
+          "payload_hex": "7572692d6964656e74697479",
+          "elapsed_ns": 2772000,
+          "elapsed_us": 2772.0,
+          "clock": {
+            "name": "QueryPerformanceCounter",
+            "resolution_ns": 100
+          },
+          "exit_code": 0
+        },
+        "trace": [
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "4101b91c01b76573636170656403612f62476b65793d612662e40008290d3b2d",
+            "forwarded_hex": "4101b91c01b76573636170656403612f62476b65793d612662e40008290d3b2d",
+            "time_ns": 195164946259300,
+            "source": [
+              "127.0.0.1",
+              60225
+            ],
+            "destination": [
+              "127.0.0.1",
+              60222
+            ],
+            "relay": [
+              "127.0.0.1",
+              60224
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "6145b91c01ff7572692d6964656e74697479",
+            "forwarded_hex": "6145b91c01ff7572692d6964656e74697479",
+            "time_ns": 195164947087700,
+            "source": [
+              "127.0.0.1",
+              60222
+            ],
+            "destination": [
+              "127.0.0.1",
+              60225
+            ],
+            "relay": [
+              "127.0.0.1",
+              60223
+            ]
+          }
+        ],
+        "fresh": {
+          "schema": "coaptic-peer/2",
+          "event": "response",
+          "code": 69,
+          "payload_hex": "636f72652d746573742d7061796c6f6164",
+          "elapsed_ns": 2821300,
+          "elapsed_us": 2821.3,
+          "clock": {
+            "name": "QueryPerformanceCounter",
+            "resolution_ns": 100
+          },
+          "host_total_ns": 10404700,
+          "host_total_us": 10404.7,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "token32:libcoap->coaptic",
+      "passed": true,
+      "evidence": {
+        "result": {
+          "schema": "coaptic-peer/2",
+          "event": "response",
+          "code": 69,
+          "payload_hex": "636f72652d746573742d7061796c6f6164",
+          "elapsed_ns": 5078300,
+          "elapsed_us": 5078.3,
+          "clock": {
+            "name": "QueryPerformanceCounter",
+            "resolution_ns": 100
+          },
+          "exit_code": 0
+        },
+        "trace": [
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "4d0129f2130102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2050",
+            "forwarded_hex": "4d0129f2130102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2050",
+            "time_ns": 195165001614300,
+            "source": [
+              "127.0.0.1",
+              60230
+            ],
+            "destination": [
+              "127.0.0.1",
+              60227
+            ],
+            "relay": [
+              "127.0.0.1",
+              60229
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "6d8429f2130102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20c20101ffa220694e6f7420466f756e64231884",
+            "forwarded_hex": "6d8429f2130102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20c20101ffa220694e6f7420466f756e64231884",
+            "time_ns": 195165003105900,
+            "source": [
+              "127.0.0.1",
+              60227
+            ],
+            "destination": [
+              "127.0.0.1",
+              60230
+            ],
+            "relay": [
+              "127.0.0.1",
+              60228
+            ]
+          },
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "4d0129f1130102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20b474657374e4000cd5f3228e",
+            "forwarded_hex": "4d0129f1130102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20b474657374e4000cd5f3228e",
+            "time_ns": 195165003188700,
+            "source": [
+              "127.0.0.1",
+              60230
+            ],
+            "destination": [
+              "127.0.0.1",
+              60227
+            ],
+            "relay": [
+              "127.0.0.1",
+              60229
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "6d4529f1130102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20ff636f72652d746573742d7061796c6f6164",
+            "forwarded_hex": "6d4529f1130102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20ff636f72652d746573742d7061796c6f6164",
+            "time_ns": 195165004684900,
+            "source": [
+              "127.0.0.1",
+              60227
+            ],
+            "destination": [
+              "127.0.0.1",
+              60230
+            ],
+            "relay": [
+              "127.0.0.1",
+              60228
+            ]
+          }
+        ],
+        "fresh": {
+          "schema": "coaptic-peer/2",
+          "event": "response",
+          "code": 69,
+          "payload_hex": "636f72652d746573742d7061796c6f6164",
+          "elapsed_ns": 2430600,
+          "elapsed_us": 2430.6,
+          "clock": {
+            "name": "QueryPerformanceCounter",
+            "resolution_ns": 100
+          },
+          "host_total_ns": 10474500,
+          "host_total_us": 10474.5,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "observe-large:libcoap->coaptic",
+      "passed": false,
+      "error": "RuntimeError('proxy failed: [WinError 10054] An existing connection was forcibly closed by the remote host')",
+      "captures": [
+        [
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "4101dd250160596f62732d6c61726765c101e400009a026e12",
+            "forwarded_hex": "4101dd250160596f62732d6c61726765c101e400009a026e12",
+            "time_ns": 195165064673400,
+            "source": [
+              "127.0.0.1",
+              60235
+            ],
+            "destination": [
+              "127.0.0.1",
+              60232
+            ],
+            "relay": [
+              "127.0.0.1",
+              60234
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "6145dd250141012060b109ff6161616161616161616161616161616161616161616161616161616161616161",
+            "forwarded_hex": "6145dd250141012060b109ff6161616161616161616161616161616161616161616161616161616161616161",
+            "time_ns": 195165064998900,
+            "source": [
+              "127.0.0.1",
+              60232
+            ],
+            "destination": [
+              "127.0.0.1",
+              60235
+            ],
+            "relay": [
+              "127.0.0.1",
+              60233
+            ]
+          },
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "4701dd2602000000000002b96f62732d6c61726765c111e400009a026e12",
+            "forwarded_hex": "4701dd2602000000000002b96f62732d6c61726765c111e400009a026e12",
+            "time_ns": 195165065059000,
+            "source": [
+              "127.0.0.1",
+              60235
+            ],
+            "destination": [
+              "127.0.0.1",
+              60232
+            ],
+            "relay": [
+              "127.0.0.1",
+              60234
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "6745dd2602000000000002410180b119ff6161616161616161616161616161616161616161616161616161616161616161",
+            "forwarded_hex": "6745dd2602000000000002410180b119ff6161616161616161616161616161616161616161616161616161616161616161",
+            "time_ns": 195165066670500,
+            "source": [
+              "127.0.0.1",
+              60232
+            ],
+            "destination": [
+              "127.0.0.1",
+              60235
+            ],
+            "relay": [
+              "127.0.0.1",
+              60233
+            ]
+          },
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "4701dd2703000000000002b96f62732d6c61726765c121e400009a026e12",
+            "forwarded_hex": "4701dd2703000000000002b96f62732d6c61726765c121e400009a026e12",
+            "time_ns": 195165066744300,
+            "source": [
+              "127.0.0.1",
+              60235
+            ],
+            "destination": [
+              "127.0.0.1",
+              60232
+            ],
+            "relay": [
+              "127.0.0.1",
+              60234
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "6745dd2703000000000002410180b121ff6161616161616161616161616161616161616161616161616161616161616161",
+            "forwarded_hex": "6745dd2703000000000002410180b121ff6161616161616161616161616161616161616161616161616161616161616161",
+            "time_ns": 195165068276400,
+            "source": [
+              "127.0.0.1",
+              60232
+            ],
+            "destination": [
+              "127.0.0.1",
+              60235
+            ],
+            "relay": [
+              "127.0.0.1",
+              60233
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "514552be014102210160b109ff6262626262626262626262626262626262626262626262626262626262626262",
+            "forwarded_hex": "514552be014102210160b109ff6262626262626262626262626262626262626262626262626262626262626262",
+            "time_ns": 195165082146700,
+            "source": [
+              "127.0.0.1",
+              60232
+            ],
+            "destination": [
+              "127.0.0.1",
+              60235
+            ],
+            "relay": [
+              "127.0.0.1",
+              60233
+            ]
+          },
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "5701dd2804000000000002b96f62732d6c61726765c111e400009a026e12",
+            "forwarded_hex": "5701dd2804000000000002b96f62732d6c61726765c111e400009a026e12",
+            "time_ns": 195165082214400,
+            "source": [
+              "127.0.0.1",
+              60235
+            ],
+            "destination": [
+              "127.0.0.1",
+              60232
+            ],
+            "relay": [
+              "127.0.0.1",
+              60234
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "574552bf04000000000002410280b119ff6262626262626262626262626262626262626262626262626262626262626262",
+            "forwarded_hex": "574552bf04000000000002410280b119ff6262626262626262626262626262626262626262626262626262626262626262",
+            "time_ns": 195165083746700,
+            "source": [
+              "127.0.0.1",
+              60232
+            ],
+            "destination": [
+              "127.0.0.1",
+              60235
+            ],
+            "relay": [
+              "127.0.0.1",
+              60233
+            ]
+          },
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "5701dd2905000000000002b96f62732d6c61726765c121e400009a026e12",
+            "forwarded_hex": "5701dd2905000000000002b96f62732d6c61726765c121e400009a026e12",
+            "time_ns": 195165083805800,
+            "source": [
+              "127.0.0.1",
+              60235
+            ],
+            "destination": [
+              "127.0.0.1",
+              60232
+            ],
+            "relay": [
+              "127.0.0.1",
+              60234
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "574552c005000000000002410280b121ff6262626262626262626262626262626262626262626262626262626262626262",
+            "forwarded_hex": "574552c005000000000002410280b121ff6262626262626262626262626262626262626262626262626262626262626262",
+            "time_ns": 195165085339100,
+            "source": [
+              "127.0.0.1",
+              60232
+            ],
+            "destination": [
+              "127.0.0.1",
+              60235
+            ],
+            "relay": [
+              "127.0.0.1",
+              60233
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "514552c1014103210260b109ff6363636363636363636363636363636363636363636363636363636363636363",
+            "forwarded_hex": "514552c1014103210260b109ff6363636363636363636363636363636363636363636363636363636363636363",
+            "time_ns": 195168082249300,
+            "source": [
+              "127.0.0.1",
+              60232
+            ],
+            "destination": [
+              "127.0.0.1",
+              60235
+            ],
+            "relay": [
+              "127.0.0.1",
+              60233
+            ]
+          },
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "5701dd2a06000000000002b96f62732d6c61726765c111e400009a026e12",
+            "forwarded_hex": "5701dd2a06000000000002b96f62732d6c61726765c111e400009a026e12",
+            "time_ns": 195168082353200,
+            "source": [
+              "127.0.0.1",
+              60235
+            ],
+            "destination": [
+              "127.0.0.1",
+              60232
+            ],
+            "relay": [
+              "127.0.0.1",
+              60234
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "574552c206000000000002410380b119ff6363636363636363636363636363636363636363636363636363636363636363",
+            "forwarded_hex": "574552c206000000000002410380b119ff6363636363636363636363636363636363636363636363636363636363636363",
+            "time_ns": 195168083856500,
+            "source": [
+              "127.0.0.1",
+              60232
+            ],
+            "destination": [
+              "127.0.0.1",
+              60235
+            ],
+            "relay": [
+              "127.0.0.1",
+              60233
+            ]
+          },
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "5701dd2b07000000000002b96f62732d6c61726765c121e400009a026e12",
+            "forwarded_hex": "5701dd2b07000000000002b96f62732d6c61726765c121e400009a026e12",
+            "time_ns": 195168083928000,
+            "source": [
+              "127.0.0.1",
+              60235
+            ],
+            "destination": [
+              "127.0.0.1",
+              60232
+            ],
+            "relay": [
+              "127.0.0.1",
+              60234
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "574552c307000000000002410380b121ff6363636363636363636363636363636363636363636363636363636363636363",
+            "forwarded_hex": "574552c307000000000002410380b121ff6363636363636363636363636363636363636363636363636363636363636363",
+            "time_ns": 195168085347900,
+            "source": [
+              "127.0.0.1",
+              60232
+            ],
+            "destination": [
+              "127.0.0.1",
+              60235
+            ],
+            "relay": [
+              "127.0.0.1",
+              60233
+            ]
+          },
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "5101dd2c016101596f62732d6c61726765c101e400009a026e12",
+            "forwarded_hex": "5101dd2c016101596f62732d6c61726765c101e400009a026e12",
+            "time_ns": 195168086324800,
+            "source": [
+              "127.0.0.1",
+              60235
+            ],
+            "destination": [
+              "127.0.0.1",
+              60232
+            ],
+            "relay": [
+              "127.0.0.1",
+              60234
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "514552c401410380b109ff6363636363636363636363636363636363636363636363636363636363636363",
+            "forwarded_hex": "514552c401410380b109ff6363636363636363636363636363636363636363636363636363636363636363",
+            "time_ns": 195168086916000,
+            "source": [
+              "127.0.0.1",
+              60232
+            ],
+            "destination": [
+              "127.0.0.1",
+              60235
+            ],
+            "relay": [
+              "127.0.0.1",
+              60233
+            ]
+          }
+        ]
+      ],
+      "commands": [
+        {
+          "argv": [
+            "D:\\coaptic-tools\\peer-libcoap-435b-msvc\\Release\\peer-libcoap.exe",
+            "client",
+            "udp",
+            "60233",
+            "sesame",
+            "obs-large",
+            "GET",
+            "15000",
+            "ipv4",
+            "",
+            "observe",
+            "block2:0"
+          ],
+          "exit_code": 0,
+          "stdout": "{\"schema\":\"coaptic-peer/2\",\"event\":\"response\",\"code\":69,\"payload_hex\":\"6161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161612c6262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262622c636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363\",\"elapsed_ns\":3022699600,\"elapsed_us\":3022699.600,\"clock\":{\"name\":\"QueryPerformanceCounter\",\"resolution_ns\":100}}\r\n",
+          "stderr": ""
+        }
+      ]
+    },
+    {
+      "id": "observe-nonzero:libcoap->coaptic",
+      "passed": false,
+      "error": "RuntimeError('proxy failed: [WinError 10054] An existing connection was forcibly closed by the remote host')",
+      "captures": [
+        [
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "41018cac0160596f62732d6c61726765c111e40000bcc5e7ac",
+            "forwarded_hex": "41018cac0160596f62732d6c61726765c111e40000bcc5e7ac",
+            "time_ns": 195168111439600,
+            "source": [
+              "127.0.0.1",
+              65411
+            ],
+            "destination": [
+              "127.0.0.1",
+              65407
+            ],
+            "relay": [
+              "127.0.0.1",
+              65410
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "61458cac0141012060b109ff6161616161616161616161616161616161616161616161616161616161616161",
+            "forwarded_hex": "61458cac0141012060b109ff6161616161616161616161616161616161616161616161616161616161616161",
+            "time_ns": 195168112367800,
+            "source": [
+              "127.0.0.1",
+              65407
+            ],
+            "destination": [
+              "127.0.0.1",
+              65411
+            ],
+            "relay": [
+              "127.0.0.1",
+              65409
+            ]
+          },
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "47018cad02000000000002b96f62732d6c61726765c111e40000bcc5e7ac",
+            "forwarded_hex": "47018cad02000000000002b96f62732d6c61726765c111e40000bcc5e7ac",
+            "time_ns": 195168112434200,
+            "source": [
+              "127.0.0.1",
+              65411
+            ],
+            "destination": [
+              "127.0.0.1",
+              65407
+            ],
+            "relay": [
+              "127.0.0.1",
+              65410
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "67458cad02000000000002410180b119ff6161616161616161616161616161616161616161616161616161616161616161",
+            "forwarded_hex": "67458cad02000000000002410180b119ff6161616161616161616161616161616161616161616161616161616161616161",
+            "time_ns": 195168113770100,
+            "source": [
+              "127.0.0.1",
+              65407
+            ],
+            "destination": [
+              "127.0.0.1",
+              65411
+            ],
+            "relay": [
+              "127.0.0.1",
+              65409
+            ]
+          },
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "47018cae03000000000002b96f62732d6c61726765c121e40000bcc5e7ac",
+            "forwarded_hex": "47018cae03000000000002b96f62732d6c61726765c121e40000bcc5e7ac",
+            "time_ns": 195168113837400,
+            "source": [
+              "127.0.0.1",
+              65411
+            ],
+            "destination": [
+              "127.0.0.1",
+              65407
+            ],
+            "relay": [
+              "127.0.0.1",
+              65410
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "67458cae03000000000002410180b121ff6161616161616161616161616161616161616161616161616161616161616161",
+            "forwarded_hex": "67458cae03000000000002410180b121ff6161616161616161616161616161616161616161616161616161616161616161",
+            "time_ns": 195168115284400,
+            "source": [
+              "127.0.0.1",
+              65407
+            ],
+            "destination": [
+              "127.0.0.1",
+              65411
+            ],
+            "relay": [
+              "127.0.0.1",
+              65409
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "514503f4014102210160b109ff6262626262626262626262626262626262626262626262626262626262626262",
+            "forwarded_hex": "514503f4014102210160b109ff6262626262626262626262626262626262626262626262626262626262626262",
+            "time_ns": 195168128518500,
+            "source": [
+              "127.0.0.1",
+              65407
+            ],
+            "destination": [
+              "127.0.0.1",
+              65411
+            ],
+            "relay": [
+              "127.0.0.1",
+              65409
+            ]
+          },
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "57018caf04000000000002b96f62732d6c61726765c111e40000bcc5e7ac",
+            "forwarded_hex": "57018caf04000000000002b96f62732d6c61726765c111e40000bcc5e7ac",
+            "time_ns": 195168128598000,
+            "source": [
+              "127.0.0.1",
+              65411
+            ],
+            "destination": [
+              "127.0.0.1",
+              65407
+            ],
+            "relay": [
+              "127.0.0.1",
+              65410
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "574503f504000000000002410280b119ff6262626262626262626262626262626262626262626262626262626262626262",
+            "forwarded_hex": "574503f504000000000002410280b119ff6262626262626262626262626262626262626262626262626262626262626262",
+            "time_ns": 195168130074400,
+            "source": [
+              "127.0.0.1",
+              65407
+            ],
+            "destination": [
+              "127.0.0.1",
+              65411
+            ],
+            "relay": [
+              "127.0.0.1",
+              65409
+            ]
+          },
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "57018cb005000000000002b96f62732d6c61726765c121e40000bcc5e7ac",
+            "forwarded_hex": "57018cb005000000000002b96f62732d6c61726765c121e40000bcc5e7ac",
+            "time_ns": 195168130145200,
+            "source": [
+              "127.0.0.1",
+              65411
+            ],
+            "destination": [
+              "127.0.0.1",
+              65407
+            ],
+            "relay": [
+              "127.0.0.1",
+              65410
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "574503f605000000000002410280b121ff6262626262626262626262626262626262626262626262626262626262626262",
+            "forwarded_hex": "574503f605000000000002410280b121ff6262626262626262626262626262626262626262626262626262626262626262",
+            "time_ns": 195168131665300,
+            "source": [
+              "127.0.0.1",
+              65407
+            ],
+            "destination": [
+              "127.0.0.1",
+              65411
+            ],
+            "relay": [
+              "127.0.0.1",
+              65409
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "514503f7014103210260b109ff6363636363636363636363636363636363636363636363636363636363636363",
+            "forwarded_hex": "514503f7014103210260b109ff6363636363636363636363636363636363636363636363636363636363636363",
+            "time_ns": 195171129151500,
+            "source": [
+              "127.0.0.1",
+              65407
+            ],
+            "destination": [
+              "127.0.0.1",
+              65411
+            ],
+            "relay": [
+              "127.0.0.1",
+              65409
+            ]
+          },
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "57018cb106000000000002b96f62732d6c61726765c111e40000bcc5e7ac",
+            "forwarded_hex": "57018cb106000000000002b96f62732d6c61726765c111e40000bcc5e7ac",
+            "time_ns": 195171129242600,
+            "source": [
+              "127.0.0.1",
+              65411
+            ],
+            "destination": [
+              "127.0.0.1",
+              65407
+            ],
+            "relay": [
+              "127.0.0.1",
+              65410
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "574503f806000000000002410380b119ff6363636363636363636363636363636363636363636363636363636363636363",
+            "forwarded_hex": "574503f806000000000002410380b119ff6363636363636363636363636363636363636363636363636363636363636363",
+            "time_ns": 195171130767000,
+            "source": [
+              "127.0.0.1",
+              65407
+            ],
+            "destination": [
+              "127.0.0.1",
+              65411
+            ],
+            "relay": [
+              "127.0.0.1",
+              65409
+            ]
+          },
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "57018cb207000000000002b96f62732d6c61726765c121e40000bcc5e7ac",
+            "forwarded_hex": "57018cb207000000000002b96f62732d6c61726765c121e40000bcc5e7ac",
+            "time_ns": 195171130842400,
+            "source": [
+              "127.0.0.1",
+              65411
+            ],
+            "destination": [
+              "127.0.0.1",
+              65407
+            ],
+            "relay": [
+              "127.0.0.1",
+              65410
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "574503f907000000000002410380b121ff6363636363636363636363636363636363636363636363636363636363636363",
+            "forwarded_hex": "574503f907000000000002410380b121ff6363636363636363636363636363636363636363636363636363636363636363",
+            "time_ns": 195171132352700,
+            "source": [
+              "127.0.0.1",
+              65407
+            ],
+            "destination": [
+              "127.0.0.1",
+              65411
+            ],
+            "relay": [
+              "127.0.0.1",
+              65409
+            ]
+          },
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "51018cb3016101596f62732d6c61726765c111e40000bcc5e7ac",
+            "forwarded_hex": "51018cb3016101596f62732d6c61726765c111e40000bcc5e7ac",
+            "time_ns": 195171133302700,
+            "source": [
+              "127.0.0.1",
+              65411
+            ],
+            "destination": [
+              "127.0.0.1",
+              65407
+            ],
+            "relay": [
+              "127.0.0.1",
+              65410
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "514503fa01410380b119ff6363636363636363636363636363636363636363636363636363636363636363",
+            "forwarded_hex": "514503fa01410380b119ff6363636363636363636363636363636363636363636363636363636363636363",
+            "time_ns": 195171133912200,
+            "source": [
+              "127.0.0.1",
+              65407
+            ],
+            "destination": [
+              "127.0.0.1",
+              65411
+            ],
+            "relay": [
+              "127.0.0.1",
+              65409
+            ]
+          }
+        ]
+      ],
+      "commands": [
+        {
+          "argv": [
+            "D:\\coaptic-tools\\peer-libcoap-435b-msvc\\Release\\peer-libcoap.exe",
+            "client",
+            "udp",
+            "65409",
+            "sesame",
+            "obs-large",
+            "GET",
+            "15000",
+            "ipv4",
+            "",
+            "observe",
+            "block2:1"
+          ],
+          "exit_code": 0,
+          "stdout": "{\"schema\":\"coaptic-peer/2\",\"event\":\"response\",\"code\":69,\"payload_hex\":\"6161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161612c6262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262622c636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363\",\"elapsed_ns\":3023061800,\"elapsed_us\":3023061.800,\"clock\":{\"name\":\"QueryPerformanceCounter\",\"resolution_ns\":100}}\r\n",
+          "stderr": ""
+        }
+      ]
+    },
+    {
+      "id": "token64-refusal:libcoap->coaptic",
+      "passed": true,
+      "evidence": {
+        "native_send": {
+          "argv": [
+            "D:\\coaptic-tools\\peer-libcoap-435b-msvc\\Release\\peer-libcoap.exe",
+            "client",
+            "udp",
+            "57663",
+            "sesame",
+            "test",
+            "GET",
+            "6000",
+            "ipv4",
+            "",
+            "token:64"
+          ],
+          "exit_code": 1,
+          "stdout": "{\"schema\":\"coaptic-peer/2\",\"event\":\"error\",\"message\":\"send failed\"}\r\n",
+          "stderr": ""
+        },
+        "trace": [
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "4d017ae7330102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f4050",
+            "forwarded_hex": "4d017ae7330102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f4050",
+            "time_ns": 195171157733200,
+            "source": [
+              "127.0.0.1",
+              57665
+            ],
+            "destination": [
+              "127.0.0.1",
+              57662
+            ],
+            "relay": [
+              "127.0.0.1",
+              57664
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "6d807ae7330102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40",
+            "forwarded_hex": "6d807ae7330102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40",
+            "time_ns": 195171157936100,
+            "source": [
+              "127.0.0.1",
+              57662
+            ],
+            "destination": [
+              "127.0.0.1",
+              57665
+            ],
+            "relay": [
+              "127.0.0.1",
+              57663
+            ]
+          }
+        ],
+        "fresh": {
+          "schema": "coaptic-peer/2",
+          "event": "response",
+          "code": 69,
+          "payload_hex": "636f72652d746573742d7061796c6f6164",
+          "elapsed_ns": 2282800,
+          "elapsed_us": 2282.8,
+          "clock": {
+            "name": "QueryPerformanceCounter",
+            "resolution_ns": 100
+          },
+          "host_total_ns": 10078600,
+          "host_total_us": 10078.6,
+          "exit_code": 0
+        },
+        "refused_length": 64
+      }
+    },
+    {
+      "id": "compact:coap-rs->coaptic",
+      "passed": false,
+      "error": "AssertionError('missing exact request path/token length')",
+      "captures": [
+        [
+          {
+            "direction": "request",
+            "action": "forward",
+            "hex": "4001dc2db474657374",
+            "forwarded_hex": "4001dc2db474657374",
+            "time_ns": 195171215786700,
+            "source": [
+              "127.0.0.1",
+              57671
+            ],
+            "destination": [
+              "127.0.0.1",
+              57667
+            ],
+            "relay": [
+              "127.0.0.1",
+              57669
+            ]
+          },
+          {
+            "direction": "response",
+            "action": "forward",
+            "hex": "6045dc2dff636f72652d746573742d7061796c6f6164",
+            "forwarded_hex": "6045dc2dff636f72652d746573742d7061796c6f6164",
+            "time_ns": 195171216133800,
+            "source": [
+              "127.0.0.1",
+              57667
+            ],
+            "destination": [
+              "127.0.0.1",
+              57671
+            ],
+            "relay": [
+              "127.0.0.1",
+              57668
+            ]
+          }
+        ]
+      ],
+      "commands": [
+        {
+          "argv": [
+            "D:\\coaptic-batch-interop-target\\debug\\peer-coap-rs.exe",
+            "client",
+            "udp",
+            "57668",
+            "sesame",
+            "test",
+            "GET",
+            "6000",
+            "ipv4",
+            ""
+          ],
+          "exit_code": 0,
+          "stdout": "{\"clock\":{\"name\":\"std::time::Duration\",\"resolution_ns\":null},\"code\":69,\"echo_retries\":null,\"elapsed_ns\":1789900,\"elapsed_us\":1789.9,\"event\":\"response\",\"payload_hex\":\"636f72652d746573742d7061796c6f6164\",\"schema\":\"coaptic-peer/2\"}\n",
+          "stderr": ""
+        }
+      ]
+    }
+  ],
+  "unqualified": [
+    "protected profiles",
+    "routed/scoped IPv6",
+    "independent EDHOC",
+    "physical execution"
+  ],
+  "passed": false
+}
