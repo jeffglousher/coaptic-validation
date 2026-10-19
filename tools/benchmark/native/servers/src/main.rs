@@ -59,7 +59,7 @@ fn bind_fixture<T: DatagramIo<Error = std::io::Error>>(
     let builder = if let Some(context) = context {
         builder.oscore(context)
     } else {
-        builder.allow_plaintext()
+        builder.allow_unprotected()
     };
     Ok(builder.bind_alloc(io, capacities)?)
 }
