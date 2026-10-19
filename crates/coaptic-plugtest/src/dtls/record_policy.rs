@@ -324,6 +324,20 @@ fn grade(case: &Case, wrong: bool, gcm: bool) -> Result<(), String> {
     }
     Ok(())
 }
+fn grade_sequence(cases: &[Case], gcm: bool) -> Result<(), String> {
+    if cases.len() != 3 {
+        return Err("missing intact control, refusal, or fresh recovery".into());
+    }
+    for (case, wrong) in cases.iter().zip([false, true, false]) {
+        grade(case, wrong, gcm)?;
+    }
+    // Fresh loopback owners must differ; replaying the initial capture cannot
+    // stand in for constructing and completing the recovery association.
+    if cases[0].endpoints == cases[2].endpoints {
+        return Err("recovery reused the control association".into());
+    }
+    Ok(())
+}
 fn command(path: &std::path::Path, program: &str, args: &[&str]) -> String {
     let output = std::process::Command::new(program)
         .args(args)
@@ -374,6 +388,7 @@ fn qualify_record_policy(gcm: bool) {
         });
     std::fs::create_dir_all(&directory).unwrap();
     let mut reports = Vec::new();
+    let mut cases = Vec::new();
     for (index, wrong) in [false, true, false].into_iter().enumerate() {
         let case = match run_case(wrong, gcm) {
             Ok(case) => case,
@@ -475,13 +490,19 @@ fn qualify_record_policy(gcm: bool) {
                     .is_err()
             );
         }
+        cases.push(case);
     }
+    grade_sequence(&cases, gcm).unwrap();
+    assert!(grade_sequence(&cases[..2], gcm).is_err());
+    let mut repeated = cases.clone();
+    repeated[2] = cases[0].clone();
+    assert!(grade_sequence(&repeated, gcm).is_err());
     assert_eq!(identity(root), suite, "suite changed during capture");
     assert_eq!(
         identity(&root.join("coaptic")),
         core,
         "core changed during capture"
     );
-    std::fs::write(directory.join("report.json"), serde_json::to_vec_pretty(&serde_json::json!({"provenance":provenance,"cases":reports,"complete":true,"mutation_refusals":44})).unwrap()).unwrap();
+    std::fs::write(directory.join("report.json"), serde_json::to_vec_pretty(&serde_json::json!({"provenance":provenance,"cases":reports,"complete":true,"mutation_refusals":46})).unwrap()).unwrap();
     assert!(crate::catalog::skip_reason("TD_COAP_DTLS_02").is_some());
 }
