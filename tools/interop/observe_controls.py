@@ -165,6 +165,7 @@ def q_initial_representation(channel, token):
     chunks = []
     sequence = None
     etag = None
+    train_kind = None
     while len(chunks) < 22:
         wire = channel.receive()
         kind = (wire[0] >> 4) & 3
@@ -175,6 +176,10 @@ def q_initial_representation(channel, token):
                 "Q initial owner/code/type changed")
         if kind == 2:
             require(wire[2:4] == pending[2:4], "Q initial ACK MID changed")
+        if kind != 2:
+            if train_kind is None:
+                train_kind = kind
+            require(kind == train_kind, "Q initial changed CON/NON train")
         options = decoded_options(wire)
         require(len(options.get(31, [])) == 1, "Q initial block missing")
         block = int.from_bytes(options[31][0], "big")
@@ -184,9 +189,10 @@ def q_initial_representation(channel, token):
         require(coap_payload(wire) == b"a" * 32 and options.get(28) == [b"\x02\xc0"],
                 "Q initial bytes/Size2 changed")
         if not chunks:
-            require(len(options.get(6, [])) == 1 and options.get(4), "Q initial epoch/ETag missing")
+            require(len(options.get(6, [])) == 1 and len(options.get(4, [])) == 1 and
+                    1 <= len(options[4][0]) <= 8, "Q initial epoch/ETag missing or invalid")
             sequence, etag = options[6], options[4]
-        require(options.get(4) == etag and (6 not in options or options[6] == sequence),
+        require(options.get(4) == etag and options.get(6) == sequence,
                 "Q initial representation identity changed")
         chunks.append(coap_payload(wire))
         # ACKing each CON drives its train. Only a NON window needs a pull.
@@ -234,7 +240,8 @@ def q_recovery_lifecycle(port, captures=None):
                         "Q body/Size2 changed")
                 current_sequence = options[6][0]
                 current_etag = options.get(4)
-                require(current_etag, "Q epoch has no ETag")
+                require(current_etag is not None and len(current_etag) == 1 and
+                        1 <= len(current_etag[0]) <= 8, "Q epoch has invalid ETag")
                 if sequence is None:
                     sequence, etag = current_sequence, current_etag
                 require(sequence == current_sequence and etag == current_etag, "Q epoch mixed representations")
@@ -248,7 +255,9 @@ def q_recovery_lifecycle(port, captures=None):
         # NUM20 and21 occupy one configured10-block MAX_PAYLOADS_SET. No Observe
         # on missing-block requests or replies. This checks retained bytes, not
         # an invented immediate packet-loss timer policy.
-        missing = channel.send(1, token, [(4, etag[0]), (11, b"obs-q"),
+        # ETag is a cache validator, not a request identity: including it may
+        # legitimately produce 2.03 without the missing bytes (RFC9177?4.4).
+        missing = channel.send(1, token, [(11, b"obs-q"),
                                          (31, b"\x01\x41"), (31, b"\x01\x51")])
         recovered = set()
         while len(recovered) < 2:
@@ -256,9 +265,12 @@ def q_recovery_lifecycle(port, captures=None):
             require(packet_token(wire) == token and wire[1] == 69, "Q recovery owner/code changed")
             options = decoded_options(wire)
             require(6 not in options and options.get(4) == etag, "Q recovery changed epoch identity")
-            index = int.from_bytes(options.get(31, [b""])[0], "big") >> 4
-            require(index in (20, 21) and index not in recovered and coap_payload(wire) == b"b" * 32,
-                    "Q recovery escaped selected set")
+            require(len(options.get(31, [])) == 1, "Q recovery missing block")
+            block = int.from_bytes(options[31][0], "big")
+            index = block >> 4
+            require(index in (20, 21) and index not in recovered and block & 7 == 1 and
+                    bool(block & 8) == (index < 21) and options.get(28) == [b"\x02\xc0"] and
+                    coap_payload(wire) == b"b" * 32, "Q recovery escaped selected set")
             recovered.add(index)
         channel.quiet({token})
         next_sequence, _ = epoch(2, b"c")

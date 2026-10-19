@@ -116,7 +116,7 @@ class ObserveFixtureDiagnostics(unittest.TestCase):
 
 
 class QInitialControl(unittest.TestCase):
-    def channel(self, kind, corrupt=None):
+    def channel(self, kind, corrupt=None, initial_corrupt=None, switch_kind=False):
         from run import coap_message
         class FakeChannel:
             def __init__(self):
@@ -133,8 +133,11 @@ class QInitialControl(unittest.TestCase):
                         (31, block.to_bytes((block.bit_length() + 7) // 8, "big"))]
                 if corrupt and index == 10:
                     opts = corrupt(opts)
+                if initial_corrupt and index == 0:
+                    opts = initial_corrupt(opts)
                 wire = coap_message(69, index + 100, b"qobs", opts, b"a" * 32)
-                return bytes([(wire[0] & 0xcf) | (kind << 4)]) + wire[1:]
+                actual_kind = 1 - kind if switch_kind and index == 10 else kind
+                return bytes([(wire[0] & 0xcf) | (actual_kind << 4)]) + wire[1:]
         return FakeChannel()
 
     def test_con_train_acks_need_no_window_pull(self):
@@ -156,6 +159,12 @@ class QInitialControl(unittest.TestCase):
                        lambda opts: [(n, v) for n, v in opts if n != 28]):
             with self.assertRaises(AssertionError):
                 q_initial_representation(self.channel(0, mutate), b"qobs")
+        for mutate in (lambda opts: [(n, b"" if n == 4 else v) for n, v in opts],
+                       lambda opts: [opts[0], *opts]):
+            with self.assertRaises(AssertionError):
+                q_initial_representation(self.channel(0, initial_corrupt=mutate), b"qobs")
+        with self.assertRaises(AssertionError):
+            q_initial_representation(self.channel(0, switch_kind=True), b"qobs")
 
 
 if __name__ == "__main__":
