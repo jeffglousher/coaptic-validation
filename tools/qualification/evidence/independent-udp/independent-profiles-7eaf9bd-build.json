@@ -1,0 +1,42 @@
+{
+  "source": "ac7b6b51449c5dc314be788b85c267d40d118655",
+  "dirty": false,
+  "suite_source": "7eaf9bd47829405b19d10175da7bbb377d9a37f0",
+  "suite_dirty": false,
+  "suite_locks": {
+    "Cargo.lock": "f711ce82fa0c978951b004095f37ad2cc4b05c1ceabbff406646ba6c87ed934b",
+    "tools/benchmark/native/Cargo.lock": "eb16c47c2f3539aaa45bd82e4eab48f229b252183998857f6a80a6ffc7432075",
+    "tools/security-interop/Cargo.lock": "e12762939ad364280a46bc526683de74567855448bf0f4e6263d79bad32e0653",
+    "tools/security-profile/Cargo.lock": "278f01b25bc5f2e9aab89f1c53cdbb97e3f12ae6269d81452a36393755e9e8c5",
+    "tools/esphome/rust/Cargo.lock": "7661bf627e28c7ec2eda22a2212081ce5f6e4e5b80d29d2da3d92c25ff74551d",
+    "tools/qualification/esp32/Cargo.lock": "5fda0d74045b28886c9b5dead108857d87e64b405ce193eeb7e1255483ef0773",
+    "tools/durable-host/Cargo.lock": "40a13b28dc161217c0f84afa18c3b870a840b48ccea2acf7071b0ef34b4205cf"
+  },
+  "executables": {
+    "coaptic": {
+      "path": "D:\\coaptic-batch-interop-target\\debug\\peer-coaptic.exe",
+      "sha256": "9193f960ac4a464a28407ca3bf1fbd2a82b464c382810bf970870a0f4f072dc5"
+    },
+    "coap-rs": {
+      "path": "D:\\coaptic-batch-interop-target\\debug\\peer-coap-rs.exe",
+      "sha256": "79352c997bba01de47cc5d0ea77d726274fef0f58282d70e010c673fc7fbe43e"
+    },
+    "libcoap": {
+      "path": "D:\\coaptic-tools\\peer-libcoap-435b-msvc\\Release\\peer-libcoap.exe",
+      "sha256": "0648c8a9060be15509dd10f14d420757cf4bb7e2185fca0fd6d131c4fd9b3afd"
+    }
+  },
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-pc-windows-msvc\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+  "rust_command": "cargo +1.99.0 build -p peer-coaptic -p peer-coap-rs; debug=0 incremental=0 jobs=2",
+  "native": {
+    "source": "851533c3cf63d16984d370ce39d586ecb3694971",
+    "source_dirty": false,
+    "compiler": "MSVC 19.44.35228.0",
+    "configuration": "Release",
+    "dtls": false,
+    "oscore": false,
+    "qblock": true,
+    "cmake_command": "cmake -S tools/interop/libcoap -B D:/coaptic-tools/peer-libcoap-435b-msvc -DLIBCOAP_SOURCE=D:/coaptic-tools/libcoap-4.3.5b -DENABLE_DTLS=OFF -DENABLE_OSCORE=OFF; cmake --build D:/coaptic-tools/peer-libcoap-435b-msvc --config Release --parallel 2"
+  },
+  "host_peer_stack_reserved_bytes": 8388608
+}

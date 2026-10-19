@@ -187,11 +187,30 @@ def expect(event, code=69, payload=BODY):
         raise AssertionError(f"incorrect response body: {event}")
 
 
+def token_bounds(packet):
+    """RFC 8974 token prefix; the ordinary option decoder is shared below."""
+    if len(packet) < 4 or packet[0] >> 6 != 1:
+        raise AssertionError("not a CoAP datagram")
+    length, start = packet[0] & 15, 4
+    if length == 15:
+        raise AssertionError("reserved token length")
+    if length in (13, 14):
+        width = length - 12
+        if len(packet) < start + width:
+            raise AssertionError("truncated token length")
+        length = int.from_bytes(packet[start:start + width], "big") + (13 if width == 1 else 269)
+        start += width
+    if len(packet) < start + length:
+        raise AssertionError("truncated token")
+    return start, start + length
+
+
 def packet_token(packet):
-    if len(packet) < 4 or packet[0] >> 6 != 1 or (packet[0] & 15) > 8:
+    try:
+        start, end = token_bounds(packet)
+        return packet[start:end]
+    except AssertionError:
         return b""
-    length = packet[0] & 15
-    return packet[4:4 + length]
 
 
 def shrink_qblock2_szx(packet, szx=4):
@@ -301,7 +320,7 @@ class Proxy:
                     except ConnectionResetError:
                         # Windows reports late ICMP port-unreachable when a
                         # one-shot client exits after the first duplicate reply.
-                        if self.mode in ("duplicate-request", "dtls-reconnect", "drop-qblock2", "drop-qblock2-permanent", "drop-qblock2-once", "reorder-qblock2") and sock is self.front:
+                        if self.mode in ("profiles", "duplicate-request", "dtls-reconnect", "drop-qblock2", "drop-qblock2-permanent", "drop-qblock2-once", "reorder-qblock2") and sock is self.front:
                             continue
                         raise
                     incoming = sock is self.front
@@ -656,9 +675,7 @@ def coap_message(code, mid, token, options, payload=b"", *, non=False):
 
 
 def coap_payload(packet):
-    if len(packet) < 4 or packet[0] >> 6 != 1 or (packet[0] & 15) > 8:
-        raise AssertionError("not a CoAP datagram")
-    index = 4 + (packet[0] & 15)
+    _, index = token_bounds(packet)
     while index < len(packet):
         if packet[index] == 0xFF:
             return packet[index + 1:]
@@ -703,9 +720,7 @@ def coap_exchange(sock, address, packet, timeout=2):
 
 
 def decoded_options(packet):
-    if len(packet) < 4 or packet[0] >> 6 != 1 or (packet[0] & 15) > 8:
-        raise AssertionError("not a CoAP datagram")
-    index = 4 + (packet[0] & 15)
+    _, index = token_bounds(packet)
     number = 0
     found = {}
     while index < len(packet) and packet[index] != 0xFF:

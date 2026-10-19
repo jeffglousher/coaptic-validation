@@ -4,7 +4,7 @@ mod dtls;
 #[path = "../../../tools/interop/support.rs"]
 mod support;
 use coaptic::storage::{DatagramIo, Endpoint};
-use coaptic::{App, Code, ContentFormat, Method, Request, Response, get, profiles};
+use coaptic::{App, Code, ContentFormat, Method, get};
 use std::{
     net::UdpSocket,
     sync::atomic::{AtomicU32, Ordering},
@@ -12,6 +12,48 @@ use std::{
 };
 use support::{Args, Error};
 use webrtc_util::conn::Listener;
+type Token = coaptic::message::extended::Token<32>;
+type Request<'a> = coaptic::Request<'a, Token>;
+type Response<'a> = coaptic::Response<'a, Token>;
+// Match the existing peer's pools, with an explicit 32-byte token bound.
+coaptic::memory_profile! { PeerProfile {
+    token: Token,
+    rx_datagram: (4, 1472), tx_datagram: (4, 1472),
+    rx_body: (2, 4096), tx_body: (2, 4096), dedup: 8, observe: 4,
+} }
+static SENSOR_METADATA: coaptic::link_format::Metadata<'static> = coaptic::link_format::Metadata {
+    resource_types: Some("temperature-c sensor"),
+    interfaces: Some("sensor"),
+    content_formats: &[0, 50],
+    size_estimate: Some(96),
+    observable: true,
+    extensions: &[coaptic::link_format::Extension {
+        name: "title",
+        value: Some("Room \"one\""),
+    }],
+};
+static OBSERVED_BODIES: [[u8; 96]; 3] = [[b'a'; 96], [b'b'; 96], [b'c'; 96]];
+fn large_snapshot() -> Response<'static> {
+    let epoch = (COUNTER.load(Ordering::SeqCst) % 3) as usize;
+    Response::content(&OBSERVED_BODIES[epoch])
+        .etag(&[epoch as u8 + 1])
+        .content_format(ContentFormat::TEXT_PLAIN)
+}
+fn observed_large(request: Request<'_>) -> Response<'static> {
+    let epoch = (COUNTER.load(Ordering::SeqCst) % 3) as u8;
+    if request.etag().any(|tag| tag == [epoch + 1]) {
+        Response::new(Code::VALID).etag(&[epoch + 1])
+    } else {
+        large_snapshot()
+    }
+}
+fn escaped(request: Request<'_>) -> Response<'static> {
+    if request.uri_query().eq([Ok("key=a&b")]) {
+        Response::content(b"uri-identity")
+    } else {
+        Response::bad_request()
+    }
+}
 static METHOD_RESOURCE: std::sync::Mutex<support::MethodResource> =
     std::sync::Mutex::new(support::MethodResource::new());
 static UPLOAD_RESOURCE: std::sync::Mutex<support::UploadResource> =
@@ -131,7 +173,7 @@ async fn run() -> Result<(), Error> {
             tokio::spawn(async move {
                 // CoAP exchange/dedup/Observe state belongs to this authenticated
                 // association. Resource contents (COUNTER) remain shared.
-                let Ok(mut app) = fixture(Io::Dtls(dtls::DtlsIo::accepted(conn, peer)), false)
+                let Ok(mut app) = fixture(Io::Dtls(dtls::DtlsIo::accepted(conn, peer)), false, 8)
                 else {
                     return;
                 };
@@ -145,6 +187,7 @@ async fn run() -> Result<(), Error> {
                     if value != signalled {
                         signalled = value;
                         app.signal(&["counter"]);
+                        app.signal(&["obs-large"]);
                     }
                     tokio::time::sleep(Duration::from_millis(1)).await;
                 }
@@ -171,20 +214,22 @@ async fn run() -> Result<(), Error> {
         socket.set_nonblocking(true)?;
         Io::Udp(socket)
     };
-    let mut app = fixture(io, a.server && a.echo)?;
+    let mut app = fixture(io, a.server && a.echo, a.token_length)?;
     if a.oscore {
         // Public RFC 8613 C.1 fixture material, never production credentials.
         let mut secret = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
         if a.key != "sesame" {
             secret[0] ^= 0xff;
         }
-        let mut context = coaptic::oscore::SecurityContext::derive(coaptic::oscore::DeriveParams {
-            master_secret: &secret,
-            master_salt: &[0x9e, 0x7c, 0xa9, 0x22, 0x23, 0x78, 0x63, 0x40],
-            sender_id: if a.server { &[1] } else { &[] },
-            recipient_id: if a.server { &[] } else { &[1] },
-            id_context: &[],
-        })
+        let mut context = coaptic::oscore::BoundedSecurityContext::<4, Token>::derive(
+            coaptic::oscore::DeriveParams {
+                master_secret: &secret,
+                master_salt: &[0x9e, 0x7c, 0xa9, 0x22, 0x23, 0x78, 0x63, 0x40],
+                sender_id: if a.server { &[1] } else { &[] },
+                recipient_id: if a.server { &[] } else { &[1] },
+                id_context: &[],
+            },
+        )
         .map_err(|e| format!("OSCORE derivation: {e:?}"))?;
         context
             .set_sender_seq(a.sequence)
@@ -218,20 +263,57 @@ async fn run() -> Result<(), Error> {
             if value != signalled {
                 signalled = value;
                 app.signal(&["counter"]);
+                app.signal(&["obs-large"]);
             }
             std::thread::sleep(Duration::from_millis(1));
         }
     }
-    let path = match a.path.as_str() {
-        "test" => &["test"][..],
-        "large" => &["large"][..],
-        "counter" => &["counter"][..],
-        "methods" => &["methods"][..],
-        "upload" => &["upload"][..],
-        "separate" => &["separate"][..],
-        "patch" => &["patch"][..],
-        _ => &["missing"][..],
+    let encoded_path = if a.path == "escaped" {
+        "escaped/a%2Fb?key=a%26b"
+    } else {
+        &a.path
     };
+    let uri_text = format!("coap://127.0.0.1:{}/{}", a.port, encoded_path);
+    let uri = coaptic::uri::Uri::parse(&uri_text).map_err(|e| format!("URI: {e:?}"))?;
+    // App paths retain static descriptors; resolve only this fixture's finite
+    // vocabulary after bounded URI decoding, rejecting extra components.
+    let mut path_values = [""; 2];
+    let mut count = 0;
+    for component in uri.path_segments() {
+        let slot = path_values.get_mut(count).ok_or("too many URI segments")?;
+        let mut bytes = [0; 64];
+        let decoded = component
+            .decode(&mut bytes)
+            .map_err(|e| format!("URI component: {e:?}"))?;
+        *slot = [
+            "test",
+            "large",
+            "counter",
+            "missing",
+            "methods",
+            "upload",
+            "separate",
+            "patch",
+            ".well-known",
+            "core",
+            "sensor",
+            "escaped",
+            "a/b",
+            "obs-large",
+        ]
+        .into_iter()
+        .find(|known| *known == decoded)
+        .ok_or("unknown fixture URI segment")?;
+        count += 1;
+    }
+    let path = &path_values[..count];
+    let mut query_storage = [0; 64];
+    let query = uri
+        .query_arguments()
+        .next()
+        .map(|q| q.decode(&mut query_storage))
+        .transpose()
+        .map_err(|e| format!("URI query: {e:?}"))?;
     let method = match a.method {
         1 => Method::Get,
         2 => Method::Post,
@@ -269,6 +351,40 @@ async fn run() -> Result<(), Error> {
     if a.observe {
         outgoing = outgoing.observe();
     }
+    if let Some(query) = query {
+        outgoing = outgoing.query(query);
+    }
+    if let Some(number) = a.block2_start {
+        outgoing = outgoing.block2(
+            coaptic::message::BlockValue::new(number, false, 1)
+                .map_err(|e| format!("block option: {e:?}"))?,
+        );
+    }
+    if a.initial_valid {
+        outgoing = outgoing.etag(&[1]);
+    }
+    if a.token_probe {
+        let probe = outgoing
+            .probe_token_support(1)
+            .send(1)
+            .map_err(|e| format!("probe send: {e}"))?;
+        loop {
+            let now = start.elapsed().as_millis() as u64 + 1;
+            app.poll(now).map_err(|e| format!("probe poll: {e}"))?;
+            if let Some(result) = app.take_response(probe.call()) {
+                let evidence = probe.record(&result, now);
+                println!(
+                    "{}",
+                    serde_json::json!({"schema":"coaptic-profiles/1","event":"probe","outcome":format!("{:?}",evidence.outcome()),"length":evidence.tested_length(),"expires_ms":evidence.expires_at()})
+                );
+                return Ok(());
+            }
+            if now > a.timeout {
+                return Err("probe deadline".into());
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
     let mut call = outgoing.send(1).map_err(|e| format!("send: {e}"))?;
     let mut echo_retried = false;
     // Observe prints the registration reply and two notifications, comma-separated.
@@ -276,6 +392,7 @@ async fn run() -> Result<(), Error> {
     let mut cancellation_sent = false;
     let mut quiet_until = None;
     let mut fresh_registration = false;
+    let mut response_bytes = [0; 4096];
     while start.elapsed() < Duration::from_millis(a.timeout) {
         if quiet_until.is_some_and(|until| start.elapsed() >= until) {
             call = app
@@ -289,14 +406,18 @@ async fn run() -> Result<(), Error> {
         }
         app.poll(start.elapsed().as_millis() as u64 + 1)
             .map_err(|e| format!("poll: {e}"))?;
-        let response = app.take_response(call).transpose()?.map(|r| {
-            (
-                r.code().as_raw(),
-                r.body().unwrap_or(r.payload()).to_vec(),
-                start.elapsed(),
-                r.echo_option(),
-            )
-        });
+        let response = app
+            .take_response_into(call, &mut response_bytes)
+            .map_err(|e| format!("response buffer: {e:?}"))?
+            .transpose()?
+            .map(|r| {
+                (
+                    r.code().as_raw(),
+                    r.body().unwrap_or(r.payload()).to_vec(),
+                    start.elapsed(),
+                    r.echo_option(),
+                )
+            });
         if let Some((code, body, elapsed, echo)) = response {
             if let Some(challenge) = retry_challenge(a.oscore, echo_retried, code, echo) {
                 // The configured App only admits authenticated responses. Echo
@@ -341,7 +462,7 @@ async fn run() -> Result<(), Error> {
                 echo_retried = true;
                 continue;
             }
-            if a.observe {
+            if a.observe && code < 128 {
                 if a.observe_cancel {
                     if quiet_until.is_some() {
                         return Err("unexpected response during cancellation hold".into());
@@ -430,11 +551,17 @@ fn server_echo(check: coaptic::EchoCheck) -> coaptic::EchoDecision {
     }
 }
 
-fn fixture(io: Io, echo: bool) -> Result<App<profiles::Default, Io, 9, true>, Error> {
-    let app = App::profile::<profiles::Default>()
+fn fixture(
+    io: Io,
+    echo: bool,
+    token_length: usize,
+) -> Result<App<PeerProfile, Io, 12, true>, Error> {
+    let app = App::profile::<PeerProfile>()
+        .token_length(token_length)
+        .full_responses()
         .randomness(|bytes| getrandom::fill(bytes).is_ok())
         .block_wise::<true>()
-        .routes::<9>()
+        .routes::<12>()
         .route(
             "/test",
             get(|_: Request<'_>| Response::content(support::BODY)),
@@ -467,20 +594,49 @@ fn fixture(io: Io, echo: bool) -> Result<App<profiles::Default, Io, 9, true>, Er
             }),
         )
         .route("/fail", get(|_: Request<'_>| Response::internal_error()))
+        .route(
+            "sensor",
+            get(|_: Request<'_>| Response::content(b"sensor"))
+                .observe(|| Response::content(b"sensor")),
+        )
+        .route(&["escaped", "a/b"], get(escaped))
+        .route(
+            "obs-large",
+            get(observed_large).post(increment).observe(large_snapshot),
+        )
         .route("/patch", get(merge_patch).patch(merge_patch))
         .route(
             "/cond",
             get(conditional).put(conditional).delete(conditional),
         )
         .well_known_core();
-    if echo {
+    let mut bound = if echo {
         app.echo_policy(server_echo).allow_unprotected().bind(io)
     } else {
         app.allow_unprotected().bind(io)
     }
-    .map_err(|e| format!("bind: {e:?}").into())
+    .map_err(|e| format!("bind: {e:?}"))?;
+    bound
+        .site()
+        .set_discovery_metadata("sensor", Some(&SENSOR_METADATA))
+        .map_err(|e| format!("metadata: {e:?}"))?;
+    Ok(bound)
 }
-#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
-async fn main() -> std::process::ExitCode {
-    support::finish(run().await)
+fn main() -> std::process::ExitCode {
+    // Debug builds retain large bounded App construction temporaries. Keep this
+    // desktop fixture's stack explicit, separate from embedded retained RAM.
+    std::thread::Builder::new()
+        .name("coaptic-peer".into())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+                .expect("fixture runtime");
+            support::finish(runtime.block_on(run()))
+        })
+        .expect("fixture thread")
+        .join()
+        .expect("fixture execution")
 }
