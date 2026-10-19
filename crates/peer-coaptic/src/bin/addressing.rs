@@ -143,18 +143,18 @@ fn run(args: &[String]) -> Result<(), Error> {
     while start.elapsed() < Duration::from_millis(deadline) {
         let now = start.elapsed().as_millis() as u64 + 1;
         app.poll(now).map_err(|error| format!("poll: {error}"))?;
-        if let Some(call) = call {
-            if let Some(result) = app.take_response(call) {
-                let response = result.map_err(|error| format!("call: {error}"))?;
-                if response.code() != Code::CONTENT || response.payload() != BODY {
-                    return Err("wrong application bytes/code".into());
-                }
-                println!(
-                    "{}",
-                    serde_json::json!({"event":"complete", "code":69,"hex":hex(response.payload())})
-                );
-                return Ok(());
+        if let Some(call) = call
+            && let Some(result) = app.take_response(call)
+        {
+            let response = result.map_err(|error| format!("call: {error}"))?;
+            if response.code() != Code::CONTENT || response.payload() != BODY {
+                return Err("wrong application bytes/code".into());
             }
+            println!(
+                "{}",
+                serde_json::json!({"event":"complete", "code":69,"hex":hex(response.payload())})
+            );
+            return Ok(());
         }
         std::thread::sleep(Duration::from_millis(1));
     }
