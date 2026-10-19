@@ -97,11 +97,29 @@ impl ServiceState {
     fn permits_probe(self, unresolved: bool) -> bool {
         matches!(self, Self::Running) || matches!(self, Self::Draining(_)) && unresolved
     }
-    fn drain(&mut self, now: u64, unresolved: bool, call: bool) -> Option<bool> {
+    fn release_hold(&mut self) {
+        if matches!(*self, Self::Held(_) | Self::Draining(_)) {
+            *self = Self::Running;
+        }
+    }
+    fn drain(
+        &mut self,
+        now: u64,
+        custody: coaptic::provisioning::CommissioningPending,
+        can_retry: bool,
+        call: bool,
+    ) -> Option<bool> {
         let Self::Draining(deadline) = *self else {
             return None;
         };
-        if !unresolved && !call {
+        use coaptic::provisioning::CommissioningPending as Status;
+        if matches!(custody, Status::Missing | Status::Unverifiable)
+            || custody == Status::Unresolved && !can_retry
+        {
+            self.release_hold();
+            return Some(false);
+        }
+        if custody == Status::Complete && !call {
             *self = Self::Held(now.saturating_add(60_000));
             Some(true)
         } else if now >= deadline {
@@ -516,7 +534,7 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
                             )?;
                         }
                         Err(PairingCommitError::State(_)) => {
-                            service = ServiceState::Running;
+                            service.release_hold();
                             send(&mut console, &CommissioningReply::Refused(3))?
                         }
                         Err(PairingCommitError::Store(Error::Pending)) => {
@@ -528,7 +546,7 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
                                 device.pairing.checkpoint().clone(),
                             )
                             .map_err(|_| Error::Storage)?;
-                            service = ServiceState::Running;
+                            service.release_hold();
                             send(&mut console, &CommissioningReply::Refused(6))?;
                         }
                         Err(PairingCommitError::Store(_)) => {
@@ -1019,7 +1037,12 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
             .map_err(|_| Error::Storage)?
             .flatten()
             .is_some();
-        match service.drain(now, unresolved, call.is_some()) {
+        match service.drain(
+            now,
+            live_custody(&pending, initial_custody),
+            pending.is_some(),
+            call.is_some(),
+        ) {
             Some(true) => return Ok(Some(CommissioningRequest::Quiesce)),
             Some(false) => send(console, &CommissioningReply::Refused(6))?,
             None => {}
@@ -1390,16 +1413,42 @@ mod tests {
 
     #[test]
     fn service_drain_preserves_retry_and_bounds_hold_without_new_work() {
+        use coaptic::provisioning::CommissioningPending;
+        for custody in [
+            CommissioningPending::Missing,
+            CommissioningPending::Unverifiable,
+            CommissioningPending::Unresolved,
+        ] {
+            let mut state = ServiceState::Draining(30_000);
+            assert_eq!(state.drain(0, custody, false, false), Some(false));
+            assert_eq!(state, ServiceState::Running);
+        }
+        let mut failed = ServiceState::Failed;
+        failed.release_hold();
+        assert_eq!(failed, ServiceState::Failed);
+        assert!(!failed.network());
         assert!(core::mem::size_of::<ServiceState>() <= 16);
         let mut state = ServiceState::Draining(30_000);
         assert!(state.permits_probe(true));
         assert!(!state.permits_probe(false));
-        assert_eq!(state.drain(29_999, true, false), None);
-        assert_eq!(state.drain(30_000, true, false), Some(false));
+        assert_eq!(
+            state.drain(29_999, CommissioningPending::Unresolved, true, false),
+            None
+        );
+        assert_eq!(
+            state.drain(30_000, CommissioningPending::Unresolved, true, false),
+            Some(false)
+        );
         assert_eq!(state, ServiceState::Running);
         state = ServiceState::Draining(60_000);
-        assert_eq!(state.drain(30_001, false, true), None);
-        assert_eq!(state.drain(30_002, false, false), Some(true));
+        assert_eq!(
+            state.drain(30_001, CommissioningPending::Complete, true, true),
+            None
+        );
+        assert_eq!(
+            state.drain(30_002, CommissioningPending::Complete, true, false),
+            Some(true)
+        );
         assert!(!state.network());
         assert!(!state.permits_probe(true));
         state.expire_hold(90_001);

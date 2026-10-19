@@ -240,7 +240,7 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
                             )?;
                         }
                         Err(PairingCommitError::State(_)) => {
-                            service = ServiceState::Running;
+                            service.release_hold();
                             send(&mut console, &CommissioningReply::Refused(3))?
                         }
                         Err(PairingCommitError::Store(Error::Pending)) => {
@@ -252,7 +252,7 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
                                 device.pairing.checkpoint().clone(),
                             )
                             .map_err(|_| Error::Storage)?;
-                            service = ServiceState::Running;
+                            service.release_hold();
                             send(&mut console, &CommissioningReply::Refused(6))?;
                         }
                         Err(PairingCommitError::Store(_)) => {
@@ -593,7 +593,12 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
             .map_err(|_| Error::Storage)?
             .flatten()
             .is_some();
-        match service.drain(now, unresolved, call.is_some()) {
+        match service.drain(
+            now,
+            live_custody(&pending, initial_custody),
+            pending.is_some(),
+            call.is_some(),
+        ) {
             Some(true) => return Ok(Some(CommissioningRequest::Quiesce)),
             Some(false) => send(console, &CommissioningReply::Refused(6))?,
             None => {}
