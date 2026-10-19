@@ -272,6 +272,7 @@ def main():
         ])
     cases.extend([
         ("token64-refusal:libcoap->coaptic", lambda: native_capacity_refusal(peers["libcoap"],peers["coaptic"])),
+        ("observe-nonzero-refusal:coaptic->libcoap", lambda: ordinary(peers["coaptic"],peers["libcoap"],"obs-large",["observe","block2:1"],code=128,body=b"")),
         ("token-probe:coaptic->libcoap", lambda: probe(peers["coaptic"],peers["libcoap"])),
         ("compact:coap-rs->coaptic", lambda: ordinary(peers["coap-rs"],peers["coaptic"],"test",body=b"core-test-payload")),
         ("compact:coaptic->coap-rs", lambda: ordinary(peers["coaptic"],peers["coap-rs"],"test",body=b"core-test-payload")),
