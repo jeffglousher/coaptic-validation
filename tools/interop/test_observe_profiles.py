@@ -167,5 +167,52 @@ class QInitialControl(unittest.TestCase):
             q_initial_representation(self.channel(0, switch_kind=True), b"qobs")
 
 
+class QPacketClassification(unittest.TestCase):
+    def packet(self, index, *, observe=True, body=b"b", token=b"qobs", kind=0, mid=None):
+        from run import coap_message
+        block = (index << 4) | (9 if index < 21 else 1)
+        options = [(4, b"two")]
+        if observe:
+            options.append((6, b"\x02"))
+        options += [(28, b"\x02\xc0"), (31, block.to_bytes((block.bit_length()+7)//8, "big"))]
+        packet = coap_message(69, index + 100 if mid is None else mid, token, options, body * 32)
+        return bytes([(packet[0] & 0xcf) | (kind << 4)]) + packet[1:]
+
+    def test_owned_cancel_is_not_a_notification(self):
+        from profiles import grade_q_notification_epoch
+        from run import coap_message
+        packets = [self.packet(index) for index in range(22)]
+        requests = [b"\x60\x00" + packet[2:4] for packet in packets]
+        cancel = coap_message(1, 400, b"qobs", [(6, b"\x01"), (11, b"obs-q"), (31, b"\x09")], non=True)
+        extra = self.packet(0, observe=False, kind=1)
+        grade_q_notification_epoch(packets + [extra], requests + [cancel], b"qobs", 704, 22)
+        for extras, sent in (([extra], requests),
+                             ([self.packet(0, observe=False, kind=1, token=b"other")], requests + [cancel]),
+                             ([self.packet(1, observe=False, kind=1)], requests + [cancel]),
+                             ([self.packet(0, observe=False, kind=2, mid=401)], requests + [cancel]),
+                             ([extra], requests[1:] + [cancel])):
+            with self.assertRaises(AssertionError):
+                grade_q_notification_epoch(packets + extras, sent, b"qobs", 704, 22)
+        with self.assertRaises(AssertionError):
+            grade_q_notification_epoch([self.packet(0, kind=1), *packets[1:]], requests, b"qobs", 704, 22)
+
+    def test_exact_recovery_duplicates_are_accepted(self):
+        from observe_controls import grade_q_recovery
+        from run import coap_message
+        request = coap_message(1, 400, b"qobs", [(11, b"obs-q"), (31, b"\x01\x41"), (31, b"\x01\x51")])
+        duplicate = self.packet(21, observe=False)
+        for packet in (duplicate, duplicate, self.packet(20, observe=False),
+                       self.packet(21, observe=False, kind=2, mid=400)):
+            self.assertIn(grade_q_recovery(packet, request, [b"two"]), (20, 21))
+        self.assertIsNone(grade_q_recovery(b"\x60\x00\x01\x90", request, [b"two"]))
+        for packet in (self.packet(21, observe=False, body=b"x"), self.packet(19, observe=False),
+                       self.packet(21), self.packet(21, observe=False, token=b"other"),
+                       self.packet(21, observe=False, kind=2, mid=401),
+                       duplicate.replace(b"two", b"bad"),
+                       duplicate.replace(b"\x02\xc0", b"\x02\xc1")):
+            with self.assertRaises(AssertionError):
+                grade_q_recovery(packet, request, [b"two"])
+
+
 if __name__ == "__main__":
     unittest.main()

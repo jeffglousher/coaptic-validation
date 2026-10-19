@@ -204,6 +204,27 @@ def q_initial_representation(channel, token):
     return sequence[0], etag
 
 
+def grade_q_recovery(wire, request, etag):
+    if wire[1] == 0:
+        require(wire == b"\x60\x00" + request[2:4], "Q recovery foreign empty control")
+        return None
+    require(packet_token(wire) == packet_token(request) and wire[1] == 69,
+            "Q recovery owner/code changed")
+    kind = (wire[0] >> 4) & 3
+    require(kind in (0, 1, 2), "Q recovery response type changed")
+    if kind == 2:
+        require(wire[2:4] == request[2:4], "Q recovery ACK MID changed")
+    options = decoded_options(wire)
+    require(6 not in options and options.get(4) == etag, "Q recovery changed epoch identity")
+    require(len(options.get(31, [])) == 1, "Q recovery missing block")
+    block = int.from_bytes(options[31][0], "big")
+    index = block >> 4
+    require(index in (20, 21) and block & 7 == 1 and bool(block & 8) == (index < 21) and
+            options.get(28) == [b"\x02\xc0"] and coap_payload(wire) == b"b" * 32,
+            "Q recovery escaped selected set")
+    return index
+
+
 def q_recovery_lifecycle(port, captures=None):
     """Exact retained final-window recovery and next epoch, Python wire client."""
     channel = Channel(port)
@@ -256,23 +277,23 @@ def q_recovery_lifecycle(port, captures=None):
         # on missing-block requests or replies. This checks retained bytes, not
         # an invented immediate packet-loss timer policy.
         # ETag is a cache validator, not a request identity: including it may
-        # legitimately produce 2.03 without the missing bytes (RFC9177?4.4).
+        # legitimately produce 2.03 without the missing bytes (RFC9177 section4.4).
         missing = channel.send(1, token, [(11, b"obs-q"),
                                          (31, b"\x01\x41"), (31, b"\x01\x51")])
         recovered = set()
         while len(recovered) < 2:
-            wire = channel.receive()
-            require(packet_token(wire) == token and wire[1] == 69, "Q recovery owner/code changed")
-            options = decoded_options(wire)
-            require(6 not in options and options.get(4) == etag, "Q recovery changed epoch identity")
-            require(len(options.get(31, [])) == 1, "Q recovery missing block")
-            block = int.from_bytes(options[31][0], "big")
-            index = block >> 4
-            require(index in (20, 21) and index not in recovered and block & 7 == 1 and
-                    bool(block & 8) == (index < 21) and options.get(28) == [b"\x02\xc0"] and
-                    coap_payload(wire) == b"b" * 32, "Q recovery escaped selected set")
-            recovered.add(index)
-        channel.quiet({token})
+            index = grade_q_recovery(channel.receive(), missing, etag)
+            if index is not None:
+                recovered.add(index)
+        # Exact repeated payloads are legal (RFC9177 section4.4). ACK them,
+        # but reject any new range, epoch, owner or byte during this finite drain.
+        drain_until = time.monotonic() + .3
+        while time.monotonic() < drain_until:
+            try:
+                wire = channel.receive(max(.001, drain_until - time.monotonic()))
+            except socket.timeout:
+                break
+            grade_q_recovery(wire, missing, etag)
         next_sequence, _ = epoch(2, b"c")
         delta = (int.from_bytes(next_sequence, "big") - int.from_bytes(first_sequence, "big")) % (1 << 24)
         require(0 < delta < 1 << 23, "Q next epoch did not advance")
