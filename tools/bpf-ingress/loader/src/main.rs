@@ -1,4 +1,6 @@
 #[cfg(target_os = "linux")]
+mod probe;
+#[cfg(target_os = "linux")]
 mod linux {
     use aya::{
         Ebpf,
@@ -87,14 +89,20 @@ mod linux {
     pub fn run() -> Result<()> {
         let args: Vec<_> = std::env::args().collect();
         if args.len() != 4 {
-            return Err("usage: coaptic-ingress-loader OBJECT SECONDS CYCLES; creates its own disposable veth; requires Linux BPF/network privileges".into());
+            return Err("usage: coaptic-ingress-loader OBJECT SECONDS|qualify CYCLES; creates its own disposable veth; requires Linux BPF/network privileges".into());
         }
-        let seconds: u64 = args[2].parse()?;
+        let qualify = args[2] == "qualify";
+        let seconds: u64 = if qualify { 1 } else { args[2].parse()? };
         let cycles: u32 = args[3].parse()?;
         if !(1..=60).contains(&seconds) || !(1..=3).contains(&cycles) {
             return Err("seconds must be 1..60; cycles 1..3".into());
         }
         let mut veth = Veth::create()?;
+        let (ingress, peer) = veth.indices.ok_or("missing veth indices")?;
+        if qualify {
+            crate::probe::attached(&veth.name, None)?;
+            crate::probe::live(ingress, peer, "before")?;
+        }
         for cycle in 0..cycles {
             let mut bpf = Ebpf::load_file(&args[1])?;
             let program: &mut Xdp = bpf
@@ -102,16 +110,33 @@ mod linux {
                 .ok_or("missing program")?
                 .try_into()?;
             program.load()?;
+            if qualify {
+                crate::probe::metadata(&mut bpf, cycle)?;
+                crate::probe::differential(&mut bpf)?;
+            }
+            let program: &mut Xdp = bpf
+                .program_mut("coaptic_observe")
+                .ok_or("missing program")?
+                .try_into()?;
             let index = veth.verify_identity()?;
             let link = program.attach_to_if_index(index, XdpMode::Skb)?;
             println!("attached cycle={cycle}; observation only; all packets PASS");
-            std::thread::sleep(Duration::from_secs(seconds));
+            if qualify {
+                crate::probe::attached(&veth.name, Some(program.info()?.id()))?;
+                crate::probe::live_attached(&bpf, ingress, peer)?;
+            } else {
+                std::thread::sleep(Duration::from_secs(seconds));
+            }
             // Detach before reading so a completed snapshot does not race new packets.
             let program: &mut Xdp = bpf
                 .program_mut("coaptic_observe")
                 .ok_or("missing program")?
                 .try_into()?;
             program.detach(link)?;
+            if qualify {
+                crate::probe::attached(&veth.name, None)?;
+                crate::probe::live(ingress, peer, "detached")?;
+            }
             let counts: PerCpuArray<_, u64> =
                 PerCpuArray::try_from(bpf.map("COUNTS").ok_or("missing map")?)?;
             for index in 0..5 {

@@ -1,0 +1,146 @@
+name: Advisory BPF kernel pilot
+on:
+  workflow_dispatch:
+    inputs:
+      library_revision:
+        description: Exact 40-character Coaptic commit
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: advisory-bpf-pilot
+  cancel-in-progress: false
+env:
+  CARGO_BUILD_JOBS: 2
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_RELEASE_DEBUG: 0
+  CARGO_TERM_COLOR: never
+  RUSTUP_TOOLCHAIN: nightly-2026-10-13
+jobs:
+  kernel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: jeffglousher/coaptic
+          ref: ${{ inputs.library_revision }}
+          path: coaptic
+          persist-credentials: false
+      - name: Establish exact source and observed runner identity
+        env:
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/bpf-evidence"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/bpf-evidence/source.json"
+          {
+            uname -a
+            cat /proc/version
+            cat /etc/os-release
+            printf 'ImageOS=%s ImageVersion=%s run=%s attempt=%s\n' "$ImageOS" "$ImageVersion" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            sha256sum /sys/kernel/btf/vmlinux
+            if test -r "/boot/vmlinuz-$(uname -r)"; then sha256sum "/boot/vmlinuz-$(uname -r)"; else echo "Kernel binary hash unavailable; BTF hash above is not a kernel binary hash"; fi
+          } > "$RUNNER_TEMP/bpf-evidence/observed-host.txt"
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: nightly-2026-10-13
+          components: rust-src, llvm-tools
+      - name: Install bounded runner-only inspection tools and pinned linker
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y bpftool iproute2 libcap2-bin
+          mkdir "$RUNNER_TEMP/bpf-linker"
+          curl --fail --location --retry 2 https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-x86_64-unknown-linux-musl.tar.zst -o "$RUNNER_TEMP/bpf-linker/archive.tar.zst"
+          echo "6789717c8cb6a2a5d920f3b6bfac2bd7efc00f6228ecd149108a99699a75c679  $RUNNER_TEMP/bpf-linker/archive.tar.zst" | sha256sum --check
+          test "$(tar --zstd -tf "$RUNNER_TEMP/bpf-linker/archive.tar.zst")" = bpf-linker
+          [[ "$(tar --zstd -tvf "$RUNNER_TEMP/bpf-linker/archive.tar.zst")" == -* ]]
+          tar --zstd --no-same-owner -xf "$RUNNER_TEMP/bpf-linker/archive.tar.zst" -C "$RUNNER_TEMP/bpf-linker" bpf-linker
+          test -f "$RUNNER_TEMP/bpf-linker/bpf-linker" && test ! -L "$RUNNER_TEMP/bpf-linker/bpf-linker"
+          echo "CARGO_TARGET_BPFEL_UNKNOWN_NONE_LINKER=$RUNNER_TEMP/bpf-linker/bpf-linker" >> "$GITHUB_ENV"
+          {
+            rustc -Vv
+            cargo -V
+            "$RUNNER_TEMP/bpf-linker/bpf-linker" --version
+            sha256sum "$RUNNER_TEMP/bpf-linker/archive.tar.zst" "$RUNNER_TEMP/bpf-linker/bpf-linker"
+            bpftool version
+            ip -Version
+            dpkg-query -W bpftool iproute2 libcap2-bin
+            sha256sum "$(command -v bpftool)" "$(command -v ip)"
+            sudo capsh --print
+          } > "$RUNNER_TEMP/bpf-evidence/tools.txt"
+          sudo bpftool feature probe kernel full > "$RUNNER_TEMP/bpf-evidence/kernel-features.txt" 2>&1
+      - name: Build identical portable classifier, loader and BPF object
+        run: |
+          set -euo pipefail
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/bpf-target"
+          cargo test --locked --manifest-path tools/bpf-ingress/classifier/Cargo.toml 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/portable-tests.log"
+          cargo build --locked --release --manifest-path tools/bpf-ingress/loader/Cargo.toml 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/loader-build.log"
+          cargo build --locked --release -Z build-std=core --target bpfel-unknown-none --manifest-path tools/bpf-ingress/ebpf/Cargo.toml 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/object-build.log"
+          cp "$CARGO_TARGET_DIR/bpfel-unknown-none/release/coaptic-ingress-ebpf" "$RUNNER_TEMP/bpf-evidence/ingress.elf"
+          sha256sum "$RUNNER_TEMP/bpf-evidence/ingress.elf" "$CARGO_TARGET_DIR/release/coaptic-ingress-loader" > "$RUNNER_TEMP/bpf-evidence/executables.sha256"
+          LLVM="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin"
+          "$LLVM/llvm-objdump" --section-headers --syms "$RUNNER_TEMP/bpf-evidence/ingress.elf" > "$RUNNER_TEMP/bpf-evidence/object-layout.txt"
+          "$LLVM/llvm-objdump" -d "$RUNNER_TEMP/bpf-evidence/ingress.elf" > "$RUNNER_TEMP/bpf-evidence/object-disassembly.txt"
+      - name: Build qualification-only Aya verifier logger from verified original crate
+        run: |
+          set -euo pipefail
+          qual="$RUNNER_TEMP/bpf-qualification"
+          mkdir -p "$qual/tools"
+          cp -a tools/bpf-ingress "$qual/tools/"
+          diff -r tools/bpf-ingress "$qual/tools/bpf-ingress" > "$RUNNER_TEMP/bpf-evidence/owned-source-copy.diff"
+          ln -s "$GITHUB_WORKSPACE/coaptic" "$qual/coaptic"
+          (cd tools/bpf-ingress && find . -type f -print0 | sort -z | xargs -0 sha256sum) > "$RUNNER_TEMP/bpf-evidence/owned-sources.sha256"
+          curl --fail --location --retry 2 https://static.crates.io/crates/aya/aya-0.14.0.crate -o "$qual/aya.crate"
+          echo "66e644424fada9fff4fdc63848db1732fb69b626e8328202ef55c03df1f4d939  $qual/aya.crate" | sha256sum --check
+          # Official Cargo package, checksum is the normal committed loader lock's Aya checksum.
+          tar -xzf "$qual/aya.crate" -C "$qual" --no-same-owner
+          echo "14d24e4161d4be1271662ea0205dab8b768ed2a5a4fcbbf63624a02cee11696d  $qual/aya-0.14.0/src/programs/mod.rs" | sha256sum --check
+          (cd "$qual/aya-0.14.0" && git apply "$GITHUB_WORKSPACE/tools/bpf-ingress/aya-success-verifier.patch")
+          echo "38421d256cf0ef0035ec51037693568849137b4a191ad7f21303080b82b9128d  $qual/aya-0.14.0/src/programs/mod.rs" | sha256sum --check
+          cp tools/bpf-ingress/aya-success-verifier.patch "$RUNNER_TEMP/bpf-evidence/"
+          sha256sum "$qual/aya.crate" "$qual/aya-0.14.0/src/programs/mod.rs" tools/bpf-ingress/aya-success-verifier.patch > "$RUNNER_TEMP/bpf-evidence/aya-instrumentation.sha256"
+          cp tools/bpf-ingress/loader/Cargo.lock "$RUNNER_TEMP/bpf-evidence/loader-original.lock"
+          printf '[patch.crates-io]\naya = { path = "%s" }\n' "$qual/aya-0.14.0" > "$qual/patch.toml"
+          cargo update --offline --manifest-path "$qual/tools/bpf-ingress/loader/Cargo.toml" --config "$qual/patch.toml" -p aya
+          cp "$qual/tools/bpf-ingress/loader/Cargo.lock" "$RUNNER_TEMP/bpf-evidence/loader-instrumented.lock"
+          sha256sum "$RUNNER_TEMP/bpf-evidence/loader-"*.lock > "$RUNNER_TEMP/bpf-evidence/loader-locks.sha256"
+          # Keep the normal loader for independent execution after instrumented proof.
+          cp "$RUNNER_TEMP/bpf-target/release/coaptic-ingress-loader" "$RUNNER_TEMP/bpf-evidence/loader-normal"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/bpf-target" cargo build --locked --offline --release --manifest-path "$qual/tools/bpf-ingress/loader/Cargo.toml" --config "$qual/patch.toml" 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/instrumented-loader-build.log"
+          sha256sum "$RUNNER_TEMP/bpf-target/release/coaptic-ingress-loader" > "$RUNNER_TEMP/bpf-evidence/instrumented-loader.sha256"
+      - name: Verifier log, actual XDP differential and owned-veth lifecycle
+        run: |
+          set -euo pipefail
+          sudo env COAPTIC_BPF_EVIDENCE="$RUNNER_TEMP/bpf-evidence" "$RUNNER_TEMP/bpf-target/release/coaptic-ingress-loader" "$RUNNER_TEMP/bpf-evidence/ingress.elf" qualify 2 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/kernel-probe-instrumented.log"
+          grep 'COAPTIC_QUALIFICATION_VERIFIER_BEGIN' "$RUNNER_TEMP/bpf-evidence/kernel-probe-instrumented.log"
+          grep -E 'stack depth|processed [0-9]+ insns' "$RUNNER_TEMP/bpf-evidence/kernel-probe-instrumented.log"
+          sudo "$RUNNER_TEMP/bpf-evidence/loader-normal" "$RUNNER_TEMP/bpf-evidence/ingress.elf" qualify 1 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/kernel-probe-normal.log"
+      - name: Unsupported-capability refusal leaves no interfaces
+        run: |
+          set -euo pipefail
+          ip -j link show > "$RUNNER_TEMP/bpf-evidence/refusal-before.json"
+          for drop in all cap_bpf,cap_sys_admin; do
+            set +e
+            sudo capsh --drop="$drop" -- -c 'exec "$1" "$2" qualify 1' -- "$RUNNER_TEMP/bpf-evidence/loader-normal" "$RUNNER_TEMP/bpf-evidence/ingress.elf" > "$RUNNER_TEMP/bpf-evidence/capability-refusal-$drop.log" 2>&1
+            result=$?
+            set -e
+            test "$result" -ne 0
+            ip -j link show > "$RUNNER_TEMP/bpf-evidence/refusal-after-$drop.json"
+            cmp "$RUNNER_TEMP/bpf-evidence/refusal-before.json" "$RUNNER_TEMP/bpf-evidence/refusal-after-$drop.json"
+            grep -Ei 'operation not permitted|permission denied' "$RUNNER_TEMP/bpf-evidence/capability-refusal-$drop.log"
+          done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: bpf-pilot-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/bpf-evidence/
+          if-no-files-found: error
+          retention-days: 14

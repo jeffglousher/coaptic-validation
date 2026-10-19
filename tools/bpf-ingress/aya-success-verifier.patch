@@ -1,0 +1,10 @@
+--- a/src/programs/mod.rs
++++ b/src/programs/mod.rs
+@@ -785,6 +785,7 @@
+ 
+     match ret {
+         Ok(prog_fd) => {
++            eprintln!("COAPTIC_QUALIFICATION_VERIFIER_BEGIN\n{verifier_log}\nCOAPTIC_QUALIFICATION_VERIFIER_END");
+             *fd = Some(ProgramFd(prog_fd));
+             Ok(())
+         }

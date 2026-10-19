@@ -1,5 +1,27 @@
 # Observation-only ingress pilot
 
+The manual **Advisory BPF kernel pilot** workflow builds a named object with
+`nightly-2026-10-13` and the checksum-pinned official bpf-linker 0.12.0. It is not
+a PR gate. Dispatch requires an exact core SHA; the companion workflow SHA and
+the hosted runner's observed kernel/image/BTF identity are retained. The hosted
+kernel is recorded, not version-controlled by this project. No kernel execution
+result is implied merely by adding this workflow.
+
+`OBJECT qualify CYCLES` runs the same finite corpus through Aya's kernel
+test-run API, checks PASS/unchanged bytes/counter deltas and exercises an owned
+veth before/during/after attachment. Frames rejected before XDP execution remain
+explicitly separate from executed cases. Checksummed IPv4/IPv6 live samples
+include RFC 8613 C.4 ciphertext, treated only as opaque syntax. Packet-socket
+receipt proves byte preservation, not UDP checksum validation or authentication.
+
+Aya discards successful verifier logs. The workflow builds a separate temporary
+qualification copy using a one-line patch to the checksum-verified Aya crate;
+original/patched source and lock identities are retained. Ordinary loader sources
+are copied unchanged and the normal unpatched binary is also exercised. No
+global crate cache is edited, no BPF pins are created, and bpftool inspects only
+the live owned program/map IDs. First-failure artifacts are retained. No native
+NIC, throughput or production-load claim is made by this finite pilot.
+
 Portable classifier tests, Linux loader cross-target checking and BPF target
 type-checking pass; linked object, verifier and loaded-hook results remain
 unexecuted. Core CoAP parsing is
