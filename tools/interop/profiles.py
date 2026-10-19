@@ -17,6 +17,21 @@ from source_identity import source_identity
 ACTIVE_CAPTURES = []
 ACTIVE_COMMANDS = []
 
+class EvidenceServer(Server):
+    """Keep bounded failure diagnostics before Server closes its temporary file."""
+    def __exit__(self, kind, value, traceback):
+        try:
+            if kind is not None:
+                self.stderr.seek(0)
+                diagnostic = self.stderr.read(65537)
+                ACTIVE_COMMANDS.append({"role": "server", "argv": list(map(str, self.proc.args)),
+                                        "exit_code_before_cleanup": self.proc.poll(),
+                                        "stderr": diagnostic[:65536].decode(errors="replace"),
+                                        "stderr_truncated": len(diagnostic) > 65536})
+        finally:
+            super().__exit__(kind, value, traceback)
+
+
 def require(value, message):
     if not value:
         raise AssertionError(message)
@@ -159,6 +174,13 @@ def native_capacity_refusal(client, server):
         return {"native_send": evidence, "trace": relay.trace, "fresh": fresh, "refused_length": 64}
 
 
+def grade_fetch_continuation(wire):
+    options = decoded_options(wire)
+    require(wire[1] == 5 and options.get(11) == [b"obs-selected"] and
+            options.get(12) == [b"*"] and not options.get(15) and
+            coap_payload(wire) == b"left", "FETCH continuation changed selection/format/URI")
+
+
 def observation(client, server, initial=0, valid=False, qblock=False, selected=None, client_kind=None, server_kind=None):
     require(selected in (None, "query", "fetch"), "unknown selected profile")
     require(not (qblock and selected), "fixture profiles are separate")
@@ -195,7 +217,7 @@ def observation(client, server, initial=0, valid=False, qblock=False, selected=N
             time.sleep(.01)
         raise AssertionError(f"epoch {epoch} did not finish")
 
-    with Server(server, "udp", path="obs-q" if qblock else "test") as service:
+    with EvidenceServer(server, "udp", path="obs-q" if qblock else "test") as service:
         with Proxy(service.number, "profiles") as relay:
             ACTIVE_CAPTURES.append(relay.trace)
             flags = ["observe", f"block2:{initial}"]
@@ -237,6 +259,12 @@ def observation(client, server, initial=0, valid=False, qblock=False, selected=N
             require(decoded_options(first).get(12) == [b"*"] and not decoded_options(first).get(15) and coap_payload(first) == b"left", "FETCH selection changed")
         wire_replies = [bytes.fromhex(row["hex"]) for row in trace if row["direction"] == "response"]
         wire_requests = [bytes.fromhex(row["hex"]) for row in trace if row["direction"] == "request"]
+        if selected == "fetch":
+            followups = [wire for wire in wire_requests if wire[1] == 5 and 23 in decoded_options(wire)
+                         and int.from_bytes(decoded_options(wire)[23][0], "big") >> 4 > 0]
+            require(followups, "FETCH profile omitted continuations")
+            for followup in followups:
+                grade_fetch_continuation(followup)
         for reply in wire_replies:
             if reply[1] and (reply[0] >> 4) & 3 == 2:
                 require(any(sent[1] == method_code and sent[2:4] == reply[2:4] and packet_token(sent) == packet_token(reply)
@@ -286,7 +314,7 @@ def observation(client, server, initial=0, valid=False, qblock=False, selected=N
         detail.update(requested_szx=requested_q_szx, negotiated_szx=1, max_payloads=10)
     if selected or qblock:
         from observe_controls import selected_lifecycle, q_recovery_lifecycle
-        with Server(server, "udp", path="obs-q" if qblock else "test") as control_service:
+        with EvidenceServer(server, "udp", path="obs-q" if qblock else "test") as control_service:
             detail["independent_control"] = selected_lifecycle(control_service.number, selected, ACTIVE_CAPTURES, strict_refusal=server_kind == "coaptic") if selected else q_recovery_lifecycle(control_service.number, ACTIVE_CAPTURES)
     return detail
 

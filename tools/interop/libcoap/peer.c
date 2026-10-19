@@ -525,7 +525,11 @@ int main(int argc,char **argv) {
   coap_context_set_max_token_size(ctx,server?64:requested_token);
   /* A server with Q-Block answers Q-Block requests and still serves classic Block. */
   const int try_q_block=(server||q_block)&&coap_q_block_is_supported();
-  coap_context_set_block_mode(ctx,COAP_BLOCK_USE_LIBCOAP|COAP_BLOCK_SINGLE_BODY|(try_q_block?COAP_BLOCK_TRY_Q_BLOCK:0));
+  const int selected_fetch = !server && !strcmp(argv[5], "obs-selected") &&
+                             !strcmp(argv[6], "FETCH");
+  coap_context_set_block_mode(ctx, COAP_BLOCK_USE_LIBCOAP | COAP_BLOCK_SINGLE_BODY |
+      (try_q_block ? COAP_BLOCK_TRY_Q_BLOCK : 0) |
+      (selected_fetch ? COAP_BLOCK_STLESS_FETCH : 0));
   /* Named fixture negotiation; other server profiles retain upstream defaults. */
   if (server && !strcmp(argv[5], "obs-q") &&
       !coap_context_set_max_block_size(ctx, 32)) {
