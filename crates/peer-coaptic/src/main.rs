@@ -314,12 +314,16 @@ async fn run() -> Result<(), Error> {
                 app.signal(&["counter"]);
                 app.signal(&["obs-large"]);
                 app.signal(&["obs-selected"]);
-                app.notify_confirmable(
-                    start.elapsed().as_millis() as u64 + 1,
-                    &["obs-q"],
-                    q_snapshot(),
-                )
-                .map_err(|e| format!("Q notification: {e}"))?;
+                let notified = app
+                    .notify_confirmable(
+                        start.elapsed().as_millis() as u64 + 1,
+                        &["obs-q"],
+                        q_snapshot(),
+                    )
+                    .map_err(|e| format!("Q notification: {e}"))?;
+                if a.path == "obs-q" {
+                    eprintln!("fixture.q_notification counter={value} sent={notified}");
+                }
             }
             std::thread::sleep(Duration::from_millis(1));
         }
