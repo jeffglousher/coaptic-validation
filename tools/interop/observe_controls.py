@@ -126,9 +126,11 @@ def selected_lifecycle(port, selection, captures=None, strict_refusal=True):
         followup = channel.response(changed)
         changed_result = grade_changed_selection(followup, strict_refusal)
         post = channel.send(2, b"post", [(11, b"obs-selected")])
+        # RFC7641 same-endpoint NON spacing is 3s; allow the second owner
+        # to become due without relaxing response/refusal or Q-window deadlines.
         got = set()
         while len(got) < 3:
-            wire = channel.receive()
+            wire = channel.receive(timeout=4)
             token = packet_token(wire)
             require(token not in got, "duplicate selected progress")
             if token == b"post":
@@ -141,7 +143,7 @@ def selected_lifecycle(port, selection, captures=None, strict_refusal=True):
         post = channel.send(2, b"next", [(11, b"obs-selected")])
         got = set()
         while len(got) < 2:
-            wire = channel.receive()
+            wire = channel.receive(timeout=4)
             token = packet_token(wire)
             require(token not in got and token in (b"next", b"rght"), "retired/foreign notification")
             if token == b"next":
