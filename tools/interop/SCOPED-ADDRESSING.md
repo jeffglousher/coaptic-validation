@@ -1,28 +1,33 @@
-# Q3 finite addressing slice — proposed, not executed
+# Finite scoped and routed UDP addressing
 
 No topology creation, adapter change, route change, build or download has run.
-Q4 remains first. These files are drafts pending root review and a source handoff.
+The cleanup guards have been reviewed; runtime execution follows focused build checks.
 
 ## Software boundary
 
-Place `addressing.rs` at `crates/peer-coaptic/src/bin/addressing.rs`. It uses the
+RFC 7252 sections 4.1 and 4.2 define transport endpoint identity and optional
+ICMP handling; section 4.6 discusses datagram sizing. This fixture proves the
+selected OS socket/addressing contract, not an additional mandatory CoAP feature.
+Original text: `coaptic/knowledge/rfcs/rfc7252.txt`.
+
+The host binary is `crates/peer-coaptic/src/bin/addressing.rs`. It uses the
 existing crate dependencies and public App/UdpSocketIo APIs. Existing peer Args,
-all181 process cases, and Q4 peer contracts remain unchanged. Bind and remote are
+all 181 process cases, and Q4 peer contracts remain unchanged. Bind and remote are
 separate numeric SocketAddr arguments. Link-local IPv6 requires a nonzero numeric
 zone; Endpoint conversion and observed receive peers retain it. No DNS or zone-name
 resolution occurs. Wrong-zone input is not silently normalized to the bind zone.
 
-One Constrained App, blockwise disabled, one route, Call capacity4, deferred capacity0, request capacity4 and one unused security
-association slot, and1153 bytes caller-owned receive scratch (1152+oversize sentinel).
+One Constrained App, blockwise disabled, one route, Call capacity 4, deferred capacity 0, request capacity 4 and one unused security
+association slot, and 1153 bytes caller-owned receive scratch (1152+oversize sentinel).
 The host allocates JSON formatting strings; these are fixture overhead, not core
-no-allocation claims. Maximum64 I/O events and30-second lifetime. Actual socket
+no-allocation claims. Maximum 64 I/O events and 30-second lifetime. Actual socket
 errors include operation, Rust kind and raw OS error. No raw error is reported as
 a CoAP refusal. A separately configured Python UDP socket with aiocoap's codec
 provides the independent role and exact request/response captures.
 
 ## Finite operation list
 
-1. Coaptic client ? independent server on directly attached IPv6 link-local:
+1. Coaptic client to independent server on directly attached IPv6 link-local:
    explicit client bind and remote scope; exact body/MID/token and actual nonzero
    send/receive scope. Repeat with the *existing wrong interface's* numeric index;
    require actual I/O error or bounded silence and no accepted response, then a
@@ -32,7 +37,7 @@ provides the independent role and exact request/response captures.
    endpoint, two links and a forwarding namespace. Link-local is never called
    routed proof. No DNS, multicast, proxy or DTLS contribution scenario is added.
 4. Optional Linux host-I/O PMTU control, only if requisite socket options and error
-   queue are available: client ingressMTU1500/router egressMTU1280. A1400-byte UDP
+   queue are available: client ingress MTU 1500/router egress MTU 1280. A 1400-byte UDP
    payload with PMTUDISC_DO causes router ICMPv6 Packet Too Big. Record exact ICMP
    type/code/MTU from recvmsg(MSG_ERRQUEUE), and actual subsequent EMSGSIZE from the
    caller's socket. A small datagram then succeeds. Decode the native Linux
@@ -40,7 +45,7 @@ provides the independent role and exact request/response captures.
    an error from a timeout or use a relay length cap as PMTU proof.
 
 The PMTU control exercises Python's configured kernel socket, not automatic App
-path-MTU adaptation. Constrained App packets1152+IPv6/UDP48 fit IPv6's1280 minimum;
+path-MTU adaptation. Constrained App packets 1152+IPv6/UDP48 fit IPv6's 1280 minimum;
 an oversized transport probe is a distinct diagnostic, not a reason to enlarge
 core buffers. Coaptic transport-error reporting is exercised by the actual wrong-
 zone case. If the kernel cannot return the required error, retain an explicit
@@ -60,12 +65,12 @@ Configure only those namespaces/interfaces:
 - C c0: `fd42:c0a:1::2/64`, explicit `fe80::c/64`; R r0: `fd42:c0a:1::1/64`, `fe80::1/64`.
 - R r1: `fd42:c0a:2::1/64`, `fe80::2/64`; S s0: `fd42:c0a:2::2/64`, `fe80::5/64`.
 - Scoped tests use C?R/r0 only, replacing the independent/Rust role as needed.
-- Routed tests use C?S; routes within C/S name the adjacent R ULA address and device.
-- Enable IPv6 forwarding only inside R. Set ingress interfacesMTU1500 and egress
-  R/r1+S/s0MTU1280 only for the optional PMTU control. Keep loopback up in all three.
+- Routed tests use C to S; routes within C/S name the adjacent R ULA address and device.
+- Enable IPv6 forwarding only inside R. Set ingress interfaces MTU 1500 and egress
+  R/r1+S/s0 MTU 1280 only for the optional PMTU control. Keep loopback up in all three.
 - Assign explicit test addresses with `nodad` only on owned interfaces. Record
   `ip -j link`, `ip -j -6 addr`, `ip -j -6 route` and the router forwarding value.
-- Discover namespace-local ifindices; never hardcode2 or assume a host ifindex is
+- Discover namespace-local ifindices; never hardcode 2 or assume a host ifindex is
   valid inside a namespace. C's existing loopback index is the wrong-zone control.
 - Launch bounded children via argv `ip netns exec NAME ...`; record pid and exact
   binary/source hashes. No shell interpolation, global sysctl or host route changes.

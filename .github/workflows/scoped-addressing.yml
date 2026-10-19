@@ -47,12 +47,16 @@ jobs:
           cargo test --locked -p peer-coaptic --bin addressing
           cargo clippy --locked -p peer-coaptic --bin addressing -- -D warnings
           cargo build --locked -p peer-coaptic --bin addressing
-          PYTHONPATH=tools python - <<'PY'
-          import hashlib,json,os,pathlib,subprocess
+          PYTHONPATH=tools "$RUNNER_TEMP/q3-venv/bin/python" - <<'PY'
+          import hashlib,importlib.metadata,json,os,pathlib,platform,subprocess,sys
           from source_identity import source_identity
           record=source_identity()
           record['executable_sha256']=hashlib.sha256(pathlib.Path('target/debug/addressing').read_bytes()).hexdigest()
           record['rustc']=subprocess.check_output(['rustc','-Vv'],text=True)
+          record['python']=sys.version
+          record['aiocoap']=importlib.metadata.version('aiocoap')
+          record['kernel']=platform.platform()
+          record['iproute2']=subprocess.check_output(['ip','-Version'],text=True)
           record['build_command']='cargo build --locked -p peer-coaptic --bin addressing'
           pathlib.Path(os.environ['RUNNER_TEMP'],'q3-evidence','build.json').write_text(json.dumps(record,indent=2)+'\n')
           PY
