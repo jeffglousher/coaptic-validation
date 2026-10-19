@@ -462,7 +462,7 @@ async fn run() -> Result<(), Error> {
                 echo_retried = true;
                 continue;
             }
-            if a.observe {
+            if a.observe && code < 128 {
                 if a.observe_cancel {
                     if quiet_until.is_some() {
                         return Err("unexpected response during cancellation hold".into());
