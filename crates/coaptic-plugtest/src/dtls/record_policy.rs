@@ -331,12 +331,32 @@ fn grade_sequence(cases: &[Case], gcm: bool) -> Result<(), String> {
     for (case, wrong) in cases.iter().zip([false, true, false]) {
         grade(case, wrong, gcm)?;
     }
-    // Fresh loopback owners must differ; replaying the initial capture cannot
-    // stand in for constructing and completing the recovery association.
-    if cases[0].endpoints == cases[2].endpoints {
+    // A host may reuse UDP ports after close. Require a fresh ClientHello
+    // random instead, so replaying the control capture cannot prove recovery.
+    let control_random = client_random(&cases[0]).ok_or("missing control ClientHello random")?;
+    let recovery_random = client_random(&cases[2]).ok_or("missing recovery ClientHello random")?;
+    if control_random == recovery_random {
         return Err("recovery reused the control association".into());
     }
     Ok(())
+}
+fn client_random(case: &Case) -> Option<[u8; 32]> {
+    case.packets
+        .iter()
+        .filter(|p| !p.decrypted && p.src == case.endpoints[0])
+        .find_map(|packet| {
+            records(&packet.bytes).ok()?.into_iter().find_map(|record| {
+                if record[0] == 22
+                    && record[3..5] == [0, 0]
+                    && record.get(13) == Some(&1)
+                    && record.get(19..22) == Some(&[0, 0, 0])
+                {
+                    record.get(27..59)?.try_into().ok()
+                } else {
+                    None
+                }
+            })
+        })
 }
 fn command(path: &std::path::Path, program: &str, args: &[&str]) -> String {
     let output = std::process::Command::new(program)
