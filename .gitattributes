@@ -6,3 +6,9 @@
 /knowledge/rfcs/*.txt -text
 
 tools/interop/libcoap/patches/*.patch text eol=lf
+
+# Retain exact receipt bytes and diagnostic-wrapper hashes across checkouts.
+tools/qualification/evidence/independent-observe/** -text whitespace=cr-at-eol
+tools/qualification/evidence/bpf-ingress/*.json -text whitespace=cr-at-eol
+# Existing bootstrap receipt was committed with LF; keep its index hash portable.
+tools/qualification/evidence/independent-edhoc/options-ce7e817-8f88d76.json text eol=lf
