@@ -519,20 +519,13 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "delay"
-      ],
+      "features": ["delay"],
       "positive_proof": [
         "the relay holds the first /test response for 250 ms and the client still accepts it"
       ],
-      "failure_proof": [
-        "a missing hold or a response faster than 150 ms fails"
-      ],
+      "failure_proof": ["a missing hold or a response faster than 150 ms fails"],
       "executable": "tools/interop/run.py:delayed_reply"
     },
     {
@@ -542,20 +535,13 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "delay"
-      ],
+      "features": ["delay"],
       "positive_proof": [
         "the relay holds the first /test response for 250 ms and the client still accepts it"
       ],
-      "failure_proof": [
-        "a missing hold or a response faster than 150 ms fails"
-      ],
+      "failure_proof": ["a missing hold or a response faster than 150 ms fails"],
       "executable": "tools/interop/run.py:delayed_reply"
     },
     {
@@ -565,20 +551,13 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "delay"
-      ],
+      "features": ["delay"],
       "positive_proof": [
         "the relay holds the first /test response for 250 ms and the client still accepts it"
       ],
-      "failure_proof": [
-        "a missing hold or a response faster than 150 ms fails"
-      ],
+      "failure_proof": ["a missing hold or a response faster than 150 ms fails"],
       "executable": "tools/interop/run.py:delayed_reply"
     },
     {
@@ -2608,9 +2587,7 @@
         "linux",
         "windows"
       ],
-      "requires": [
-        "libcoap-dtls"
-      ],
+      "requires": ["libcoap-dtls"],
       "features": [
         "block1",
         "upload",
@@ -2639,9 +2616,7 @@
         "linux",
         "windows"
       ],
-      "requires": [
-        "libcoap-dtls"
-      ],
+      "requires": ["libcoap-dtls"],
       "features": [
         "block1",
         "upload",
@@ -2905,9 +2880,7 @@
         "linux",
         "windows"
       ],
-      "requires": [
-        "libcoap-dtls"
-      ],
+      "requires": ["libcoap-dtls"],
       "features": [
         "block1",
         "upload",
@@ -2937,9 +2910,7 @@
         "linux",
         "windows"
       ],
-      "requires": [
-        "libcoap-dtls"
-      ],
+      "requires": ["libcoap-dtls"],
       "features": [
         "block1",
         "upload",
@@ -2997,16 +2968,9 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "block1",
-        "szx",
-        "scaled-num"
-      ],
+      "features": ["block1", "szx", "scaled-num"],
       "positive_proof": [
         "a 16-byte block numbered at the first unread byte is delivered once"
       ],
@@ -3022,19 +2986,9 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "q-block1",
-        "request-tag",
-        "size1",
-        "szx",
-        "upload",
-        "handler-effect"
-      ],
+      "features": ["q-block1", "request-tag", "size1", "szx", "upload", "handler-effect"],
       "positive_proof": [
         "two Q-Block1 payloads create the exact 2000-byte body once",
         "an incomplete confirmable Q-Block1 payload is an empty acknowledgement"
@@ -3052,17 +3006,9 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "q-block1",
-        "request-tag",
-        "missing-blocks",
-        "handler-effect"
-      ],
+      "features": ["q-block1", "request-tag", "missing-blocks", "handler-effect"],
       "positive_proof": [
         "the payload named by the missing-blocks report is delivered once"
       ],
@@ -3079,18 +3025,9 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "q-block1",
-        "request-tag",
-        "size1",
-        "continue",
-        "handler-effect"
-      ],
+      "features": ["q-block1", "request-tag", "size1", "continue", "handler-effect"],
       "positive_proof": [
         "the tenth NON Q-Block1 payload of a set draws one NON 2.31 echoing NUM 9",
         "the payload after that set is delivered once"
@@ -3108,17 +3045,9 @@
       "transport": "udp",
       "security": "oscore",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "oscore",
-        "q-block1",
-        "upload",
-        "handler-effect"
-      ],
+      "features": ["oscore", "q-block1", "upload", "handler-effect"],
       "positive_proof": [
         "exact protected 2000-byte Q-Block1 POST is created once",
         "exact protected 4096-byte Q-Block1 POST is created once"
@@ -3170,18 +3099,9 @@
       "transport": "udp",
       "security": "oscore",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "oscore",
-        "q-block1",
-        "lost-first-reply",
-        "duplicate-request",
-        "handler-effect"
-      ],
+      "features": ["oscore", "q-block1", "lost-first-reply", "duplicate-request", "handler-effect"],
       "positive_proof": [
         "exact protected 2000-byte Q-Block1 upload completes after a lost first reply and after a duplicated request",
         "each schedule creates the body once"
@@ -3198,22 +3118,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "no-response",
-        "handler-effect"
-      ],
+      "features": ["no-response", "handler-effect"],
       "positive_proof": [
         "a NON POST with No-Response suppressing 2.xx increments the counter and sends nothing",
         "a later POST without No-Response is 2.04 and the counter reaches 2"
       ],
-      "failure_proof": [
-        "a suppressed 2.04 datagram fails the case"
-      ],
+      "failure_proof": ["a suppressed 2.04 datagram fails the case"],
       "executable": "tools/interop/run.py:no_response_counter"
     },
     {
@@ -3223,20 +3135,11 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "no-response"
-      ],
-      "positive_proof": [
-        "GET /missing without No-Response is 4.04"
-      ],
-      "failure_proof": [
-        "a NON GET /missing with No-Response suppressing 4.xx sends nothing"
-      ],
+      "features": ["no-response"],
+      "positive_proof": ["GET /missing without No-Response is 4.04"],
+      "failure_proof": ["a NON GET /missing with No-Response suppressing 4.xx sends nothing"],
       "executable": "tools/interop/run.py:no_response_not_found"
     },
     {
@@ -3246,21 +3149,13 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "discovery",
-        "link-format"
-      ],
+      "features": ["discovery", "link-format"],
       "positive_proof": [
         "GET /.well-known/core is 2.05 link-format and lists the registered routes"
       ],
-      "failure_proof": [
-        "a catalog that lists .well-known or omits a route fails"
-      ],
+      "failure_proof": ["a catalog that lists .well-known or omits a route fails"],
       "executable": "tools/interop/run.py:discovery"
     },
     {
@@ -3311,32 +3206,11 @@
     },
     {
       "id": "ipv6-separate-loss:coaptic->coap-rs",
-      "client": "coaptic",
-      "server": "coap-rs",
-      "transport": "udp",
-      "security": "none",
-      "address_family": "ipv6-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
-      "requires": [],
-      "features": [
-        "separate-response",
-        "confirmable",
-        "retransmission",
-        "ipv6",
-        "protocol-timeout"
-      ],
-      "positive_proof": [
-        "IPv6-only exact endpoints and independent ::1 reachability",
-        "lost standalone-fixture CON response retransmits identical bytes/MID/token then gets an owned ACK",
-        "complete separate-payload and fresh complete recovery against the same server"
-      ],
-      "failure_proof": [
-        "permanent reply loss retains initial request ACK and repeated CON attempts then protocol timeout without application response",
-        "wrong family/endpoints, changed retransmission or ACK ownership and incomplete refusal evidence reject"
-      ],
+      "client": "coaptic", "server": "coap-rs", "transport": "udp", "security": "none",
+      "address_family": "ipv6-loopback", "execution_platforms": ["linux", "windows"], "requires": [],
+      "features": ["separate-response", "confirmable", "retransmission", "ipv6", "protocol-timeout"],
+      "positive_proof": ["IPv6-only exact endpoints and independent ::1 reachability", "lost standalone-fixture CON response retransmits identical bytes/MID/token then gets an owned ACK", "complete separate-payload and fresh complete recovery against the same server"],
+      "failure_proof": ["permanent reply loss retains initial request ACK and repeated CON attempts then protocol timeout without application response", "wrong family/endpoints, changed retransmission or ACK ownership and incomplete refusal evidence reject"],
       "executable": "tools/interop/run.py:separate_ipv6_loss"
     },
     {
@@ -3416,20 +3290,13 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "separate-response"
-      ],
+      "features": ["separate-response"],
       "positive_proof": [
         "GET /separate is an empty ACK of the request MID, then confirmable 2.05 separate-payload"
       ],
-      "failure_proof": [
-        "a piggybacked 2.05 fails"
-      ],
+      "failure_proof": ["a piggybacked 2.05 fails"],
       "executable": "tools/interop/run.py:separate_response"
     },
     {
@@ -3439,20 +3306,13 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "separate-response"
-      ],
+      "features": ["separate-response"],
       "positive_proof": [
         "the coaptic client gets an empty ACK, then a confirmable 2.05 separate-payload, and acknowledges it"
       ],
-      "failure_proof": [
-        "a piggybacked reply or an unacknowledged separate response fails"
-      ],
+      "failure_proof": ["a piggybacked reply or an unacknowledged separate response fails"],
       "executable": "tools/interop/run.py:separate_client"
     },
     {
@@ -3462,20 +3322,13 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "separate-response"
-      ],
+      "features": ["separate-response"],
       "positive_proof": [
         "the coap-rs client gets an empty ACK, then a confirmable 2.05 separate-payload, and acknowledges it"
       ],
-      "failure_proof": [
-        "a piggybacked reply or an unacknowledged separate response fails"
-      ],
+      "failure_proof": ["a piggybacked reply or an unacknowledged separate response fails"],
       "executable": "tools/interop/run.py:separate_client"
     },
     {
@@ -3485,20 +3338,13 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "separate-response"
-      ],
+      "features": ["separate-response"],
       "positive_proof": [
         "the libcoap client gets an empty ACK, then a confirmable 2.05 separate-payload, and acknowledges it"
       ],
-      "failure_proof": [
-        "a piggybacked reply or an unacknowledged separate response fails"
-      ],
+      "failure_proof": ["a piggybacked reply or an unacknowledged separate response fails"],
       "executable": "tools/interop/run.py:separate_client"
     },
     {
@@ -3508,20 +3354,13 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "separate-response"
-      ],
+      "features": ["separate-response"],
       "positive_proof": [
         "the Coaptic client gets an empty ACK from libcoap, then a confirmable 2.05 separate-payload, and acknowledges it"
       ],
-      "failure_proof": [
-        "a piggybacked reply or an unacknowledged separate response fails"
-      ],
+      "failure_proof": ["a piggybacked reply or an unacknowledged separate response fails"],
       "executable": "tools/interop/run.py:separate_client"
     },
     {
@@ -3531,20 +3370,11 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "no-response"
-      ],
-      "positive_proof": [
-        "GET /fail is 5.00"
-      ],
-      "failure_proof": [
-        "a NON GET /fail with No-Response suppressing 5.xx sends nothing"
-      ],
+      "features": ["no-response"],
+      "positive_proof": ["GET /fail is 5.00"],
+      "failure_proof": ["a NON GET /fail with No-Response suppressing 5.xx sends nothing"],
       "executable": "tools/interop/run.py:no_response_internal"
     },
     {
@@ -3554,15 +3384,9 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "observe",
-        "handler-effect"
-      ],
+      "features": ["observe", "handler-effect"],
       "positive_proof": [
         "GET /counter with Observe 0 is 2.05 with an Observe option and body 0",
         "each counter POST sends a 2.05 notification on the same token with a larger Observe value"
@@ -3580,21 +3404,13 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "observe",
-        "handler-effect"
-      ],
+      "features": ["observe", "handler-effect"],
       "positive_proof": [
         "the Coaptic client registers on /counter and collects bodies 0, 1 and 2 on one Call"
       ],
-      "failure_proof": [
-        "fewer than three responses or other bodies fail"
-      ],
+      "failure_proof": ["fewer than three responses or other bodies fail"],
       "executable": "tools/interop/run.py:observe_client"
     },
     {
@@ -3604,21 +3420,13 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "observe",
-        "handler-effect"
-      ],
+      "features": ["observe", "handler-effect"],
       "positive_proof": [
         "the Coaptic client registers on libcoap /counter and collects bodies 0, 1 and 2 on one Call"
       ],
-      "failure_proof": [
-        "fewer than three responses or other bodies fail"
-      ],
+      "failure_proof": ["fewer than three responses or other bodies fail"],
       "executable": "tools/interop/run.py:observe_client"
     },
     {
@@ -3628,21 +3436,13 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "observe",
-        "handler-effect"
-      ],
+      "features": ["observe", "handler-effect"],
       "positive_proof": [
         "the libcoap client registers on /counter and collects bodies 0, 1 and 2"
       ],
-      "failure_proof": [
-        "fewer than three responses or other bodies fail"
-      ],
+      "failure_proof": ["fewer than three responses or other bodies fail"],
       "executable": "tools/interop/run.py:observe_client"
     },
     {
@@ -3652,21 +3452,13 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "observe",
-        "handler-effect"
-      ],
+      "features": ["observe", "handler-effect"],
       "positive_proof": [
         "PUT creates /counter, the Coaptic client observes it, and two later PUTs arrive as notifications 0, 1 and 2"
       ],
-      "failure_proof": [
-        "fewer than three responses or other bodies fail"
-      ],
+      "failure_proof": ["fewer than three responses or other bodies fail"],
       "executable": "tools/interop/run.py:observe_values"
     },
     {
@@ -3676,21 +3468,13 @@
       "transport": "udp",
       "security": "oscore",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "observe",
-        "oscore"
-      ],
+      "features": ["observe", "oscore"],
       "positive_proof": [
         "the Coaptic client registers on OSCORE /counter and collects bodies 0, 1 and 2"
       ],
-      "failure_proof": [
-        "fewer than three responses or other bodies fail"
-      ],
+      "failure_proof": ["fewer than three responses or other bodies fail"],
       "executable": "tools/interop/run.py:observe_protected"
     },
     {
@@ -3700,23 +3484,13 @@
       "transport": "udp",
       "security": "oscore",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
-      "requires": [
-        "libcoap-oscore"
-      ],
-      "features": [
-        "observe",
-        "oscore"
-      ],
+      "execution_platforms": ["linux", "windows"],
+      "requires": ["libcoap-oscore"],
+      "features": ["observe", "oscore"],
       "positive_proof": [
         "the Coaptic client registers on libcoap OSCORE /counter and collects bodies 0, 1 and 2"
       ],
-      "failure_proof": [
-        "fewer than three responses or other bodies fail"
-      ],
+      "failure_proof": ["fewer than three responses or other bodies fail"],
       "executable": "tools/interop/run.py:observe_protected"
     },
     {
@@ -3726,23 +3500,13 @@
       "transport": "udp",
       "security": "oscore",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
-      "requires": [
-        "libcoap-oscore"
-      ],
-      "features": [
-        "observe",
-        "oscore"
-      ],
+      "execution_platforms": ["linux", "windows"],
+      "requires": ["libcoap-oscore"],
+      "features": ["observe", "oscore"],
       "positive_proof": [
         "the libcoap client registers on Coaptic OSCORE /counter and collects bodies 0, 1 and 2"
       ],
-      "failure_proof": [
-        "fewer than three responses or other bodies fail"
-      ],
+      "failure_proof": ["fewer than three responses or other bodies fail"],
       "executable": "tools/interop/run.py:observe_protected"
     },
     {
@@ -3752,21 +3516,13 @@
       "transport": "dtls",
       "security": "psk-dtls",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "observe",
-        "dtls"
-      ],
+      "features": ["observe", "dtls"],
       "positive_proof": [
         "the Coaptic client registers on DTLS /counter and collects bodies 0, 1 and 2"
       ],
-      "failure_proof": [
-        "fewer than three responses or other bodies fail"
-      ],
+      "failure_proof": ["fewer than three responses or other bodies fail"],
       "executable": "tools/interop/run.py:observe_protected"
     },
     {
@@ -3776,23 +3532,13 @@
       "transport": "dtls",
       "security": "psk-dtls",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
-      "requires": [
-        "libcoap-dtls"
-      ],
-      "features": [
-        "observe",
-        "dtls"
-      ],
+      "execution_platforms": ["linux", "windows"],
+      "requires": ["libcoap-dtls"],
+      "features": ["observe", "dtls"],
       "positive_proof": [
         "the Coaptic client registers on libcoap DTLS /counter and collects bodies 0, 1 and 2"
       ],
-      "failure_proof": [
-        "fewer than three responses or other bodies fail"
-      ],
+      "failure_proof": ["fewer than three responses or other bodies fail"],
       "executable": "tools/interop/run.py:observe_protected"
     },
     {
@@ -3802,23 +3548,13 @@
       "transport": "dtls",
       "security": "psk-dtls",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
-      "requires": [
-        "libcoap-dtls"
-      ],
-      "features": [
-        "observe",
-        "dtls"
-      ],
+      "execution_platforms": ["linux", "windows"],
+      "requires": ["libcoap-dtls"],
+      "features": ["observe", "dtls"],
       "positive_proof": [
         "the libcoap client registers on Coaptic DTLS /counter and collects bodies 0, 1 and 2"
       ],
-      "failure_proof": [
-        "fewer than three responses or other bodies fail"
-      ],
+      "failure_proof": ["fewer than three responses or other bodies fail"],
       "executable": "tools/interop/run.py:observe_protected"
     },
     {
@@ -3828,23 +3564,14 @@
       "transport": "udp",
       "security": "oscore",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "echo",
-        "oscore",
-        "handler-effect"
-      ],
+      "features": ["echo", "oscore", "handler-effect"],
       "positive_proof": [
         "the Coaptic server returns one authenticated Echo challenge",
         "the retry is the POST that increments /counter, and the following GET reads 1"
       ],
-      "failure_proof": [
-        "a readback other than 1 means the challenged request also changed state"
-      ],
+      "failure_proof": ["a readback other than 1 means the challenged request also changed state"],
       "executable": "tools/interop/run.py:oscore_server_echo"
     },
     {
@@ -3854,22 +3581,14 @@
       "transport": "udp",
       "security": "oscore",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "oscore",
-        "replay"
-      ],
+      "features": ["oscore", "replay"],
       "positive_proof": [
         "a restarted Coaptic server restores recipient replay bit 0 and sender sequence 1",
         "client sequence 0 is refused and sequence 1 reads /counter"
       ],
-      "failure_proof": [
-        "an accepted sequence 0, or a sequence 1 other than body 0, fails"
-      ],
+      "failure_proof": ["an accepted sequence 0, or a sequence 1 other than body 0, fails"],
       "executable": "tools/interop/run.py:oscore_replay_restore"
     },
     {
@@ -3879,16 +3598,9 @@
       "transport": "udp",
       "security": "oscore",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "oscore",
-        "replay",
-        "concurrent-servers"
-      ],
+      "features": ["oscore", "replay", "concurrent-servers"],
       "positive_proof": [
         "two Coaptic OSCORE server processes stay live on different ports",
         "client sequence 0 succeeds on both replay windows",
@@ -3907,16 +3619,9 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "if-match",
-        "if-none-match",
-        "etag"
-      ],
+      "features": ["if-match", "if-none-match", "etag"],
       "positive_proof": [
         "PUT If-None-Match creates a missing /cond (2.01)",
         "PUT and DELETE with If-Match on the current ETag succeed (2.04, 2.02)"
@@ -3934,16 +3639,9 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "if-match",
-        "if-none-match",
-        "etag"
-      ],
+      "features": ["if-match", "if-none-match", "etag"],
       "positive_proof": [
         "PUT If-None-Match creates a missing libcoap /cond (2.01)",
         "PUT and DELETE with If-Match on the current ETag succeed (2.04, 2.02)"
@@ -3961,22 +3659,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "patch",
-        "merge-patch"
-      ],
+      "features": ["patch", "merge-patch"],
       "positive_proof": [
         "PATCH content-format 52 {\"n\":1} replaces the member and GET returns application/json {\"n\":1}",
         "{\"n\":null} removes the resource"
       ],
-      "failure_proof": [
-        "content-format 42 is 4.15 and leaves the member unchanged"
-      ],
+      "failure_proof": ["content-format 42 is 4.15 and leaves the member unchanged"],
       "executable": "tools/interop/run.py:merge_patch"
     },
     {
@@ -3986,22 +3676,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "patch",
-        "merge-patch"
-      ],
+      "features": ["patch", "merge-patch"],
       "positive_proof": [
         "PATCH content-format 52 {\"n\":1} replaces the member and GET returns application/json {\"n\":1}",
         "{\"n\":null} removes the resource"
       ],
-      "failure_proof": [
-        "content-format 42 is 4.15 and leaves the member unchanged"
-      ],
+      "failure_proof": ["content-format 42 is 4.15 and leaves the member unchanged"],
       "executable": "tools/interop/run.py:merge_patch"
     },
     {
@@ -4011,22 +3693,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "patch",
-        "merge-patch"
-      ],
+      "features": ["patch", "merge-patch"],
       "positive_proof": [
         "PATCH content-format 52 {\"n\":1} replaces the member and GET returns application/json {\"n\":1}",
         "{\"n\":null} removes the resource"
       ],
-      "failure_proof": [
-        "content-format 42 is 4.15 and leaves the member unchanged"
-      ],
+      "failure_proof": ["content-format 42 is 4.15 and leaves the member unchanged"],
       "executable": "tools/interop/run.py:merge_patch"
     },
     {
@@ -4036,22 +3710,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "patch",
-        "merge-patch"
-      ],
+      "features": ["patch", "merge-patch"],
       "positive_proof": [
         "PATCH content-format 52 {\"n\":1} replaces the member and GET returns application/json {\"n\":1}",
         "{\"n\":null} removes the resource"
       ],
-      "failure_proof": [
-        "content-format 42 is 4.15 and leaves the member unchanged"
-      ],
+      "failure_proof": ["content-format 42 is 4.15 and leaves the member unchanged"],
       "executable": "tools/interop/run.py:merge_patch"
     },
     {
@@ -4061,22 +3727,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "patch",
-        "json-patch"
-      ],
+      "features": ["patch", "json-patch"],
       "positive_proof": [
         "PATCH content-format 51 replace of /n sets the member to 3",
         "remove of /n deletes the resource, and a later replace is 4.04"
       ],
-      "failure_proof": [
-        "a merge-patch document at content-format 51 is 4.00 and leaves the member unchanged"
-      ],
+      "failure_proof": ["a merge-patch document at content-format 51 is 4.00 and leaves the member unchanged"],
       "executable": "tools/interop/run.py:json_patch"
     },
     {
@@ -4086,22 +3744,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "patch",
-        "json-patch"
-      ],
+      "features": ["patch", "json-patch"],
       "positive_proof": [
         "PATCH content-format 51 replace of /n sets the member to 3",
         "remove of /n deletes the resource, and a later replace is 4.04"
       ],
-      "failure_proof": [
-        "a merge-patch document at content-format 51 is 4.00 and leaves the member unchanged"
-      ],
+      "failure_proof": ["a merge-patch document at content-format 51 is 4.00 and leaves the member unchanged"],
       "executable": "tools/interop/run.py:json_patch"
     },
     {
@@ -4111,22 +3761,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "patch",
-        "json-patch"
-      ],
+      "features": ["patch", "json-patch"],
       "positive_proof": [
         "PATCH content-format 51 replace of /n sets the member to 3",
         "remove of /n deletes the resource, and a later replace is 4.04"
       ],
-      "failure_proof": [
-        "a merge-patch document at content-format 51 is 4.00 and leaves the member unchanged"
-      ],
+      "failure_proof": ["a merge-patch document at content-format 51 is 4.00 and leaves the member unchanged"],
       "executable": "tools/interop/run.py:json_patch"
     },
     {
@@ -4136,22 +3778,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "patch",
-        "json-patch"
-      ],
+      "features": ["patch", "json-patch"],
       "positive_proof": [
         "PATCH content-format 51 replace of /n sets the member to 3",
         "remove of /n deletes the resource, and a later replace is 4.04"
       ],
-      "failure_proof": [
-        "a merge-patch document at content-format 51 is 4.00 and leaves the member unchanged"
-      ],
+      "failure_proof": ["a merge-patch document at content-format 51 is 4.00 and leaves the member unchanged"],
       "executable": "tools/interop/run.py:json_patch"
     },
     {
@@ -4161,23 +3795,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "q-block1",
-        "upload",
-        "handler-effect"
-      ],
+      "features": ["q-block1", "upload", "handler-effect"],
       "positive_proof": [
         "the coaptic client posts the exact 2000-byte pattern to coaptic with Q-Block1 on every POST datagram and gets 2.01",
         "the readback is 1:1"
       ],
-      "failure_proof": [
-        "a POST datagram without Q-Block1 or with Block1 fails"
-      ],
+      "failure_proof": ["a POST datagram without Q-Block1 or with Block1 fails"],
       "executable": "tools/interop/run.py:qblock1_interop"
     },
     {
@@ -4187,23 +3812,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "q-block1",
-        "upload",
-        "handler-effect"
-      ],
+      "features": ["q-block1", "upload", "handler-effect"],
       "positive_proof": [
         "the coaptic client posts the exact 2000-byte pattern to libcoap with Q-Block1 on every POST datagram and gets 2.01",
         "the readback is 1:1"
       ],
-      "failure_proof": [
-        "a POST datagram without Q-Block1 or with Block1 fails"
-      ],
+      "failure_proof": ["a POST datagram without Q-Block1 or with Block1 fails"],
       "executable": "tools/interop/run.py:qblock1_interop"
     },
     {
@@ -4213,23 +3829,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "q-block1",
-        "upload",
-        "handler-effect"
-      ],
+      "features": ["q-block1", "upload", "handler-effect"],
       "positive_proof": [
         "the libcoap client posts the exact 2000-byte pattern to coaptic with Q-Block1 on every POST datagram and gets 2.01",
         "the readback is 1:1"
       ],
-      "failure_proof": [
-        "a POST datagram without Q-Block1 or with Block1 fails"
-      ],
+      "failure_proof": ["a POST datagram without Q-Block1 or with Block1 fails"],
       "executable": "tools/interop/run.py:qblock1_interop"
     },
     {
@@ -4239,22 +3846,15 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "q-block2"
-      ],
+      "features": ["q-block2"],
       "positive_proof": [
         "the coaptic client gets the exact 2000-byte pattern from coaptic",
         "every /large GET carries Q-Block2 and the wire payloads reassemble to that pattern under one ETag",
         "a confirmable Q-Block2 request gets an empty ACK and the payloads are NON"
       ],
-      "failure_proof": [
-        "a /large GET without Q-Block2 or with Block2 fails"
-      ],
+      "failure_proof": ["a /large GET without Q-Block2 or with Block2 fails"],
       "executable": "tools/interop/run.py:qblock2_interop"
     },
     {
@@ -4264,21 +3864,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "q-block2"
-      ],
+      "features": ["q-block2"],
       "positive_proof": [
         "the coaptic client gets the exact 2000-byte pattern from libcoap",
         "every /large GET carries Q-Block2 and the wire payloads reassemble to that pattern under one ETag"
       ],
-      "failure_proof": [
-        "a /large GET without Q-Block2 or with Block2 fails"
-      ],
+      "failure_proof": ["a /large GET without Q-Block2 or with Block2 fails"],
       "executable": "tools/interop/run.py:qblock2_interop"
     },
     {
@@ -4288,22 +3881,15 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "q-block2"
-      ],
+      "features": ["q-block2"],
       "positive_proof": [
         "the libcoap client gets the exact 2000-byte pattern from coaptic",
         "every /large GET carries Q-Block2 and the wire payloads reassemble to that pattern under one ETag",
         "a confirmable Q-Block2 request gets an empty ACK and the payloads are NON"
       ],
-      "failure_proof": [
-        "a /large GET without Q-Block2 or with Block2 fails"
-      ],
+      "failure_proof": ["a /large GET without Q-Block2 or with Block2 fails"],
       "executable": "tools/interop/run.py:qblock2_interop"
     },
     {
@@ -4313,175 +3899,60 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "q-block2",
-        "missing-block"
-      ],
+      "features": ["q-block2", "missing-block"],
       "positive_proof": [
         "Q-Block2 block 1 is dropped and a higher block is delivered",
         "the client requests only block 1, with M unset",
         "the resent payload completes the 2000-byte body under the same ETag"
       ],
-      "failure_proof": [
-        "a recovery request for any other block, or with M set, fails"
-      ],
+      "failure_proof": ["a recovery request for any other block, or with M set, fails"],
       "executable": "tools/interop/run.py:qblock2_missing"
     },
     {
       "id": "con-qblock1-loss:coaptic->libcoap",
-      "client": "coaptic",
-      "server": "libcoap",
-      "transport": "udp",
-      "security": "none",
-      "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
-      "requires": [],
-      "features": [
-        "q-block1",
-        "confirmable",
-        "retransmission",
-        "partial-timeout",
-        "handler-effect"
-      ],
-      "positive_proof": [
-        "lost later CON upload retransmits identical bytes/MID/token/tag",
-        "owned ACK before the next upload block and exact final response",
-        "exact 2000-byte upload once, then fresh-process recovery against the same server"
-      ],
-      "failure_proof": [
-        "permanent block1 loss delivers only 1024 partial bytes then protocol timeout without application response or handler effect",
-        "changed packet, wrong endpoint/ACK ownership, absent retry and incorrect effect readback refuse"
-      ],
+      "client": "coaptic", "server": "libcoap", "transport": "udp", "security": "none",
+      "address_family": "ipv4-loopback", "execution_platforms": ["linux", "windows"], "requires": [],
+      "features": ["q-block1", "confirmable", "retransmission", "partial-timeout", "handler-effect"],
+      "positive_proof": ["lost later CON upload retransmits identical bytes/MID/token/tag", "owned ACK before the next upload block and exact final response", "exact 2000-byte upload once, then fresh-process recovery against the same server"],
+      "failure_proof": ["permanent block1 loss delivers only 1024 partial bytes then protocol timeout without application response or handler effect", "changed packet, wrong endpoint/ACK ownership, absent retry and incorrect effect readback refuse"],
       "executable": "tools/interop/run.py:qblock1_con_loss"
     },
     {
       "id": "ipv6-con-qblock1-loss:coaptic->libcoap",
-      "client": "coaptic",
-      "server": "libcoap",
-      "transport": "udp",
-      "security": "none",
-      "address_family": "ipv6-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
-      "requires": [],
-      "features": [
-        "q-block1",
-        "confirmable",
-        "retransmission",
-        "partial-timeout",
-        "handler-effect",
-        "ipv6"
-      ],
-      "positive_proof": [
-        "exact AF_INET6/IPV6_V6ONLY endpoint ownership and independent ::1 probe",
-        "lost later CON upload retransmits identical bytes/MID/token/tag",
-        "owned ACK before the next upload block and exact final response",
-        "exact 2000-byte upload once, then fresh-process recovery against the same server"
-      ],
-      "failure_proof": [
-        "permanent block1 loss delivers only 1024 partial bytes then protocol timeout without application response or handler effect",
-        "wrong-family, changed packet, wrong endpoint/ACK ownership, absent retry and incorrect effect readback refuse"
-      ],
+      "client": "coaptic", "server": "libcoap", "transport": "udp", "security": "none",
+      "address_family": "ipv6-loopback", "execution_platforms": ["linux", "windows"], "requires": [],
+      "features": ["q-block1", "confirmable", "retransmission", "partial-timeout", "handler-effect", "ipv6"],
+      "positive_proof": ["exact AF_INET6/IPV6_V6ONLY endpoint ownership and independent ::1 probe", "lost later CON upload retransmits identical bytes/MID/token/tag", "owned ACK before the next upload block and exact final response", "exact 2000-byte upload once, then fresh-process recovery against the same server"],
+      "failure_proof": ["permanent block1 loss delivers only 1024 partial bytes then protocol timeout without application response or handler effect", "wrong-family, changed packet, wrong endpoint/ACK ownership, absent retry and incorrect effect readback refuse"],
       "executable": "tools/interop/run.py:qblock1_con_loss"
     },
     {
       "id": "con-qblock2-loss:coaptic->libcoap",
-      "client": "coaptic",
-      "server": "libcoap",
-      "transport": "udp",
-      "security": "none",
-      "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
-      "requires": [],
-      "features": [
-        "q-block2",
-        "confirmable",
-        "retransmission",
-        "partial-timeout"
-      ],
-      "positive_proof": [
-        "lost later CON block retransmits identical bytes/MID/token at unchanged NSTART1",
-        "exact endpoint-bound empty ACK before each later block",
-        "complete 2000-byte body and fresh complete recovery against the same server"
-      ],
-      "failure_proof": [
-        "permanent block1 loss delivers only block0 then protocol timeout without application response",
-        "changed retransmission, wrong ACK ownership, NSTART bypass and incomplete-body evidence refuse"
-      ],
+      "client": "coaptic", "server": "libcoap", "transport": "udp", "security": "none",
+      "address_family": "ipv4-loopback", "execution_platforms": ["linux", "windows"], "requires": [],
+      "features": ["q-block2", "confirmable", "retransmission", "partial-timeout"],
+      "positive_proof": ["lost later CON block retransmits identical bytes/MID/token at unchanged NSTART1", "exact endpoint-bound empty ACK before each later block", "complete 2000-byte body and fresh complete recovery against the same server"],
+      "failure_proof": ["permanent block1 loss delivers only block0 then protocol timeout without application response", "changed retransmission, wrong ACK ownership, NSTART bypass and incomplete-body evidence refuse"],
       "executable": "tools/interop/run.py:qblock2_con_loss"
     },
     {
       "id": "ipv6-con-qblock2-loss:coaptic->libcoap",
-      "client": "coaptic",
-      "server": "libcoap",
-      "transport": "udp",
-      "security": "none",
-      "address_family": "ipv6-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
-      "requires": [],
-      "features": [
-        "q-block2",
-        "confirmable",
-        "retransmission",
-        "partial-timeout",
-        "ipv6"
-      ],
-      "positive_proof": [
-        "exact AF_INET6/IPV6_V6ONLY endpoint ownership and independent ::1 probe",
-        "lost later CON block retransmits identical bytes/MID/token at unchanged NSTART1",
-        "exact endpoint-bound empty ACK before each later block",
-        "complete 2000-byte body and fresh complete recovery against the same server"
-      ],
-      "failure_proof": [
-        "permanent block1 loss delivers only block0 then protocol timeout without application response",
-        "changed retransmission, wrong ACK ownership, NSTART bypass and incomplete-body evidence refuse"
-      ],
+      "client": "coaptic", "server": "libcoap", "transport": "udp", "security": "none",
+      "address_family": "ipv6-loopback", "execution_platforms": ["linux", "windows"], "requires": [],
+      "features": ["q-block2", "confirmable", "retransmission", "partial-timeout", "ipv6"],
+      "positive_proof": ["exact AF_INET6/IPV6_V6ONLY endpoint ownership and independent ::1 probe", "lost later CON block retransmits identical bytes/MID/token at unchanged NSTART1", "exact endpoint-bound empty ACK before each later block", "complete 2000-byte body and fresh complete recovery against the same server"],
+      "failure_proof": ["permanent block1 loss delivers only block0 then protocol timeout without application response", "changed retransmission, wrong ACK ownership, NSTART bypass and incomplete-body evidence refuse"],
       "executable": "tools/interop/run.py:qblock2_con_loss"
     },
     {
       "id": "ipv6-qblock2-loss:coaptic->libcoap",
-      "client": "coaptic",
-      "server": "libcoap",
-      "transport": "udp",
-      "security": "none",
-      "address_family": "ipv6-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
-      "requires": [],
-      "features": [
-        "qblock2",
-        "non",
-        "missing-block",
-        "ipv6",
-        "partial-timeout"
-      ],
-      "positive_proof": [
-        "exact IPv6-only endpoint ownership and independent ::1 probe",
-        "2000-byte complete NON Q-Block2 recovery after selective missing-block request",
-        "fresh complete IPv6 transfer after partial timeout against the same server"
-      ],
-      "failure_proof": [
-        "permanent block1 loss delivers partial data then protocol timeout without complete response",
-        "wrong-family, endpoint, missing-loss, partial-body and changed-representation evidence refuse"
-      ],
+      "client": "coaptic", "server": "libcoap", "transport": "udp", "security": "none",
+      "address_family": "ipv6-loopback", "execution_platforms": ["linux", "windows"], "requires": [],
+      "features": ["qblock2", "non", "missing-block", "ipv6", "partial-timeout"],
+      "positive_proof": ["exact IPv6-only endpoint ownership and independent ::1 probe", "2000-byte complete NON Q-Block2 recovery after selective missing-block request", "fresh complete IPv6 transfer after partial timeout against the same server"],
+      "failure_proof": ["permanent block1 loss delivers partial data then protocol timeout without complete response", "wrong-family, endpoint, missing-loss, partial-body and changed-representation evidence refuse"],
       "executable": "tools/interop/run.py:qblock2_ipv6_loss"
     },
     {
@@ -4491,24 +3962,15 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "q-block2",
-        "missing-block",
-        "non-confirmable"
-      ],
+      "features": ["q-block2", "missing-block", "non-confirmable"],
       "positive_proof": [
         "NON Q-Block2 requests and responses; block 1 is dropped while a higher block arrives",
         "a later NON recovery request selects only block 1 with M unset",
         "eight 256-byte-or-smaller blocks complete the 2000-byte body under one ETag and Size2"
       ],
-      "failure_proof": [
-        "absent loss, premature recovery, CON fallback, changed ETag/Size2/SZX or incomplete body fails"
-      ],
+      "failure_proof": ["absent loss, premature recovery, CON fallback, changed ETag/Size2/SZX or incomplete body fails"],
       "executable": "tools/interop/run.py:qblock2_missing"
     },
     {
@@ -4518,23 +3980,15 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "q-block2",
-        "missing-block"
-      ],
+      "features": ["q-block2", "missing-block"],
       "positive_proof": [
         "Q-Block2 block 1 is dropped and a higher block is delivered",
         "the libcoap client requests only block 1, with M unset",
         "the resent payload completes the 2000-byte body under the same ETag"
       ],
-      "failure_proof": [
-        "a recovery request for any other block, or with M set, fails"
-      ],
+      "failure_proof": ["a recovery request for any other block, or with M set, fails"],
       "executable": "tools/interop/run.py:qblock2_missing"
     },
     {
@@ -4544,22 +3998,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "q-block2",
-        "reorder"
-      ],
+      "features": ["q-block2", "reorder"],
       "positive_proof": [
         "Q-Block2 NUM 1 is delivered before NUM 0",
         "the client still reassembles the 2000-byte body"
       ],
-      "failure_proof": [
-        "delivery that starts at NUM 0, or a body other than the 2000-byte pattern, fails"
-      ],
+      "failure_proof": ["delivery that starts at NUM 0, or a body other than the 2000-byte pattern, fails"],
       "executable": "tools/interop/run.py:qblock2_reorder"
     },
     {
@@ -4569,22 +4015,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "q-block2",
-        "window"
-      ],
+      "features": ["q-block2", "window"],
       "positive_proof": [
         "after 10 Q-Block2 payloads the client sends one Continue at NUM 10 with M set",
         "block 10 follows that request and the wire payloads are the 2000-byte pattern under one ETag"
       ],
-      "failure_proof": [
-        "a Continue that names any other block fails"
-      ],
+      "failure_proof": ["a Continue that names any other block fails"],
       "executable": "tools/interop/run.py:qblock2_window"
     },
     {
@@ -4594,22 +4032,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "q-block2",
-        "window"
-      ],
+      "features": ["q-block2", "window"],
       "positive_proof": [
         "after 10 Q-Block2 payloads the Coaptic client sends one Continue at NUM 10 with M set",
         "libcoap then sends block 10 and the wire payloads are the 2000-byte pattern under one ETag"
       ],
-      "failure_proof": [
-        "a Continue that names any other block fails"
-      ],
+      "failure_proof": ["a Continue that names any other block fails"],
       "executable": "tools/interop/run.py:qblock2_window"
     },
     {
@@ -4619,22 +4049,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "q-block2",
-        "window"
-      ],
+      "features": ["q-block2", "window"],
       "positive_proof": [
         "after 10 Q-Block2 payloads the libcoap client sends one Continue at NUM 10 with M set",
         "block 10 follows that request and the wire payloads are the 2000-byte pattern under one ETag"
       ],
-      "failure_proof": [
-        "a Continue that names any other block fails"
-      ],
+      "failure_proof": ["a Continue that names any other block fails"],
       "executable": "tools/interop/run.py:qblock2_window"
     },
     {
@@ -4644,22 +4066,11 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "request-tag",
-        "q-block1",
-        "handler-effect"
-      ],
-      "positive_proof": [
-        "an empty Request-Tag is accepted and the handler runs once"
-      ],
-      "failure_proof": [
-        "a missing Request-Tag is 4.00 and the handler stays at 0:0"
-      ],
+      "features": ["request-tag", "q-block1", "handler-effect"],
+      "positive_proof": ["an empty Request-Tag is accepted and the handler runs once"],
+      "failure_proof": ["a missing Request-Tag is 4.00 and the handler stays at 0:0"],
       "executable": "tools/interop/run.py:empty_request_tag"
     },
     {
@@ -4669,22 +4080,11 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "problem-details",
-        "q-block1",
-        "block1"
-      ],
-      "positive_proof": [
-        "Block1 and Q-Block1 in one packet are 4.02 problem details"
-      ],
-      "failure_proof": [
-        "the upload handler stays at 0:0"
-      ],
+      "features": ["problem-details", "q-block1", "block1"],
+      "positive_proof": ["Block1 and Q-Block1 in one packet are 4.02 problem details"],
+      "failure_proof": ["the upload handler stays at 0:0"],
       "executable": "tools/interop/run.py:problem_details_mix"
     },
     {
@@ -4694,23 +4094,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "counter",
-        "concurrency",
-        "handler-effect"
-      ],
+      "features": ["counter", "concurrency", "handler-effect"],
       "positive_proof": [
         "a Coaptic client and a coap-rs client POST /counter at the same time",
         "the following GET reads 2"
       ],
-      "failure_proof": [
-        "a readback other than 2 fails"
-      ],
+      "failure_proof": ["a readback other than 2 fails"],
       "executable": "tools/interop/run.py:concurrent_counter"
     },
     {
@@ -4720,23 +4111,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "counter",
-        "concurrency",
-        "handler-effect"
-      ],
+      "features": ["counter", "concurrency", "handler-effect"],
       "positive_proof": [
         "a coap-rs client and a Coaptic client POST /counter at the same time",
         "the following GET reads 2"
       ],
-      "failure_proof": [
-        "a readback other than 2 fails"
-      ],
+      "failure_proof": ["a readback other than 2 fails"],
       "executable": "tools/interop/run.py:concurrent_counter"
     },
     {
@@ -4746,24 +4128,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "block1",
-        "szx",
-        "upload",
-        "handler-effect"
-      ],
+      "features": ["block1", "szx", "upload", "handler-effect"],
       "positive_proof": [
         "a client-selected 256-byte Block1 upload creates the exact 2000-byte body once",
         "each non-final acknowledgement echoes that SZX and block number"
       ],
-      "failure_proof": [
-        "an early Created or a changed echo fails"
-      ],
+      "failure_proof": ["an early Created or a changed echo fails"],
       "executable": "tools/interop/run.py:smaller_block_upload"
     },
     {
@@ -4773,24 +4145,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "block1",
-        "szx",
-        "upload",
-        "handler-effect"
-      ],
+      "features": ["block1", "szx", "upload", "handler-effect"],
       "positive_proof": [
         "a client-selected 256-byte Block1 upload creates the exact 2000-byte body once",
         "each non-final acknowledgement echoes that SZX and block number"
       ],
-      "failure_proof": [
-        "an early Created or a changed echo fails"
-      ],
+      "failure_proof": ["an early Created or a changed echo fails"],
       "executable": "tools/interop/run.py:smaller_block_upload"
     },
     {
@@ -4800,24 +4162,14 @@
       "transport": "udp",
       "security": "none",
       "address_family": "ipv4-loopback",
-      "execution_platforms": [
-        "linux",
-        "windows"
-      ],
+      "execution_platforms": ["linux", "windows"],
       "requires": [],
-      "features": [
-        "block1",
-        "szx",
-        "upload",
-        "handler-effect"
-      ],
+      "features": ["block1", "szx", "upload", "handler-effect"],
       "positive_proof": [
         "a client-selected 256-byte Block1 upload creates the exact 2000-byte body once",
         "each non-final acknowledgement echoes that SZX and block number"
       ],
-      "failure_proof": [
-        "an early Created or a changed echo fails"
-      ],
+      "failure_proof": ["an early Created or a changed echo fails"],
       "executable": "tools/interop/run.py:smaller_block_upload"
     },
     {
@@ -4859,9 +4211,7 @@
         "linux",
         "windows"
       ],
-      "requires": [
-        "libcoap-oscore"
-      ],
+      "requires": ["libcoap-oscore"],
       "features": [
         "oscore",
         "block1",
@@ -4889,9 +4239,7 @@
         "linux",
         "windows"
       ],
-      "requires": [
-        "libcoap-oscore"
-      ],
+      "requires": ["libcoap-oscore"],
       "features": [
         "oscore",
         "block1",
