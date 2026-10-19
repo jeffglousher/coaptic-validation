@@ -172,9 +172,17 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
                         send(&mut console, &CommissioningReply::Refused(2))?;
                         continue;
                     };
+                    let next_endpoint = if update.is_recovery_configuration() {
+                        device.endpoint
+                    } else {
+                        Some(endpoint)
+                    };
                     let mut next = Zeroizing::new([0; STORE_BYTES]);
                     let mut next_len = 0;
                     let result = update.apply(&mut device.pairing, now, |old, record| {
+                        if update.is_recovery() {
+                            recovery_ready(&mut store, &device.private, &device.identity, old)?;
+                        }
                         prepare_pending(
                             &mut store,
                             &device.private,
@@ -186,7 +194,7 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
                             &device.private,
                             device.identity.peer().kid(),
                             record,
-                            Some(endpoint),
+                            next_endpoint,
                             &mut next,
                         )?;
                         store.commit(&device.stored[..device.stored_len], &next[..next_len])
@@ -195,7 +203,7 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
                         Ok(()) => {
                             device.stored = next;
                             device.stored_len = next_len;
-                            device.endpoint = Some(endpoint);
+                            device.endpoint = next_endpoint;
                             network_stopped = false;
                             send(
                                 &mut console,

@@ -12,6 +12,7 @@ use coaptic::{App, Endpoint, Request, Response, get, profiles};
 // every other dimension remains the Constrained profile's original capacity.
 struct LoopbackConstrained;
 impl MemoryProfile for LoopbackConstrained {
+    type Token = <profiles::Constrained as MemoryProfile>::Token;
     const RX_DATAGRAM_SLOTS: usize = <profiles::Constrained as MemoryProfile>::RX_DATAGRAM_SLOTS;
     const RX_DATAGRAM_BYTES: usize = <profiles::Constrained as MemoryProfile>::RX_DATAGRAM_BYTES;
     const TX_DATAGRAM_SLOTS: usize = 3;
