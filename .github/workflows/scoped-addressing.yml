@@ -1,0 +1,74 @@
+name: Manual scoped and routed UDP
+on:
+  workflow_dispatch:
+    inputs:
+      library_revision:
+        description: Exact 40-character Coaptic commit
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: scoped-addressing-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  addressing:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      LIBRARY_REVISION: ${{ inputs.library_revision }}
+      CARGO_BUILD_JOBS: 2
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+      CARGO_INCREMENTAL: 0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          repository: jeffglousher/coaptic
+          ref: ${{ inputs.library_revision }}
+          path: coaptic
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: 1.99.0
+          components: clippy
+      - name: Prepare exact source and independent codec
+        run: |
+          python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/q3-evidence/source.json"
+          python -m venv "$RUNNER_TEMP/q3-venv"
+          "$RUNNER_TEMP/q3-venv/bin/pip" install aiocoap==0.4.16
+          command -v ip
+      - name: Focused fixture checks and build
+        run: |
+          python -m unittest discover -s tools/interop -p test_scoped_topology.py
+          cargo test --locked -p peer-coaptic --bin addressing
+          cargo clippy --locked -p peer-coaptic --bin addressing -- -D warnings
+          cargo build --locked -p peer-coaptic --bin addressing
+          PYTHONPATH=tools "$RUNNER_TEMP/q3-venv/bin/python" - <<'PY'
+          import hashlib,importlib.metadata,json,os,pathlib,platform,subprocess,sys
+          from source_identity import source_identity
+          record=source_identity()
+          record['executable_sha256']=hashlib.sha256(pathlib.Path('target/debug/addressing').read_bytes()).hexdigest()
+          record['rustc']=subprocess.check_output(['rustc','-Vv'],text=True)
+          record['python']=sys.version
+          record['aiocoap']=importlib.metadata.version('aiocoap')
+          record['kernel']=platform.platform()
+          record['iproute2']=subprocess.check_output(['ip','-Version'],text=True)
+          record['build_command']='cargo build --locked -p peer-coaptic --bin addressing'
+          pathlib.Path(os.environ['RUNNER_TEMP'],'q3-evidence','build.json').write_text(json.dumps(record,indent=2)+'\n')
+          PY
+      - name: Four finite independent directions in owned namespaces
+        run: |
+          sudo env GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$PWD" GIT_CONFIG_KEY_1=safe.directory GIT_CONFIG_VALUE_1="$PWD/coaptic" \
+            "$RUNNER_TEMP/q3-venv/bin/python" tools/interop/scoped_topology.py --apply \
+            --rust-peer target/debug/addressing --independent tools/interop/addressing_peer.py \
+            --build-record "$RUNNER_TEMP/q3-evidence/build.json" --report "$RUNNER_TEMP/q3-evidence/result.json"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: scoped-routed-udp
+          path: ${{ runner.temp }}/q3-evidence
+          retention-days: 14
