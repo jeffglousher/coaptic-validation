@@ -56,5 +56,30 @@ class ExtendedProtectedOracle(unittest.TestCase):
                 grade(trace, 32)
 
 
+class SelectedFollowupOracle(unittest.TestCase):
+    def test_native_independent_read_keeps_exact_identity(self):
+        from run import coap_message
+        from observe_controls import grade_changed_selection
+        options = [(12, b""), (23, b"\x19")]
+        response = coap_message(69, 1, b"left", options, b"m" * 32)
+        self.assertEqual(grade_changed_selection(response, False)["behavior"], "independent-right-read")
+        for changed, body in (([(12, b""), (23, b"\x09")], b"m" * 32),
+                              ([(6, b""), *options], b"m" * 32),
+                              ([(4, b"\x02"), *options], b"m" * 32),
+                              (options, b"a" * 32)):
+            with self.assertRaises(AssertionError):
+                grade_changed_selection(coap_message(69, 1, b"left", changed, body), False)
+        with self.assertRaises(AssertionError):
+            grade_changed_selection(response, True)
+
+    def test_core_refusal_remains_required(self):
+        from run import coap_message
+        from observe_controls import grade_changed_selection
+        response = coap_message(128, 1, b"left", [])
+        self.assertEqual(grade_changed_selection(response, True)["code"], 128)
+        with self.assertRaises(AssertionError):
+            grade_changed_selection(response, False)
+
+
 if __name__ == "__main__":
     unittest.main()

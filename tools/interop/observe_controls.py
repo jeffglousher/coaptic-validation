@@ -66,7 +66,23 @@ class Channel:
             require(packet_token(wire) not in forbidden, "cancelled selection still notified")
 
 
-def selected_lifecycle(port, selection, captures=None):
+def grade_changed_selection(wire, strict_refusal):
+    options = decoded_options(wire)
+    require(6 not in options, "changed selection retained Observe")
+    if strict_refusal:
+        require(wire[1] == 128, "core changed-selection refusal changed")
+        return {"behavior": "retained-selection-refused", "code": 128}
+    require(wire[1] == 69 and coap_payload(wire) == b"m" * 32,
+            "native independent right read changed bytes/code")
+    require(options.get(23) == [b"\x19"], "native right read changed NUM1/M/SZX")
+    require(options.get(12) == [b""], "native right read changed Content-Format")
+    require(4 not in options or options[4] == [b"\x03"], "native right read changed ETag")
+    # The lifecycle must still prove the original left observer survives.
+    return {"behavior": "independent-right-read", "code": 69,
+            "etag_hex": [v.hex() for v in options.get(4, [])], "block2": 25}
+
+
+def selected_lifecycle(port, selection, captures=None, strict_refusal=True):
     """One origin, two retained selectors, invalid replacement, exact cancel/fresh.
 
     The Python client is a distinct control peer, not a claim that a native CLI
@@ -102,14 +118,13 @@ def selected_lifecycle(port, selection, captures=None):
         # Re-registration establishes the explicit owner after a terminal error;
         # no assumption that an error leaves that prior relation alive.
         representation(channel.response(send(b"left", b"left"), 69), b"a")
-        # A well-formed right selector cannot retrieve the retained left
-        # relation's NUM1 block under its exact endpoint/token. The following
-        # notification must still use the original left representation.
+        # Core refuses a changed retained selector. Native may answer a separate
+        # right read; neither may change the original left Observe relation.
         changed_options = [item for item in options(b"right", 0) if item[0] != 6]
         changed_options.append((23, b"\x11"))
         changed = channel.send(method, b"left", changed_options, b"right" if method == 5 else b"")
-        refusal = channel.response(changed, 128)
-        require(6 not in decoded_options(refusal), "changed-selection refusal retained Observe")
+        followup = channel.response(changed)
+        changed_result = grade_changed_selection(followup, strict_refusal)
         post = channel.send(2, b"post", [(11, b"obs-selected")])
         got = set()
         while len(got) < 3:
@@ -137,7 +152,7 @@ def selected_lifecycle(port, selection, captures=None):
         channel.quiet({b"left"})
         representation(channel.response(send(b"left", b"fresh"), 69), b"c")
         return {"peer": "independent Python wire control", "selection": selection,
-                "trace": channel.trace, "passed": True}
+                "changed_selection": changed_result, "trace": channel.trace, "passed": True}
     finally:
         channel.socket.close()
 

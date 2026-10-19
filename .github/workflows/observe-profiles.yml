@@ -6,6 +6,12 @@ on:
         description: Exact 40-character Coaptic commit
         required: true
         type: string
+      profiles:
+        description: Finite selector (Observe only preserves prior protected evidence)
+        required: true
+        default: all
+        type: choice
+        options: [all, observe]
 permissions:
   contents: read
 concurrency:
@@ -17,6 +23,7 @@ jobs:
     timeout-minutes: 20
     env:
       LIBRARY_REVISION: ${{ inputs.library_revision }}
+      PROFILE_SELECTION: ${{ inputs.profiles }}
       CARGO_BUILD_JOBS: 2
       CARGO_PROFILE_DEV_DEBUG: 0
       CARGO_PROFILE_TEST_DEBUG: 0
@@ -72,8 +79,14 @@ jobs:
           record['openssl']=subprocess.check_output(['openssl','version','-a'],text=True)
           pathlib.Path(os.environ['RUNNER_TEMP'],'observe-evidence','build.json').write_text(json.dumps(record,indent=2)+'\n')
           PY
-      - name: Seven accepted independent directions
+      - name: Selected independent directions
         run: |
+          extra=()
+          case "$PROFILE_SELECTION" in
+            all) extra=(--case 'protected-token-boundary:libcoap->coaptic') ;;
+            observe) ;;
+            *) exit 2 ;;
+          esac
           "$RUNNER_TEMP/observe-venv/bin/python" tools/interop/profiles.py \
             --coaptic target/debug/peer-coaptic --coap-rs target/debug/peer-coap-rs \
             --libcoap "$RUNNER_TEMP/native-build/peer-libcoap" \
@@ -81,7 +94,7 @@ jobs:
             --case 'observe-selected-query:coaptic->libcoap' --case 'observe-selected-query:libcoap->coaptic' \
             --case 'observe-selected-fetch:coaptic->libcoap' --case 'observe-selected-fetch:libcoap->coaptic' \
             --case 'observe-con-q:coaptic->libcoap' --case 'observe-con-q:libcoap->coaptic' \
-            --case 'protected-token-boundary:libcoap->coaptic'
+            "${extra[@]}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:

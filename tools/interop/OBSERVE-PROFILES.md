@@ -1,7 +1,7 @@
 # Independent selected Observe and token profiles
 
 This finite addition to `profiles.py` owns seven selected directions in core
-issue200. The manual `observe-profiles.yml` workflow runs these identifiers only:
+issue200. The manual `observe-profiles.yml` workflow selects all seven or the six Observe identifiers only:
 
 - `observe-selected-query:coaptic->libcoap` and the reverse direction.
 - `observe-selected-fetch:coaptic->libcoap` and the reverse direction.
@@ -22,10 +22,14 @@ Uri-Query. Each observed representation has96 bytes, a selection-specific ETag,
 and three distinguishable epochs. Native clients exchange complete bodies
 through both servers. Additional independent Python wire controls retain one
 endpoint with two distinct observer tokens, exercise invalid-selector refusal,
-re-register, refuse a valid different selector on a same-token NUM1 follow-up,
+re-register, exercise a valid different selector on a same-token NUM1 follow-up,
 verify both original selected notifications, cancel one selection, verify
 the surviving relation, and register fresh. Those controls are identified as
-Python clients, not native CLI cancellation support.
+Python clients, not native CLI cancellation support. Core must refuse the changed
+selector with4.00. Native may instead return exactly the independent right NUM1
+read (32 bytes, no Observe, matching Block2 and ETag if supplied); the next
+notification must still use the original left selection. Losing/changing that
+relation remains a failed boundary, not an accepted fallback.
 
 RFC7641 sections3–4 and RFC8132 sections2.3–2.5 govern the selection/lifecycle
 boundary. Classic Block2 identity follows RFC7959 section2.6. Every fragment,
@@ -34,7 +38,12 @@ full token, request/ACK MID, ETag, Observe serial and complete body is checked.
 ## Confirmable Q notifications
 
 The host-only `obs-q` representation has704 bytes:22 blocks at SZX1 (32 bytes).
-Coaptic's current `BlockTransfer::MAX_PAYLOADS` is10. The native server records
+Coaptic requests SZX6 through its public Q API; the native client requests SZX1.
+The explicit native `obs-q` server profile uses the pinned public
+`coap_context_set_max_block_size(ctx,32)` before session creation. Both directions
+must negotiate SZX1 on the wire, with no classic Block2 option in a Q request.
+Receipts retain requested and negotiated SZX separately. Other server profiles
+keep their defaults. Coaptic's current `BlockTransfer::MAX_PAYLOADS` is10. The native server records
 its actual `coap_session_get_max_payloads()` value. This profile requires10,
 crosses two set boundaries, and preserves CON type, exact ACK progression,
 ETag, Size2 and Observe epoch across each full notification. A separate same-
