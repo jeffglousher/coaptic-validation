@@ -1,0 +1,14 @@
+[workspace]
+[package]
+name = "coaptic-ingress-ebpf"
+version = "0.0.0"
+edition = "2024"
+publish = false
+[dependencies]
+aya-ebpf = "=0.2.1"
+coaptic-ingress-classifier = { path = "../classifier" }
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+
