@@ -17,6 +17,17 @@ struct Schedule<'a, P, L, W> {
 }
 
 struct Borrowed<'a, T>(&'a mut T);
+
+#[cfg(target_os = "none")]
+pub(crate) fn managed_owner_bytes<T: AsyncDatagramIo>() -> usize {
+    const {
+        assert!(
+            core::mem::size_of::<ManagedConnection<'_, Borrowed<'_, T>, EnrolledDevice>>()
+                <= 64 * 1024
+        );
+    }
+    core::mem::size_of::<ManagedConnection<'_, Borrowed<'_, T>, EnrolledDevice>>()
+}
 impl<T: DatagramTransport> DatagramTransport for Borrowed<'_, T> {
     type Error = T::Error;
     fn fill_random(&mut self, bytes: &mut [u8]) -> bool {
@@ -277,8 +288,8 @@ fn connection<'a, T: AsyncDatagramIo>(
     random: fn(&mut [u8]) -> bool,
     endpoint: Endpoint,
     start: u64,
-) -> Result<ManagedConnection<'a, Borrowed<'a, T>, profiles::Constrained>, Error> {
-    let mut connection = ManagedConnection::<_, profiles::Constrained>::from_local_pairing(
+) -> Result<ManagedConnection<'a, Borrowed<'a, T>, EnrolledDevice>, Error> {
+    let mut connection = ManagedConnection::<_, EnrolledDevice>::from_local_pairing(
         &device.identity,
         &device.pairing,
         endpoint,
