@@ -36,3 +36,10 @@ Run the existing pinned `libedhoc/build.py`, then invoke either runner with
 `--coaptic EXE --libedhoc EXE --core CORE_CHECKOUT --companion SUITE_CHECKOUT --output REPORT`.
 The raw runner uses `edhoc_peer`; the UDP runner uses `edhoc_udp_peer`. Both require
 clean committed source. Native build provenance must match the current fixture.
+
+Native EAD callbacks in pinned libedhoc can run before its MAC check. They only
+validate fixture input and record counters. `ead_after_success` is emitted after
+the entire native handshake succeeds; it does not establish authentication before
+the callback. Only Coaptic's `ead_authenticated` checks the verified Principal at
+callback time. Original native captures named that post-success field
+`ead_authenticated`; retain them with this corrected interpretation.

@@ -56,7 +56,7 @@ static int process_ead(void *user_context, const struct edhoc_call_context *call
     }
     /* These receipts are emitted only after the complete successful exchange;
      * credential-key selection alone is not authentication evidence. */
-    if (stage != 1) policy->ead_authenticated |= 1u << (stage-1);
+    if (stage != 1) policy->ead_after_success |= 1u << (stage-1);
     return EDHOC_SUCCESS;
 }
 static void emit_export_vectors(struct edhoc_context *context)

@@ -20,7 +20,7 @@ struct peer_policy {
     struct identity expected;
     unsigned int authenticated;
     unsigned suite, ead, critical_stage;
-    unsigned ead_received[4], ead_authenticated;
+    unsigned ead_received[4], ead_after_success;
 };
 
 static void wipe(void *buffer, size_t length)
@@ -154,7 +154,7 @@ static void export_result(struct edhoc_context *context, const struct peer_polic
     printf("\",\"local_credential\":\""); print_hex(policy->local.credential, sizeof(policy->local.credential));
     printf("\",\"method\":3,\"suite\":%u,\"message4\":true,",policy->suite);
     emit_export_vectors(context);
-    printf(",\"ead_received\":[%u,%u,%u,%u],\"ead_authenticated\":%u}\n", policy->ead_received[0],policy->ead_received[1],policy->ead_received[2],policy->ead_received[3],policy->ead_authenticated);
+    printf(",\"ead_received\":[%u,%u,%u,%u],\"ead_after_success\":%u}\n", policy->ead_received[0],policy->ead_received[1],policy->ead_received[2],policy->ead_received[3],policy->ead_after_success);
     fflush(stdout);
     wipe(secret, sizeof(secret)); wipe(salt, sizeof(salt));
 }

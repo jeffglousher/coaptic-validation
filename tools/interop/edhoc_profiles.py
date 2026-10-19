@@ -21,7 +21,8 @@ def validate_profile(coaptic, native, role, suite, ead):
         if not ead:
             expected = ([0, 0, 0, 0], 0)
         require(record.get("ead_received") == expected[0], "incorrect ordered EAD receipts")
-        require(record.get("ead_authenticated") == expected[1], "incorrect authenticated EAD stages")
+        field = "ead_authenticated" if record is coaptic else "ead_after_success"
+        require(record.get(field) == expected[1], "incorrect EAD stage receipt")
         exports = record.get("exports")
         require(isinstance(exports, list) and len(exports) == len(VECTORS), "missing exporter vectors")
         for value, (label, context_length, length) in zip(exports, VECTORS):
@@ -29,7 +30,7 @@ def validate_profile(coaptic, native, role, suite, ead):
             require(binary_field(value, "context", context_length) == bytes(range(256))[:context_length], "wrong exporter context")
             binary_field(value, "hex", length)
     require(coaptic["exports"] == native["exports"], "independent exporter disagreement")
-    result["checks"] += ["private_label_exporter_context_boundaries", "ordered_ead_presence_and_authentication"]
+    result["checks"] += ["private_label_exporter_context_boundaries", "ordered_ead_presence", "coaptic_authenticated_callbacks", "native_ead_receipts_after_success"]
     return result
 
 
@@ -126,7 +127,7 @@ async def run(args):
         for role in ("initiator", "responder"):
             for ead in (False, True):
                 await append(role, suite, ead)
-        for stage in range(1, 5):
+        for stage in (() if args.success_only else range(1, 5)):
             role = "responder" if stage % 2 else "initiator"
             await append(role, suite, True, stage)
             await append(role, suite, True)
@@ -143,6 +144,7 @@ def main():
     for name in ("coaptic", "libedhoc", "core", "companion", "output"):
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=10)
+    parser.add_argument("--success-only", action="store_true", help="only the eight successful profile configurations")
     args = parser.parse_args()
     require(args.timeout > 0, "positive timeout required")
     args.output.parent.mkdir(parents=True, exist_ok=True)

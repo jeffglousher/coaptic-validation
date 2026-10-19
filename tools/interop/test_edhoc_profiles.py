@@ -23,7 +23,7 @@ def completions(role, suite, ead):
                                 peer_credential=credential(role).hex(), local_credential=credential(peer_role).hex()))
     for result, current in ((core, role), (native, peer_role)):
         result["ead_received"] = ([0, 3, 0, 3] if current == "initiator" else [3, 0, 3, 0]) if ead else [0] * 4
-        result["ead_authenticated"] = (10 if current == "initiator" else 4) if ead else 0
+        result["ead_authenticated" if result is core else "ead_after_success"] = (10 if current == "initiator" else 4) if ead else 0
     return core, native
 
 
