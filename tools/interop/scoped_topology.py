@@ -259,17 +259,18 @@ def main():
     parser.add_argument("--independent", required=True, type=Path)
     parser.add_argument("--report", required=True, type=Path)
     parser.add_argument("--build-record", required=True, type=Path)
+    parser.add_argument("--mode", choices=("addressing", "network-errors"), default="addressing")
     args = parser.parse_args()
     args.rust_peer = args.rust_peer.resolve(strict=True)
     args.independent = args.independent.resolve(strict=True)
     report = {"schema":"coaptic-scoped-routed/1", "platform":platform.platform(), "applied":args.apply,
               "files":{str(path):hashlib.sha256(path.read_bytes()).hexdigest() for path in (args.rust_peer,args.independent)},
-              "cases":[], "pmtu":"not executed by this scoped/routed fixture"}
+              "cases":[], "mode":args.mode, "pmtu":"see host-pmtu-icmp6 case" if args.mode == "network-errors" else "not executed by this scoped/routed fixture"}
     args.report.parent.mkdir(parents=True, exist_ok=True)
     def save():
         args.report.write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
     if not args.apply:
-        report["plan"] = "Three new owned Linux namespaces; two scoped positive/wrong-zone/fresh sequences and two routed ULA directions. No runtime change without --apply."
+        report["plan"] = "Three new owned Linux namespaces; addressing mode runs four directions; network-errors mode runs two separate compound/PMTU cases. No runtime change without --apply."
         save()
         return 0
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -285,10 +286,16 @@ def main():
     try:
         topology.create()
         save()
-        for scoped in (True,False):
-            for implementation in ("coaptic","python"):
-                report["cases"].append(scenario(args,topology,implementation,scoped))
+        if args.mode == "network-errors":
+            from network_errors import compound, pmtu
+            for case in (compound, pmtu):
+                report["cases"].append(case(args,topology))
                 save()
+        else:
+            for scoped in (True,False):
+                for implementation in ("coaptic","python"):
+                    report["cases"].append(scenario(args,topology,implementation,scoped))
+                    save()
     except Exception as error:
         report["error"] = repr(error)
     finally:
@@ -301,7 +308,7 @@ def main():
     if report["source_identity_after"] != identity:
         report["error"] = "sources changed during qualification"
     save()
-    passed = len(report["cases"]) == 4 and all(row["status"] == "passed" for row in report["cases"])
+    passed = len(report["cases"]) == (2 if args.mode == "network-errors" else 4) and all(row["status"] == "passed" for row in report["cases"])
     return not(passed and report.get("cleanup",{}).get("complete") and "error" not in report)
 
 

@@ -6,6 +6,14 @@ on:
         description: Exact 40-character Coaptic commit
         required: true
         type: string
+      mode:
+        description: Finite scenario group
+        required: true
+        type: choice
+        default: addressing
+        options:
+          - addressing
+          - network-errors
 permissions:
   contents: read
 concurrency:
@@ -17,6 +25,7 @@ jobs:
     timeout-minutes: 15
     env:
       LIBRARY_REVISION: ${{ inputs.library_revision }}
+      SCENARIO_MODE: ${{ inputs.mode }}
       CARGO_BUILD_JOBS: 2
       CARGO_PROFILE_DEV_DEBUG: 0
       CARGO_PROFILE_TEST_DEBUG: 0
@@ -44,6 +53,8 @@ jobs:
       - name: Focused fixture checks and build
         run: |
           python -m unittest discover -s tools/interop -p test_scoped_topology.py
+          "$RUNNER_TEMP/q3-venv/bin/python" -m unittest discover -s tools/interop -p test_pmtu_peer.py
+          "$RUNNER_TEMP/q3-venv/bin/python" -m unittest discover -s tools/interop -p test_compound_relay.py
           cargo test --locked -p peer-coaptic --bin addressing
           cargo clippy --locked -p peer-coaptic --bin addressing -- -D warnings
           cargo build --locked -p peer-coaptic --bin addressing
@@ -60,12 +71,12 @@ jobs:
           record['build_command']='cargo build --locked -p peer-coaptic --bin addressing'
           pathlib.Path(os.environ['RUNNER_TEMP'],'q3-evidence','build.json').write_text(json.dumps(record,indent=2)+'\n')
           PY
-      - name: Four finite independent directions in owned namespaces
+      - name: Selected finite network scenarios in owned namespaces
         run: |
           sudo env GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$PWD" GIT_CONFIG_KEY_1=safe.directory GIT_CONFIG_VALUE_1="$PWD/coaptic" \
             "$RUNNER_TEMP/q3-venv/bin/python" tools/interop/scoped_topology.py --apply \
             --rust-peer target/debug/addressing --independent tools/interop/addressing_peer.py \
-            --build-record "$RUNNER_TEMP/q3-evidence/build.json" --report "$RUNNER_TEMP/q3-evidence/result.json"
+            --build-record "$RUNNER_TEMP/q3-evidence/build.json" --report "$RUNNER_TEMP/q3-evidence/result.json" --mode "$SCENARIO_MODE"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:

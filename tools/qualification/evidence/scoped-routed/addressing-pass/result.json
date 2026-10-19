@@ -1,0 +1,2356 @@
+{
+  "schema": "coaptic-scoped-routed/1",
+  "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+  "applied": true,
+  "files": {
+    "/home/runner/work/coaptic-validation/coaptic-validation/target/debug/addressing": "2518a72e309cf9eff5f79ff60ee9412f8e91cebaf1292f6a8464d2be0c7dbb6d",
+    "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py": "5d11240b95eeb35bc7bd3aadc03ce4dfd32a87651a32b7d9393f00d9c02aa4cd"
+  },
+  "cases": [
+    {
+      "client": "coaptic",
+      "scoped": true,
+      "clients": [
+        {
+          "argv": [
+            "ip",
+            "netns",
+            "exec",
+            "cq3-86f0c508-c",
+            "/home/runner/work/coaptic-validation/coaptic-validation/target/debug/addressing",
+            "client",
+            "[fe80::c%6]:0",
+            "[fe80::1%6]:56830",
+            "1000"
+          ],
+          "exit": 0,
+          "records": [
+            {
+              "association_slots": 1,
+              "calls": 4,
+              "deferred": 0,
+              "event": "ready",
+              "local": "[fe80::c%6]:35055",
+              "profile": "Constrained; blockwise=false; routes=1",
+              "remote": "[fe80::1%6]:56830",
+              "requests": 4,
+              "security": "unprotected",
+              "trace_limit": 64,
+              "udp_receive_scratch": 1153
+            },
+            {
+              "event": "send-attempt",
+              "hex": "48015e4aec1e614d9096c0abb474657374",
+              "peer": "[fe80::1%6]:56830",
+              "scope_id": 6
+            },
+            {
+              "bytes": 17,
+              "event": "sent"
+            },
+            {
+              "event": "receive",
+              "hex": "68455e4aec1e614d9096c0abff636f61707469632d73636f7065642d61646472657373696e67",
+              "peer": "[fe80::1%6]:56830",
+              "scope_id": 6
+            },
+            {
+              "code": 69,
+              "event": "complete",
+              "hex": "636f61707469632d73636f7065642d61646472657373696e67"
+            }
+          ],
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "ip",
+            "netns",
+            "exec",
+            "cq3-86f0c508-c",
+            "/home/runner/work/coaptic-validation/coaptic-validation/target/debug/addressing",
+            "client",
+            "[fe80::c%6]:0",
+            "[fe80::1%1]:56830",
+            "1000"
+          ],
+          "exit": 1,
+          "records": [
+            {
+              "association_slots": 1,
+              "calls": 4,
+              "deferred": 0,
+              "event": "ready",
+              "local": "[fe80::c%6]:39051",
+              "profile": "Constrained; blockwise=false; routes=1",
+              "remote": "[fe80::1%1]:56830",
+              "requests": 4,
+              "security": "unprotected",
+              "trace_limit": 64,
+              "udp_receive_scratch": 1153
+            },
+            {
+              "event": "send-attempt",
+              "hex": "4801807e337422c1894ec5ccb474657374",
+              "peer": "[fe80::1%1]:56830",
+              "scope_id": 1
+            },
+            {
+              "event": "io-error",
+              "kind": "NetworkUnreachable",
+              "operation": "send",
+              "raw_os_error": 101
+            },
+            {
+              "event": "error",
+              "message": "send: Network is unreachable (os error 101)"
+            }
+          ],
+          "stderr": "send: Network is unreachable (os error 101)\n"
+        },
+        {
+          "argv": [
+            "ip",
+            "netns",
+            "exec",
+            "cq3-86f0c508-c",
+            "/home/runner/work/coaptic-validation/coaptic-validation/target/debug/addressing",
+            "client",
+            "[fe80::c%6]:0",
+            "[fe80::1%6]:56830",
+            "1000"
+          ],
+          "exit": 0,
+          "records": [
+            {
+              "association_slots": 1,
+              "calls": 4,
+              "deferred": 0,
+              "event": "ready",
+              "local": "[fe80::c%6]:39396",
+              "profile": "Constrained; blockwise=false; routes=1",
+              "remote": "[fe80::1%6]:56830",
+              "requests": 4,
+              "security": "unprotected",
+              "trace_limit": 64,
+              "udp_receive_scratch": 1153
+            },
+            {
+              "event": "send-attempt",
+              "hex": "4801036844a97a8eac88872cb474657374",
+              "peer": "[fe80::1%6]:56830",
+              "scope_id": 6
+            },
+            {
+              "bytes": 17,
+              "event": "sent"
+            },
+            {
+              "event": "receive",
+              "hex": "6845036844a97a8eac88872cff636f61707469632d73636f7065642d61646472657373696e67",
+              "peer": "[fe80::1%6]:56830",
+              "scope_id": 6
+            },
+            {
+              "code": 69,
+              "event": "complete",
+              "hex": "636f61707469632d73636f7065642d61646472657373696e67"
+            }
+          ],
+          "stderr": ""
+        }
+      ],
+      "server": {
+        "argv": [
+          "ip",
+          "netns",
+          "exec",
+          "cq3-86f0c508-r",
+          "/home/runner/work/_temp/q3-venv/bin/python",
+          "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py",
+          "server",
+          "--bind-host",
+          "fe80::1",
+          "--bind-port",
+          "56830",
+          "--bind-scope",
+          "5",
+          "--timeout",
+          "10"
+        ],
+        "pid": 5199,
+        "exit": -15,
+        "records": [
+          {
+            "event": "ready",
+            "local": [
+              "fe80::1",
+              56830,
+              0,
+              5
+            ],
+            "remote": null,
+            "implementation": "aiocoap-codec/python-UDP",
+            "security": "unprotected",
+            "receive_capacity": 1153
+          },
+          {
+            "event": "receive",
+            "peer": [
+              "fe80::c",
+              35055,
+              0,
+              5
+            ],
+            "hex": "48015e4aec1e614d9096c0abb474657374"
+          },
+          {
+            "event": "send-attempt",
+            "peer": [
+              "fe80::c",
+              35055,
+              0,
+              5
+            ],
+            "hex": "68455e4aec1e614d9096c0abff636f61707469632d73636f7065642d61646472657373696e67"
+          },
+          {
+            "event": "receive",
+            "peer": [
+              "fe80::c",
+              39396,
+              0,
+              5
+            ],
+            "hex": "4801036844a97a8eac88872cb474657374"
+          },
+          {
+            "event": "send-attempt",
+            "peer": [
+              "fe80::c",
+              39396,
+              0,
+              5
+            ],
+            "hex": "6845036844a97a8eac88872cff636f61707469632d73636f7065642d61646472657373696e67"
+          }
+        ],
+        "stderr": "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:66: DeprecationWarning: Initializing messages with an MID is deprecated. (No replacement: This needs to be managed by the library.)\n  reply = aiocoap.Message(code=aiocoap.CONTENT, mtype=aiocoap.ACK, mid=message.mid,\n/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:66: DeprecationWarning: Initializing messages with an mtype is deprecated. Instead, set transport_tuning=aiocoap.Reliable oraiocoap. Unreliable.\n  reply = aiocoap.Message(code=aiocoap.CONTENT, mtype=aiocoap.ACK, mid=message.mid,\n/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:66: DeprecationWarning: Initializing messages with a token is deprecated. (No replacement: This needs to be managed by the library.)\n  reply = aiocoap.Message(code=aiocoap.CONTENT, mtype=aiocoap.ACK, mid=message.mid,\n"
+      },
+      "wrong_zone": {
+        "scope": 1,
+        "io_error": [
+          {
+            "event": "io-error",
+            "kind": "NetworkUnreachable",
+            "operation": "send",
+            "raw_os_error": 101
+          }
+        ],
+        "disposition": "actual caller I/O error"
+      },
+      "status": "passed"
+    },
+    {
+      "client": "python",
+      "scoped": true,
+      "clients": [
+        {
+          "argv": [
+            "ip",
+            "netns",
+            "exec",
+            "cq3-86f0c508-c",
+            "/home/runner/work/_temp/q3-venv/bin/python",
+            "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py",
+            "client",
+            "--bind-host",
+            "fe80::c",
+            "--bind-port",
+            "0",
+            "--bind-scope",
+            "6",
+            "--timeout",
+            "1",
+            "--remote-host",
+            "fe80::1",
+            "--remote-port",
+            "56830",
+            "--remote-scope",
+            "6"
+          ],
+          "exit": 0,
+          "records": [
+            {
+              "event": "ready",
+              "local": [
+                "fe80::c",
+                49892,
+                0,
+                6
+              ],
+              "remote": [
+                "fe80::1",
+                56830,
+                0,
+                6
+              ],
+              "implementation": "aiocoap-codec/python-UDP",
+              "security": "unprotected",
+              "receive_capacity": 1153
+            },
+            {
+              "event": "send-attempt",
+              "peer": [
+                "fe80::1",
+                56830,
+                0,
+                6
+              ],
+              "hex": "4801e66e53005b9d9a88e1b8b474657374"
+            },
+            {
+              "event": "receive",
+              "peer": [
+                "fe80::1",
+                56830,
+                0,
+                6
+              ],
+              "hex": "6845e66e53005b9d9a88e1b8ff636f61707469632d73636f7065642d61646472657373696e67"
+            },
+            {
+              "event": "complete",
+              "code": 69,
+              "hex": "636f61707469632d73636f7065642d61646472657373696e67"
+            }
+          ],
+          "stderr": "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:40: DeprecationWarning: Initializing messages with an MID is deprecated. (No replacement: This needs to be managed by the library.)\n  request = aiocoap.Message(code=aiocoap.GET, mtype=aiocoap.CON,\n/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:40: DeprecationWarning: Initializing messages with an mtype is deprecated. Instead, set transport_tuning=aiocoap.Reliable oraiocoap. Unreliable.\n  request = aiocoap.Message(code=aiocoap.GET, mtype=aiocoap.CON,\n/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:40: DeprecationWarning: Initializing messages with a token is deprecated. (No replacement: This needs to be managed by the library.)\n  request = aiocoap.Message(code=aiocoap.GET, mtype=aiocoap.CON,\n"
+        },
+        {
+          "argv": [
+            "ip",
+            "netns",
+            "exec",
+            "cq3-86f0c508-c",
+            "/home/runner/work/_temp/q3-venv/bin/python",
+            "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py",
+            "client",
+            "--bind-host",
+            "fe80::c",
+            "--bind-port",
+            "0",
+            "--bind-scope",
+            "6",
+            "--timeout",
+            "1",
+            "--remote-host",
+            "fe80::1",
+            "--remote-port",
+            "56830",
+            "--remote-scope",
+            "1"
+          ],
+          "exit": 1,
+          "records": [
+            {
+              "event": "ready",
+              "local": [
+                "fe80::c",
+                57888,
+                0,
+                6
+              ],
+              "remote": [
+                "fe80::1",
+                56830,
+                0,
+                1
+              ],
+              "implementation": "aiocoap-codec/python-UDP",
+              "security": "unprotected",
+              "receive_capacity": 1153
+            },
+            {
+              "event": "send-attempt",
+              "peer": [
+                "fe80::1",
+                56830,
+                0,
+                1
+              ],
+              "hex": "480177cb2d3a3d27dc9a68c2b474657374"
+            },
+            {
+              "event": "error",
+              "error_type": "OSError",
+              "message": "[Errno 101] Network is unreachable",
+              "errno": 101,
+              "winerror": null
+            }
+          ],
+          "stderr": "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:40: DeprecationWarning: Initializing messages with an MID is deprecated. (No replacement: This needs to be managed by the library.)\n  request = aiocoap.Message(code=aiocoap.GET, mtype=aiocoap.CON,\n/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:40: DeprecationWarning: Initializing messages with an mtype is deprecated. Instead, set transport_tuning=aiocoap.Reliable oraiocoap. Unreliable.\n  request = aiocoap.Message(code=aiocoap.GET, mtype=aiocoap.CON,\n/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:40: DeprecationWarning: Initializing messages with a token is deprecated. (No replacement: This needs to be managed by the library.)\n  request = aiocoap.Message(code=aiocoap.GET, mtype=aiocoap.CON,\n"
+        },
+        {
+          "argv": [
+            "ip",
+            "netns",
+            "exec",
+            "cq3-86f0c508-c",
+            "/home/runner/work/_temp/q3-venv/bin/python",
+            "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py",
+            "client",
+            "--bind-host",
+            "fe80::c",
+            "--bind-port",
+            "0",
+            "--bind-scope",
+            "6",
+            "--timeout",
+            "1",
+            "--remote-host",
+            "fe80::1",
+            "--remote-port",
+            "56830",
+            "--remote-scope",
+            "6"
+          ],
+          "exit": 0,
+          "records": [
+            {
+              "event": "ready",
+              "local": [
+                "fe80::c",
+                40361,
+                0,
+                6
+              ],
+              "remote": [
+                "fe80::1",
+                56830,
+                0,
+                6
+              ],
+              "implementation": "aiocoap-codec/python-UDP",
+              "security": "unprotected",
+              "receive_capacity": 1153
+            },
+            {
+              "event": "send-attempt",
+              "peer": [
+                "fe80::1",
+                56830,
+                0,
+                6
+              ],
+              "hex": "480130c23cae037af9b1f5a7b474657374"
+            },
+            {
+              "event": "receive",
+              "peer": [
+                "fe80::1",
+                56830,
+                0,
+                6
+              ],
+              "hex": "684530c23cae037af9b1f5a7ff636f61707469632d73636f7065642d61646472657373696e67"
+            },
+            {
+              "event": "complete",
+              "code": 69,
+              "hex": "636f61707469632d73636f7065642d61646472657373696e67"
+            }
+          ],
+          "stderr": "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:40: DeprecationWarning: Initializing messages with an MID is deprecated. (No replacement: This needs to be managed by the library.)\n  request = aiocoap.Message(code=aiocoap.GET, mtype=aiocoap.CON,\n/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:40: DeprecationWarning: Initializing messages with an mtype is deprecated. Instead, set transport_tuning=aiocoap.Reliable oraiocoap. Unreliable.\n  request = aiocoap.Message(code=aiocoap.GET, mtype=aiocoap.CON,\n/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:40: DeprecationWarning: Initializing messages with a token is deprecated. (No replacement: This needs to be managed by the library.)\n  request = aiocoap.Message(code=aiocoap.GET, mtype=aiocoap.CON,\n"
+        }
+      ],
+      "server": {
+        "argv": [
+          "ip",
+          "netns",
+          "exec",
+          "cq3-86f0c508-r",
+          "/home/runner/work/coaptic-validation/coaptic-validation/target/debug/addressing",
+          "server",
+          "[fe80::1%5]:56830",
+          "10000"
+        ],
+        "pid": 5204,
+        "exit": -15,
+        "records": [
+          {
+            "association_slots": 1,
+            "calls": 4,
+            "deferred": 0,
+            "event": "ready",
+            "local": "[fe80::1%5]:56830",
+            "profile": "Constrained; blockwise=false; routes=1",
+            "remote": null,
+            "requests": 4,
+            "security": "unprotected",
+            "trace_limit": 64,
+            "udp_receive_scratch": 1153
+          },
+          {
+            "event": "receive",
+            "hex": "4801e66e53005b9d9a88e1b8b474657374",
+            "peer": "[fe80::c%5]:49892",
+            "scope_id": 5
+          },
+          {
+            "event": "send-attempt",
+            "hex": "6845e66e53005b9d9a88e1b8ff636f61707469632d73636f7065642d61646472657373696e67",
+            "peer": "[fe80::c%5]:49892",
+            "scope_id": 5
+          },
+          {
+            "bytes": 38,
+            "event": "sent"
+          },
+          {
+            "event": "receive",
+            "hex": "480130c23cae037af9b1f5a7b474657374",
+            "peer": "[fe80::c%5]:40361",
+            "scope_id": 5
+          },
+          {
+            "event": "send-attempt",
+            "hex": "684530c23cae037af9b1f5a7ff636f61707469632d73636f7065642d61646472657373696e67",
+            "peer": "[fe80::c%5]:40361",
+            "scope_id": 5
+          },
+          {
+            "bytes": 38,
+            "event": "sent"
+          }
+        ],
+        "stderr": ""
+      },
+      "wrong_zone": {
+        "scope": 1,
+        "io_error": [
+          {
+            "event": "error",
+            "error_type": "OSError",
+            "message": "[Errno 101] Network is unreachable",
+            "errno": 101,
+            "winerror": null
+          }
+        ],
+        "disposition": "actual caller I/O error"
+      },
+      "status": "passed"
+    },
+    {
+      "client": "coaptic",
+      "scoped": false,
+      "clients": [
+        {
+          "argv": [
+            "ip",
+            "netns",
+            "exec",
+            "cq3-86f0c508-c",
+            "/home/runner/work/coaptic-validation/coaptic-validation/target/debug/addressing",
+            "client",
+            "[fd42:c0a:1::2]:0",
+            "[fd42:c0a:2::2]:56830",
+            "1000"
+          ],
+          "exit": 0,
+          "records": [
+            {
+              "association_slots": 1,
+              "calls": 4,
+              "deferred": 0,
+              "event": "ready",
+              "local": "[fd42:c0a:1::2]:58397",
+              "profile": "Constrained; blockwise=false; routes=1",
+              "remote": "[fd42:c0a:2::2]:56830",
+              "requests": 4,
+              "security": "unprotected",
+              "trace_limit": 64,
+              "udp_receive_scratch": 1153
+            },
+            {
+              "event": "send-attempt",
+              "hex": "4801f2cfb6b928500a1ad9bfb474657374",
+              "peer": "[fd42:c0a:2::2]:56830",
+              "scope_id": 0
+            },
+            {
+              "bytes": 17,
+              "event": "sent"
+            },
+            {
+              "event": "receive",
+              "hex": "6845f2cfb6b928500a1ad9bfff636f61707469632d73636f7065642d61646472657373696e67",
+              "peer": "[fd42:c0a:2::2]:56830",
+              "scope_id": 0
+            },
+            {
+              "code": 69,
+              "event": "complete",
+              "hex": "636f61707469632d73636f7065642d61646472657373696e67"
+            }
+          ],
+          "stderr": ""
+        }
+      ],
+      "server": {
+        "argv": [
+          "ip",
+          "netns",
+          "exec",
+          "cq3-86f0c508-s",
+          "/home/runner/work/_temp/q3-venv/bin/python",
+          "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py",
+          "server",
+          "--bind-host",
+          "fd42:c0a:2::2",
+          "--bind-port",
+          "56830",
+          "--bind-scope",
+          "0",
+          "--timeout",
+          "10"
+        ],
+        "pid": 5209,
+        "exit": -15,
+        "records": [
+          {
+            "event": "ready",
+            "local": [
+              "fd42:c0a:2::2",
+              56830,
+              0,
+              0
+            ],
+            "remote": null,
+            "implementation": "aiocoap-codec/python-UDP",
+            "security": "unprotected",
+            "receive_capacity": 1153
+          },
+          {
+            "event": "receive",
+            "peer": [
+              "fd42:c0a:1::2",
+              58397,
+              0,
+              0
+            ],
+            "hex": "4801f2cfb6b928500a1ad9bfb474657374"
+          },
+          {
+            "event": "send-attempt",
+            "peer": [
+              "fd42:c0a:1::2",
+              58397,
+              0,
+              0
+            ],
+            "hex": "6845f2cfb6b928500a1ad9bfff636f61707469632d73636f7065642d61646472657373696e67"
+          }
+        ],
+        "stderr": "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:66: DeprecationWarning: Initializing messages with an MID is deprecated. (No replacement: This needs to be managed by the library.)\n  reply = aiocoap.Message(code=aiocoap.CONTENT, mtype=aiocoap.ACK, mid=message.mid,\n/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:66: DeprecationWarning: Initializing messages with an mtype is deprecated. Instead, set transport_tuning=aiocoap.Reliable oraiocoap. Unreliable.\n  reply = aiocoap.Message(code=aiocoap.CONTENT, mtype=aiocoap.ACK, mid=message.mid,\n/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:66: DeprecationWarning: Initializing messages with a token is deprecated. (No replacement: This needs to be managed by the library.)\n  reply = aiocoap.Message(code=aiocoap.CONTENT, mtype=aiocoap.ACK, mid=message.mid,\n"
+      },
+      "status": "passed"
+    },
+    {
+      "client": "python",
+      "scoped": false,
+      "clients": [
+        {
+          "argv": [
+            "ip",
+            "netns",
+            "exec",
+            "cq3-86f0c508-c",
+            "/home/runner/work/_temp/q3-venv/bin/python",
+            "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py",
+            "client",
+            "--bind-host",
+            "fd42:c0a:1::2",
+            "--bind-port",
+            "0",
+            "--bind-scope",
+            "0",
+            "--timeout",
+            "1",
+            "--remote-host",
+            "fd42:c0a:2::2",
+            "--remote-port",
+            "56830",
+            "--remote-scope",
+            "0"
+          ],
+          "exit": 0,
+          "records": [
+            {
+              "event": "ready",
+              "local": [
+                "fd42:c0a:1::2",
+                47673,
+                0,
+                0
+              ],
+              "remote": [
+                "fd42:c0a:2::2",
+                56830,
+                0,
+                0
+              ],
+              "implementation": "aiocoap-codec/python-UDP",
+              "security": "unprotected",
+              "receive_capacity": 1153
+            },
+            {
+              "event": "send-attempt",
+              "peer": [
+                "fd42:c0a:2::2",
+                56830,
+                0,
+                0
+              ],
+              "hex": "4801b30197296ca794ae6cb2b474657374"
+            },
+            {
+              "event": "receive",
+              "peer": [
+                "fd42:c0a:2::2",
+                56830,
+                0,
+                0
+              ],
+              "hex": "6845b30197296ca794ae6cb2ff636f61707469632d73636f7065642d61646472657373696e67"
+            },
+            {
+              "event": "complete",
+              "code": 69,
+              "hex": "636f61707469632d73636f7065642d61646472657373696e67"
+            }
+          ],
+          "stderr": "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:40: DeprecationWarning: Initializing messages with an MID is deprecated. (No replacement: This needs to be managed by the library.)\n  request = aiocoap.Message(code=aiocoap.GET, mtype=aiocoap.CON,\n/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:40: DeprecationWarning: Initializing messages with an mtype is deprecated. Instead, set transport_tuning=aiocoap.Reliable oraiocoap. Unreliable.\n  request = aiocoap.Message(code=aiocoap.GET, mtype=aiocoap.CON,\n/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:40: DeprecationWarning: Initializing messages with a token is deprecated. (No replacement: This needs to be managed by the library.)\n  request = aiocoap.Message(code=aiocoap.GET, mtype=aiocoap.CON,\n"
+        }
+      ],
+      "server": {
+        "argv": [
+          "ip",
+          "netns",
+          "exec",
+          "cq3-86f0c508-s",
+          "/home/runner/work/coaptic-validation/coaptic-validation/target/debug/addressing",
+          "server",
+          "[fd42:c0a:2::2]:56830",
+          "10000"
+        ],
+        "pid": 5212,
+        "exit": -15,
+        "records": [
+          {
+            "association_slots": 1,
+            "calls": 4,
+            "deferred": 0,
+            "event": "ready",
+            "local": "[fd42:c0a:2::2]:56830",
+            "profile": "Constrained; blockwise=false; routes=1",
+            "remote": null,
+            "requests": 4,
+            "security": "unprotected",
+            "trace_limit": 64,
+            "udp_receive_scratch": 1153
+          },
+          {
+            "event": "receive",
+            "hex": "4801b30197296ca794ae6cb2b474657374",
+            "peer": "[fd42:c0a:1::2]:47673",
+            "scope_id": 0
+          },
+          {
+            "event": "send-attempt",
+            "hex": "6845b30197296ca794ae6cb2ff636f61707469632d73636f7065642d61646472657373696e67",
+            "peer": "[fd42:c0a:1::2]:47673",
+            "scope_id": 0
+          },
+          {
+            "bytes": 38,
+            "event": "sent"
+          }
+        ],
+        "stderr": ""
+      },
+      "status": "passed"
+    }
+  ],
+  "pmtu": "not executed by this scoped/routed fixture",
+  "source_identity": {
+    "source": "edfd1eb1669e8c164fc318e47f531d1c7e41e7a5",
+    "dirty": false,
+    "suite_source": "d5e93eb4f4b8b91bf51878ce6ec76d1dbc629e0f",
+    "suite_dirty": false,
+    "suite_locks": {
+      "Cargo.lock": "f711ce82fa0c978951b004095f37ad2cc4b05c1ceabbff406646ba6c87ed934b",
+      "tools/benchmark/native/Cargo.lock": "eb16c47c2f3539aaa45bd82e4eab48f229b252183998857f6a80a6ffc7432075",
+      "tools/security-interop/Cargo.lock": "e12762939ad364280a46bc526683de74567855448bf0f4e6263d79bad32e0653",
+      "tools/security-profile/Cargo.lock": "278f01b25bc5f2e9aab89f1c53cdbb97e3f12ae6269d81452a36393755e9e8c5",
+      "tools/esphome/rust/Cargo.lock": "7661bf627e28c7ec2eda22a2212081ce5f6e4e5b80d29d2da3d92c25ff74551d",
+      "tools/qualification/esp32/Cargo.lock": "5fda0d74045b28886c9b5dead108857d87e64b405ce193eeb7e1255483ef0773",
+      "tools/durable-host/Cargo.lock": "40a13b28dc161217c0f84afa18c3b870a840b48ccea2acf7071b0ef34b4205cf"
+    }
+  },
+  "build_record": {
+    "source": "edfd1eb1669e8c164fc318e47f531d1c7e41e7a5",
+    "dirty": false,
+    "suite_source": "d5e93eb4f4b8b91bf51878ce6ec76d1dbc629e0f",
+    "suite_dirty": false,
+    "suite_locks": {
+      "Cargo.lock": "f711ce82fa0c978951b004095f37ad2cc4b05c1ceabbff406646ba6c87ed934b",
+      "tools/benchmark/native/Cargo.lock": "eb16c47c2f3539aaa45bd82e4eab48f229b252183998857f6a80a6ffc7432075",
+      "tools/security-interop/Cargo.lock": "e12762939ad364280a46bc526683de74567855448bf0f4e6263d79bad32e0653",
+      "tools/security-profile/Cargo.lock": "278f01b25bc5f2e9aab89f1c53cdbb97e3f12ae6269d81452a36393755e9e8c5",
+      "tools/esphome/rust/Cargo.lock": "7661bf627e28c7ec2eda22a2212081ce5f6e4e5b80d29d2da3d92c25ff74551d",
+      "tools/qualification/esp32/Cargo.lock": "5fda0d74045b28886c9b5dead108857d87e64b405ce193eeb7e1255483ef0773",
+      "tools/durable-host/Cargo.lock": "40a13b28dc161217c0f84afa18c3b870a840b48ccea2acf7071b0ef34b4205cf"
+    },
+    "executable_sha256": "2518a72e309cf9eff5f79ff60ee9412f8e91cebaf1292f6a8464d2be0c7dbb6d",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+    "python": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]",
+    "aiocoap": "0.4.16",
+    "kernel": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "iproute2": "ip utility, iproute2-6.1.0, libbpf 1.3.0\n",
+    "build_command": "cargo build --locked -p peer-coaptic --bin addressing"
+  },
+  "ownership": {
+    "token": "cq3-86f0c508",
+    "namespaces": {
+      "c": "cq3-86f0c508-c",
+      "r": "cq3-86f0c508-r",
+      "s": "cq3-86f0c508-s"
+    },
+    "created": {
+      "cq3-86f0c508-c": [
+        4,
+        4026532314
+      ],
+      "cq3-86f0c508-r": [
+        4,
+        4026532373
+      ],
+      "cq3-86f0c508-s": [
+        4,
+        4026532431
+      ]
+    },
+    "interfaces": {
+      "q386f0c508la": {
+        "namespace": "cq3-86f0c508-c",
+        "name": "c0",
+        "ifindex": 6,
+        "alias": "cq3-86f0c508",
+        "peer": "q386f0c508lb"
+      },
+      "q386f0c508lb": {
+        "namespace": "cq3-86f0c508-r",
+        "name": "r0",
+        "ifindex": 5,
+        "alias": "cq3-86f0c508",
+        "peer": "q386f0c508la"
+      },
+      "q386f0c508ra": {
+        "namespace": "cq3-86f0c508-r",
+        "name": "r1",
+        "ifindex": 8,
+        "alias": "cq3-86f0c508",
+        "peer": "q386f0c508rb"
+      },
+      "q386f0c508rb": {
+        "namespace": "cq3-86f0c508-s",
+        "name": "s0",
+        "ifindex": 7,
+        "alias": "cq3-86f0c508",
+        "peer": "q386f0c508ra"
+      }
+    }
+  },
+  "commands": [
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "list"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "add",
+        "cq3-86f0c508-c"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-c",
+        "link",
+        "set",
+        "lo",
+        "up"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "add",
+        "cq3-86f0c508-r"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "link",
+        "set",
+        "lo",
+        "up"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "add",
+        "cq3-86f0c508-s"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-s",
+        "link",
+        "set",
+        "lo",
+        "up"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "add",
+        "q386f0c508la",
+        "type",
+        "veth",
+        "peer",
+        "name",
+        "q386f0c508lb"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-j",
+        "link",
+        "show",
+        "dev",
+        "q386f0c508la"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":6,\"link\":\"q386f0c508lb\",\"ifname\":\"q386f0c508la\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"M-DOWN\"],\"mtu\":1500,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"92:a5:06:01:21:f5\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-j",
+        "link",
+        "show",
+        "dev",
+        "q386f0c508lb"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":5,\"link\":\"q386f0c508la\",\"ifname\":\"q386f0c508lb\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"M-DOWN\"],\"mtu\":1500,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"9e:1c:b0:24:1d:22\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "dev",
+        "q386f0c508la",
+        "alias",
+        "cq3-86f0c508"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "dev",
+        "q386f0c508lb",
+        "alias",
+        "cq3-86f0c508"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "q386f0c508la",
+        "netns",
+        "cq3-86f0c508-c"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-c",
+        "-j",
+        "link",
+        "show",
+        "dev",
+        "q386f0c508la"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":6,\"link_index\":5,\"ifname\":\"q386f0c508la\",\"flags\":[\"BROADCAST\",\"MULTICAST\"],\"mtu\":1500,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"92:a5:06:01:21:f5\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-86f0c508\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-c",
+        "link",
+        "set",
+        "q386f0c508la",
+        "name",
+        "c0"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-c",
+        "link",
+        "set",
+        "dev",
+        "c0",
+        "addrgenmode",
+        "none"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-c",
+        "link",
+        "set",
+        "dev",
+        "c0",
+        "mtu",
+        "1500",
+        "up"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "q386f0c508lb",
+        "netns",
+        "cq3-86f0c508-r"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "-j",
+        "link",
+        "show",
+        "dev",
+        "q386f0c508lb"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":5,\"link_index\":6,\"ifname\":\"q386f0c508lb\",\"flags\":[\"BROADCAST\",\"MULTICAST\"],\"mtu\":1500,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"9e:1c:b0:24:1d:22\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-86f0c508\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "link",
+        "set",
+        "q386f0c508lb",
+        "name",
+        "r0"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "link",
+        "set",
+        "dev",
+        "r0",
+        "addrgenmode",
+        "none"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "link",
+        "set",
+        "dev",
+        "r0",
+        "mtu",
+        "1500",
+        "up"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "add",
+        "q386f0c508ra",
+        "type",
+        "veth",
+        "peer",
+        "name",
+        "q386f0c508rb"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-j",
+        "link",
+        "show",
+        "dev",
+        "q386f0c508ra"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":8,\"link\":\"q386f0c508rb\",\"ifname\":\"q386f0c508ra\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"M-DOWN\"],\"mtu\":1500,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"2a:e1:b0:de:da:58\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-j",
+        "link",
+        "show",
+        "dev",
+        "q386f0c508rb"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":7,\"link\":\"q386f0c508ra\",\"ifname\":\"q386f0c508rb\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"M-DOWN\"],\"mtu\":1500,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"fe:28:73:da:71:a1\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "dev",
+        "q386f0c508ra",
+        "alias",
+        "cq3-86f0c508"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "dev",
+        "q386f0c508rb",
+        "alias",
+        "cq3-86f0c508"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "q386f0c508ra",
+        "netns",
+        "cq3-86f0c508-r"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "-j",
+        "link",
+        "show",
+        "dev",
+        "q386f0c508ra"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":8,\"link_index\":7,\"ifname\":\"q386f0c508ra\",\"flags\":[\"BROADCAST\",\"MULTICAST\"],\"mtu\":1500,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"c2:07:51:da:82:d8\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":1,\"ifalias\":\"cq3-86f0c508\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "link",
+        "set",
+        "q386f0c508ra",
+        "name",
+        "r1"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "link",
+        "set",
+        "dev",
+        "r1",
+        "addrgenmode",
+        "none"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "link",
+        "set",
+        "dev",
+        "r1",
+        "mtu",
+        "1500",
+        "up"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "q386f0c508rb",
+        "netns",
+        "cq3-86f0c508-s"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-s",
+        "-j",
+        "link",
+        "show",
+        "dev",
+        "q386f0c508rb"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":7,\"link_index\":8,\"ifname\":\"q386f0c508rb\",\"flags\":[\"BROADCAST\",\"MULTICAST\"],\"mtu\":1500,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"fe:28:73:da:71:a1\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-86f0c508\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-s",
+        "link",
+        "set",
+        "q386f0c508rb",
+        "name",
+        "s0"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-s",
+        "link",
+        "set",
+        "dev",
+        "s0",
+        "addrgenmode",
+        "none"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-s",
+        "link",
+        "set",
+        "dev",
+        "s0",
+        "mtu",
+        "1500",
+        "up"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-c",
+        "-6",
+        "addr",
+        "add",
+        "fd42:c0a:1::2/64",
+        "dev",
+        "c0",
+        "nodad"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-c",
+        "-6",
+        "addr",
+        "add",
+        "fe80::c/64",
+        "dev",
+        "c0",
+        "nodad"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "-6",
+        "addr",
+        "add",
+        "fd42:c0a:1::1/64",
+        "dev",
+        "r0",
+        "nodad"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "-6",
+        "addr",
+        "add",
+        "fe80::1/64",
+        "dev",
+        "r0",
+        "nodad"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "-6",
+        "addr",
+        "add",
+        "fd42:c0a:2::1/64",
+        "dev",
+        "r1",
+        "nodad"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "-6",
+        "addr",
+        "add",
+        "fe80::2/64",
+        "dev",
+        "r1",
+        "nodad"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-s",
+        "-6",
+        "addr",
+        "add",
+        "fd42:c0a:2::2/64",
+        "dev",
+        "s0",
+        "nodad"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-s",
+        "-6",
+        "addr",
+        "add",
+        "fe80::5/64",
+        "dev",
+        "s0",
+        "nodad"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "exec",
+        "cq3-86f0c508-r",
+        "sysctl",
+        "-w",
+        "net.ipv6.conf.all.forwarding=1"
+      ],
+      "exit": 0,
+      "stdout": "net.ipv6.conf.all.forwarding = 1\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-c",
+        "-6",
+        "route",
+        "add",
+        "fd42:c0a:2::/64",
+        "via",
+        "fd42:c0a:1::1",
+        "dev",
+        "c0"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-s",
+        "-6",
+        "route",
+        "add",
+        "fd42:c0a:1::/64",
+        "via",
+        "fd42:c0a:2::1",
+        "dev",
+        "s0"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-c",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":6,\"link_index\":5,\"ifname\":\"c0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"92:a5:06:01:21:f5\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":1,\"ifalias\":\"cq3-86f0c508\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-c",
+        "-j",
+        "-6",
+        "addr"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"operstate\":\"UNKNOWN\",\"txqlen\":1000,\"addr_info\":[{\"family\":\"inet6\",\"local\":\"::1\",\"prefixlen\":128,\"scope\":\"host\",\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]},{\"ifindex\":6,\"link\":\"if5\",\"ifname\":\"c0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"operstate\":\"UP\",\"txqlen\":1000,\"addr_info\":[{\"family\":\"inet6\",\"local\":\"fd42:c0a:1::2\",\"prefixlen\":64,\"scope\":\"global\",\"nodad\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295},{\"family\":\"inet6\",\"local\":\"fe80::c\",\"prefixlen\":64,\"scope\":\"link\",\"nodad\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-c",
+        "-j",
+        "-6",
+        "route"
+      ],
+      "exit": 0,
+      "stdout": "[{\"dst\":\"fd42:c0a:1::/64\",\"dev\":\"c0\",\"protocol\":\"kernel\",\"metric\":256,\"flags\":[],\"pref\":\"medium\"},{\"dst\":\"fd42:c0a:2::/64\",\"gateway\":\"fd42:c0a:1::1\",\"dev\":\"c0\",\"metric\":1024,\"flags\":[],\"pref\":\"medium\"},{\"dst\":\"fe80::/64\",\"dev\":\"c0\",\"protocol\":\"kernel\",\"metric\":256,\"flags\":[],\"pref\":\"medium\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":5,\"link_index\":6,\"ifname\":\"r0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"9e:1c:b0:24:1d:22\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-86f0c508\"},{\"ifindex\":8,\"link_index\":7,\"ifname\":\"r1\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"c2:07:51:da:82:d8\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":2,\"ifalias\":\"cq3-86f0c508\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "-j",
+        "-6",
+        "addr"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"operstate\":\"UNKNOWN\",\"txqlen\":1000,\"addr_info\":[{\"family\":\"inet6\",\"local\":\"::1\",\"prefixlen\":128,\"scope\":\"host\",\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]},{\"ifindex\":5,\"link\":\"if6\",\"ifname\":\"r0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"operstate\":\"UP\",\"txqlen\":1000,\"addr_info\":[{\"family\":\"inet6\",\"local\":\"fd42:c0a:1::1\",\"prefixlen\":64,\"scope\":\"global\",\"nodad\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295},{\"family\":\"inet6\",\"local\":\"fe80::1\",\"prefixlen\":64,\"scope\":\"link\",\"nodad\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]},{\"ifindex\":8,\"link\":\"if7\",\"ifname\":\"r1\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"operstate\":\"UP\",\"txqlen\":1000,\"addr_info\":[{\"family\":\"inet6\",\"local\":\"fd42:c0a:2::1\",\"prefixlen\":64,\"scope\":\"global\",\"nodad\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295},{\"family\":\"inet6\",\"local\":\"fe80::2\",\"prefixlen\":64,\"scope\":\"link\",\"nodad\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "-j",
+        "-6",
+        "route"
+      ],
+      "exit": 0,
+      "stdout": "[{\"dst\":\"fd42:c0a:1::/64\",\"dev\":\"r0\",\"protocol\":\"kernel\",\"metric\":256,\"flags\":[],\"pref\":\"medium\"},{\"dst\":\"fd42:c0a:2::/64\",\"dev\":\"r1\",\"protocol\":\"kernel\",\"metric\":256,\"flags\":[],\"pref\":\"medium\"},{\"dst\":\"fe80::/64\",\"dev\":\"r0\",\"protocol\":\"kernel\",\"metric\":256,\"flags\":[],\"pref\":\"medium\"},{\"dst\":\"fe80::/64\",\"dev\":\"r1\",\"protocol\":\"kernel\",\"metric\":256,\"flags\":[],\"pref\":\"medium\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-s",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":7,\"link_index\":8,\"ifname\":\"s0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"fe:28:73:da:71:a1\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-86f0c508\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-s",
+        "-j",
+        "-6",
+        "addr"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"operstate\":\"UNKNOWN\",\"txqlen\":1000,\"addr_info\":[{\"family\":\"inet6\",\"local\":\"::1\",\"prefixlen\":128,\"scope\":\"host\",\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]},{\"ifindex\":7,\"link\":\"if8\",\"ifname\":\"s0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"operstate\":\"UP\",\"txqlen\":1000,\"addr_info\":[{\"family\":\"inet6\",\"local\":\"fd42:c0a:2::2\",\"prefixlen\":64,\"scope\":\"global\",\"nodad\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295},{\"family\":\"inet6\",\"local\":\"fe80::5\",\"prefixlen\":64,\"scope\":\"link\",\"nodad\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-s",
+        "-j",
+        "-6",
+        "route"
+      ],
+      "exit": 0,
+      "stdout": "[{\"dst\":\"fd42:c0a:1::/64\",\"gateway\":\"fd42:c0a:2::1\",\"dev\":\"s0\",\"metric\":1024,\"flags\":[],\"pref\":\"medium\"},{\"dst\":\"fd42:c0a:2::/64\",\"dev\":\"s0\",\"protocol\":\"kernel\",\"metric\":256,\"flags\":[],\"pref\":\"medium\"},{\"dst\":\"fe80::/64\",\"dev\":\"s0\",\"protocol\":\"kernel\",\"metric\":256,\"flags\":[],\"pref\":\"medium\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "pids",
+        "cq3-86f0c508-c"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-c",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":6,\"link_index\":5,\"ifname\":\"c0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"92:a5:06:01:21:f5\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":1,\"ifalias\":\"cq3-86f0c508\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "pids",
+        "cq3-86f0c508-r"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":5,\"link_index\":6,\"ifname\":\"r0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"9e:1c:b0:24:1d:22\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-86f0c508\"},{\"ifindex\":8,\"link_index\":7,\"ifname\":\"r1\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"c2:07:51:da:82:d8\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":2,\"ifalias\":\"cq3-86f0c508\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "pids",
+        "cq3-86f0c508-s"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-s",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":7,\"link_index\":8,\"ifname\":\"s0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"fe:28:73:da:71:a1\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-86f0c508\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":2,\"ifname\":\"eth0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"mq\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"38:33:c5:d6:d4:fd\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"ifalias\":\"Network Device\"},{\"ifindex\":3,\"ifname\":\"ens1\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"SLAVE\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"mq\",\"master\":\"eth0\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"38:33:c5:d6:d4:fd\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"altnames\":[\"enp0s0\"]},{\"ifindex\":4,\"ifname\":\"docker0\",\"flags\":[\"NO-CARRIER\",\"BROADCAST\",\"MULTICAST\",\"UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"0a:68:2f:ed:7b:c4\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "pids",
+        "cq3-86f0c508-s"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-s",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":7,\"link_index\":8,\"ifname\":\"s0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"fe:28:73:da:71:a1\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-86f0c508\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "delete",
+        "cq3-86f0c508-s"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "pids",
+        "cq3-86f0c508-r"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-r",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":5,\"link_index\":6,\"ifname\":\"r0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"9e:1c:b0:24:1d:22\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-86f0c508\"},{\"ifindex\":8,\"link_index\":7,\"ifname\":\"r1\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"c2:07:51:da:82:d8\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":2,\"ifalias\":\"cq3-86f0c508\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "delete",
+        "cq3-86f0c508-r"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "pids",
+        "cq3-86f0c508-c"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-86f0c508-c",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":6,\"link_index\":5,\"ifname\":\"c0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"92:a5:06:01:21:f5\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":1,\"ifalias\":\"cq3-86f0c508\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "delete",
+        "cq3-86f0c508-c"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "topology": {
+    "c": {
+      "links": [
+        {
+          "ifindex": 1,
+          "ifname": "lo",
+          "flags": [
+            "LOOPBACK",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 65536,
+          "qdisc": "noqueue",
+          "operstate": "UNKNOWN",
+          "linkmode": "DEFAULT",
+          "group": "default",
+          "txqlen": 1000,
+          "link_type": "loopback",
+          "address": "00:00:00:00:00:00",
+          "broadcast": "00:00:00:00:00:00"
+        },
+        {
+          "ifindex": 6,
+          "link_index": 5,
+          "ifname": "c0",
+          "flags": [
+            "BROADCAST",
+            "MULTICAST",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 1500,
+          "qdisc": "noqueue",
+          "operstate": "UP",
+          "linkmode": "DEFAULT",
+          "group": "default",
+          "txqlen": 1000,
+          "link_type": "ether",
+          "address": "92:a5:06:01:21:f5",
+          "broadcast": "ff:ff:ff:ff:ff:ff",
+          "link_netnsid": 1,
+          "ifalias": "cq3-86f0c508"
+        }
+      ],
+      "addresses": [
+        {
+          "ifindex": 1,
+          "ifname": "lo",
+          "flags": [
+            "LOOPBACK",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 65536,
+          "operstate": "UNKNOWN",
+          "txqlen": 1000,
+          "addr_info": [
+            {
+              "family": "inet6",
+              "local": "::1",
+              "prefixlen": 128,
+              "scope": "host",
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            }
+          ]
+        },
+        {
+          "ifindex": 6,
+          "link": "if5",
+          "ifname": "c0",
+          "flags": [
+            "BROADCAST",
+            "MULTICAST",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 1500,
+          "operstate": "UP",
+          "txqlen": 1000,
+          "addr_info": [
+            {
+              "family": "inet6",
+              "local": "fd42:c0a:1::2",
+              "prefixlen": 64,
+              "scope": "global",
+              "nodad": true,
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            },
+            {
+              "family": "inet6",
+              "local": "fe80::c",
+              "prefixlen": 64,
+              "scope": "link",
+              "nodad": true,
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "dst": "fd42:c0a:1::/64",
+          "dev": "c0",
+          "protocol": "kernel",
+          "metric": 256,
+          "flags": [],
+          "pref": "medium"
+        },
+        {
+          "dst": "fd42:c0a:2::/64",
+          "gateway": "fd42:c0a:1::1",
+          "dev": "c0",
+          "metric": 1024,
+          "flags": [],
+          "pref": "medium"
+        },
+        {
+          "dst": "fe80::/64",
+          "dev": "c0",
+          "protocol": "kernel",
+          "metric": 256,
+          "flags": [],
+          "pref": "medium"
+        }
+      ]
+    },
+    "r": {
+      "links": [
+        {
+          "ifindex": 1,
+          "ifname": "lo",
+          "flags": [
+            "LOOPBACK",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 65536,
+          "qdisc": "noqueue",
+          "operstate": "UNKNOWN",
+          "linkmode": "DEFAULT",
+          "group": "default",
+          "txqlen": 1000,
+          "link_type": "loopback",
+          "address": "00:00:00:00:00:00",
+          "broadcast": "00:00:00:00:00:00"
+        },
+        {
+          "ifindex": 5,
+          "link_index": 6,
+          "ifname": "r0",
+          "flags": [
+            "BROADCAST",
+            "MULTICAST",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 1500,
+          "qdisc": "noqueue",
+          "operstate": "UP",
+          "linkmode": "DEFAULT",
+          "group": "default",
+          "txqlen": 1000,
+          "link_type": "ether",
+          "address": "9e:1c:b0:24:1d:22",
+          "broadcast": "ff:ff:ff:ff:ff:ff",
+          "link_netnsid": 0,
+          "ifalias": "cq3-86f0c508"
+        },
+        {
+          "ifindex": 8,
+          "link_index": 7,
+          "ifname": "r1",
+          "flags": [
+            "BROADCAST",
+            "MULTICAST",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 1500,
+          "qdisc": "noqueue",
+          "operstate": "UP",
+          "linkmode": "DEFAULT",
+          "group": "default",
+          "txqlen": 1000,
+          "link_type": "ether",
+          "address": "c2:07:51:da:82:d8",
+          "broadcast": "ff:ff:ff:ff:ff:ff",
+          "link_netnsid": 2,
+          "ifalias": "cq3-86f0c508"
+        }
+      ],
+      "addresses": [
+        {
+          "ifindex": 1,
+          "ifname": "lo",
+          "flags": [
+            "LOOPBACK",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 65536,
+          "operstate": "UNKNOWN",
+          "txqlen": 1000,
+          "addr_info": [
+            {
+              "family": "inet6",
+              "local": "::1",
+              "prefixlen": 128,
+              "scope": "host",
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            }
+          ]
+        },
+        {
+          "ifindex": 5,
+          "link": "if6",
+          "ifname": "r0",
+          "flags": [
+            "BROADCAST",
+            "MULTICAST",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 1500,
+          "operstate": "UP",
+          "txqlen": 1000,
+          "addr_info": [
+            {
+              "family": "inet6",
+              "local": "fd42:c0a:1::1",
+              "prefixlen": 64,
+              "scope": "global",
+              "nodad": true,
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            },
+            {
+              "family": "inet6",
+              "local": "fe80::1",
+              "prefixlen": 64,
+              "scope": "link",
+              "nodad": true,
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            }
+          ]
+        },
+        {
+          "ifindex": 8,
+          "link": "if7",
+          "ifname": "r1",
+          "flags": [
+            "BROADCAST",
+            "MULTICAST",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 1500,
+          "operstate": "UP",
+          "txqlen": 1000,
+          "addr_info": [
+            {
+              "family": "inet6",
+              "local": "fd42:c0a:2::1",
+              "prefixlen": 64,
+              "scope": "global",
+              "nodad": true,
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            },
+            {
+              "family": "inet6",
+              "local": "fe80::2",
+              "prefixlen": 64,
+              "scope": "link",
+              "nodad": true,
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "dst": "fd42:c0a:1::/64",
+          "dev": "r0",
+          "protocol": "kernel",
+          "metric": 256,
+          "flags": [],
+          "pref": "medium"
+        },
+        {
+          "dst": "fd42:c0a:2::/64",
+          "dev": "r1",
+          "protocol": "kernel",
+          "metric": 256,
+          "flags": [],
+          "pref": "medium"
+        },
+        {
+          "dst": "fe80::/64",
+          "dev": "r0",
+          "protocol": "kernel",
+          "metric": 256,
+          "flags": [],
+          "pref": "medium"
+        },
+        {
+          "dst": "fe80::/64",
+          "dev": "r1",
+          "protocol": "kernel",
+          "metric": 256,
+          "flags": [],
+          "pref": "medium"
+        }
+      ]
+    },
+    "s": {
+      "links": [
+        {
+          "ifindex": 1,
+          "ifname": "lo",
+          "flags": [
+            "LOOPBACK",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 65536,
+          "qdisc": "noqueue",
+          "operstate": "UNKNOWN",
+          "linkmode": "DEFAULT",
+          "group": "default",
+          "txqlen": 1000,
+          "link_type": "loopback",
+          "address": "00:00:00:00:00:00",
+          "broadcast": "00:00:00:00:00:00"
+        },
+        {
+          "ifindex": 7,
+          "link_index": 8,
+          "ifname": "s0",
+          "flags": [
+            "BROADCAST",
+            "MULTICAST",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 1500,
+          "qdisc": "noqueue",
+          "operstate": "UP",
+          "linkmode": "DEFAULT",
+          "group": "default",
+          "txqlen": 1000,
+          "link_type": "ether",
+          "address": "fe:28:73:da:71:a1",
+          "broadcast": "ff:ff:ff:ff:ff:ff",
+          "link_netnsid": 0,
+          "ifalias": "cq3-86f0c508"
+        }
+      ],
+      "addresses": [
+        {
+          "ifindex": 1,
+          "ifname": "lo",
+          "flags": [
+            "LOOPBACK",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 65536,
+          "operstate": "UNKNOWN",
+          "txqlen": 1000,
+          "addr_info": [
+            {
+              "family": "inet6",
+              "local": "::1",
+              "prefixlen": 128,
+              "scope": "host",
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            }
+          ]
+        },
+        {
+          "ifindex": 7,
+          "link": "if8",
+          "ifname": "s0",
+          "flags": [
+            "BROADCAST",
+            "MULTICAST",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 1500,
+          "operstate": "UP",
+          "txqlen": 1000,
+          "addr_info": [
+            {
+              "family": "inet6",
+              "local": "fd42:c0a:2::2",
+              "prefixlen": 64,
+              "scope": "global",
+              "nodad": true,
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            },
+            {
+              "family": "inet6",
+              "local": "fe80::5",
+              "prefixlen": 64,
+              "scope": "link",
+              "nodad": true,
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "dst": "fd42:c0a:1::/64",
+          "gateway": "fd42:c0a:2::1",
+          "dev": "s0",
+          "metric": 1024,
+          "flags": [],
+          "pref": "medium"
+        },
+        {
+          "dst": "fd42:c0a:2::/64",
+          "dev": "s0",
+          "protocol": "kernel",
+          "metric": 256,
+          "flags": [],
+          "pref": "medium"
+        },
+        {
+          "dst": "fe80::/64",
+          "dev": "s0",
+          "protocol": "kernel",
+          "metric": 256,
+          "flags": [],
+          "pref": "medium"
+        }
+      ]
+    }
+  },
+  "cleanup": {
+    "complete": true,
+    "retained_reasons": []
+  },
+  "source_identity_after": {
+    "source": "edfd1eb1669e8c164fc318e47f531d1c7e41e7a5",
+    "dirty": false,
+    "suite_source": "d5e93eb4f4b8b91bf51878ce6ec76d1dbc629e0f",
+    "suite_dirty": false,
+    "suite_locks": {
+      "Cargo.lock": "f711ce82fa0c978951b004095f37ad2cc4b05c1ceabbff406646ba6c87ed934b",
+      "tools/benchmark/native/Cargo.lock": "eb16c47c2f3539aaa45bd82e4eab48f229b252183998857f6a80a6ffc7432075",
+      "tools/security-interop/Cargo.lock": "e12762939ad364280a46bc526683de74567855448bf0f4e6263d79bad32e0653",
+      "tools/security-profile/Cargo.lock": "278f01b25bc5f2e9aab89f1c53cdbb97e3f12ae6269d81452a36393755e9e8c5",
+      "tools/esphome/rust/Cargo.lock": "7661bf627e28c7ec2eda22a2212081ce5f6e4e5b80d29d2da3d92c25ff74551d",
+      "tools/qualification/esp32/Cargo.lock": "5fda0d74045b28886c9b5dead108857d87e64b405ce193eeb7e1255483ef0773",
+      "tools/durable-host/Cargo.lock": "40a13b28dc161217c0f84afa18c3b870a840b48ccea2acf7071b0ef34b4205cf"
+    }
+  }
+}
