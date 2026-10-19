@@ -32,6 +32,8 @@ pub struct Report {
     pub receipts: u32,
     pub dropped_receipts: u32,
     pub effects: usize,
+    /// Local observation failures; never alter durable/protocol outcomes.
+    pub diagnostic_failures: u32,
 }
 #[derive(Debug)]
 pub enum Error {
@@ -72,6 +74,7 @@ pub fn run<T: DatagramIo, S: Store>(
         security,
         journal,
         None::<fn() -> bool>,
+        None,
     )
 }
 
@@ -88,9 +91,46 @@ pub fn run_with_ready<T: DatagramIo, S: Store>(
     journal: &mut Journal,
     ready: impl FnOnce() -> bool,
 ) -> Result<Report, Error> {
-    run_inner(io, random, clock, binding, security, journal, Some(ready))
+    run_inner(
+        io,
+        random,
+        clock,
+        binding,
+        security,
+        journal,
+        Some(ready),
+        None,
+    )
 }
 
+/// Serve with optional host diagnostics. Observation failure is counted in the
+/// report and never changes receipt, replay, checkpoint or send policy.
+/// The caller owns the adapter and assigns this service its fixed source ID.
+#[allow(clippy::too_many_arguments)]
+pub fn run_observed<T: DatagramIo, S: Store>(
+    io: T,
+    random: fn(&mut [u8]) -> bool,
+    clock: impl FnMut() -> Option<u64>,
+    binding: Binding<'_>,
+    security: S,
+    journal: &mut Journal,
+    ready: impl FnOnce() -> bool,
+    diagnostics: &crate::diagnostics::Diagnostics,
+    source: u32,
+) -> Result<Report, Error> {
+    run_inner(
+        io,
+        random,
+        clock,
+        binding,
+        security,
+        journal,
+        Some(ready),
+        Some((diagnostics, source)),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 fn run_inner<T: DatagramIo, S: Store>(
     io: T,
     random: fn(&mut [u8]) -> bool,
@@ -99,6 +139,7 @@ fn run_inner<T: DatagramIo, S: Store>(
     security: S,
     journal: &mut Journal,
     ready: Option<impl FnOnce() -> bool>,
+    diagnostics: Option<(&crate::diagnostics::Diagnostics, u32)>,
 ) -> Result<Report, Error> {
     if binding.timeout_ms == 0 || binding.max_polls == 0 {
         return Err(Error::Bounds);
@@ -191,6 +232,17 @@ fn run_inner<T: DatagramIo, S: Store>(
                 Response::deferred()
             },
         );
+        if let Some((diagnostics, source)) = diagnostics {
+            let recorded = if let Err(error) = &result {
+                diagnostics.record(source, coaptic::app::diagnostics::Reason::from_error(error))
+            } else {
+                Ok(())
+            };
+            let sampled = diagnostics.sample(source, app.diagnostic_snapshot(now));
+            if recorded.is_err() || sampled.is_err() {
+                report.diagnostic_failures = report.diagnostic_failures.wrapping_add(1);
+            }
+        }
         if checkpoint_failed {
             return Err(Error::Checkpoint);
         }

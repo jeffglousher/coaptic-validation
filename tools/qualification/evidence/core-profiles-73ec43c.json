@@ -1,0 +1,288 @@
+{
+  "scope": "Finite named UDP, discovery, token, Observe and OSCORE protocol profiles; direct tests, not exhaustive RFC or independent-peer qualification",
+  "passed": true,
+  "requirements": [
+    {
+      "id": "unknown-critical-request",
+      "passed": true,
+      "tests": 1
+    },
+    {
+      "id": "post-dedup-effect",
+      "passed": true,
+      "tests": 2
+    },
+    {
+      "id": "separate-response",
+      "passed": true,
+      "tests": 2
+    },
+    {
+      "id": "conditional-upload-refusal",
+      "passed": true,
+      "tests": 2
+    },
+    {
+      "id": "fragmented-if-match",
+      "passed": true,
+      "tests": 4
+    },
+    {
+      "id": "classic-block1-if-none-match",
+      "passed": true,
+      "tests": 8
+    },
+    {
+      "id": "qblock1-if-none-match",
+      "passed": true,
+      "tests": 9
+    },
+    {
+      "id": "fragmented-fetch-etag",
+      "passed": true,
+      "tests": 15
+    },
+    {
+      "id": "qblock1-fetch-etag",
+      "passed": true,
+      "tests": 13
+    },
+    {
+      "id": "observe-order",
+      "passed": true,
+      "tests": 1
+    },
+    {
+      "id": "observe-reregistration",
+      "passed": true,
+      "tests": 2
+    },
+    {
+      "id": "observe-format",
+      "passed": true,
+      "tests": 1
+    },
+    {
+      "id": "block1-negotiation",
+      "passed": true,
+      "tests": 2
+    },
+    {
+      "id": "block2-retained-body",
+      "passed": true,
+      "tests": 2
+    },
+    {
+      "id": "qblock1-holes",
+      "passed": true,
+      "tests": 2
+    },
+    {
+      "id": "qblock2-recovery",
+      "passed": true,
+      "tests": 1
+    },
+    {
+      "id": "no-response",
+      "passed": true,
+      "tests": 2
+    },
+    {
+      "id": "classic-block1-error-no-response",
+      "passed": true,
+      "tests": 6
+    },
+    {
+      "id": "qblock1-server-error-no-response",
+      "passed": true,
+      "tests": 6
+    },
+    {
+      "id": "qblock1-con-success-no-response",
+      "passed": true,
+      "tests": 6
+    },
+    {
+      "id": "deferred-fetch-validator",
+      "passed": true,
+      "tests": 5
+    },
+    {
+      "id": "deferred-qblock2-snapshot",
+      "passed": true,
+      "tests": 11
+    },
+    {
+      "id": "deferred-qblock2-repeated-selection",
+      "passed": true,
+      "tests": 7
+    },
+    {
+      "id": "bounded-dedup-history",
+      "passed": true,
+      "tests": 8
+    },
+    {
+      "id": "echo-freshness",
+      "passed": true,
+      "tests": 3
+    },
+    {
+      "id": "oscore-replay",
+      "passed": true,
+      "tests": 2
+    },
+    {
+      "id": "oscore-sender-reservation",
+      "passed": true,
+      "tests": 2
+    },
+    {
+      "id": "oscore-replay-restore",
+      "passed": true,
+      "tests": 2
+    },
+    {
+      "id": "oscore-observe-replay",
+      "passed": true,
+      "tests": 2
+    },
+    {
+      "id": "oscore-qblock2-authentication",
+      "passed": true,
+      "tests": 2
+    },
+    {
+      "id": "oscore-context-replacement-lifecycle",
+      "passed": true,
+      "tests": 12
+    },
+    {
+      "id": "deferred-qblock2-initial-selectors",
+      "passed": true,
+      "tests": 9
+    },
+    {
+      "id": "qblock1-non-success-pacing",
+      "passed": true,
+      "tests": 21
+    },
+    {
+      "id": "deferred-observe-registration",
+      "passed": true,
+      "tests": 18
+    },
+    {
+      "id": "selected-observe-registration-refusal",
+      "passed": true,
+      "tests": 13
+    },
+    {
+      "id": "deferred-observe-initial-block2",
+      "passed": true,
+      "tests": 14
+    },
+    {
+      "id": "observe-block2-size-preference",
+      "passed": true,
+      "tests": 11
+    },
+    {
+      "id": "discovery-link-format",
+      "passed": true,
+      "tests": 11
+    },
+    {
+      "id": "discovery-origin-metadata",
+      "passed": true,
+      "tests": 4
+    },
+    {
+      "id": "absolute-coap-uri",
+      "passed": true,
+      "tests": 6
+    },
+    {
+      "id": "extended-token-wire",
+      "passed": true,
+      "tests": 5
+    },
+    {
+      "id": "extended-token-capacity",
+      "passed": true,
+      "tests": 6
+    },
+    {
+      "id": "extended-token-probe",
+      "passed": true,
+      "tests": 4
+    },
+    {
+      "id": "association-context-isolation",
+      "passed": true,
+      "tests": 3
+    },
+    {
+      "id": "association-shared-nstart",
+      "passed": true,
+      "tests": 1
+    },
+    {
+      "id": "bounded-overload-admission",
+      "passed": true,
+      "tests": 4
+    },
+    {
+      "id": "client-overload-backoff",
+      "passed": true,
+      "tests": 5
+    },
+    {
+      "id": "observe-nonzero-initial-block",
+      "passed": true,
+      "tests": 1
+    },
+    {
+      "id": "observe-qblock2-retained-epoch",
+      "passed": true,
+      "tests": 5
+    },
+    {
+      "id": "observe-qblock2-con-ack",
+      "passed": true,
+      "tests": 3
+    },
+    {
+      "id": "observe-initial-valid",
+      "passed": true,
+      "tests": 1
+    },
+    {
+      "id": "observe-terminal-no-response",
+      "passed": true,
+      "tests": 1
+    }
+  ],
+  "manifest_sha256": "d613d24f1db5f28b43ccd5f4e756c56763ccebc62b63f70198f8150d8b6aacb7",
+  "core_source": "73ec43c0bc8db0e204eacb221b42d140459f6d36",
+  "evidence_scope": "Original all-feature run plus corrected deferred/unit fixtures; original failed records retained. No independent-peer or hardware claim.",
+  "normalization": "Decode UTF-16LE BOM and join whitespace only in exact test NAME ... STATUS records; original logs unchanged.",
+  "logs": [
+    {
+      "path": "D:\\CoapticCurrent\\ietf-reconcile-all-features.log",
+      "sha256": "0894739c7447356cc31cec4dfa472d53719df69ee6bd1d5ba208b7cbd3527cd5"
+    },
+    {
+      "path": "D:\\CoapticCurrent\\observe520-deferred-refresh.log",
+      "sha256": "36e7b82ee8ddb9b6c9c0d989912453668b8dd781fe3ad6b04f46d31e11e7e0d7"
+    },
+    {
+      "path": "D:\\CoapticCurrent\\observe520-unit-refresh.log",
+      "sha256": "341d36855a7beb63e68b3f5c0bce30e556b9f81738cba1f7e1ccdf9f9ce866f3"
+    }
+  ],
+  "superseded_fixture_failures": [
+    "deferred_observe_capacity_fallback_and_unavailable_source_recover",
+    "app::tests::observe_transfer_registration_and_selection_capacity_refusal_recover"
+  ]
+}
