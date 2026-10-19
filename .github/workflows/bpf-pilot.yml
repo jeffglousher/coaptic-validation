@@ -119,10 +119,14 @@ jobs:
       - name: Verifier log, actual XDP differential and owned-veth lifecycle
         run: |
           set -euo pipefail
+          ip -j link show > "$RUNNER_TEMP/bpf-evidence/lifecycle-before.json"
+          trap 'ip -j link show > "$RUNNER_TEMP/bpf-evidence/lifecycle-after.json"' EXIT
           sudo env COAPTIC_BPF_EVIDENCE="$RUNNER_TEMP/bpf-evidence" "$RUNNER_TEMP/bpf-target/release/coaptic-ingress-loader" "$RUNNER_TEMP/bpf-evidence/ingress.elf" qualify 2 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/kernel-probe-instrumented.log"
           grep 'COAPTIC_QUALIFICATION_VERIFIER_BEGIN' "$RUNNER_TEMP/bpf-evidence/kernel-probe-instrumented.log"
           grep -E 'stack depth|processed [0-9]+ insns' "$RUNNER_TEMP/bpf-evidence/kernel-probe-instrumented.log"
           sudo "$RUNNER_TEMP/bpf-evidence/loader-normal" "$RUNNER_TEMP/bpf-evidence/ingress.elf" qualify 1 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/kernel-probe-normal.log"
+          ip -j link show > "$RUNNER_TEMP/bpf-evidence/lifecycle-after.json"
+          cmp "$RUNNER_TEMP/bpf-evidence/lifecycle-before.json" "$RUNNER_TEMP/bpf-evidence/lifecycle-after.json"
       - name: Unsupported-capability refusal leaves no interfaces
         run: |
           set -euo pipefail

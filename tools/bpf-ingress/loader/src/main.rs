@@ -52,6 +52,13 @@ mod linux {
                 "owned ingress={} peer={} ifindices={:?}",
                 owned.name, owned.peer, owned.indices
             );
+            println!(
+                "OWNED_RECORD {}",
+                serde_json::json!({
+                    "pid": std::process::id(), "ingress": owned.name, "peer": owned.peer,
+                    "ingress_index": owned.indices.map(|v| v.0), "peer_index": owned.indices.map(|v| v.1)
+                })
+            );
             Ok(owned)
         }
         fn verify_identity(&self) -> Result<u32> {
@@ -86,6 +93,141 @@ mod linux {
             }
         }
     }
+    struct OwnedChild {
+        child: std::process::Child,
+        record: Option<Veth>,
+        waited: bool,
+    }
+    impl OwnedChild {
+        fn stop(&mut self) -> Result<std::process::ExitStatus> {
+            let kill = self.child.kill();
+            // Always reap before inspecting/removing the recorded network resources.
+            let status = self.child.wait()?;
+            self.waited = true;
+            kill?;
+            Ok(status)
+        }
+    }
+    impl Drop for OwnedChild {
+        fn drop(&mut self) {
+            if !self.waited && self.stop().is_err() && !self.waited {
+                // Without confirmed termination, even a genuine record is not a cleanup grant.
+                if let Some(record) = &mut self.record {
+                    record.owned = false;
+                }
+                eprintln!(
+                    "cannot confirm owned child termination; retain recorded veth for reconciliation"
+                );
+            }
+            if self.waited
+                && let Some(record) = &mut self.record
+                && record.verify_identity().is_ok()
+            {
+                record.owned = true;
+            }
+        }
+    }
+    fn terminated_child(object: &str) -> Result<()> {
+        use std::{
+            io::{BufRead, BufReader},
+            os::unix::process::ExitStatusExt,
+            process::Stdio,
+        };
+        let child = std::process::Command::new(std::env::current_exe()?)
+            .args([object, "60", "1"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()?;
+        let mut owned = OwnedChild {
+            child,
+            record: None,
+            waited: false,
+        };
+        let stdout = owned
+            .child
+            .stdout
+            .take()
+            .ok_or("child stdout unavailable")?;
+        let (send, receive) = std::sync::mpsc::sync_channel(8);
+        let reader = std::thread::spawn(move || {
+            for line in BufReader::new(stdout).lines() {
+                if send.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        loop {
+            let remaining = deadline
+                .checked_duration_since(std::time::Instant::now())
+                .ok_or("child attach timeout")?;
+            let line = receive
+                .recv_timeout(remaining)
+                .map_err(|_| "child did not report attachment")??;
+            println!("child {}: {line}", owned.child.id());
+            if let Some(record) = line.strip_prefix("OWNED_RECORD ") {
+                let record: serde_json::Value = serde_json::from_str(record)?;
+                let pid = owned.child.id();
+                let name = format!("cpb{pid}a");
+                let peer = format!("cpb{pid}b");
+                if owned.record.is_some()
+                    || record["pid"].as_u64() != Some(u64::from(pid))
+                    || record["ingress"].as_str() != Some(name.as_str())
+                    || record["peer"].as_str() != Some(peer.as_str())
+                {
+                    return Err("child ownership record differs from spawned process".into());
+                }
+                let index = u32::try_from(
+                    record["ingress_index"]
+                        .as_u64()
+                        .ok_or("missing child ingress index")?,
+                )?;
+                let peer_index = u32::try_from(
+                    record["peer_index"]
+                        .as_u64()
+                        .ok_or("missing child peer index")?,
+                )?;
+                let veth = Veth {
+                    name,
+                    peer,
+                    indices: Some((index, peer_index)),
+                    owned: false,
+                };
+                veth.verify_identity()?;
+                owned.record = Some(veth);
+            }
+            if line.starts_with("attached cycle=0;") {
+                break;
+            }
+        }
+        if owned.record.is_none() {
+            return Err("child attached without ownership record".into());
+        }
+        let status = owned.stop()?;
+        if status.signal() != Some(libc::SIGKILL) {
+            return Err("child was not terminated by SIGKILL".into());
+        }
+        reader.join().map_err(|_| "child output reader panicked")?;
+        let record = owned
+            .record
+            .as_mut()
+            .ok_or("missing stopped child record")?;
+        record.verify_identity()?;
+        record.owned = true;
+        crate::probe::attached(&record.name, None)?;
+        record.cleanup()?;
+        if std::path::Path::new(&format!("/sys/class/net/{}", record.name)).exists()
+            || std::path::Path::new(&format!("/sys/class/net/{}", record.peer)).exists()
+        {
+            return Err("terminated child veth still exists after owned cleanup".into());
+        }
+        println!(
+            "terminated-child recovery PASS pid={} indices={:?}; wait completed, identities verified, links detached and pair deleted",
+            owned.child.id(),
+            record.indices
+        );
+        Ok(())
+    }
     pub fn run() -> Result<()> {
         let args: Vec<_> = std::env::args().collect();
         if args.len() != 4 {
@@ -113,6 +255,7 @@ mod linux {
             if qualify {
                 crate::probe::metadata(&mut bpf, cycle)?;
                 crate::probe::differential(&mut bpf)?;
+                crate::probe::cpu_counters(&mut bpf)?;
             }
             let program: &mut Xdp = bpf
                 .program_mut("coaptic_observe")
@@ -150,6 +293,9 @@ mod linux {
             // Nothing is pinned. Drop closes this cycle's owned object/maps.
         }
         veth.cleanup()?;
+        if qualify {
+            terminated_child(&args[1])?;
+        }
         Ok(())
     }
 }
