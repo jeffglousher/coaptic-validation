@@ -72,7 +72,14 @@ struct Case {
     cleaned: bool,
     elapsed: Duration,
 }
-async fn exchange(wrong: bool) -> Result<Case, PeerError> {
+fn record_config(key: &[u8], gcm: bool) -> Config {
+    let mut config = psk_config(key);
+    if gcm {
+        config.cipher_suites = vec![CipherSuiteId::Tls_Psk_With_Aes_128_Gcm_Sha256];
+    }
+    config
+}
+async fn exchange(wrong: bool, gcm: bool) -> Result<Case, PeerError> {
     let capture = Capture::new();
     let client = tokio::net::UdpSocket::bind("127.0.0.1:0")
         .await
@@ -99,11 +106,11 @@ async fn exchange(wrong: bool) -> Result<Case, PeerError> {
         tokio::join!(
             DTLSConn::new(
                 Arc::new(client),
-                psk_config(if wrong { b"wrong" } else { PSK_KEY }),
+                record_config(if wrong { b"wrong" } else { PSK_KEY }, gcm),
                 true,
                 None
             ),
-            DTLSConn::new(tapped, psk_config(PSK_KEY), false, None)
+            DTLSConn::new(tapped, record_config(PSK_KEY, gcm), false, None)
         )
     })
     .await
@@ -184,9 +191,9 @@ async fn exchange(wrong: bool) -> Result<Case, PeerError> {
         elapsed: started.elapsed(),
     })
 }
-fn run_case(wrong: bool) -> Result<Case, PeerError> {
+fn run_case(wrong: bool, gcm: bool) -> Result<Case, PeerError> {
     let runtime = runtime()?;
-    let result = runtime.block_on(exchange(wrong));
+    let result = runtime.block_on(exchange(wrong, gcm));
     runtime.shutdown_timeout(Duration::from_secs(1));
     let mut case = result?;
     case.cleaned = true;
@@ -208,8 +215,9 @@ fn records(bytes: &[u8]) -> Result<Vec<&[u8]>, String> {
     }
     Ok(result)
 }
-fn grade(case: &Case, wrong: bool) -> Result<(), String> {
+fn grade(case: &Case, wrong: bool, gcm: bool) -> Result<(), String> {
     let [client, server] = case.endpoints;
+    let cipher_suite = if gcm { 0x00a8 } else { 0xc0a8 };
     if client == server
         || !client.ip().is_loopback()
         || !server.ip().is_loopback()
@@ -237,10 +245,10 @@ fn grade(case: &Case, wrong: bool) -> Result<(), String> {
         for record in records(&packet.bytes)? {
             let epoch = u16::from_be_bytes([record[3], record[4]]);
             if from_client && epoch == 0 {
-                hello |= crate::grade::client_hello_has_suite(record, 0xc0a8);
+                hello |= crate::grade::client_hello_has_suite(record, cipher_suite);
             }
             if !from_client && epoch == 0 {
-                selected |= crate::grade::server_hello_suite(record) == Some(0xc0a8);
+                selected |= crate::grade::server_hello_suite(record) == Some(cipher_suite);
             }
             if from_client
                 && epoch == 0
@@ -287,7 +295,11 @@ fn grade(case: &Case, wrong: bool) -> Result<(), String> {
         for packet in &case.packets {
             captured.push(packet.src, packet.dst, &packet.bytes, packet.decrypted);
         }
-        crate::grade::Catalog::load()?.grade("TD_COAP_DTLS_01", &captured)?;
+        // The literal TD requires CCM8; GCM uses the exact application and
+        // negotiation checks below without relabelling that TD.
+        if !gcm {
+            crate::grade::Catalog::load()?.grade("TD_COAP_DTLS_01", &captured)?;
+        }
         let request = coaptic::message::decode(&application[0].bytes).map_err(|e| e.to_string())?;
         let response =
             coaptic::message::decode(&application[1].bytes).map_err(|e| e.to_string())?;
@@ -329,6 +341,13 @@ fn identity(path: &std::path::Path) -> serde_json::Value {
 }
 #[test]
 fn dtls_record_policy_ordinary_wrong_key_refusal_and_fresh_recovery() {
+    qualify_record_policy(false);
+}
+#[test]
+fn dtls_record_policy_gcm_wrong_key_refusal_and_fresh_recovery() {
+    qualify_record_policy(true);
+}
+fn qualify_record_policy(gcm: bool) {
     let _guard = crate::runner::harness_lock();
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -338,7 +357,7 @@ fn dtls_record_policy_ordinary_wrong_key_refusal_and_fresh_recovery() {
     let suite = identity(root);
     let core = identity(&root.join("coaptic"));
     let provenance = serde_json::json!({
-        "suite":suite,"core":core,
+        "suite":suite,"core":core,"cipher_suite":if gcm { "TLS_PSK_WITH_AES_128_GCM_SHA256" } else { "TLS_PSK_WITH_AES_128_CCM_8" },
         "compiler":command(root,"rustc", &["-Vv"]),
         "backend_git_tree":command(root,"git", &["rev-parse","HEAD:vendor/webrtc-dtls"]),
         "backend_hash_algorithm":"git SHA-1 tree (all tracked vendored source)",
@@ -348,11 +367,15 @@ fn dtls_record_policy_ordinary_wrong_key_refusal_and_fresh_recovery() {
     let directory = std::env::var_os("COAPTIC_OBSERVE_CAPTURE_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| root.join("target/pcaps"))
-        .join("dtls-record-policy");
+        .join(if gcm {
+            "dtls-record-policy-gcm"
+        } else {
+            "dtls-record-policy"
+        });
     std::fs::create_dir_all(&directory).unwrap();
     let mut reports = Vec::new();
     for (index, wrong) in [false, true, false].into_iter().enumerate() {
-        let case = match run_case(wrong) {
+        let case = match run_case(wrong, gcm) {
             Ok(case) => case,
             Err(error) => {
                 std::fs::write(directory.join("failure.json"), serde_json::to_vec_pretty(&serde_json::json!({"provenance":provenance,"case":index,"error":error.to_string(),"complete":false})).unwrap()).unwrap();
@@ -373,7 +396,7 @@ fn dtls_record_policy_ordinary_wrong_key_refusal_and_fresh_recovery() {
             .unwrap(),
         )
         .unwrap();
-        grade(&case, wrong).unwrap();
+        grade(&case, wrong, gcm).unwrap();
         for mutation in 0..8 {
             let mut bad = case.clone();
             match mutation {
@@ -398,7 +421,7 @@ fn dtls_record_policy_ordinary_wrong_key_refusal_and_fresh_recovery() {
                 }),
                 _ => bad.completed = !case.completed,
             }
-            assert!(grade(&bad, wrong).is_err(), "mutation {mutation}");
+            assert!(grade(&bad, wrong, gcm).is_err(), "mutation {mutation}");
         }
         if !wrong {
             for index in 0..2 {
@@ -425,7 +448,7 @@ fn dtls_record_policy_ordinary_wrong_key_refusal_and_fresh_recovery() {
                         _ => *packet.bytes.last_mut().unwrap() ^= 1,
                     }
                     assert!(
-                        grade(&bad, false).is_err(),
+                        grade(&bad, false, gcm).is_err(),
                         "application {index} mutation {mutation}"
                     );
                 }
@@ -443,7 +466,7 @@ fn dtls_record_policy_ordinary_wrong_key_refusal_and_fresh_recovery() {
                         }
                     }
                 }
-                assert!(grade(&bad, true).is_err());
+                assert!(grade(&bad, true, gcm).is_err());
             }
             assert!(
                 crate::grade::Catalog::load()

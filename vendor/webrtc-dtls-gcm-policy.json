@@ -1,0 +1,11 @@
+{
+  "base_companion_revision": "72a87dfdc3c8fc7baca455efab5ab1282ddfcbb2",
+  "upstream": "webrtc-dtls-original.json",
+  "purpose": "PSK GCM typed record authentication policy; original package hashes and licenses unchanged",
+  "hash_encoding": "UTF-8 with LF line endings",
+  "outputs": {
+    "src/conn/mod.rs": "14b0515972cdb72a3776baa36a53a72e260cac8903c3b9e6fcdfd70ca0d688d5",
+    "src/conn/record_policy_test.rs": "1b90761d347e172c8c41a6753213481bab95bcd638f279a1d93f6e921d0a9427",
+    "src/crypto/crypto_gcm.rs": "805e19193b06f2eb36f9a4d0047d24f4a5e5173005f89a10b28336ea75e93356"
+  }
+}
