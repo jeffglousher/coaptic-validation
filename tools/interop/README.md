@@ -430,3 +430,26 @@ IPv6 interoperability. These loopback cases do not qualify scoped IPv6 zones.
 Enrollment, power-loss,
 routed networks, physical-device behavior and sustained availability remain
 unqualified.
+## Independent EDHOC option boundary
+
+`edhoc_options.py` reuses the pinned native libedhoc peer and the existing
+`edhoc_udp_peer` and `edhoc_recovery_peer` examples. Supply `--coaptic`,
+`--recovery`, `--libedhoc`, `--core`, `--companion` and `--output`; the native
+executable must have its matching successful build receipt. All eleven cases
+require authenticated EDHOC completion and protected application delivery.
+
+The four groups cover elective M1/M3 requests with exact replay and changed
+ignored-option isolation; elective ACK/CON/NON M2/M4 responses; initial critical
+request refusal before recovery candidate admission; and critical M2 or M4
+ACK/NON silence or exact CON Reset followed by valid recovery. Repeated elective
+options and a second Content-Format retain the canonical first occurrence.
+Reserved option zero is an intentional receiver robustness input. Separate
+critical M2/M4 cases respect the single retained refusal slot. Negative silence
+checks reject every datagram, including empty controls and error responses.
+
+The retained `independent-edhoc/options-ce7e817-8f88d76.json` capture records
+eleven passes with exact core/suite trees, executable hashes, native build
+identity and wire packets. This proves the selected envelope boundary using
+independent native EDHOC cryptography and custom aiocoap CoAP framing. It does
+not qualify a complete independent CoAP stack, sustained fairness or devices.
+
