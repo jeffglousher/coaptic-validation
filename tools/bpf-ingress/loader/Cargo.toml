@@ -6,4 +6,3 @@ edition = "2024"
 publish = false
 [target.'cfg(target_os = "linux")'.dependencies]
 aya = "=0.14.0"
-

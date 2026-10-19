@@ -11,4 +11,3 @@ coaptic-ingress-classifier = { path = "../classifier" }
 panic = "abort"
 lto = true
 codegen-units = 1
-
