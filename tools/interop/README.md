@@ -452,4 +452,3 @@ eleven passes with exact core/suite trees, executable hashes, native build
 identity and wire packets. This proves the selected envelope boundary using
 independent native EDHOC cryptography and custom aiocoap CoAP framing. It does
 not qualify a complete independent CoAP stack, sustained fairness or devices.
-
