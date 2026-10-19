@@ -33,6 +33,49 @@ fn representation(_: Request<'_>) -> Response<'static> {
         .etag(b"fixture")
 }
 
+// The quick-check path keeps the public SmallDevice preset unchanged.
+static SMALL_BODY: [u8; 32] = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+    26, 27, 28, 29, 30, 31,
+];
+
+fn small_device_server(
+    address: &str,
+    context: Option<SecurityContext>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let socket = UdpSocket::bind(address)?;
+    socket.set_nonblocking(true)?;
+    let io = UdpSocketIo::new(socket, [0u8; 1153])?;
+    let adapter_bytes = std::mem::size_of_val(&io);
+    let builder = App::with_resources(coaptic::resources::SmallDevice::new())
+        .randomness(|buffer| getrandom::fill(buffer).is_ok())
+        .route("bench", get(representation));
+    let security = if context.is_some() {
+        "volatile-oscore"
+    } else {
+        "unprotected"
+    };
+    let builder = if let Some(context) = context {
+        builder.oscore(context)
+    } else {
+        builder.allow_unprotected()
+    };
+    let mut app = builder.bind(io)?;
+    println!(
+        "{{\"profile\":\"SmallDevice\",\"pools\":\"Constrained\",\"storage\":\"fixed\",\"routes\":4,\"populated_routes\":1,\"calls\":1,\"deferred\":0,\"associations\":1,\"security_requests\":4,\"blockwise\":false,\"rx_slots\":2,\"tx_slots\":2,\"datagram_bytes\":1152,\"dedup\":4,\"observe\":2,\"body_bytes\":32,\"udp_scratch_bytes\":1153,\"adapter_bytes\":{},\"app_including_adapter_bytes\":{},\"security\":\"{}\",\"schedule\":\"single-thread spin\"}}",
+        adapter_bytes,
+        std::mem::size_of_val(&app),
+        security
+    );
+    let started = Instant::now();
+    loop {
+        match app.poll(started.elapsed().as_millis() as u64) {
+            Ok(()) | Err(coaptic::app::Error::Oscore(_)) => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+}
+
 fn bind_fixture<T: DatagramIo<Error = std::io::Error>>(
     io: T,
     bytes: usize,
@@ -295,26 +338,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if !(5..=7).contains(&args.len()) {
         return Err(
-            "usage: bench-rust-server coaptic|coaptic-reusable|coaptic-ready|coaptic-mio|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]]".into(),
+            "usage: bench-rust-server coaptic-small|coaptic|coaptic-reusable|coaptic-ready|coaptic-mio|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]]".into(),
         );
     }
     let rx_bytes: usize = args
         .get(5)
         .map(|value| value.parse())
         .transpose()?
-        .unwrap_or(1472);
-    if ![1472, 2048].contains(&rx_bytes) {
-        return Err("receive capacity must be 1472 or 2048".into());
+        .unwrap_or(if args[1] == "coaptic-small" {
+            1152
+        } else {
+            1472
+        });
+    if (args[1] == "coaptic-small" && rx_bytes != 1152)
+        || (args[1] != "coaptic-small" && ![1472, 2048].contains(&rx_bytes))
+    {
+        return Err(
+            "SmallDevice requires 1152-byte receive capacity; other fixtures require 1472 or 2048"
+                .into(),
+        );
     }
     if args.len() >= 6
         && !matches!(
             args[1].as_str(),
-            "coaptic" | "coaptic-reusable" | "coaptic-ready" | "coaptic-mio"
+            "coaptic-small" | "coaptic" | "coaptic-reusable" | "coaptic-ready" | "coaptic-mio"
         )
     {
         return Err("receive capacity is supported only by the Coaptic fixtures".into());
     }
-    if args.len() == 7 && !matches!(args[1].as_str(), "coaptic" | "coaptic-reusable") {
+    if args.len() == 7
+        && !matches!(
+            args[1].as_str(),
+            "coaptic-small" | "coaptic" | "coaptic-reusable"
+        )
+    {
         return Err("OSCORE credentials require the Coaptic socket fixtures".into());
     }
     if args.len() == 7 && args[2] != "127.0.0.1" {
@@ -343,6 +400,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let size: usize = args[4].parse()?;
     if !(1..=1_048_576).contains(&size) {
         return Err("fixture size".into());
+    }
+    if args[1] == "coaptic-small" {
+        if size != SMALL_BODY.len() || args[2] != "127.0.0.1" {
+            return Err("SmallDevice quick check requires loopback and 32 bytes".into());
+        }
+        BODY.set(&SMALL_BODY)
+            .map_err(|_| "fixture initialization")?;
+        return small_device_server(&format!("{}:{}", args[2], args[3]), context);
     }
     let body: &'static [u8] = Box::leak(
         (0..size)

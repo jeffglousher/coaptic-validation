@@ -11,6 +11,44 @@ endpoint, not a complete competing server stack. HTTP/3 uses quic-go with a
 verified fixture certificate and TLS 1.3. These are pinned candidates, not a
 claim that each is its language's fastest library.
 
+## Current SmallDevice quick check
+
+`coaptic-small` binds `resources::SmallDevice::new()` with fixed
+`profiles::Constrained` storage: four route slots (one GET route), one Call,
+zero deferred rows, one OSCORE association and four request bindings. Blockwise
+is disabled; RX and TX each have two 1152-byte slots. The adapter owns 1153 bytes
+of receive scratch and the response is one static 32-byte array. The startup
+record reports the whole App including its adapter; the adapter and scratch are
+nested components, not additional App allocations. The runner checks an
+independent 14 KiB owner-size ceiling; this is not a measured process/stack peak.
+The host executable still uses allocation for process setup and competitor
+runtimes. Core pools in this fixture are fixed.
+
+With the existing matched-OSCORE Python environment and compatible Cargo lane:
+
+```sh
+cargo build --release --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server --bin bench-rust-server
+python tools/benchmark/small_device_quick.py --server EXISTING_LANE/release/bench-rust-server --output quick-check.json
+```
+
+Use `.exe` on Windows. Commit source before running: the receipt records clean
+core and companion revisions, binary/driver hashes and raw complete-operation
+latencies. Each of six cells performs 20 warmups and 200 measured 32-byte GET/CON
+operations at concurrency one. SmallDevice and aiocoap run unprotected and
+volatile OSCORE; the same native binary supplies unprotected coap-rs and the
+narrower coap-lite codec endpoint. The existing independent Python driver is used
+for every cell. OSCORE keys are temporary process-only fixtures, never enrolled
+credentials. No device, grant or persistent journal is used.
+
+This is one short host sample, not a saturation, stability or best-tuned library
+ranking. Coaptic spins one socket thread, coap-rs uses two Tokio workers and
+aiocoap uses its installed asyncio loop. Latency includes Python/GIL, independent
+authentication and byte verification. CPU counters are quantized; resource
+windows include warmup and setup beyond the timed operations, and process RSS
+includes runtimes/dependencies. Kernel buffers and stack initialization peaks are
+not inferred from the inline App size. A failed cell is retained and stops the
+sample rather than widening pools or silently dropping operations.
+
 ## Prepare explicitly
 
 Setup and compilation are outside timing. Use Python 3.10+, the repository's
