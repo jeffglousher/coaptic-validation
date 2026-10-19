@@ -36,6 +36,18 @@
       "original_path": "C:\\Users\\jeffg\\AppData\\Local\\CoapticQualification\\libedhoc-0363bd3\\build\\evidence\\20261019T104403.477179Z\\manifest.json",
       "original_sha256": "a4e880dc69df6709883cae10d8bc86d760a8e8c510fabc39d99caf07fbd52ecd",
       "retained_sha256": "fc4fe28e29a385782896c691f405b4383191ac9d735b6809306030be5fc4f402"
+    },
+    {
+      "file": "profiles-receipts.json",
+      "original_path": "C:\\Users\\jeffg\\AppData\\Local\\CoapticQualification\\libedhoc-0363bd3\\profiles-receipts.json",
+      "original_sha256": "0a241e69871e1eb71a282abda662cb7e7120e8bb49fb73cd9cfb9d0730494f48",
+      "retained_sha256": "8a69abf1bcfba6d6074597a7af0718edcfc4acc7e9fd585b20fbe0ecb325422a"
+    },
+    {
+      "file": "20261019T104557.231963Z-native-build.json",
+      "original_path": "C:\\Users\\jeffg\\AppData\\Local\\CoapticQualification\\libedhoc-0363bd3\\build\\evidence\\20261019T104557.231963Z\\manifest.json",
+      "original_sha256": "666387548394ec9b8799d43e44d428c6a9cc88b8d3c33a842059816b82d5ed18",
+      "retained_sha256": "1b6cc4e17c663f8393c496d6757efdd681faafaf76939735c3ac586c43615f76"
     }
   ],
   "core_build": {
@@ -61,5 +73,6 @@
     "Native EAD limit3; padding handled in same-tree tests, not these independent sessions.",
     "Private labels32768..65535 only: native exporter cannot qualify the full Coaptic u64 label range.",
     "Fresh recovery explicitly restarts both host peers; no device or transparent one-sided restart claim."
-  ]
+  ],
+  "native_ead_receipt_correction": "Native ead_authenticated in original captures counted stages observed before final successful handshake; it did NOT prove MAC verification before callbacks. Renamed ead_after_success at471178e; eight successful configurations recaptured. Rust ead_authenticated checks actual verified Principal at callback time."
 }
