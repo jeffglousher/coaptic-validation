@@ -11,18 +11,32 @@
 #![forbid(unsafe_code)]
 
 use coaptic::platform::{CheckedClock, ClockError};
+#[cfg(test)]
+use coaptic::profiles;
 use coaptic::provisioning::{
     CommissioningDecoder, CommissioningReply, CommissioningRequest, Identity, LocalPairing,
     ManagedConnection, ManagedError, ManagedSubscription, PairingCommitError, PairingRecord,
 };
 use coaptic::storage::DatagramIo;
-use coaptic::{Code, ContentFormat, Endpoint, Method, Response, profiles};
+use coaptic::{Code, ContentFormat, Endpoint, Method, Response};
 #[cfg(feature = "async-network")]
 mod async_service;
+#[cfg(all(feature = "async-network", target_os = "none"))]
+pub(crate) use async_service::managed_owner_bytes;
 #[cfg(feature = "async-network")]
 pub use async_service::{ConsoleWait, run_async};
 
 use zeroize::Zeroizing;
+
+// Persistent Observe and one ordinary call require two response credits plus
+// the shared receive headroom. Every other pool dimension remains Constrained.
+coaptic::memory_profile! {
+    EnrolledDevice {
+        rx_datagram: (3, 1152), tx_datagram: (2, 1152),
+        rx_body: (1, 4096), tx_body: (1, 4096),
+        dedup: 4, observe: 2,
+    }
+}
 
 pub const STORE_BYTES: usize = 332;
 
@@ -633,7 +647,7 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
     let Some(start) = next_time(clock)? else {
         return Ok(None);
     };
-    let mut connection = ManagedConnection::<_, profiles::Constrained>::from_local_pairing(
+    let mut connection = ManagedConnection::<_, EnrolledDevice>::from_local_pairing(
         &device.identity,
         &device.pairing,
         endpoint,

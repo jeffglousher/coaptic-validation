@@ -415,6 +415,7 @@ mod pairing_ffi {
         ) -> bool;
         fn coaptic_pairing_restart(context: *mut c_void);
         fn coaptic_pairing_event(context: *mut c_void, event: u32);
+        fn coaptic_pairing_owner_sizes(context: *mut c_void, managed: u32, worker: u32);
         fn coaptic_pairing_diagnostics(
             context: *mut c_void,
             at_ms: u64,
@@ -534,7 +535,7 @@ mod pairing_ffi {
             unsafe { crate::async_network::Runtime::new(context) }.map_err(|_| "async driver")?;
         let (socket, mut protocol, mut local, console_ready, mut driver) =
             runtime.split_with_console();
-        match driver.run(core::pin::pin!(crate::pairing::run_async(
+        let worker = crate::pairing::run_async(
             socket,
             |bytes| unsafe { coaptic_socket_random(bytes.as_mut_ptr(), bytes.len() as u32) },
             || async_clock(context),
@@ -542,7 +543,20 @@ mod pairing_ffi {
             Usb(context),
             (&mut protocol, &mut local),
             console_ready,
-        ))) {
+        );
+        fn worker_bytes<F>(_: &F) -> usize {
+            // Leave 32 KiB of the 192 KiB task reservation for active call frames.
+            const { assert!(core::mem::size_of::<F>() <= 160 * 1024) };
+            core::mem::size_of::<F>()
+        }
+        unsafe {
+            coaptic_pairing_owner_sizes(
+                context,
+                crate::pairing::managed_owner_bytes::<crate::async_network::Socket<'_>>() as u32,
+                worker_bytes(&worker) as u32,
+            );
+        }
+        match driver.run(core::pin::pin!(worker)) {
             Ok(result) => result.map_err(|_| "pairing stopped"),
             Err(crate::async_network::Error::Stopped) => Ok(()),
             Err(_) => Err("async driver"),

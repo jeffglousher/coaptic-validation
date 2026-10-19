@@ -623,6 +623,11 @@ extern "C" void coaptic_pairing_restart(void *) {
 extern "C" void coaptic_pairing_event(void *, uint32_t event) {
   ESP_LOGI("coaptic_network", "COAPTIC_PAIRING_EVENT %lu", static_cast<unsigned long>(event));
 }
+extern "C" void coaptic_pairing_owner_sizes(void *, uint32_t managed, uint32_t worker) {
+  // The managed owner is contained in the worker future; these are not additive.
+  ESP_LOGI("coaptic_network", "COAPTIC_OWNERS {\"managed_bytes\":%lu,\"worker_future_bytes\":%lu}",
+           static_cast<unsigned long>(managed), static_cast<unsigned long>(worker));
+}
 extern "C" void coaptic_pairing_diagnostics(void *context, uint64_t at_ms,
                                             uint32_t token_refused, uint32_t rx_refused,
                                             uint32_t tx_refused, uint32_t refusal_sent,

@@ -8,6 +8,19 @@ use std::{cell::Cell, net::UdpSocket};
 
 #[test]
 fn enrolled_pending_owner_has_an_independent_memory_ceiling() {
+    type Io = UdpSocketIo<[u8; 1473]>;
+    type Baseline = ManagedConnection<'static, Io, profiles::Constrained>;
+    type Enrolled = ManagedConnection<'static, Io, EnrolledDevice>;
+    assert!(core::mem::size_of::<Enrolled>() <= 64 * 1024);
+    assert!(core::mem::size_of::<coaptic::App<EnrolledDevice>>() <= 48 * 1024);
+    std::eprintln!(
+        "Enrolled whole owners: baseline_managed={} enrolled_managed={} app={} delta={} alignment={}",
+        core::mem::size_of::<Baseline>(),
+        core::mem::size_of::<Enrolled>(),
+        core::mem::size_of::<coaptic::App<EnrolledDevice>>(),
+        core::mem::size_of::<Enrolled>() - core::mem::size_of::<Baseline>(),
+        core::mem::align_of::<Enrolled>(),
+    );
     assert!(core::mem::size_of::<Device>() <= 1344);
     std::eprintln!(
         "Pairing owner bytes: record={} state={} device={} pending={}",
@@ -24,6 +37,37 @@ fn enrolled_pending_owner_has_an_independent_memory_ceiling() {
             <= 1280
     );
     assert_eq!(crate::pending_telemetry::RECORD_BYTES, 1214);
+}
+
+#[test]
+fn enrolled_two_response_credits_keep_headroom_and_refuse_third_call() {
+    let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+    socket.set_nonblocking(true).unwrap();
+    let peer = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let endpoint = Endpoint::from(peer.local_addr().unwrap());
+    let mut app = coaptic::App::profile::<EnrolledDevice>()
+        .block_wise::<false>()
+        .full_responses()
+        .allow_unprotected()
+        .randomness(random)
+        .bind(UdpSocketIo::new(socket, [0; 1473]).unwrap())
+        .unwrap();
+    let observation = app
+        .get("identity")
+        .to(endpoint)
+        .observe()
+        .non()
+        .send(0)
+        .unwrap();
+    let ordinary = app.get("probe").to(endpoint).non().send(1).unwrap();
+    assert!(matches!(
+        app.get("third").to(endpoint).non().send(2),
+        Err(coaptic::app::Error::Saturated)
+    ));
+    assert_eq!(app.engine().metrics().admission_rx_refused, 1);
+    assert!(app.cancel(ordinary));
+    assert!(app.get("replacement").to(endpoint).non().send(3).is_ok());
+    assert!(app.cancel(observation));
 }
 
 struct DropReply {
@@ -132,6 +176,7 @@ fn enrolled_udp_restart_recovers_one_effect_after_lost_receipt() {
             0,
         )
         .unwrap();
+        connection.observable_manual("identity").unwrap();
         if host.peer().principal().fingerprint() > device.identity.peer().principal().fingerprint()
         {
             connection.connect(0).unwrap();
@@ -139,6 +184,7 @@ fn enrolled_udp_restart_recovers_one_effect_after_lost_receipt() {
         let completed = Rc::new(Cell::new(false));
         let mut now = 0;
         let mut committed = false;
+        let mut observed = false;
         let mut io = Some(UdpSocketIo::new(device_socket.try_clone().unwrap(), [0; 1473]).unwrap());
         let result = run(
             || io.take().unwrap(),
@@ -148,7 +194,14 @@ fn enrolled_udp_restart_recovers_one_effect_after_lost_receipt() {
                 connection
                     .poll_with(now, |principal, request, _| {
                         if request.path() == ["identity"] {
-                            return Response::content_copy(host.peer().principal().fingerprint());
+                            let response =
+                                Response::content_copy(host.peer().principal().fingerprint());
+                            return if request.is_observe_register() {
+                                observed = true;
+                                response.observe(0)
+                            } else {
+                                response
+                            };
                         }
                         assert_eq!(request.path(), ["telemetry"]);
                         assert_eq!(request.content_format(), Some(Ok(ContentFormat::CBOR)));
@@ -179,6 +232,10 @@ fn enrolled_udp_restart_recovers_one_effect_after_lost_receipt() {
         );
         assert_eq!(result, Ok(()));
         assert!(diagnostic_samples.get() > 0);
+        assert!(
+            observed,
+            "host must accept the persistent Observe before telemetry"
+        );
         assert!(now <= 20_000, "enrolled service did not complete");
         assert_eq!(journal.effects().unwrap(), 1);
         let recovered = Device::recover(&mut Shared(store.clone()))
