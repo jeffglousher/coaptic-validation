@@ -52,7 +52,7 @@ class ProfileOracleTests(unittest.TestCase):
         valid = b'</sensor>;rt="temperature-c sensor";if="sensor";ct="0 50";sz=96;obs;title="Room \\"one\\""'
         metadata_body(valid)
         for mutation in (valid.replace(b"96", b"97"), valid.replace(b";obs", b""), valid + b"," + valid,
-                         valid.replace(b"0 50", b"0"), valid.replace(b"sensor\";ct", b"other\";ct")):
+                         valid.replace(b"0 50", b"0"), valid + b";sz=96", valid.replace(b"sensor\";ct", b"other\";ct")):
             with self.assertRaises(AssertionError):
                 metadata_body(mutation)
 

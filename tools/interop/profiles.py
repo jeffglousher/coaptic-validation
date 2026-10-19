@@ -81,7 +81,10 @@ def metadata_body(payload):
     parsed = linkformat.parse(payload.decode("utf-8"))
     sensors = [link for link in parsed.links if link.href == "/sensor"]
     require(len(sensors) == 1, "missing or repeated metadata target")
-    attributes = dict(sensors[0].attr_pairs)
+    pairs = sensors[0].attr_pairs
+    for name in ("rt", "if", "ct", "sz", "obs", "title"):
+        require(sum(key == name for key, _ in pairs) == 1, "missing or duplicate named metadata")
+    attributes = dict(pairs)
     require(attributes.get("rt", "").split() == ["temperature-c", "sensor"], "resource types changed")
     require(attributes.get("if") == "sensor", "interface changed")
     require(attributes.get("ct", "").split() == ["0", "50"], "content formats changed")
@@ -99,6 +102,12 @@ def ordinary(client, server, path, flags=(), code=69, body=None, token_length=No
         trace = relay.trace
         wire_path = [b"escaped", b"a/b"] if path == "escaped" else [part.encode() for part in path.split("/")]
         first, replies = exchange_identity(trace, wire_path, code, token_length)
+        if "observe" in flags:
+            require(decoded_options(first).get(6) == [b""], "refusal request omitted Observe")
+            for flag in flags:
+                if flag.startswith("block2:"):
+                    selector = (int(flag.split(":")[1]) << 4) | 1
+                    require(decoded_options(first).get(23) == [bytes([selector])], "refusal request changed initial block")
         if path == "escaped":
             require(decoded_options(first).get(15) == [b"key=a&b"], "URI query split/decoded incorrectly")
         if path == ".well-known/core":
