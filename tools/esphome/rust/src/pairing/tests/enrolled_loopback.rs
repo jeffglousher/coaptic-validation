@@ -112,6 +112,43 @@ impl Console for QuietConsole {
     }
 }
 
+struct DrainConsole {
+    inner: QuietConsole,
+    command: std::io::Cursor<Vec<u8>>,
+    decoder: CommissioningDecoder,
+    held: Rc<Cell<bool>>,
+}
+impl Console for DrainConsole {
+    fn read(&mut self, out: &mut [u8]) -> Result<usize, Error> {
+        std::io::Read::read(&mut self.command, out).map_err(|_| Error::Console)
+    }
+    fn write(&mut self, bytes: &[u8]) -> Result<(), Error> {
+        for byte in bytes {
+            if let Some(payload) = self.decoder.feed(*byte) {
+                assert!(matches!(
+                    CommissioningReply::decode(payload).unwrap(),
+                    CommissioningReply::Quiesced
+                ));
+                assert!(
+                    self.inner.0.get(),
+                    "quiescence must follow durable receipt completion"
+                );
+                self.held.set(true);
+            }
+        }
+        Ok(())
+    }
+    fn restart(&mut self) -> Result<(), Error> {
+        self.inner.restart()
+    }
+    fn event(&mut self, event: u32) {
+        self.inner.event(event);
+    }
+    fn diagnostics(&mut self, snapshot: &coaptic::app::diagnostics::Snapshot) {
+        self.inner.diagnostics(snapshot);
+    }
+}
+
 #[test]
 fn enrolled_udp_restart_recovers_one_effect_after_lost_receipt() {
     let device_socket = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -182,6 +219,23 @@ fn enrolled_udp_restart_recovers_one_effect_after_lost_receipt() {
             connection.connect(0).unwrap();
         }
         let completed = Rc::new(Cell::new(false));
+        let held = Rc::new(Cell::new(false));
+        let mut held_at = None;
+        let mut command = [0; 16];
+        let mut payload = [0; 8];
+        let payload_len = CommissioningRequest::Quiesce.encode(&mut payload).unwrap();
+        let command_len =
+            CommissioningDecoder::frame(&payload[..payload_len], &mut command).unwrap();
+        let console = DrainConsole {
+            inner: QuietConsole(completed.clone(), diagnostic_samples.clone()),
+            command: std::io::Cursor::new(if phase == 1 {
+                command[..command_len].to_vec()
+            } else {
+                Vec::new()
+            }),
+            decoder: CommissioningDecoder::new(),
+            held: held.clone(),
+        };
         let mut now = 0;
         let mut committed = false;
         let mut observed = false;
@@ -221,14 +275,20 @@ fn enrolled_udp_restart_recovers_one_effect_after_lost_receipt() {
                         Response::new(Code::CHANGED).payload_copy(&receipt.encode())
                     })
                     .unwrap();
-                if (phase == 0 && committed) || completed.get() || now > 20_000 {
+                if held.get() && held_at.is_none() {
+                    held_at = Some(now);
+                }
+                if (phase == 0 && committed)
+                    || held_at.is_some_and(|at| now >= at + 6_000)
+                    || now > 20_000
+                {
                     None
                 } else {
                     Some(now)
                 }
             },
             Shared(store.clone()),
-            QuietConsole(completed.clone(), diagnostic_samples.clone()),
+            console,
         );
         assert_eq!(result, Ok(()));
         assert!(diagnostic_samples.get() > 0);
@@ -251,6 +311,8 @@ fn enrolled_udp_restart_recovers_one_effect_after_lost_receipt() {
             assert!(pending.completion().unwrap().is_none());
         } else {
             assert!(completed.get());
+            assert!(held.get());
+            assert!(now >= held_at.unwrap() + 6_000);
             assert!(pending.pending().unwrap().is_none());
             assert_eq!(pending.completion().unwrap().unwrap().sequence(), 1);
         }

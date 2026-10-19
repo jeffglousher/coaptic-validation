@@ -232,6 +232,17 @@ pub struct Pending<'a, S> {
 }
 
 impl<'a, S: Store> Pending<'a, S> {
+    /// Authenticate a borrowed record without reaffirming or changing storage.
+    /// True means unresolved work; false means empty or completed.
+    pub fn inspect_bound(
+        bytes: &[u8; RECORD_BYTES],
+        binding: Binding<'_>,
+        principal: Principal,
+    ) -> Result<bool, Error> {
+        validate(bytes, binding, principal)?;
+        Ok(bytes[48] == 1)
+    }
+
     pub fn recover(
         store: S,
         credentials: &'a Credentials,

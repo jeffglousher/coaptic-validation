@@ -132,12 +132,13 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
     let mut decoder = ConsoleFrames::new();
     let mut clock = CheckedClock::new(|| clock().ok_or(()));
     let mut pending = None;
-    let mut network_stopped = false;
+    let mut service = ServiceState::Running;
     loop {
         crate::cooperate().await;
         let Some(now) = next_time(&mut clock)? else {
             return Ok(());
         };
+        service.expire_hold(now);
         let request = if let Some(request) = pending.take() {
             Some(request)
         } else {
@@ -148,9 +149,9 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
                 CommissioningRequest::Inspect => {
                     send(
                         &mut console,
-                        &device
-                            .as_ref()
-                            .map_or(CommissioningReply::Empty, Device::reply),
+                        &device.as_ref().map_or(CommissioningReply::Empty, |device| {
+                            device.inspect(&mut store)
+                        }),
                     )?;
                 }
                 CommissioningRequest::Initialize { kid } => {
@@ -163,11 +164,28 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
                         console.event(2);
                         send(
                             &mut console,
-                            &device.as_ref().ok_or(Error::Identity)?.reply(),
+                            &device.as_ref().ok_or(Error::Identity)?.inspect(&mut store),
                         )?;
                     }
                 }
+                CommissioningRequest::Quiesce => {
+                    if matches!(service, ServiceState::Held(_)) {
+                        service = ServiceState::Held(now.saturating_add(60_000));
+                        send(&mut console, &CommissioningReply::Quiesced)?;
+                    } else if device
+                        .as_ref()
+                        .is_some_and(|device| device.pairing.checkpoint().enabled())
+                        && service == ServiceState::Running
+                    {
+                        service = ServiceState::Draining(now.saturating_add(30_000));
+                    } else {
+                        send(&mut console, &CommissioningReply::Refused(6))?;
+                    }
+                }
                 CommissioningRequest::Challenge => {
+                    if matches!(service, ServiceState::Held(_)) {
+                        service = ServiceState::Held(now.saturating_add(60_000));
+                    }
                     if let Some(device) = &mut device {
                         let challenge = device
                             .pairing
@@ -215,14 +233,27 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
                             device.stored = next;
                             device.stored_len = next_len;
                             device.endpoint = next_endpoint;
-                            network_stopped = false;
+                            service = ServiceState::Running;
                             send(
                                 &mut console,
                                 &CommissioningReply::Committed(device.pairing.checkpoint().clone()),
                             )?;
                         }
                         Err(PairingCommitError::State(_)) => {
+                            service.release_hold();
                             send(&mut console, &CommissioningReply::Refused(3))?
+                        }
+                        Err(PairingCommitError::Store(Error::Pending)) => {
+                            // Only a verified unresolved record reaches this path:
+                            // no policy or pending content was changed. Restore the
+                            // old live authority after its consumed challenge.
+                            device.pairing = LocalPairing::restore(
+                                &device.identity,
+                                device.pairing.checkpoint().clone(),
+                            )
+                            .map_err(|_| Error::Storage)?;
+                            service.release_hold();
+                            send(&mut console, &CommissioningReply::Refused(6))?;
                         }
                         Err(PairingCommitError::Store(_)) => {
                             // No more network work after an uncertain write.
@@ -240,7 +271,7 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
         }
         if let Some(device) = &device
             && device.pairing.checkpoint().enabled()
-            && !network_stopped
+            && service.network()
         {
             // Returning a management request drops all old protocol caches,
             // exchanges and sessions before any policy mutation above.
@@ -253,6 +284,7 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
                 &mut console,
                 &mut decoder,
                 &mut schedule,
+                &mut service,
             )
             .await;
             match result {
@@ -262,7 +294,7 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
                     // Drop the failed volatile owner, but keep USB administration.
                     // Do not repeatedly discard protocol history on remote input:
                     // only an explicit restart or committed policy update resumes it.
-                    network_stopped = true;
+                    service = ServiceState::Failed;
                     console.event(5);
                 }
                 Err(error) => return Err(error),
@@ -272,7 +304,13 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
             local_ready(
                 schedule.local,
                 schedule.console,
-                decoder.last_byte.map(|last| last.saturating_add(1000)),
+                match (
+                    decoder.last_byte.map(|last| last.saturating_add(1000)),
+                    service.deadline(),
+                ) {
+                    (Some(a), Some(b)) => Some(a.min(b)),
+                    (a, b) => a.or(b),
+                },
             )
             .await?;
         }
@@ -314,6 +352,7 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
     console: &mut impl Console,
     decoder: &mut ConsoleFrames,
     schedule: &mut Schedule<'_, impl AsyncTimer, impl AsyncTimer, impl ConsoleWait>,
+    service: &mut ServiceState,
 ) -> Result<Option<CommissioningRequest>, Error> {
     let endpoint = device.endpoint.ok_or(Error::Storage)?;
     let peer = device
@@ -333,6 +372,7 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
     if !write && *permission != permissions(false) {
         return Err(Error::Permissions);
     }
+    let initial_custody = device.pending_custody(store);
     let mut pending = recover_pending(device, store, telemetry)?;
     let Some(start) = next_time(clock)? else {
         return Ok(None);
@@ -366,8 +406,20 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
         };
         if let Some(request) = receive(console, decoder, now)? {
             if matches!(request, CommissioningRequest::Inspect) {
-                send(console, &device.reply())?;
+                send(
+                    console,
+                    &device.reply(live_custody(&pending, initial_custody)),
+                )?;
+            } else if matches!(request, CommissioningRequest::Quiesce) {
+                if matches!(*service, ServiceState::Running) {
+                    *service = ServiceState::Draining(now.saturating_add(30_000));
+                } else {
+                    send(console, &CommissioningReply::Refused(6))?;
+                }
             } else {
+                if matches!(*service, ServiceState::Draining(_)) {
+                    *service = ServiceState::Running;
+                }
                 return Ok(Some(request));
             }
         }
@@ -534,7 +586,29 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
                 Err(_) => retry_at = now.saturating_add(5_000),
             }
         }
-        if !liveness.quiet && call.is_none() && connection.is_connected() && now >= next_probe {
+        let unresolved = pending
+            .as_ref()
+            .map(|pending| pending.pending())
+            .transpose()
+            .map_err(|_| Error::Storage)?
+            .flatten()
+            .is_some();
+        match service.drain(
+            now,
+            live_custody(&pending, initial_custody),
+            pending.is_some(),
+            call.is_some(),
+        ) {
+            Some(true) => return Ok(Some(CommissioningRequest::Quiesce)),
+            Some(false) => send(console, &CommissioningReply::Refused(6))?,
+            None => {}
+        }
+        if service.permits_probe(unresolved)
+            && !liveness.quiet
+            && call.is_none()
+            && connection.is_connected()
+            && now >= next_probe
+        {
             if let Some(snapshot) = connection.diagnostic_snapshot(now) {
                 console.diagnostics(&snapshot);
             }
@@ -590,13 +664,20 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
         let mut include = |value| {
             deadline = Some(deadline.map_or(value, |old| old.min(value)));
         };
+        if let Some(at) = service.deadline() {
+            include(at);
+        }
         if call.is_some() {
             include(call_started.saturating_add(10_000));
         }
         if initiates && call.is_none() {
             include(retry_at);
         }
-        if !liveness.quiet && connection.is_connected() && call.is_none() {
+        if service.permits_probe(unresolved)
+            && !liveness.quiet
+            && connection.is_connected()
+            && call.is_none()
+        {
             include(next_probe);
         }
         if !liveness.quiet && liveness.generation.is_some() {
