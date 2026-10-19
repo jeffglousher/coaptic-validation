@@ -1027,7 +1027,6 @@ mod tests {
         let mut wire = [0; 61];
         prepare_sample(&mut pending, &mut wire, 42, random).unwrap();
         let original = wire;
-        drop(pending);
         assert!(recovery_ready(&mut store, &device.private, &device.identity, &grant).is_err());
         let mut pending = recover_pending(&device, &mut store, true).unwrap();
         prepare_sample(&mut pending, &mut wire, 999, random).unwrap();
@@ -1038,7 +1037,6 @@ mod tests {
             coaptic::provisioning::Receipt::from_parts(operation.id(), *operation.digest(), 1)
                 .unwrap();
         assert!(accept_sample(&mut pending, Code::CHANGED, &receipt.encode(), &[]).unwrap());
-        drop(pending);
         assert!(recovery_ready(&mut store, &device.private, &device.identity, &grant).is_ok());
         store.pending = None;
         assert!(recovery_ready(&mut store, &device.private, &device.identity, &grant).is_err());
@@ -1381,7 +1379,6 @@ mod tests {
         let mut store = Shared(memory.clone());
         let mut pending = recover_pending(&device, &mut store, true).unwrap();
         prepare_sample(&mut pending, &mut [0; 61], 42, random).unwrap();
-        drop(pending);
         let before = memory.borrow().bytes.clone();
         let retained = memory.borrow().pending;
         let (result, replies) = campaign(memory.clone(), Plan::RecoverReadOnly);

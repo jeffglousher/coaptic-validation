@@ -197,7 +197,6 @@ fn enrolled_udp_restart_recovers_one_effect_after_lost_receipt() {
             assert!(pending.pending().unwrap().is_none());
             assert_eq!(pending.completion().unwrap().unwrap().sequence(), 1);
         }
-        drop(pending);
         drop(journal);
         journal = Journal::open(&path, authority.clone()).unwrap();
     }

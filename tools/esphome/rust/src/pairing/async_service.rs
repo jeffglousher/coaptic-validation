@@ -293,6 +293,7 @@ fn connection<'a, T: AsyncDatagramIo>(
     Ok(connection)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
     device: &Device,
     store: &mut impl Store,
