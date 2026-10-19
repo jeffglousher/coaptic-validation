@@ -346,6 +346,7 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
             Err(_) => return Err(Error::Network),
         }
     }
+    let mut liveness = SessionLiveness::new(start);
     let mut retry_at = start.saturating_add(30_000);
     let mut next_probe = start;
     let mut call = None;
@@ -370,6 +371,7 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
                 return Ok(Some(request));
             }
         }
+        let was_quiet = liveness.quiet;
         match connection
             .progress_with_async(
                 now,
@@ -377,6 +379,7 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
                 schedule.protocol,
                 now.saturating_add(250),
                 |_, request, _| {
+                    liveness.authenticated(now);
                     if request.path() == ["identity"] && request.method() == Some(Method::Get) {
                         let response = Response::content_copy(
                             device.identity.peer().principal().fingerprint(),
@@ -416,11 +419,32 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
         let Some(now) = next_time(clock)? else {
             return Ok(None);
         };
-        if connection.is_connected() {
+        liveness.generation(connection.session_generation(), now);
+        if was_quiet && !liveness.quiet {
+            subscription = ManagedSubscription::new("identity");
+            next_probe = now;
+        }
+        if liveness.expired(now) {
+            connection
+                .stop_subscription(&mut subscription, now)
+                .map_err(|_| Error::Network)?;
+            if let Some(current) = call.take() {
+                match connection.cancel(current, now) {
+                    Ok(_) | Err(ManagedError::StaleHandle) => {}
+                    Err(_) => return Err(Error::Network),
+                }
+            }
+            liveness.quiet = true;
+            retry_at = now;
+        }
+        if connection.is_connected() && !liveness.quiet {
             match connection.take_subscription_response_into(&mut subscription, &mut reply, now) {
                 Ok(Some(Ok(response)))
                     if response.code() == Code::CONTENT
-                        && response.payload() == peer.fingerprint() => {}
+                        && response.payload() == peer.fingerprint() =>
+                {
+                    liveness.authenticated(now)
+                }
                 Ok(None) => {}
                 Ok(Some(_)) => retry_at = now,
                 Err(
@@ -478,6 +502,7 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
                         console.event(3);
                         connected_reported = true;
                     }
+                    liveness.authenticated(now);
                     console.event(4);
                     next_probe = now.saturating_add(5_000);
                     retry_at = u64::MAX;
@@ -509,7 +534,7 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
                 Err(_) => retry_at = now.saturating_add(5_000),
             }
         }
-        if call.is_none() && connection.is_connected() && now >= next_probe {
+        if !liveness.quiet && call.is_none() && connection.is_connected() && now >= next_probe {
             if let Some(snapshot) = connection.diagnostic_snapshot(now) {
                 console.diagnostics(&snapshot);
             }
@@ -571,8 +596,11 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
         if initiates && call.is_none() {
             include(retry_at);
         }
-        if connection.is_connected() && call.is_none() {
+        if !liveness.quiet && connection.is_connected() && call.is_none() {
             include(next_probe);
+        }
+        if !liveness.quiet && liveness.generation.is_some() {
+            include(liveness.last_authenticated.saturating_add(30_000));
         }
         if let Some(due) = connection.next_subscription_poll_at(&subscription, wait_at) {
             include(due);

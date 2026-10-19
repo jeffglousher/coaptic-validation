@@ -38,6 +38,38 @@ coaptic::memory_profile! {
     }
 }
 
+// Stop originating application work after failed authenticated liveness so
+// the existing owner can admit a fresh handshake without discarding history.
+struct SessionLiveness {
+    last_authenticated: u64,
+    generation: Option<u64>,
+    quiet: bool,
+}
+impl SessionLiveness {
+    fn new(now: u64) -> Self {
+        Self {
+            last_authenticated: now,
+            generation: None,
+            quiet: false,
+        }
+    }
+    fn authenticated(&mut self, now: u64) {
+        self.last_authenticated = now;
+        self.quiet = false;
+    }
+    fn generation(&mut self, generation: Option<u64>, now: u64) {
+        if generation.is_some() && generation != self.generation {
+            self.generation = generation;
+            self.authenticated(now);
+        }
+    }
+    fn expired(&self, now: u64) -> bool {
+        self.generation.is_some()
+            && !self.quiet
+            && now.saturating_sub(self.last_authenticated) >= 30_000
+    }
+}
+
 pub const STORE_BYTES: usize = 332;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -667,6 +699,7 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
             Err(_) => return Err(Error::Network),
         }
     }
+    let mut liveness = SessionLiveness::new(start);
     let mut retry_at = start.saturating_add(30_000);
     let mut next_probe = start;
     let mut call = None;
@@ -689,7 +722,9 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
                 return Ok(Some(request));
             }
         }
+        let was_quiet = liveness.quiet;
         match connection.poll_with(now, |_, request, _| {
+            liveness.authenticated(now);
             if request.path() == ["identity"] && request.method() == Some(Method::Get) {
                 let response =
                     Response::content_copy(device.identity.peer().principal().fingerprint())
@@ -729,11 +764,32 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
                 }
             }
         }
-        if connection.is_connected() {
+        liveness.generation(connection.session_generation(), now);
+        if was_quiet && !liveness.quiet {
+            subscription = ManagedSubscription::new("identity");
+            next_probe = now;
+        }
+        if liveness.expired(now) {
+            connection
+                .stop_subscription(&mut subscription, now)
+                .map_err(|_| Error::Network)?;
+            if let Some(current) = call.take() {
+                match connection.cancel(current, now) {
+                    Ok(_) | Err(ManagedError::StaleHandle) => {}
+                    Err(_) => return Err(Error::Network),
+                }
+            }
+            liveness.quiet = true;
+            retry_at = now;
+        }
+        if connection.is_connected() && !liveness.quiet {
             match connection.take_subscription_response_into(&mut subscription, &mut reply, now) {
                 Ok(Some(Ok(response)))
                     if response.code() == Code::CONTENT
-                        && response.payload() == peer.fingerprint() => {}
+                        && response.payload() == peer.fingerprint() =>
+                {
+                    liveness.authenticated(now)
+                }
                 Ok(None) => {}
                 Ok(Some(_)) => retry_at = now,
                 Err(
@@ -781,6 +837,7 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
                         console.event(3);
                         connected_reported = true;
                     }
+                    liveness.authenticated(now);
                     console.event(4);
                     next_probe = now.saturating_add(5_000);
                     retry_at = u64::MAX;
@@ -812,7 +869,7 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
                 Err(_) => retry_at = now.saturating_add(5_000),
             }
         }
-        if call.is_none() && connection.is_connected() && now >= next_probe {
+        if !liveness.quiet && call.is_none() && connection.is_connected() && now >= next_probe {
             if let Some(snapshot) = connection.diagnostic_snapshot(now) {
                 console.diagnostics(&snapshot);
             }
