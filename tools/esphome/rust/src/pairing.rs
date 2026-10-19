@@ -70,6 +70,49 @@ impl SessionLiveness {
     }
 }
 
+// One service-state owner replaces the former network-stopped boolean.
+// Draining retries existing durable work; Held prevents all new production.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ServiceState {
+    Running,
+    Draining(u64),
+    Held(u64),
+    Failed,
+}
+impl ServiceState {
+    fn network(self) -> bool {
+        matches!(self, Self::Running | Self::Draining(_))
+    }
+    fn deadline(self) -> Option<u64> {
+        match self {
+            Self::Draining(at) | Self::Held(at) => Some(at),
+            _ => None,
+        }
+    }
+    fn expire_hold(&mut self, now: u64) {
+        if matches!(*self, Self::Held(at) if now >= at) {
+            *self = Self::Running;
+        }
+    }
+    fn permits_probe(self, unresolved: bool) -> bool {
+        matches!(self, Self::Running) || matches!(self, Self::Draining(_)) && unresolved
+    }
+    fn drain(&mut self, now: u64, unresolved: bool, call: bool) -> Option<bool> {
+        let Self::Draining(deadline) = *self else {
+            return None;
+        };
+        if !unresolved && !call {
+            *self = Self::Held(now.saturating_add(60_000));
+            Some(true)
+        } else if now >= deadline {
+            *self = Self::Running;
+            Some(false)
+        } else {
+            None
+        }
+    }
+}
+
 pub const STORE_BYTES: usize = 332;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -81,6 +124,7 @@ pub enum Error {
     Clock,
     Network,
     Permissions,
+    Pending,
 }
 
 /// The backend compares the complete prior blob and confirms commit/readback.
@@ -140,47 +184,48 @@ fn prepare_pending(
     old: &PairingRecord,
     record: &PairingRecord,
 ) -> Result<(), Error> {
-    if !record.enabled()
-        || record
-            .policy()
-            .is_none_or(|policy| *policy.resource_policy() != permissions(true))
-    {
+    let binding = pending_binding(private, record);
+    if !record.enabled() {
+        // Revocation never waits for a remote receipt or relies on readable
+        // pending storage. Preserve unresolved work exactly. Completed custody
+        // may follow the tombstone, but any local failure remains fail-closed
+        // when a future grant attempts to recover it.
+        if let Ok(mut pending) = crate::pending_telemetry::Pending::recover_bound(
+            PendingStore(store),
+            pending_binding(private, old),
+            identity.peer().principal(),
+        ) && matches!(pending.pending(), Ok(None))
+        {
+            let _ = pending.rebind(binding, identity.peer().principal());
+        }
         return Ok(());
     }
-    let binding = pending_binding(private, record);
+    // Every initialized device provisions this record by construction. Missing
+    // storage under an older nontelemetry grant is still unknown history.
     if store.pending_read()?.is_none() {
-        if old
-            .policy()
-            .is_some_and(|policy| *policy.resource_policy() == permissions(true))
-        {
-            return Err(Error::Storage);
-        }
-        crate::pending_telemetry::provision_bound(
-            &mut PendingStore(store),
-            binding,
+        return Err(Error::Storage);
+    } else if crate::pending_telemetry::Pending::recover_bound(
+        PendingStore(&mut *store),
+        binding,
+        identity.peer().principal(),
+    )
+    .is_err()
+    {
+        let mut pending = crate::pending_telemetry::Pending::recover_bound(
+            PendingStore(store),
+            pending_binding(private, old),
             identity.peer().principal(),
         )
         .map_err(|_| Error::Storage)?;
-    } else {
-        // A retry of the exact candidate can reconcile its prior durable write.
-        // Another grant's unresolved record is preserved and refuses activation.
-        if crate::pending_telemetry::Pending::recover_bound(
-            PendingStore(&mut *store),
-            binding,
-            identity.peer().principal(),
-        )
-        .is_err()
-        {
-            let mut pending = crate::pending_telemetry::Pending::recover_bound(
-                PendingStore(store),
-                pending_binding(private, old),
-                identity.peer().principal(),
-            )
-            .map_err(|_| Error::Storage)?;
-            pending
-                .rebind(binding, identity.peer().principal())
-                .map_err(|_| Error::Storage)?;
-        }
+        pending
+            .rebind(binding, identity.peer().principal())
+            .map_err(|error| {
+                if error == crate::pending_telemetry::Error::Pending {
+                    Error::Pending
+                } else {
+                    Error::Storage
+                }
+            })?;
     }
     Ok(())
 }
@@ -269,6 +314,9 @@ impl Device {
         kid: u8,
         random: fn(&mut [u8]) -> bool,
     ) -> Result<Self, Error> {
+        if store.pending_read()?.is_some() {
+            return Err(Error::Storage);
+        }
         let mut store_id = [0; 32];
         if !random(&mut store_id) || store_id == [0; 32] {
             return Err(Error::Identity);
@@ -284,6 +332,12 @@ impl Device {
                 PairingRecord::unpaired(&candidate, store_id).map_err(|_| Error::Identity)?;
             let len = encode_store(scalar, kid, &next, None, &mut stored)?;
             store.commit(&[], &stored[..len])?;
+            crate::pending_telemetry::provision_bound(
+                &mut PendingStore(store),
+                pending_binding(scalar, &next),
+                candidate.peer().principal(),
+            )
+            .map_err(|_| Error::Storage)?;
             private.copy_from_slice(scalar);
             stored_len = len;
             record = Some(next);
@@ -302,11 +356,39 @@ impl Device {
         })
     }
 
-    fn reply(&self) -> CommissioningReply {
+    fn reply(&self, pending: coaptic::provisioning::CommissioningPending) -> CommissioningReply {
         CommissioningReply::State {
             device: self.identity.peer(),
             record: self.pairing.checkpoint().clone(),
+            pending,
         }
+    }
+
+    // Synchronous temporary storage is gone before an async owner is suspended.
+    #[inline(never)]
+    fn pending_custody<S: Store>(
+        &self,
+        store: &mut S,
+    ) -> coaptic::provisioning::CommissioningPending {
+        use coaptic::provisioning::CommissioningPending as Status;
+        match store.pending_read() {
+            Ok(None) => Status::Missing,
+            Ok(Some(bytes)) => {
+                match crate::pending_telemetry::Pending::<PendingStore<'_, S>>::inspect_bound(
+                    &bytes,
+                    pending_binding(&self.private, self.pairing.checkpoint()),
+                    self.identity.peer().principal(),
+                ) {
+                    Ok(true) => Status::Unresolved,
+                    Ok(false) => Status::Complete,
+                    Err(_) => Status::Unverifiable,
+                }
+            }
+            Err(_) => Status::Unverifiable,
+        }
+    }
+    fn inspect(&self, store: &mut impl Store) -> CommissioningReply {
+        self.reply(self.pending_custody(store))
     }
 }
 
@@ -327,11 +409,12 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
     let mut decoder = ConsoleFrames::new();
     let mut clock = CheckedClock::new(|| clock().ok_or(()));
     let mut pending = None;
-    let mut network_stopped = false;
+    let mut service = ServiceState::Running;
     loop {
         let Some(now) = next_time(&mut clock)? else {
             return Ok(());
         };
+        service.expire_hold(now);
         let request = if let Some(request) = pending.take() {
             Some(request)
         } else {
@@ -342,9 +425,9 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
                 CommissioningRequest::Inspect => {
                     send(
                         &mut console,
-                        &device
-                            .as_ref()
-                            .map_or(CommissioningReply::Empty, Device::reply),
+                        &device.as_ref().map_or(CommissioningReply::Empty, |device| {
+                            device.inspect(&mut store)
+                        }),
                     )?;
                 }
                 CommissioningRequest::Initialize { kid } => {
@@ -357,11 +440,28 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
                         console.event(2);
                         send(
                             &mut console,
-                            &device.as_ref().ok_or(Error::Identity)?.reply(),
+                            &device.as_ref().ok_or(Error::Identity)?.inspect(&mut store),
                         )?;
                     }
                 }
+                CommissioningRequest::Quiesce => {
+                    if matches!(service, ServiceState::Held(_)) {
+                        service = ServiceState::Held(now.saturating_add(60_000));
+                        send(&mut console, &CommissioningReply::Quiesced)?;
+                    } else if device
+                        .as_ref()
+                        .is_some_and(|device| device.pairing.checkpoint().enabled())
+                        && service == ServiceState::Running
+                    {
+                        service = ServiceState::Draining(now.saturating_add(30_000));
+                    } else {
+                        send(&mut console, &CommissioningReply::Refused(6))?;
+                    }
+                }
                 CommissioningRequest::Challenge => {
+                    if matches!(service, ServiceState::Held(_)) {
+                        service = ServiceState::Held(now.saturating_add(60_000));
+                    }
                     if let Some(device) = &mut device {
                         let challenge = device
                             .pairing
@@ -409,14 +509,27 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
                             device.stored = next;
                             device.stored_len = next_len;
                             device.endpoint = next_endpoint;
-                            network_stopped = false;
+                            service = ServiceState::Running;
                             send(
                                 &mut console,
                                 &CommissioningReply::Committed(device.pairing.checkpoint().clone()),
                             )?;
                         }
                         Err(PairingCommitError::State(_)) => {
+                            service = ServiceState::Running;
                             send(&mut console, &CommissioningReply::Refused(3))?
+                        }
+                        Err(PairingCommitError::Store(Error::Pending)) => {
+                            // Only a verified unresolved record reaches this path:
+                            // no policy or pending content was changed. Restore the
+                            // old live authority after its consumed challenge.
+                            device.pairing = LocalPairing::restore(
+                                &device.identity,
+                                device.pairing.checkpoint().clone(),
+                            )
+                            .map_err(|_| Error::Storage)?;
+                            service = ServiceState::Running;
+                            send(&mut console, &CommissioningReply::Refused(6))?;
                         }
                         Err(PairingCommitError::Store(_)) => {
                             // No more network work after an uncertain write.
@@ -434,7 +547,7 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
         }
         if let Some(device) = &device
             && device.pairing.checkpoint().enabled()
-            && !network_stopped
+            && service.network()
         {
             // Returning a management request drops all old protocol caches,
             // exchanges and sessions before any policy mutation above.
@@ -446,6 +559,7 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
                 &mut clock,
                 &mut console,
                 &mut decoder,
+                &mut service,
             );
             match result {
                 Ok(Some(request)) => pending = Some(request),
@@ -454,7 +568,7 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
                     // Drop the failed volatile owner, but keep USB administration.
                     // Do not repeatedly discard protocol history on remote input:
                     // only an explicit restart or committed policy update resumes it.
-                    network_stopped = true;
+                    service = ServiceState::Failed;
                     console.event(5);
                 }
                 Err(error) => return Err(error),
@@ -588,6 +702,20 @@ fn recover_pending<'a, S: Store>(
     .map_err(|_| Error::Storage)
 }
 
+fn live_custody<S: Store>(
+    pending: &Option<crate::pending_telemetry::Pending<'_, PendingStore<'_, S>>>,
+    initial: coaptic::provisioning::CommissioningPending,
+) -> coaptic::provisioning::CommissioningPending {
+    use coaptic::provisioning::CommissioningPending as Status;
+    pending
+        .as_ref()
+        .map_or(initial, |pending| match pending.pending() {
+            Ok(Some(_)) => Status::Unresolved,
+            Ok(None) => Status::Complete,
+            Err(_) => Status::Unverifiable,
+        })
+}
+
 fn prepare_sample<S: Store>(
     pending: &mut Option<crate::pending_telemetry::Pending<'_, PendingStore<'_, S>>>,
     sample: &mut [u8; 61],
@@ -648,6 +776,7 @@ fn accept_sample<S: Store>(
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Separate borrowed storage, transport and administration owners.
 fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
     device: &Device,
     store: &mut impl Store,
@@ -656,6 +785,7 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
     clock: &mut CheckedClock<F>,
     console: &mut impl Console,
     decoder: &mut ConsoleFrames,
+    service: &mut ServiceState,
 ) -> Result<Option<CommissioningRequest>, Error> {
     let endpoint = device.endpoint.ok_or(Error::Storage)?;
     let peer = device
@@ -675,6 +805,7 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
     if !write && *permission != permissions(false) {
         return Err(Error::Permissions);
     }
+    let initial_custody = device.pending_custody(store);
     let mut pending = recover_pending(device, store, telemetry)?;
     let Some(start) = next_time(clock)? else {
         return Ok(None);
@@ -717,8 +848,20 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
         };
         if let Some(request) = receive(console, decoder, now)? {
             if matches!(request, CommissioningRequest::Inspect) {
-                send(console, &device.reply())?;
+                send(
+                    console,
+                    &device.reply(live_custody(&pending, initial_custody)),
+                )?;
+            } else if matches!(request, CommissioningRequest::Quiesce) {
+                if matches!(*service, ServiceState::Running) {
+                    *service = ServiceState::Draining(now.saturating_add(30_000));
+                } else {
+                    send(console, &CommissioningReply::Refused(6))?;
+                }
             } else {
+                if matches!(*service, ServiceState::Draining(_)) {
+                    *service = ServiceState::Running;
+                }
                 return Ok(Some(request));
             }
         }
@@ -869,7 +1012,24 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
                 Err(_) => retry_at = now.saturating_add(5_000),
             }
         }
-        if !liveness.quiet && call.is_none() && connection.is_connected() && now >= next_probe {
+        let unresolved = pending
+            .as_ref()
+            .map(|pending| pending.pending())
+            .transpose()
+            .map_err(|_| Error::Storage)?
+            .flatten()
+            .is_some();
+        match service.drain(now, unresolved, call.is_some()) {
+            Some(true) => return Ok(Some(CommissioningRequest::Quiesce)),
+            Some(false) => send(console, &CommissioningReply::Refused(6))?,
+            None => {}
+        }
+        if service.permits_probe(unresolved)
+            && !liveness.quiet
+            && call.is_none()
+            && connection.is_connected()
+            && now >= next_probe
+        {
             if let Some(snapshot) = connection.diagnostic_snapshot(now) {
                 console.diagnostics(&snapshot);
             }
@@ -1123,6 +1283,222 @@ mod tests {
             .is_err()
         );
         assert!(store.pending.is_none());
+    }
+
+    #[test]
+    fn pending_inspection_is_read_only_and_missing_is_not_first_use() {
+        use coaptic::provisioning::CommissioningPending as Status;
+        struct ReadOnly<'a>(&'a mut Memory);
+        impl Store for ReadOnly<'_> {
+            fn read(&mut self, _: &mut [u8; STORE_BYTES]) -> Result<usize, Error> {
+                panic!("unexpected identity read")
+            }
+            fn commit(&mut self, _: &[u8], _: &[u8]) -> Result<(), Error> {
+                panic!("inspection wrote identity")
+            }
+            fn pending_read(
+                &mut self,
+            ) -> Result<Option<[u8; crate::pending_telemetry::RECORD_BYTES]>, Error> {
+                Ok(self.0.pending)
+            }
+            fn pending_commit(
+                &mut self,
+                _: &[u8; crate::pending_telemetry::RECORD_BYTES],
+            ) -> Result<(), Error> {
+                panic!("inspection reaffirmed pending")
+            }
+        }
+        let mut store = Memory::default();
+        let mut device = Device::initialize(&mut store, 17, random).unwrap();
+        assert_eq!(
+            device.pending_custody(&mut ReadOnly(&mut store)),
+            Status::Complete
+        );
+        store.pending = None;
+        assert_eq!(
+            device.pending_custody(&mut ReadOnly(&mut store)),
+            Status::Missing
+        );
+        let old = device.pairing.checkpoint().clone();
+        let peer = Identity::from_private_key([2; 32], 18).unwrap().peer();
+        let challenge = device.pairing.begin(&device.identity, 0, random).unwrap();
+        assert!(
+            device
+                .pairing
+                .pair(
+                    &challenge,
+                    coaptic::provisioning::EnrollmentPolicy::new(peer, [7; 32], echo_permissions())
+                        .unwrap(),
+                    1,
+                    |old, next| prepare_pending(
+                        &mut store,
+                        &device.private,
+                        &device.identity,
+                        old,
+                        next
+                    )
+                )
+                .is_err()
+        );
+        assert!(store.pending.is_none());
+        assert_eq!(device.pairing.checkpoint().commitment(), old.commitment());
+        store.pending = Some([0; crate::pending_telemetry::RECORD_BYTES]);
+        assert_eq!(
+            device.pending_custody(&mut ReadOnly(&mut store)),
+            Status::Unverifiable
+        );
+    }
+
+    #[test]
+    fn orphaned_pending_refuses_initialization_and_uncertain_pending_keeps_identity() {
+        let mut orphan = Memory {
+            pending: Some([7; crate::pending_telemetry::RECORD_BYTES]),
+            ..Memory::default()
+        };
+        let original = orphan.pending;
+        assert!(Device::initialize(&mut orphan, 17, random).is_err());
+        assert!(orphan.bytes.is_empty());
+        assert_eq!(orphan.pending, original);
+        struct FailedPending(Memory);
+        impl Store for FailedPending {
+            fn read(&mut self, out: &mut [u8; STORE_BYTES]) -> Result<usize, Error> {
+                self.0.read(out)
+            }
+            fn commit(&mut self, old: &[u8], next: &[u8]) -> Result<(), Error> {
+                self.0.commit(old, next)
+            }
+            fn pending_read(
+                &mut self,
+            ) -> Result<Option<[u8; crate::pending_telemetry::RECORD_BYTES]>, Error> {
+                self.0.pending_read()
+            }
+            fn pending_commit(
+                &mut self,
+                bytes: &[u8; crate::pending_telemetry::RECORD_BYTES],
+            ) -> Result<(), Error> {
+                self.0.pending_commit(bytes)?;
+                Err(Error::Storage)
+            }
+        }
+        let mut store = FailedPending(Memory::default());
+        assert!(Device::initialize(&mut store, 17, random).is_err());
+        let identity = store.0.bytes.clone();
+        assert!(Device::recover(&mut store).unwrap().is_some());
+        assert!(Device::initialize(&mut store, 18, random).is_err());
+        assert_eq!(store.0.bytes, identity);
+    }
+
+    #[test]
+    fn service_drain_preserves_retry_and_bounds_hold_without_new_work() {
+        assert!(core::mem::size_of::<ServiceState>() <= 16);
+        let mut state = ServiceState::Draining(30_000);
+        assert!(state.permits_probe(true));
+        assert!(!state.permits_probe(false));
+        assert_eq!(state.drain(29_999, true, false), None);
+        assert_eq!(state.drain(30_000, true, false), Some(false));
+        assert_eq!(state, ServiceState::Running);
+        state = ServiceState::Draining(60_000);
+        assert_eq!(state.drain(30_001, false, true), None);
+        assert_eq!(state.drain(30_002, false, false), Some(true));
+        assert!(!state.network());
+        assert!(!state.permits_probe(true));
+        state.expire_hold(90_001);
+        assert!(!state.network());
+        state.expire_hold(90_002);
+        assert!(state.network());
+    }
+
+    #[test]
+    fn completed_pending_survives_echo_round_trip_and_unresolved_downgrade_refuses() {
+        let mut store = Memory::default();
+        let mut device = Device::initialize(&mut store, 17, random).unwrap();
+        let peer = Identity::from_private_key([2; 32], 18).unwrap().peer();
+        let policy = |permissions| {
+            coaptic::provisioning::EnrollmentPolicy::new(peer.clone(), [7; 32], permissions)
+                .unwrap()
+        };
+        let challenge = device.pairing.begin(&device.identity, 0, random).unwrap();
+        device
+            .pairing
+            .pair(&challenge, policy(permissions(true)), 1, |old, next| {
+                prepare_pending(&mut store, &device.private, &device.identity, old, next)
+            })
+            .unwrap();
+        let grant = device.pairing.checkpoint().clone();
+        let mut pending = recover_pending(&device, &mut store, true).unwrap();
+        let mut wire = [0; 61];
+        prepare_sample(&mut pending, &mut wire, 2, random).unwrap();
+        let saved = store.pending;
+        let challenge = device.pairing.begin(&device.identity, 3, random).unwrap();
+        assert!(matches!(
+            device
+                .pairing
+                .pair(&challenge, policy(echo_permissions()), 4, |old, next| {
+                    prepare_pending(&mut store, &device.private, &device.identity, old, next)
+                }),
+            Err(PairingCommitError::Store(Error::Pending))
+        ));
+        assert_eq!(store.pending, saved);
+        assert_eq!(device.pairing.checkpoint().commitment(), grant.commitment());
+        device.pairing = LocalPairing::restore(&device.identity, grant).unwrap();
+        let mut pending = recover_pending(&device, &mut store, true).unwrap();
+        prepare_sample(&mut pending, &mut wire, 999, random).unwrap();
+        let operation = pending.as_ref().unwrap().pending().unwrap().unwrap();
+        let receipt =
+            coaptic::provisioning::Receipt::from_parts(operation.id(), *operation.digest(), 1)
+                .unwrap();
+        assert!(accept_sample(&mut pending, Code::CHANGED, &receipt.encode(), &[]).unwrap());
+        for (now, permissions) in [(1000, echo_permissions()), (1002, permissions(true))] {
+            let challenge = device.pairing.begin(&device.identity, now, random).unwrap();
+            device
+                .pairing
+                .pair(&challenge, policy(permissions), now + 1, |old, next| {
+                    prepare_pending(&mut store, &device.private, &device.identity, old, next)
+                })
+                .unwrap();
+        }
+        let pending = recover_pending(&device, &mut store, true).unwrap();
+        assert!(pending.as_ref().unwrap().pending().unwrap().is_none());
+    }
+
+    #[test]
+    fn revocation_never_waits_for_unresolved_pending_or_erases_it() {
+        let mut store = Memory::default();
+        let mut device = Device::initialize(&mut store, 17, random).unwrap();
+        let peer = Identity::from_private_key([2; 32], 18).unwrap().peer();
+        let challenge = device.pairing.begin(&device.identity, 0, random).unwrap();
+        device
+            .pairing
+            .pair(
+                &challenge,
+                coaptic::provisioning::EnrollmentPolicy::new(peer, [7; 32], permissions(true))
+                    .unwrap(),
+                1,
+                |old, next| {
+                    prepare_pending(&mut store, &device.private, &device.identity, old, next)
+                },
+            )
+            .unwrap();
+        let old = device.pairing.checkpoint().clone();
+        let mut pending = recover_pending(&device, &mut store, true).unwrap();
+        prepare_sample(&mut pending, &mut [0; 61], 2, random).unwrap();
+        let saved = store.pending;
+        let challenge = device.pairing.begin(&device.identity, 3, random).unwrap();
+        device
+            .pairing
+            .revoke(&challenge, &[7; 32], 4, |old, next| {
+                prepare_pending(&mut store, &device.private, &device.identity, old, next)
+            })
+            .unwrap();
+        assert!(!device.pairing.checkpoint().enabled());
+        assert_eq!(store.pending, saved);
+        let preserved = crate::pending_telemetry::Pending::recover_bound(
+            PendingStore(&mut store),
+            pending_binding(&device.private, &old),
+            device.identity.peer().principal(),
+        )
+        .unwrap();
+        assert!(preserved.pending().unwrap().is_some());
     }
 
     #[test]
@@ -1656,7 +2032,7 @@ mod tests {
         let (result, replies) = campaign(store.clone(), Plan::Inspect);
         assert_eq!(result, Ok(()));
         assert_eq!(store.borrow().bytes, paired);
-        assert!(replies.iter().any(|reply| matches!(reply, CommissioningReply::State { device, record } if device.principal() == principal && record.enabled())));
+        assert!(replies.iter().any(|reply| matches!(reply, CommissioningReply::State { device, record, .. } if device.principal() == principal && record.enabled())));
         store.borrow_mut().uncertain = true;
         let (result, replies) = campaign(store.clone(), Plan::Revoke);
         assert_eq!(result, Err(Error::Storage));
