@@ -1,0 +1,10 @@
+Run39238844488 attempt1; companion efea6f33451dba50aebbf09e027bde5ff566ac48; core6fa8e1b5df185ade35c5b0c106f7c0ea37159f5f.
+3 portable tests PASS. Ordinary loader, BPF ELF and qualification-only Aya logger builds PASS.
+ELF SHA256 78b088be1d6d782eebcffea36fa33a9471dda975abfc14feab02e7c49b47e909.
+Kernel6.17.0-1022-azure; Ubuntu24.04 image20261012.334.1.
+Load rejected first packet read at instruction28, byte12: LLVM scalar slice length check failed to establish packet range (R6 pkt r=0).
+Reported failed-path stack8/processed28 is NOT successful whole-program acceptance or total stack proof.
+Four before-attach raw-frame receipts pass; no actual BPF execution/differential/CPU/attached/normal-loader/refusal proof.
+Lifecycle before/after SHA256 both8135c0c072a2e934c58646bec9dfd988e65057e9127799000e4f9782f3a76189; temporary interfaces cleaned.
+Artifact12180887561 compressed700044B; extracted evidence including failed log approximately2.14MB, under128MiB owner budget.
+Fix staged off-tree only: explicit338B stack helper-copy adapter, unchanged shared decoder/corpus/actions. Requires successful verifier and measured total stack<=512; copy performance unmeasured.
