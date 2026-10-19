@@ -47,6 +47,51 @@ fn observed_large(request: Request<'_>) -> Response<'static> {
         large_snapshot()
     }
 }
+// Host-only selected and CON-Q representations; existing 4096-byte body pools
+// remain unchanged. Q uses 22 x 32-byte blocks, across MAX_PAYLOADS=10 windows.
+static Q_OBSERVED_BODIES: [[u8; 704]; 3] = [[b'a'; 704], [b'b'; 704], [b'c'; 704]];
+static RIGHT_SELECTED_BODIES: [[u8; 96]; 3] = [[b'm'; 96], [b'n'; 96], [b'o'; 96]];
+fn q_snapshot() -> Response<'static> {
+    let epoch = (COUNTER.load(Ordering::SeqCst) % 3) as usize;
+    Response::content(&Q_OBSERVED_BODIES[epoch])
+        .etag(&[epoch as u8 + 1])
+        .content_format(ContentFormat::TEXT_PLAIN)
+}
+fn selected_snapshot(request: Request<'_>) -> Response<'static> {
+    let selection = match request.method() {
+        Some(Method::Get) if request.payload().is_empty() => {
+            let mut query = request.uri_query();
+            match (query.next(), query.next()) {
+                (Some(Ok("pick=left")), None) => Some(false),
+                (Some(Ok("pick=right")), None) => Some(true),
+                _ => None,
+            }
+        }
+        Some(Method::Fetch)
+            if request.content_format() == Some(Ok(ContentFormat::OCTET_STREAM))
+                && request.uri_query().next().is_none() =>
+        {
+            match request.payload() {
+                b"left" => Some(false),
+                b"right" => Some(true),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    let Some(right) = selection else {
+        return Response::bad_request();
+    };
+    let epoch = (COUNTER.load(Ordering::SeqCst) % 3) as usize;
+    let body = if right {
+        &RIGHT_SELECTED_BODIES[epoch]
+    } else {
+        &OBSERVED_BODIES[epoch]
+    };
+    Response::content(body)
+        .etag(&[(epoch as u8 + 1) * 2 + u8::from(right)])
+        .content_format(ContentFormat::TEXT_PLAIN)
+}
 fn escaped(request: Request<'_>) -> Response<'static> {
     if request.uri_query().eq([Ok("key=a&b")]) {
         Response::content(b"uri-identity")
@@ -162,6 +207,10 @@ impl DatagramIo for Io {
 }
 async fn run() -> Result<(), Error> {
     let a = Args::parse()?;
+    eprintln!(
+        "fixture.routes=14 calls=4 deferred=0 body_capacity=4096 response_copy=4096 worker_stack=8388608 q_max_payloads={}",
+        coaptic::storage::BlockTransfer::MAX_PAYLOADS
+    );
     let start = Instant::now();
     if a.server && a.dtls {
         let listener =
@@ -264,12 +313,21 @@ async fn run() -> Result<(), Error> {
                 signalled = value;
                 app.signal(&["counter"]);
                 app.signal(&["obs-large"]);
+                app.signal(&["obs-selected"]);
+                app.notify_confirmable(
+                    start.elapsed().as_millis() as u64 + 1,
+                    &["obs-q"],
+                    q_snapshot(),
+                )
+                .map_err(|e| format!("Q notification: {e}"))?;
             }
             std::thread::sleep(Duration::from_millis(1));
         }
     }
     let encoded_path = if a.path == "escaped" {
         "escaped/a%2Fb?key=a%26b"
+    } else if a.path == "obs-selected" && a.method == 1 {
+        "obs-selected?pick=left"
     } else {
         &a.path
     };
@@ -300,6 +358,8 @@ async fn run() -> Result<(), Error> {
             "escaped",
             "a/b",
             "obs-large",
+            "obs-selected",
+            "obs-q",
         ]
         .into_iter()
         .find(|known| *known == decoded)
@@ -327,7 +387,9 @@ async fn run() -> Result<(), Error> {
         .request(method, path)
         .payload(&a.payload)
         .to(Endpoint::from(a.address()));
-    if matches!(a.path.as_str(), "methods" | "upload") && matches!(a.method, 2 | 3 | 5 | 6 | 7) {
+    if matches!(a.path.as_str(), "methods" | "upload" | "obs-selected")
+        && matches!(a.method, 2 | 3 | 5 | 6 | 7)
+    {
         outgoing = outgoing.content_format(ContentFormat::OCTET_STREAM);
     }
     if a.path == "patch" && a.method == 6 {
@@ -344,6 +406,10 @@ async fn run() -> Result<(), Error> {
     }
     if a.q_block2 {
         outgoing = outgoing.q_block2();
+        if a.path == "obs-q" {
+            outgoing = outgoing
+                .block2(coaptic::message::BlockValue::new(0, true, 1).expect("fixed Q selector"));
+        }
     }
     if a.q_block2_non {
         outgoing = outgoing.non();
@@ -428,7 +494,7 @@ async fn run() -> Result<(), Error> {
                     .payload(&a.payload)
                     .to(Endpoint::from(a.address()))
                     .echo(challenge);
-                if matches!(a.path.as_str(), "methods" | "upload")
+                if matches!(a.path.as_str(), "methods" | "upload" | "obs-selected")
                     && matches!(a.method, 2 | 3 | 5 | 6 | 7)
                 {
                     retry = retry.content_format(ContentFormat::OCTET_STREAM);
@@ -555,13 +621,13 @@ fn fixture(
     io: Io,
     echo: bool,
     token_length: usize,
-) -> Result<App<PeerProfile, Io, 12, true>, Error> {
+) -> Result<App<PeerProfile, Io, 14, true>, Error> {
     let app = App::profile::<PeerProfile>()
         .token_length(token_length)
         .full_responses()
         .randomness(|bytes| getrandom::fill(bytes).is_ok())
         .block_wise::<true>()
-        .routes::<12>()
+        .routes::<14>()
         .route(
             "/test",
             get(|_: Request<'_>| Response::content(support::BODY)),
@@ -603,6 +669,19 @@ fn fixture(
         .route(
             "obs-large",
             get(observed_large).post(increment).observe(large_snapshot),
+        )
+        .route(
+            "obs-selected",
+            get(selected_snapshot)
+                .fetch(selected_snapshot)
+                .post(increment)
+                .observe_selected(selected_snapshot),
+        )
+        .route(
+            "obs-q",
+            get(|_: Request<'_>| q_snapshot())
+                .post(increment)
+                .observe(q_snapshot),
         )
         .route("/patch", get(merge_patch).patch(merge_patch))
         .route(
