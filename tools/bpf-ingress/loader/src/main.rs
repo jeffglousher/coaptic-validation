@@ -1,4 +1,6 @@
 #[cfg(target_os = "linux")]
+mod probe;
+#[cfg(target_os = "linux")]
 mod linux {
     use aya::{
         Ebpf,
@@ -50,6 +52,13 @@ mod linux {
                 "owned ingress={} peer={} ifindices={:?}",
                 owned.name, owned.peer, owned.indices
             );
+            println!(
+                "OWNED_RECORD {}",
+                serde_json::json!({
+                    "pid": std::process::id(), "ingress": owned.name, "peer": owned.peer,
+                    "ingress_index": owned.indices.map(|v| v.0), "peer_index": owned.indices.map(|v| v.1)
+                })
+            );
             Ok(owned)
         }
         fn verify_identity(&self) -> Result<u32> {
@@ -84,17 +93,158 @@ mod linux {
             }
         }
     }
+    struct OwnedChild {
+        child: std::process::Child,
+        record: Option<Veth>,
+        waited: bool,
+    }
+    impl OwnedChild {
+        fn stop(&mut self) -> Result<std::process::ExitStatus> {
+            let kill = self.child.kill();
+            // Always reap before inspecting/removing the recorded network resources.
+            let status = self.child.wait()?;
+            self.waited = true;
+            kill?;
+            Ok(status)
+        }
+    }
+    impl Drop for OwnedChild {
+        fn drop(&mut self) {
+            if !self.waited && self.stop().is_err() && !self.waited {
+                // Without confirmed termination, even a genuine record is not a cleanup grant.
+                if let Some(record) = &mut self.record {
+                    record.owned = false;
+                }
+                eprintln!(
+                    "cannot confirm owned child termination; retain recorded veth for reconciliation"
+                );
+            }
+            if self.waited
+                && let Some(record) = &mut self.record
+                && record.verify_identity().is_ok()
+            {
+                record.owned = true;
+            }
+        }
+    }
+    fn terminated_child(object: &str) -> Result<()> {
+        use std::{
+            io::{BufRead, BufReader},
+            os::unix::process::ExitStatusExt,
+            process::Stdio,
+        };
+        let child = std::process::Command::new(std::env::current_exe()?)
+            .args([object, "60", "1"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()?;
+        let mut owned = OwnedChild {
+            child,
+            record: None,
+            waited: false,
+        };
+        let stdout = owned
+            .child
+            .stdout
+            .take()
+            .ok_or("child stdout unavailable")?;
+        let (send, receive) = std::sync::mpsc::sync_channel(8);
+        let reader = std::thread::spawn(move || {
+            for line in BufReader::new(stdout).lines() {
+                if send.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        loop {
+            let remaining = deadline
+                .checked_duration_since(std::time::Instant::now())
+                .ok_or("child attach timeout")?;
+            let line = receive
+                .recv_timeout(remaining)
+                .map_err(|_| "child did not report attachment")??;
+            println!("child {}: {line}", owned.child.id());
+            if let Some(record) = line.strip_prefix("OWNED_RECORD ") {
+                let record: serde_json::Value = serde_json::from_str(record)?;
+                let pid = owned.child.id();
+                let name = format!("cpb{pid}a");
+                let peer = format!("cpb{pid}b");
+                if owned.record.is_some()
+                    || record["pid"].as_u64() != Some(u64::from(pid))
+                    || record["ingress"].as_str() != Some(name.as_str())
+                    || record["peer"].as_str() != Some(peer.as_str())
+                {
+                    return Err("child ownership record differs from spawned process".into());
+                }
+                let index = u32::try_from(
+                    record["ingress_index"]
+                        .as_u64()
+                        .ok_or("missing child ingress index")?,
+                )?;
+                let peer_index = u32::try_from(
+                    record["peer_index"]
+                        .as_u64()
+                        .ok_or("missing child peer index")?,
+                )?;
+                let veth = Veth {
+                    name,
+                    peer,
+                    indices: Some((index, peer_index)),
+                    owned: false,
+                };
+                veth.verify_identity()?;
+                owned.record = Some(veth);
+            }
+            if line.starts_with("attached cycle=0;") {
+                break;
+            }
+        }
+        if owned.record.is_none() {
+            return Err("child attached without ownership record".into());
+        }
+        let status = owned.stop()?;
+        if status.signal() != Some(libc::SIGKILL) {
+            return Err("child was not terminated by SIGKILL".into());
+        }
+        reader.join().map_err(|_| "child output reader panicked")?;
+        let record = owned
+            .record
+            .as_mut()
+            .ok_or("missing stopped child record")?;
+        record.verify_identity()?;
+        record.owned = true;
+        crate::probe::attached(&record.name, None)?;
+        record.cleanup()?;
+        if std::path::Path::new(&format!("/sys/class/net/{}", record.name)).exists()
+            || std::path::Path::new(&format!("/sys/class/net/{}", record.peer)).exists()
+        {
+            return Err("terminated child veth still exists after owned cleanup".into());
+        }
+        println!(
+            "terminated-child recovery PASS pid={} indices={:?}; wait completed, identities verified, links detached and pair deleted",
+            owned.child.id(),
+            record.indices
+        );
+        Ok(())
+    }
     pub fn run() -> Result<()> {
         let args: Vec<_> = std::env::args().collect();
         if args.len() != 4 {
-            return Err("usage: coaptic-ingress-loader OBJECT SECONDS CYCLES; creates its own disposable veth; requires Linux BPF/network privileges".into());
+            return Err("usage: coaptic-ingress-loader OBJECT SECONDS|qualify CYCLES; creates its own disposable veth; requires Linux BPF/network privileges".into());
         }
-        let seconds: u64 = args[2].parse()?;
+        let qualify = args[2] == "qualify";
+        let seconds: u64 = if qualify { 1 } else { args[2].parse()? };
         let cycles: u32 = args[3].parse()?;
         if !(1..=60).contains(&seconds) || !(1..=3).contains(&cycles) {
             return Err("seconds must be 1..60; cycles 1..3".into());
         }
         let mut veth = Veth::create()?;
+        let (ingress, peer) = veth.indices.ok_or("missing veth indices")?;
+        if qualify {
+            crate::probe::attached(&veth.name, None)?;
+            crate::probe::live(ingress, peer, "before")?;
+        }
         for cycle in 0..cycles {
             let mut bpf = Ebpf::load_file(&args[1])?;
             let program: &mut Xdp = bpf
@@ -102,16 +252,34 @@ mod linux {
                 .ok_or("missing program")?
                 .try_into()?;
             program.load()?;
+            if qualify {
+                crate::probe::metadata(&mut bpf, cycle)?;
+                crate::probe::differential(&mut bpf)?;
+                crate::probe::cpu_counters(&mut bpf)?;
+            }
+            let program: &mut Xdp = bpf
+                .program_mut("coaptic_observe")
+                .ok_or("missing program")?
+                .try_into()?;
             let index = veth.verify_identity()?;
             let link = program.attach_to_if_index(index, XdpMode::Skb)?;
             println!("attached cycle={cycle}; observation only; all packets PASS");
-            std::thread::sleep(Duration::from_secs(seconds));
+            if qualify {
+                crate::probe::attached(&veth.name, Some(program.info()?.id()))?;
+                crate::probe::live_attached(&bpf, ingress, peer)?;
+            } else {
+                std::thread::sleep(Duration::from_secs(seconds));
+            }
             // Detach before reading so a completed snapshot does not race new packets.
             let program: &mut Xdp = bpf
                 .program_mut("coaptic_observe")
                 .ok_or("missing program")?
                 .try_into()?;
             program.detach(link)?;
+            if qualify {
+                crate::probe::attached(&veth.name, None)?;
+                crate::probe::live(ingress, peer, "detached")?;
+            }
             let counts: PerCpuArray<_, u64> =
                 PerCpuArray::try_from(bpf.map("COUNTS").ok_or("missing map")?)?;
             for index in 0..5 {
@@ -123,6 +291,14 @@ mod linux {
                 );
             }
             // Nothing is pinned. Drop closes this cycle's owned object/maps.
+        }
+        if qualify {
+            terminated_child(&args[1])?;
+            veth.verify_identity()?;
+            crate::probe::attached(&veth.name, None)?;
+            println!(
+                "concurrent ownership PASS: parent pair survived child termination/recovery unchanged"
+            );
         }
         veth.cleanup()?;
         Ok(())
