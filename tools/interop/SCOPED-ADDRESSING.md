@@ -1,7 +1,8 @@
 # Finite scoped and routed UDP addressing
 
-No topology creation, adapter change, route change, build or download has run.
-The cleanup guards have been reviewed; runtime execution follows focused build checks.
+Four addressing directions pass in the retained source-bound
+[hosted result](../qualification/evidence/scoped-routed/README.md). All network
+configuration belongs to freshly owned namespaces on the isolated Linux runner.
 
 ## Software boundary
 
@@ -98,13 +99,33 @@ Capture source/binary identities before/after, actual socket local/remote tuples
 namespace and ifindex ownership, bounded raw datagrams, code/body/operation matching,
 negative error/timeout, and fresh recovery. Do not reuse host-loopback claims as
 route proof. Parser and oracle tests can run without network setup; runtime begins
-only after review of this finite slice. Nine pure cleanup and scope tests pass;
-Rust compilation and hosted execution are pending. This fixture uses the aiocoap
+only after review of this finite slice. Three Rust tests and ten pure cleanup
+and scope tests pass; the four addressing directions have executed. This fixture uses the aiocoap
 codec with a Python UDP socket, not the full aiocoap server stack. The manual
 workflow is `.github/workflows/scoped-addressing.yml`. Added source is under
-64 KB; no new Rust dependencies or Cargo target directory. The 256 KB subprocess
+96 KB; no new Rust dependencies or Cargo target directory. The 256 KB subprocess
 output check bounds retained evidence after capture, not streaming subprocess
 memory. Trusted finite ip/sysctl commands and bounded peer trace producers keep
 this workload finite. PMTU and compound scenarios remain separate, unexecuted
-requirements; four successful addressing directions would not close issue #200.
+requirements; four successful addressing directions do not close issue #200.
+
+## Separate network-error mode
+
+`--mode network-errors` executes only two additional cases. The compound relay
+drops one reply, injects a malformed datagram and an ACK with an unmatched token,
+then records retransmission/recovery and a fresh operation. Exact client, relay
+and independent server traces must agree. ACK matching and response matching are
+separate RFC 7252 contracts; a failure is retained for interpretation, not relabeled
+automatically as a core defect or a pass.
+
+The PMTU case sets only the owned router egress and server interface to MTU 1280.
+A separate Python socket submits a 1400-byte nonce-bearing UDP probe, validates
+ICMPv6 Packet Too Big origin/type/code/MTU, quoted bytes, destination and offender,
+and requires an actual subsequent EMSGSIZE plus fresh small CoAP exchange. The
+probe verifies installed Linux UAPI constants and records header hashes. Original
+definitions are in Linux [errqueue.h](https://github.com/torvalds/linux/blob/v6.17/include/uapi/linux/errqueue.h)
+and [in6.h](https://github.com/torvalds/linux/blob/v6.17/include/uapi/linux/in6.h).
+This is kernel socket behavior, not automatic App PMTU adaptation. No App buffer
+or capacity changes are involved. Four pure PMTU/compound tests reject missing
+loss, altered ownership, absent malformed traffic and mismatched error receipts.
 

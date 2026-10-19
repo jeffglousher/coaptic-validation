@@ -1,0 +1,25 @@
+{
+  "library_revision": "edfd1eb1669e8c164fc318e47f531d1c7e41e7a5",
+  "library_version": "0.0.10",
+  "lock_change": "Coaptic path-package version only; dependency pins retained",
+  "fixtures": {
+    "tests/plugtest/td-coap4/6lowpan.yml": "602544d0f9baef95f95bad09505d42fe0a0215663c075f9e3163038bad6488a8",
+    "tests/plugtest/td-coap4/base.yml": "7cd74a9cf223ac18e9394f20db88f72a481fafde6919189e0ef247a2b7acbdc4",
+    "tests/plugtest/td-coap4/block.yml": "84f10992b40e8f63145faaefdabe14d4eda2458c5888c47c1643d36ce429efb2",
+    "tests/plugtest/td-coap4/dtls.yml": "08765c4fa658d914dbede1c08638e7815933a9512a9854bdf0c53cb2b39db38d",
+    "tests/plugtest/td-coap4/link.yml": "dd551b5146ae36790b1e031903e5f8495c6a52c4d3d2b2bec6d23cbfad885419"
+  },
+  "source": "edfd1eb1669e8c164fc318e47f531d1c7e41e7a5",
+  "dirty": false,
+  "suite_source": "d5e93eb4f4b8b91bf51878ce6ec76d1dbc629e0f",
+  "suite_dirty": false,
+  "suite_locks": {
+    "Cargo.lock": "f711ce82fa0c978951b004095f37ad2cc4b05c1ceabbff406646ba6c87ed934b",
+    "tools/benchmark/native/Cargo.lock": "eb16c47c2f3539aaa45bd82e4eab48f229b252183998857f6a80a6ffc7432075",
+    "tools/security-interop/Cargo.lock": "e12762939ad364280a46bc526683de74567855448bf0f4e6263d79bad32e0653",
+    "tools/security-profile/Cargo.lock": "278f01b25bc5f2e9aab89f1c53cdbb97e3f12ae6269d81452a36393755e9e8c5",
+    "tools/esphome/rust/Cargo.lock": "7661bf627e28c7ec2eda22a2212081ce5f6e4e5b80d29d2da3d92c25ff74551d",
+    "tools/qualification/esp32/Cargo.lock": "5fda0d74045b28886c9b5dead108857d87e64b405ce193eeb7e1255483ef0773",
+    "tools/durable-host/Cargo.lock": "40a13b28dc161217c0f84afa18c3b870a840b48ccea2acf7071b0ef34b4205cf"
+  }
+}
