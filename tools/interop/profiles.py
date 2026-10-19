@@ -206,11 +206,22 @@ def observation(client, server, initial=0, valid=False, qblock=False):
         require(decoded_options(first).get(6) == [b""], "registration omitted Observe")
         require(decoded_options(first).get(23) == [bytes([(initial << 4) | 1])], "wrong initial Block2 selector")
         wire_replies = [bytes.fromhex(row["hex"]) for row in trace if row["direction"] == "response"]
+        wire_requests = [bytes.fromhex(row["hex"]) for row in trace if row["direction"] == "request"]
+        for reply in wire_replies:
+            if reply[1] and (reply[0] >> 4) & 3 == 2:
+                require(any(sent[1] == 1 and sent[2:4] == reply[2:4] and packet_token(sent) == packet_token(reply)
+                            for sent in wire_requests), "unowned Observe block response")
+        previous_observe = None
         for epoch in range(3):
             packets = [wire for wire in wire_replies if decoded_options(wire).get(4) == [bytes([epoch + 1])]]
             starts = [wire for wire in packets if 6 in decoded_options(wire)]
             require(starts, "missing Observe epoch start")
             require(packet_token(starts[0]) == packet_token(first), "notification token changed")
+            sequence = int.from_bytes(decoded_options(starts[0])[6][0], "big")
+            require(sequence <= 0xffffff, "invalid Observe serial")
+            if previous_observe is not None:
+                require(0 < (sequence - previous_observe) % (1 << 24) < (1 << 23), "Observe serial did not advance")
+            previous_observe = sequence
             if valid and epoch == 0:
                 require(starts[0][1] == 67 and not coap_payload(starts[0]), "initial Valid contract changed")
                 continue
