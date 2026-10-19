@@ -48,6 +48,12 @@
       "original_path": "C:\\Users\\jeffg\\AppData\\Local\\CoapticQualification\\libedhoc-0363bd3\\build\\evidence\\20261019T104557.231963Z\\manifest.json",
       "original_sha256": "666387548394ec9b8799d43e44d428c6a9cc88b8d3c33a842059816b82d5ed18",
       "retained_sha256": "1b6cc4e17c663f8393c496d6757efdd681faafaf76939735c3ac586c43615f76"
+    },
+    {
+      "file": "options-ce7e817-8f88d76.json",
+      "original_path": "C:\\Users\\jeffg\\AppData\\Local\\CoapticQualification\\edhoc-options-8f88d76\\first.json",
+      "original_sha256": "ceb1456a801cbcbd28818618e0eedf6caba767f1d77b302d7cd62c42bd409093",
+      "retained_sha256": "1812e11f6b26a129f8d3740b2d4d2b64f215fa19507175bbb8400218b7fc5a85"
     }
   ],
   "core_build": {
