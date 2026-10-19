@@ -103,10 +103,12 @@ jobs:
           # Official Cargo package, checksum is the normal committed loader lock's Aya checksum.
           tar -xzf "$qual/aya.crate" -C "$qual" --no-same-owner
           echo "14d24e4161d4be1271662ea0205dab8b768ed2a5a4fcbbf63624a02cee11696d  $qual/aya-0.14.0/src/programs/mod.rs" | sha256sum --check
+          echo "766bca9ae0b4efea24594369c6f37b11f5eef6369b6b6c412cbdaa4c71975cd9  $qual/aya-0.14.0/src/sys/bpf.rs" | sha256sum --check
           (cd "$qual/aya-0.14.0" && git apply "$GITHUB_WORKSPACE/tools/bpf-ingress/aya-success-verifier.patch")
           echo "38421d256cf0ef0035ec51037693568849137b4a191ad7f21303080b82b9128d  $qual/aya-0.14.0/src/programs/mod.rs" | sha256sum --check
+          echo "75f85371714f1037f244810a9ab8f91c0ac2d5f7c0ca1c9751ed55e9a84e58b8  $qual/aya-0.14.0/src/sys/bpf.rs" | sha256sum --check
           cp tools/bpf-ingress/aya-success-verifier.patch "$RUNNER_TEMP/bpf-evidence/"
-          sha256sum "$qual/aya.crate" "$qual/aya-0.14.0/src/programs/mod.rs" tools/bpf-ingress/aya-success-verifier.patch > "$RUNNER_TEMP/bpf-evidence/aya-instrumentation.sha256"
+          sha256sum "$qual/aya.crate" "$qual/aya-0.14.0/src/programs/mod.rs" "$qual/aya-0.14.0/src/sys/bpf.rs" tools/bpf-ingress/aya-success-verifier.patch > "$RUNNER_TEMP/bpf-evidence/aya-instrumentation.sha256"
           cp tools/bpf-ingress/loader/Cargo.lock "$RUNNER_TEMP/bpf-evidence/loader-original.lock"
           printf '[patch.crates-io]\naya = { path = "%s" }\n' "$qual/aya-0.14.0" > "$qual/patch.toml"
           cargo update --offline --manifest-path "$qual/tools/bpf-ingress/loader/Cargo.toml" --config "$qual/patch.toml" -p aya

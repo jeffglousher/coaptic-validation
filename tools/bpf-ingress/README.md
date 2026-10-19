@@ -18,7 +18,8 @@ include RFC 8613 C.4 ciphertext, treated only as opaque syntax. Packet-socket
 receipt proves byte preservation, not UDP checksum validation or authentication.
 
 Aya discards successful verifier logs. The workflow builds a separate temporary
-qualification copy using a one-line patch to the checksum-verified Aya crate;
+qualification copy using a two-line patch to the checksum-verified Aya crate (allocate its existing
+10 KiB verifier buffer before the first load, then print successful logs);
 original/patched source and lock identities are retained. Ordinary loader sources
 are copied unchanged and the normal unpatched binary is also exercised. No
 global crate cache is edited, no BPF pins are created, and bpftool inspects only

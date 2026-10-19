@@ -292,10 +292,15 @@ mod linux {
             }
             // Nothing is pinned. Drop closes this cycle's owned object/maps.
         }
-        veth.cleanup()?;
         if qualify {
             terminated_child(&args[1])?;
+            veth.verify_identity()?;
+            crate::probe::attached(&veth.name, None)?;
+            println!(
+                "concurrent ownership PASS: parent pair survived child termination/recovery unchanged"
+            );
         }
+        veth.cleanup()?;
         Ok(())
     }
 }
