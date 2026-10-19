@@ -56,7 +56,20 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y bpftool iproute2 libcap2-bin
+          sudo apt-get install --no-install-recommends -y linux-tools-generic iproute2 libcap2-bin
+          # Ubuntu's bpftool name is virtual; its common wrapper selects uname-r.
+          # Resolve the installed generic userspace binary without changing kernels.
+          tools_package="$(dpkg-query -W -f='${Depends}' linux-tools-generic)"
+          tools_package="${tools_package%% *}"
+          [[ "$tools_package" == linux-tools-*-generic ]]
+          mapfile -t tool_paths < <(dpkg-query -L "$tools_package" | grep '/bpftool$')
+          test "${#tool_paths[@]}" -eq 1
+          BPFTOOL="$(readlink -f "${tool_paths[0]}")"
+          test -x "$BPFTOOL"
+          mkdir "$RUNNER_TEMP/bpf-bin"
+          ln -s "$BPFTOOL" "$RUNNER_TEMP/bpf-bin/bpftool"
+          echo "$RUNNER_TEMP/bpf-bin" >> "$GITHUB_PATH"
+          export PATH="$RUNNER_TEMP/bpf-bin:$PATH"
           mkdir "$RUNNER_TEMP/bpf-linker"
           curl --fail --location --retry 2 https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-x86_64-unknown-linux-musl.tar.zst -o "$RUNNER_TEMP/bpf-linker/archive.tar.zst"
           echo "6789717c8cb6a2a5d920f3b6bfac2bd7efc00f6228ecd149108a99699a75c679  $RUNNER_TEMP/bpf-linker/archive.tar.zst" | sha256sum --check
@@ -72,11 +85,12 @@ jobs:
             sha256sum "$RUNNER_TEMP/bpf-linker/archive.tar.zst" "$RUNNER_TEMP/bpf-linker/bpf-linker"
             bpftool version
             ip -Version
-            dpkg-query -W bpftool iproute2 libcap2-bin
+            printf 'bpftool_real_path=%s\n' "$BPFTOOL"
+            dpkg-query -W linux-tools-generic "$tools_package" linux-tools-common iproute2 libcap2-bin
             sha256sum "$(command -v bpftool)" "$(command -v ip)"
             sudo capsh --print
           } > "$RUNNER_TEMP/bpf-evidence/tools.txt"
-          sudo bpftool feature probe kernel full > "$RUNNER_TEMP/bpf-evidence/kernel-features.txt" 2>&1
+          sudo "$BPFTOOL" feature probe kernel full > "$RUNNER_TEMP/bpf-evidence/kernel-features.txt" 2>&1
       - name: Build identical portable classifier, loader and BPF object
         run: |
           set -euo pipefail
@@ -123,7 +137,7 @@ jobs:
           set -euo pipefail
           ip -j link show > "$RUNNER_TEMP/bpf-evidence/lifecycle-before.json"
           trap 'ip -j link show > "$RUNNER_TEMP/bpf-evidence/lifecycle-after.json"' EXIT
-          sudo env COAPTIC_BPF_EVIDENCE="$RUNNER_TEMP/bpf-evidence" "$RUNNER_TEMP/bpf-target/release/coaptic-ingress-loader" "$RUNNER_TEMP/bpf-evidence/ingress.elf" qualify 2 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/kernel-probe-instrumented.log"
+          sudo env PATH="$PATH" COAPTIC_BPF_EVIDENCE="$RUNNER_TEMP/bpf-evidence" "$RUNNER_TEMP/bpf-target/release/coaptic-ingress-loader" "$RUNNER_TEMP/bpf-evidence/ingress.elf" qualify 2 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/kernel-probe-instrumented.log"
           grep 'COAPTIC_QUALIFICATION_VERIFIER_BEGIN' "$RUNNER_TEMP/bpf-evidence/kernel-probe-instrumented.log"
           grep -E 'stack depth|processed [0-9]+ insns' "$RUNNER_TEMP/bpf-evidence/kernel-probe-instrumented.log"
           sudo "$RUNNER_TEMP/bpf-evidence/loader-normal" "$RUNNER_TEMP/bpf-evidence/ingress.elf" qualify 1 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/kernel-probe-normal.log"
