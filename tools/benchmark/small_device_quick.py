@@ -50,6 +50,30 @@ def host_identity():
             'build_profile': 'release; thin LTO; codegen-units=1; existing registered Cargo lane'}
 
 
+def stop_owned_process(child):
+    if child.poll() is not None:
+        return
+    root = psutil.Process(child.pid)
+    children = root.children(recursive=True)
+    if len(children) > 8:
+        raise ValueError('fixture process tree exceeds cleanup bound')
+    for process in reversed(children):
+        try:
+            process.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    child.terminate()
+    _, live = psutil.wait_procs(children, timeout=3)
+    for process in live:
+        process.kill()
+    psutil.wait_procs(live, timeout=3)
+    try:
+        child.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        child.kill()
+        child.wait(timeout=3)
+
+
 def driver(port, credentials, protected):
     before = snapshot(psutil.Process())
     report = run(SimpleNamespace(host='127.0.0.1', port=port, bytes=32, concurrency=1,
@@ -127,13 +151,7 @@ def measure(server, peer, protected):
             except Exception as error:
                 failure = error
             finally:
-                if child.poll() is None:
-                    child.terminate()
-                    try:
-                        child.wait(timeout=3)
-                    except subprocess.TimeoutExpired:
-                        child.kill()
-                        child.wait(timeout=3)
+                stop_owned_process(child)
                 log.seek(0)
                 server_log = log.read(65536).decode(errors='replace')
         if failure is not None:
