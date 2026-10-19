@@ -8,6 +8,14 @@ use std::{cell::Cell, net::UdpSocket};
 
 #[test]
 fn enrolled_pending_owner_has_an_independent_memory_ceiling() {
+    assert!(core::mem::size_of::<Device>() <= 1344);
+    std::eprintln!(
+        "Pairing owner bytes: record={} state={} device={} pending={}",
+        core::mem::size_of::<PairingRecord>(),
+        core::mem::size_of::<LocalPairing>(),
+        core::mem::size_of::<Device>(),
+        core::mem::size_of::<crate::pending_telemetry::Pending<'_, PendingStore<'_, Memory>>>()
+    );
     // One retained record plus its custody reference/metadata, never another
     // application payload array. Persistent bytes and transmission prefix are
     // separately bounded; target stack peaks still require the final firmware.

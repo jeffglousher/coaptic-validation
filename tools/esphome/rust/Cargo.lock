@@ -21,6 +21,7 @@ dependencies = [
  "cipher",
  "cpubits",
  "cpufeatures",
+ "zeroize",
 ]
 
 [[package]]

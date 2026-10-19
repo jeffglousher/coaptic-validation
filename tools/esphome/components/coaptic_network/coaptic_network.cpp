@@ -426,17 +426,17 @@ bool CoapticNetwork::commit_pending(const uint8_t *bytes, uint32_t length) {
 }
 
 int32_t CoapticNetwork::read_pairing(uint8_t *bytes, uint32_t capacity) {
-  if (security_mode_ != 5 || bytes == nullptr || capacity < 320) return -1;
+  if (security_mode_ != 5 || bytes == nullptr || capacity < 332) return -1;
   if (pairing_handle_ == 0 && nvs_open("coaptic_pair", NVS_READWRITE, &pairing_handle_) != ESP_OK) return -1;
   size_t length = 0;
   const esp_err_t status = nvs_get_blob(pairing_handle_, "custody_v1", nullptr, &length);
   if (status == ESP_ERR_NVS_NOT_FOUND) return 0;
-  if (status != ESP_OK || length == 0 || length > 320) return -1;
+  if (status != ESP_OK || length == 0 || length > 332) return -1;
   return nvs_get_blob(pairing_handle_, "custody_v1", bytes, &length) == ESP_OK ? static_cast<int32_t>(length) : -1;
 }
 
 bool CoapticNetwork::commit_pairing(const uint8_t *bytes, uint32_t length) {
-  if (security_mode_ != 5 || bytes == nullptr || length == 0 || length > 320 || pairing_handle_ == 0) return false;
+  if (security_mode_ != 5 || bytes == nullptr || length == 0 || length > 332 || pairing_handle_ == 0) return false;
   return nvs_set_blob(pairing_handle_, "custody_v1", bytes, length) == ESP_OK && nvs_commit(pairing_handle_) == ESP_OK;
 }
 
