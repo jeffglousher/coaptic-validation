@@ -415,6 +415,19 @@ mod pairing_ffi {
         ) -> bool;
         fn coaptic_pairing_restart(context: *mut c_void);
         fn coaptic_pairing_event(context: *mut c_void, event: u32);
+        fn coaptic_pairing_diagnostics(
+            context: *mut c_void,
+            at_ms: u64,
+            token_refused: u32,
+            rx_refused: u32,
+            tx_refused: u32,
+            refusal_sent: u32,
+            refusal_unsent: u32,
+            hard_rx: u32,
+            hard_tx: u32,
+            rx_accepted: u32,
+            progress: u32,
+        );
     }
 
     struct Nvs(*mut c_void);
@@ -484,6 +497,24 @@ mod pairing_ffi {
         }
         fn event(&mut self, event: u32) {
             unsafe { coaptic_pairing_event(self.0, event) };
+        }
+        fn diagnostics(&mut self, snapshot: &coaptic::app::diagnostics::Snapshot) {
+            let metrics = &snapshot.metrics;
+            unsafe {
+                coaptic_pairing_diagnostics(
+                    self.0,
+                    snapshot.at_ms,
+                    metrics.token_capacity_refused,
+                    metrics.admission_rx_refused,
+                    metrics.admission_tx_refused,
+                    metrics.admission_refusal_sent,
+                    metrics.admission_refusal_unsent,
+                    metrics.hard_rx_exhausted,
+                    metrics.hard_tx_exhausted,
+                    metrics.rx_accepted,
+                    metrics.progress,
+                )
+            };
         }
     }
 

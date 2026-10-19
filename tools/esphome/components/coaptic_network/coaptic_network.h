@@ -44,6 +44,11 @@ class CoapticNetwork : public Component {
   int32_t send(const uint8_t *bytes, uint32_t length, uint64_t peer);
   uint64_t clock();
   uint64_t async_now() const;
+  void admission_diagnostics(uint64_t at_ms, uint32_t token_refused,
+                             uint32_t rx_refused, uint32_t tx_refused,
+                             uint32_t refusal_sent, uint32_t refusal_unsent,
+                             uint32_t hard_rx, uint32_t hard_tx,
+                             uint32_t rx_accepted, uint32_t progress) const;
   int32_t async_wait(uint32_t interests, uint64_t deadline);
 
  protected:

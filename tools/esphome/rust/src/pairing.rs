@@ -178,6 +178,9 @@ pub trait Console {
     /// Public counters only: 1 recovered, 2 initialized, 3 connected, 4 receipt,
     /// 5 network stopped (USB remains available for inspection/restart).
     fn event(&mut self, event: u32);
+    /// Optional local observation. Never retain the borrow or alter protocol policy.
+    /// Counters belong to the retained App and may reset with a fresh session.
+    fn diagnostics(&mut self, _snapshot: &coaptic::app::diagnostics::Snapshot) {}
 }
 
 struct Device {
@@ -796,6 +799,9 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
             }
         }
         if call.is_none() && connection.is_connected() && now >= next_probe {
+            if let Some(snapshot) = connection.diagnostic_snapshot(now) {
+                console.diagnostics(&snapshot);
+            }
             // Durable telemetry retains exact operation bytes until a matching receipt.
             // Read-only pairing uses an authenticated identity read instead.
             prepare_sample(&mut pending, &mut sample, now, random)?;
