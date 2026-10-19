@@ -305,6 +305,8 @@ async fn run() -> Result<(), Error> {
             if a.oscore { "oscore" } else { "udp" },
         );
         let mut signalled = COUNTER.load(Ordering::SeqCst);
+        let mut q_pending = false;
+        let mut q_wait_reported = false;
         loop {
             app.poll(start.elapsed().as_millis() as u64 + 1)
                 .map_err(|e| format!("poll: {e}"))?;
@@ -314,6 +316,10 @@ async fn run() -> Result<(), Error> {
                 app.signal(&["counter"]);
                 app.signal(&["obs-large"]);
                 app.signal(&["obs-selected"]);
+                q_pending = true;
+                q_wait_reported = false;
+            }
+            if q_pending {
                 let notified = app
                     .notify_confirmable(
                         start.elapsed().as_millis() as u64 + 1,
@@ -321,8 +327,14 @@ async fn run() -> Result<(), Error> {
                         q_snapshot(),
                     )
                     .map_err(|e| format!("Q notification: {e}"))?;
-                if a.path == "obs-q" {
+                // A named Q fixture retries the latest source after a held
+                // endpoint becomes available; it retains no representation.
+                if a.path == "obs-q" && (notified > 0 || !q_wait_reported) {
                     eprintln!("fixture.q_notification counter={value} sent={notified}");
+                    q_wait_reported = true;
+                }
+                if notified > 0 || a.path != "obs-q" {
+                    q_pending = false;
                 }
             }
             std::thread::sleep(Duration::from_millis(1));

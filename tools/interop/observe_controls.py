@@ -159,6 +159,51 @@ def selected_lifecycle(port, selection, captures=None, strict_refusal=True):
         channel.socket.close()
 
 
+def q_initial_representation(channel, token):
+    """M1 requests a complete representation, unlike single-block M0."""
+    pending = channel.send(1, token, [(6, b""), (11, b"obs-q"), (31, b"\x09")])
+    chunks = []
+    sequence = None
+    etag = None
+    train_kind = None
+    while len(chunks) < 22:
+        wire = channel.receive()
+        kind = (wire[0] >> 4) & 3
+        if wire[1] == 0:
+            require(wire == b"\x60\x00" + pending[2:4], "Q initial foreign empty control")
+            continue
+        require(packet_token(wire) == token and wire[1] == 69 and kind in (0, 1, 2),
+                "Q initial owner/code/type changed")
+        if kind == 2:
+            require(wire[2:4] == pending[2:4], "Q initial ACK MID changed")
+        if kind != 2:
+            if train_kind is None:
+                train_kind = kind
+            require(kind == train_kind, "Q initial changed CON/NON train")
+        options = decoded_options(wire)
+        require(len(options.get(31, [])) == 1, "Q initial block missing")
+        block = int.from_bytes(options[31][0], "big")
+        index = block >> 4
+        require(index == len(chunks) and block & 7 == 1 and bool(block & 8) == (index < 21),
+                "Q initial NUM/M/SZX changed")
+        require(coap_payload(wire) == b"a" * 32 and options.get(28) == [b"\x02\xc0"],
+                "Q initial bytes/Size2 changed")
+        if not chunks:
+            require(len(options.get(6, [])) == 1 and len(options.get(4, [])) == 1 and
+                    1 <= len(options[4][0]) <= 8, "Q initial epoch/ETag missing or invalid")
+            sequence, etag = options[6], options[4]
+        require(options.get(4) == etag and options.get(6) == sequence,
+                "Q initial representation identity changed")
+        chunks.append(coap_payload(wire))
+        # ACKing each CON drives its train. Only a NON window needs a pull.
+        if kind == 1 and len(chunks) in (10, 20):
+            value = (len(chunks) << 4) | 9
+            encoded = value.to_bytes((value.bit_length() + 7) // 8, "big")
+            pending = channel.send(1, token, [(11, b"obs-q"), (31, encoded)])
+    require(b"".join(chunks) == b"a" * 704, "Q initial body incomplete")
+    return sequence[0], etag
+
+
 def q_recovery_lifecycle(port, captures=None):
     """Exact retained final-window recovery and next epoch, Python wire client."""
     channel = Channel(port)
@@ -166,11 +211,7 @@ def q_recovery_lifecycle(port, captures=None):
         captures.append(channel.trace)
     token = b"qobs"
     try:
-        registration = channel.send(1, token, [(6, b""), (11, b"obs-q"), (31, b"\x01")])
-        initial = channel.response(registration, 69)
-        opts = decoded_options(initial)
-        require(6 in opts and opts.get(31) == [b"\x09"] and coap_payload(initial) == b"a" * 32,
-                "single-block Q registration not accepted")
+        initial_sequence, _ = q_initial_representation(channel, token)
 
         def epoch(number, letter):
             post = channel.send(2, b"post", [(11, b"obs-q")])
@@ -179,7 +220,9 @@ def q_recovery_lifecycle(port, captures=None):
             sequence = None
             etag = None
             while len(chunks) < 22 or not accepted:
-                wire = channel.receive()
+                # Initial NON delivery can hold this endpoint for 3s. Once a
+                # CON train starts, keep the ordinary per-block deadline.
+                wire = channel.receive(timeout=4 if not chunks else 2)
                 if packet_token(wire) == b"post":
                     require(not accepted and wire[1] == 68 and wire[2:4] == post[2:4], "Q mutation ACK")
                     accepted = True
@@ -197,7 +240,8 @@ def q_recovery_lifecycle(port, captures=None):
                         "Q body/Size2 changed")
                 current_sequence = options[6][0]
                 current_etag = options.get(4)
-                require(current_etag, "Q epoch has no ETag")
+                require(current_etag is not None and len(current_etag) == 1 and
+                        1 <= len(current_etag[0]) <= 8, "Q epoch has invalid ETag")
                 if sequence is None:
                     sequence, etag = current_sequence, current_etag
                 require(sequence == current_sequence and etag == current_etag, "Q epoch mixed representations")
@@ -206,10 +250,14 @@ def q_recovery_lifecycle(port, captures=None):
             return sequence, etag
 
         first_sequence, etag = epoch(1, b"b")
+        delta = (int.from_bytes(first_sequence, "big") - int.from_bytes(initial_sequence, "big")) % (1 << 24)
+        require(0 < delta < 1 << 23, "Q first notification did not advance")
         # NUM20 and21 occupy one configured10-block MAX_PAYLOADS_SET. No Observe
         # on missing-block requests or replies. This checks retained bytes, not
         # an invented immediate packet-loss timer policy.
-        missing = channel.send(1, token, [(4, etag[0]), (11, b"obs-q"),
+        # ETag is a cache validator, not a request identity: including it may
+        # legitimately produce 2.03 without the missing bytes (RFC9177?4.4).
+        missing = channel.send(1, token, [(11, b"obs-q"),
                                          (31, b"\x01\x41"), (31, b"\x01\x51")])
         recovered = set()
         while len(recovered) < 2:
@@ -217,9 +265,12 @@ def q_recovery_lifecycle(port, captures=None):
             require(packet_token(wire) == token and wire[1] == 69, "Q recovery owner/code changed")
             options = decoded_options(wire)
             require(6 not in options and options.get(4) == etag, "Q recovery changed epoch identity")
-            index = int.from_bytes(options.get(31, [b""])[0], "big") >> 4
-            require(index in (20, 21) and index not in recovered and coap_payload(wire) == b"b" * 32,
-                    "Q recovery escaped selected set")
+            require(len(options.get(31, [])) == 1, "Q recovery missing block")
+            block = int.from_bytes(options[31][0], "big")
+            index = block >> 4
+            require(index in (20, 21) and index not in recovered and block & 7 == 1 and
+                    bool(block & 8) == (index < 21) and options.get(28) == [b"\x02\xc0"] and
+                    coap_payload(wire) == b"b" * 32, "Q recovery escaped selected set")
             recovered.add(index)
         channel.quiet({token})
         next_sequence, _ = epoch(2, b"c")

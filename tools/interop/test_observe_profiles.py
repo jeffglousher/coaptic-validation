@@ -115,5 +115,57 @@ class ObserveFixtureDiagnostics(unittest.TestCase):
             del ACTIVE_COMMANDS[before:]
 
 
+class QInitialControl(unittest.TestCase):
+    def channel(self, kind, corrupt=None, initial_corrupt=None, switch_kind=False):
+        from run import coap_message
+        class FakeChannel:
+            def __init__(self):
+                self.sent = []
+                self.index = 0
+            def send(self, code, token, options):
+                self.sent.append(options)
+                return coap_message(code, len(self.sent), token, options)
+            def receive(self):
+                index = self.index
+                self.index += 1
+                block = (index << 4) | (9 if index < 21 else 1)
+                opts = [(4, b"one"), (6, b"\x02"), (28, b"\x02\xc0"),
+                        (31, block.to_bytes((block.bit_length() + 7) // 8, "big"))]
+                if corrupt and index == 10:
+                    opts = corrupt(opts)
+                if initial_corrupt and index == 0:
+                    opts = initial_corrupt(opts)
+                wire = coap_message(69, index + 100, b"qobs", opts, b"a" * 32)
+                actual_kind = 1 - kind if switch_kind and index == 10 else kind
+                return bytes([(wire[0] & 0xcf) | (actual_kind << 4)]) + wire[1:]
+        return FakeChannel()
+
+    def test_con_train_acks_need_no_window_pull(self):
+        from observe_controls import q_initial_representation
+        channel = self.channel(0)
+        q_initial_representation(channel, b"qobs")
+        self.assertEqual(len(channel.sent), 1)
+
+    def test_non_windows_request_exact_next_set(self):
+        from observe_controls import q_initial_representation
+        channel = self.channel(1)
+        q_initial_representation(channel, b"qobs")
+        self.assertEqual([options[-1] for options in channel.sent],
+                         [(31, b"\x09"), (31, b"\xa9"), (31, b"\x01\x49")])
+
+    def test_initial_metadata_change_is_not_accepted(self):
+        from observe_controls import q_initial_representation
+        for mutate in (lambda opts: [(n, b"two" if n == 4 else v) for n, v in opts],
+                       lambda opts: [(n, v) for n, v in opts if n != 28]):
+            with self.assertRaises(AssertionError):
+                q_initial_representation(self.channel(0, mutate), b"qobs")
+        for mutate in (lambda opts: [(n, b"" if n == 4 else v) for n, v in opts],
+                       lambda opts: [opts[0], *opts]):
+            with self.assertRaises(AssertionError):
+                q_initial_representation(self.channel(0, initial_corrupt=mutate), b"qobs")
+        with self.assertRaises(AssertionError):
+            q_initial_representation(self.channel(0, switch_kind=True), b"qobs")
+
+
 if __name__ == "__main__":
     unittest.main()
