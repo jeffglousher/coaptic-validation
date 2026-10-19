@@ -419,6 +419,19 @@ mod pairing_ffi {
 
     struct Nvs(*mut c_void);
     impl Store for Nvs {
+        fn pending_read(
+            &mut self,
+        ) -> Result<Option<[u8; crate::pending_telemetry::RECORD_BYTES]>, Error> {
+            crate::pending_telemetry::Store::read(&mut PendingNvs(self.0))
+                .map_err(|_| Error::Storage)
+        }
+        fn pending_commit(
+            &mut self,
+            bytes: &[u8; crate::pending_telemetry::RECORD_BYTES],
+        ) -> Result<(), Error> {
+            crate::pending_telemetry::Store::commit(&mut PendingNvs(self.0), bytes)
+                .map_err(|_| Error::Storage)
+        }
         fn read(&mut self, output: &mut [u8; crate::pairing::STORE_BYTES]) -> Result<usize, Error> {
             let length =
                 unsafe { coaptic_pairing_read(self.0, output.as_mut_ptr(), output.len() as u32) };

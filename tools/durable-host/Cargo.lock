@@ -131,6 +131,7 @@ dependencies = [
  "blake3",
  "coaptic",
  "coaptic-esphome-probe",
+ "coaptic-receipts",
  "getrandom",
 ]
 
@@ -153,6 +154,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "coaptic-receipts"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "coaptic",
 ]
 
 [[package]]

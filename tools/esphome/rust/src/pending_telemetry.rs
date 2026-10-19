@@ -59,22 +59,45 @@ pub trait Store {
     fn commit(&mut self, record: &[u8; RECORD_BYTES]) -> Result<(), Error>;
 }
 
-fn mac(credentials: &Credentials, domain: &[u8]) -> Hmac<Sha256> {
-    let mut mac = Hmac::<Sha256>::new_from_slice(&credentials.secret).expect("fixed key length");
-    mac.update(domain);
-    mac.update(&credentials.salt);
-    mac.update(&credentials.context);
-    mac.update(&[credentials.sender, credentials.recipient]);
-    mac
+/// Stable custody for one pending record. Enrolled binding survives fresh
+/// sessions but changes on every owner, peer or permission revision.
+#[derive(Clone, Copy)]
+pub enum Binding<'a> {
+    Pairwise(&'a Credentials),
+    Enrolled {
+        private: &'a [u8; 32],
+        grant: [u8; 32],
+    },
 }
 
-fn identity(credentials: &Credentials, principal: Principal) -> [u8; 32] {
+fn mac(binding: Binding<'_>, domain: &[u8]) -> Hmac<Sha256> {
+    match binding {
+        Binding::Pairwise(credentials) => {
+            let mut mac =
+                Hmac::<Sha256>::new_from_slice(&credentials.secret).expect("fixed key length");
+            mac.update(domain);
+            mac.update(&credentials.salt);
+            mac.update(&credentials.context);
+            mac.update(&[credentials.sender, credentials.recipient]);
+            mac
+        }
+        Binding::Enrolled { private, grant } => {
+            let mut mac = Hmac::<Sha256>::new_from_slice(private).expect("fixed key length");
+            mac.update(b"Coaptic enrolled pending custody v1\0");
+            mac.update(domain);
+            mac.update(&grant);
+            mac
+        }
+    }
+}
+
+fn identity(credentials: Binding<'_>, principal: Principal) -> [u8; 32] {
     let mut mac = mac(credentials, b"Coaptic pending owner v1\0");
     mac.update(principal.fingerprint());
     mac.finalize().into_bytes().into()
 }
 
-fn sign(bytes: &mut [u8; RECORD_BYTES], credentials: &Credentials) {
+fn sign(bytes: &mut [u8; RECORD_BYTES], credentials: Binding<'_>) {
     let mut mac = mac(credentials, b"Coaptic pending record v1\0");
     mac.update(&bytes[..TAG]);
     bytes[TAG..].copy_from_slice(&mac.finalize().into_bytes());
@@ -103,7 +126,7 @@ fn operation(bytes: &[u8; RECORD_BYTES]) -> Result<TelemetryOperation<'_>, Error
 
 fn validate(
     bytes: &[u8; RECORD_BYTES],
-    credentials: &Credentials,
+    credentials: Binding<'_>,
     principal: Principal,
 ) -> Result<(), Error> {
     let mut mac = mac(credentials, b"Coaptic pending record v1\0");
@@ -133,7 +156,7 @@ pub fn provision(
     credentials: &Credentials,
     principal: Principal,
 ) -> Result<(), Error> {
-    provision_record(store, credentials, principal, None)
+    provision_record(store, Binding::Pairwise(credentials), principal, None)
 }
 
 /// Offline first provisioning with complete work in the first committed record.
@@ -144,12 +167,26 @@ pub fn provision_operation(
     principal: Principal,
     operation: &TelemetryOperation<'_>,
 ) -> Result<(), Error> {
-    provision_record(store, credentials, principal, Some(operation))
+    provision_record(
+        store,
+        Binding::Pairwise(credentials),
+        principal,
+        Some(operation),
+    )
+}
+
+/// Explicit initial provisioning under a freshly approved enrolled grant.
+pub fn provision_bound(
+    store: &mut impl Store,
+    binding: Binding<'_>,
+    principal: Principal,
+) -> Result<(), Error> {
+    provision_record(store, binding, principal, None)
 }
 
 fn provision_record(
     store: &mut impl Store,
-    credentials: &Credentials,
+    credentials: Binding<'_>,
     principal: Principal,
     operation: Option<&TelemetryOperation<'_>>,
 ) -> Result<(), Error> {
@@ -189,15 +226,23 @@ fn put_operation(bytes: &mut [u8; RECORD_BYTES], operation: &TelemetryOperation<
 /// completed ID cannot be reused; this bounded record is not an all-history set.
 pub struct Pending<'a, S> {
     store: S,
-    credentials: &'a Credentials,
+    credentials: Binding<'a>,
     bytes: [u8; RECORD_BYTES],
     poisoned: bool,
 }
 
 impl<'a, S: Store> Pending<'a, S> {
     pub fn recover(
-        mut store: S,
+        store: S,
         credentials: &'a Credentials,
+        principal: Principal,
+    ) -> Result<Self, Error> {
+        Self::recover_bound(store, Binding::Pairwise(credentials), principal)
+    }
+
+    pub fn recover_bound(
+        mut store: S,
+        credentials: Binding<'a>,
         principal: Principal,
     ) -> Result<Self, Error> {
         let bytes = store.read()?.ok_or(Error::Missing)?;
@@ -218,6 +263,20 @@ impl<'a, S: Store> Pending<'a, S> {
 
     pub fn into_store(self) -> S {
         self.store
+    }
+
+    /// Rebind completed or empty work during an authenticated policy transition.
+    /// An unresolved operation is never discarded or relabeled for another grant.
+    pub fn rebind(&mut self, binding: Binding<'a>, principal: Principal) -> Result<(), Error> {
+        self.ready()?;
+        if self.bytes[48] == 1 {
+            return Err(Error::Pending);
+        }
+        let mut next = self.next()?;
+        next[8..40].copy_from_slice(&identity(binding, principal));
+        next[48..TAG].fill(0);
+        self.credentials = binding;
+        self.persist(next)
     }
 
     /// Only durably recorded work is eligible for transmission. Recovery returns
@@ -339,6 +398,54 @@ mod tests {
     use super::*;
     use coaptic::provisioning::PinnedPeer;
     use std::{cell::RefCell, rc::Rc};
+
+    #[test]
+    fn enrolled_binding_preserves_pending_across_recovery_and_refuses_grant_rollover_until_receipted()
+     {
+        let private = [7; 32];
+        let binding = Binding::Enrolled {
+            private: &private,
+            grant: [8; 32],
+        };
+        let next = Binding::Enrolled {
+            private: &private,
+            grant: [9; 32],
+        };
+        let mut backend = Backend::default();
+        provision_bound(&mut backend, binding, principal(1)).unwrap();
+        let mut pending = Pending::recover_bound(backend.clone(), binding, principal(1)).unwrap();
+        pending
+            .begin(
+                OperationId::new([3; 16]),
+                [4; 32],
+                Some(60),
+                b"retained exact sample",
+            )
+            .unwrap();
+        assert_eq!(pending.rebind(next, principal(1)), Err(Error::Pending));
+        drop(pending);
+        assert!(matches!(
+            Pending::recover_bound(backend.clone(), next, principal(1)),
+            Err(Error::Corrupt)
+        ));
+        let mut pending = Pending::recover_bound(backend.clone(), binding, principal(1)).unwrap();
+        let operation = pending.pending().unwrap().unwrap();
+        assert_eq!(operation.payload(), b"retained exact sample");
+        assert_eq!(operation.id(), OperationId::new([3; 16]));
+        let receipt = Receipt::from_parts(operation.id(), *operation.digest(), 1).unwrap();
+        pending
+            .accept_authenticated_receipt(&receipt.encode())
+            .unwrap();
+        pending.rebind(next, principal(1)).unwrap();
+        drop(pending);
+        assert!(matches!(
+            Pending::recover_bound(backend.clone(), binding, principal(1)),
+            Err(Error::Corrupt)
+        ));
+        let recovered = Pending::recover_bound(backend, next, principal(1)).unwrap();
+        assert!(recovered.pending().unwrap().is_none());
+        assert!(recovered.completion().unwrap().is_none());
+    }
 
     #[cfg(feature = "async-network")]
     mod async_tests;
@@ -820,7 +927,7 @@ mod tests {
             let mut memory = backend.0.borrow_mut();
             let bytes = memory.record.as_mut().unwrap();
             bytes[40..48].copy_from_slice(&u64::MAX.to_be_bytes());
-            sign(bytes, &credentials);
+            sign(bytes, Binding::Pairwise(&credentials));
         }
         let mut pending = Pending::recover(backend.clone(), &credentials, principal(1)).unwrap();
         let before = backend.0.borrow().record;

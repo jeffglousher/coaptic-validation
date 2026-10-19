@@ -4,8 +4,37 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
-use coaptic::storage::DatagramIo;
+use coaptic::storage::{DatagramIo, MemoryProfile};
 use coaptic::{App, Endpoint, Request, Response, get, profiles};
+
+// One App simultaneously retains its client's CON and serves that request.
+// Two ordinary TX slots plus the control/refusal reserve are therefore needed;
+// every other dimension remains the Constrained profile's original capacity.
+struct LoopbackConstrained;
+impl MemoryProfile for LoopbackConstrained {
+    const RX_DATAGRAM_SLOTS: usize = <profiles::Constrained as MemoryProfile>::RX_DATAGRAM_SLOTS;
+    const RX_DATAGRAM_BYTES: usize = <profiles::Constrained as MemoryProfile>::RX_DATAGRAM_BYTES;
+    const TX_DATAGRAM_SLOTS: usize = 3;
+    const TX_DATAGRAM_BYTES: usize = <profiles::Constrained as MemoryProfile>::TX_DATAGRAM_BYTES;
+    const DEDUP_ENTRIES: usize = <profiles::Constrained as MemoryProfile>::DEDUP_ENTRIES;
+    const OBSERVE_ENTRIES: usize = <profiles::Constrained as MemoryProfile>::OBSERVE_ENTRIES;
+    const RX_BODY_SLOTS: usize = <profiles::Constrained as MemoryProfile>::RX_BODY_SLOTS;
+    const RX_BODY_BYTES: usize = <profiles::Constrained as MemoryProfile>::RX_BODY_BYTES;
+    const TX_BODY_SLOTS: usize = <profiles::Constrained as MemoryProfile>::TX_BODY_SLOTS;
+    const TX_BODY_BYTES: usize = <profiles::Constrained as MemoryProfile>::TX_BODY_BYTES;
+    type RxDatagram = <profiles::Constrained as MemoryProfile>::RxDatagram;
+    type TxDatagram = coaptic::storage::DatagramPool<
+        3,
+        { <profiles::Constrained as MemoryProfile>::TX_DATAGRAM_BYTES },
+    >;
+    type RxBody = <profiles::Constrained as MemoryProfile>::RxBody;
+    type TxBody = <profiles::Constrained as MemoryProfile>::TxBody;
+    type Dedup = <profiles::Constrained as MemoryProfile>::Dedup;
+    type Observe = <profiles::Constrained as MemoryProfile>::Observe;
+    type Exchange = coaptic::storage::ExchangeTable<3>;
+    type RxScratch = <profiles::Constrained as MemoryProfile>::RxScratch;
+    type TxScratch = <profiles::Constrained as MemoryProfile>::TxScratch;
+}
 
 struct ProbeIo<'a> {
     incoming: Option<&'a [u8]>,
@@ -54,7 +83,7 @@ pub fn protocol_codegen_probe(input: &[u8], _master_secret: &[u8]) -> bool {
         builder.oscore(context)
     };
     #[cfg(not(feature = "oscore"))]
-    let builder = builder.allow_plaintext();
+    let builder = builder.allow_unprotected();
     let Ok(mut app) = builder.bind(ProbeIo {
         incoming: Some(input),
     }) else {
@@ -119,9 +148,9 @@ pub fn protocol_runtime_probe() -> Result<(), &'static str> {
     fn large(_: Request<'_>) -> Response<'static> {
         Response::content(&BODY)
     }
-    let Ok(mut app) = App::profile::<profiles::Constrained>()
+    let Ok(mut app) = App::profile::<LoopbackConstrained>()
         .deterministic_for_tests()
-        .allow_plaintext()
+        .allow_unprotected()
         .block_wise::<true>()
         .route("large", get(large))
         .bind(LoopIo {

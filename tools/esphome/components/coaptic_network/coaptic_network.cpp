@@ -408,17 +408,21 @@ int32_t CoapticNetwork::telemetry_config(uint8_t *bytes, uint32_t capacity) {
 
 int32_t CoapticNetwork::read_pending(uint8_t *bytes, uint32_t length) {
   if (bytes == nullptr || length != 1214) return -1;
-  if (security_handle_ == 0 && nvs_open("coaptic_sec", NVS_READWRITE, &security_handle_) != ESP_OK) return -1;
+  // Enrolled work belongs to pairing custody, separate from qualification keys.
+  nvs_handle_t &handle = security_mode_ == 5 ? pairing_handle_ : security_handle_;
+  const char *space = security_mode_ == 5 ? "coaptic_pair" : "coaptic_sec";
+  if (handle == 0 && nvs_open(space, NVS_READWRITE, &handle) != ESP_OK) return -1;
   size_t stored = 0;
-  const esp_err_t status = nvs_get_blob(security_handle_, "pending_v1", nullptr, &stored);
+  const esp_err_t status = nvs_get_blob(handle, "pending_v1", nullptr, &stored);
   if (status == ESP_ERR_NVS_NOT_FOUND) return 0;
   if (status != ESP_OK || stored != length) return -1;
-  return nvs_get_blob(security_handle_, "pending_v1", bytes, &stored) == ESP_OK && stored == length ? 1 : -1;
+  return nvs_get_blob(handle, "pending_v1", bytes, &stored) == ESP_OK && stored == length ? 1 : -1;
 }
 
 bool CoapticNetwork::commit_pending(const uint8_t *bytes, uint32_t length) {
-  if (bytes == nullptr || length != 1214 || security_handle_ == 0) return false;
-  return nvs_set_blob(security_handle_, "pending_v1", bytes, length) == ESP_OK && nvs_commit(security_handle_) == ESP_OK;
+  const nvs_handle_t handle = security_mode_ == 5 ? pairing_handle_ : security_handle_;
+  if (bytes == nullptr || length != 1214 || handle == 0) return false;
+  return nvs_set_blob(handle, "pending_v1", bytes, length) == ESP_OK && nvs_commit(handle) == ESP_OK;
 }
 
 int32_t CoapticNetwork::read_pairing(uint8_t *bytes, uint32_t capacity) {
