@@ -683,7 +683,7 @@ fn observe_client_off(
 ) -> Result<(), PeerError> {
     if client.name() != "coaptic" || server.name() != "coaptic" {
         return Err(PeerError(
-            "SKIP: coverage gap #199: OBS05 requires controlled source and owner inspection".into(),
+            "SKIP: independent peer fixture gap #200: OBS05 requires controlled source and owner inspection".into(),
         ));
     }
     observe_con(dest, client, server)?;
@@ -754,7 +754,7 @@ fn observe_server_reset(
 ) -> Result<(), PeerError> {
     if client.name() != "coaptic" || server.name() != "coaptic" {
         return Err(PeerError(
-            "SKIP: coverage gap #199: OBS04 requires same-endpoint reset and refresh controls"
+            "SKIP: independent peer fixture gap #200: OBS04 requires same-endpoint reset and refresh controls"
                 .into(),
         ));
     }
@@ -800,7 +800,7 @@ fn observe_pumping(
 ) -> Result<(), PeerError> {
     if client.name() != "coaptic" || server.name() != "coaptic" {
         return Err(PeerError(
-            "SKIP: coverage gap #199: controlled pumping fixture requires Coaptic peers".into(),
+            "SKIP: independent peer fixture gap #200: controlled pumping fixture requires Coaptic peers".into(),
         ));
     }
     for (case, versions) in [[0, 1, 2], [1, 2, 1]].into_iter().enumerate() {
@@ -843,7 +843,7 @@ fn observe_large(
 ) -> Result<(), PeerError> {
     if client.name() != "coaptic" || server.name() != "coaptic" {
         return Err(PeerError(
-            "SKIP: coverage gap #199: complete large Observe fixture requires Coaptic peers".into(),
+            "SKIP: independent peer fixture gap #200: complete large Observe fixture requires Coaptic peers".into(),
         ));
     }
     let mut registration = ClientRequest::get(&["obs-large"]);
@@ -887,7 +887,7 @@ fn observe_con_loss(
 ) -> Result<(), PeerError> {
     if client.name() != "coaptic" || server.name() != "coaptic" {
         return Err(PeerError(
-            "SKIP: coverage gap #199: controlled Observe loss requires Coaptic peers".into(),
+            "SKIP: independent peer fixture gap #200: controlled Observe loss requires Coaptic peers".into(),
         ));
     }
     observe_con(dest, client, server)?;
@@ -980,7 +980,7 @@ fn observe_resource_terminal(
 ) -> Result<(), PeerError> {
     if client.name() != "coaptic" || server.name() != "coaptic" {
         return Err(PeerError(
-            "SKIP: coverage gap #199: terminal resource fixture requires Coaptic peers".into(),
+            "SKIP: independent peer fixture gap #200: terminal resource fixture requires Coaptic peers".into(),
         ));
     }
     observe_con(dest, client, server)?;
@@ -1041,7 +1041,7 @@ fn observe_resource_update(
 ) -> Result<(), PeerError> {
     if server.name() != "coaptic" {
         return Err(PeerError(
-            "SKIP: coverage gap #199: OBS_09 needs controlled server resource mutation".into(),
+            "SKIP: independent peer fixture gap #200: OBS_09 needs controlled server resource mutation".into(),
         ));
     }
     observe_con(dest, client, server)?;
@@ -1078,7 +1078,7 @@ fn observe_owner_request(
     server: &mut dyn Peer,
 ) -> Result<(), PeerError> {
     if client.name() != "coaptic" || server.name() != "coaptic" {
-        return Err(PeerError("SKIP: coverage gap #199: same-owner Observe requests need the Coaptic client and controlled CON server".into()));
+        return Err(PeerError("SKIP: independent peer fixture gap #200: same-owner Observe requests need the Coaptic client and controlled CON server".into()));
     }
     observe_con(dest, client, server)?;
     let endpoint = client
@@ -1130,7 +1130,7 @@ fn observe_restart(
     server: &mut dyn Peer,
 ) -> Result<(), PeerError> {
     if client.name() != "coaptic" || server.name() != "coaptic" {
-        return Err(PeerError("SKIP: coverage gap #199: OBS_06 needs controlled same-endpoint client restart and CON server".into()));
+        return Err(PeerError("SKIP: independent peer fixture gap #200: OBS_06 needs controlled same-endpoint client restart and CON server".into()));
     }
     observe_con(dest, client, server)?;
     let endpoint = client
@@ -1181,7 +1181,7 @@ fn observe_con(
     server: &mut dyn Peer,
 ) -> Result<(), PeerError> {
     if server.name() != "coaptic" {
-        return Err(PeerError("SKIP: coverage gap #199: coap-rs server wrapper has no controlled CON notification source".into()));
+        return Err(PeerError("SKIP: independent peer fixture gap #200: coap-rs server wrapper has no controlled CON notification source".into()));
     }
     let mut reg = ClientRequest::get(&["obs"]);
     reg.observe = Some(0);
@@ -1253,7 +1253,7 @@ fn observe_non(
 ) -> Result<(), PeerError> {
     if server.name() != "coaptic" {
         return Err(PeerError(
-            "SKIP: coverage gap #199: coap-rs server wrapper does not emit NON notifications"
+            "SKIP: independent peer fixture gap #200: coap-rs server wrapper does not emit NON notifications"
                 .into(),
         ));
     }

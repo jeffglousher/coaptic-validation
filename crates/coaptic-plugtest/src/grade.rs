@@ -379,9 +379,6 @@ fn grade_direct_ownership(packets: &[Packet]) -> Result<(), String> {
         {
             return Err("empty control carries token/options/payload".into());
         }
-        if !message.payload().is_empty() && !matches!(message.content_format(), Some(Ok(_))) {
-            return Err("nonempty direct response lacks Content-Format".into());
-        }
     }
     Ok(())
 }
@@ -454,6 +451,9 @@ fn grade_conditional(td: &str, packets: &[Packet]) -> Result<(), String> {
         }
         if response.code() != Code::CONTENT && !response.payload().is_empty() {
             return Err("unexpected conditional response body".into());
+        }
+        if response.code() == Code::CONTENT && !matches!(response.content_format(), Some(Ok(_))) {
+            return Err("conditional representation lacks Content-Format".into());
         }
     }
     let tags = |i: usize| messages[i].etag().map(|v| v.to_vec()).collect::<Vec<_>>();
