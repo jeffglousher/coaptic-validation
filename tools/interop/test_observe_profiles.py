@@ -81,5 +81,39 @@ class SelectedFollowupOracle(unittest.TestCase):
             grade_changed_selection(response, False)
 
 
+class ObserveFixtureDiagnostics(unittest.TestCase):
+    def test_fetch_continuation_requires_original_selection(self):
+        from profiles import grade_fetch_continuation
+        from run import coap_message
+        options = [(11, b"obs-selected"), (12, b"*"), (23, b"\x11")]
+        grade_fetch_continuation(coap_message(5, 2, b"new", options, b"left"))
+        for opts, body in ((options, b""), (options, b"right"),
+                           ([(11, b"test"), *options[1:]], b"left"),
+                           ([options[0], (12, b""), options[2]], b"left")):
+            with self.assertRaises(AssertionError):
+                grade_fetch_continuation(coap_message(5, 2, b"new", opts, body))
+
+    def test_failed_server_diagnostic_survives_cleanup(self):
+        import tempfile
+        from types import SimpleNamespace
+        from profiles import EvidenceServer, ACTIVE_COMMANDS
+        service = object.__new__(EvidenceServer)
+        service.stderr = tempfile.TemporaryFile()
+        service.stderr.write(b"Q notification: bounded failure")
+        service.proc = SimpleNamespace(args=["peer", "server"], poll=lambda: 1)
+        closed = []
+        service.close = lambda: (closed.append(True), service.stderr.close())
+        before = len(ACTIVE_COMMANDS)
+        try:
+            with self.assertRaisesRegex(RuntimeError, "original"):
+                with service:
+                    raise RuntimeError("original")
+            self.assertEqual(closed, [True])
+            self.assertEqual(ACTIVE_COMMANDS[-1]["exit_code_before_cleanup"], 1)
+            self.assertIn("bounded failure", ACTIVE_COMMANDS[-1]["stderr"])
+        finally:
+            del ACTIVE_COMMANDS[before:]
+
+
 if __name__ == "__main__":
     unittest.main()

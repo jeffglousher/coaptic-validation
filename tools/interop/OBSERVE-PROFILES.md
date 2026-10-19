@@ -20,7 +20,11 @@ The GET selector is exactly one `pick=left` or `pick=right` Uri-Query. FETCH
 uses Content-Format42 and the complete selection body `left` or `right`, without
 Uri-Query. Each observed representation has96 bytes, a selection-specific ETag,
 and three distinguishable epochs. Native clients exchange complete bodies
-through both servers. Additional independent Python wire controls retain one
+through both servers. The native selected FETCH client enables libcoap's public
+`COAP_BLOCK_STLESS_FETCH` mode so every Block2 continuation repeats the exact
+selection body and Content-Format; traces verify that contract. Default native
+stateful continuation (new token, empty body) is not treated as equivalent.
+Additional independent Python wire controls retain one
 endpoint with two distinct observer tokens, exercise invalid-selector refusal,
 re-register, exercise a valid different selector on a same-token NUM1 follow-up,
 verify both original selected notifications, cancel one selection, verify
