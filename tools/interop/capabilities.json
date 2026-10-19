@@ -1,6 +1,6 @@
 {
   "schema": "coaptic-capabilities/1",
-  "scope": "Process cases in this file.",
+  "scope": "The 181 declared process cases remain an executable inventory, not a whole-RFC or milestone-completion claim. Selected delivery scope is direct UDP origin endpoints with OSCORE and EDHOC; optional DTLS and intermediary roles remain separate.",
   "policy": "Every enabled case appears once and passes.",
   "required_capabilities": [
     "libcoap-dtls",
@@ -2106,7 +2106,7 @@
       ],
       "failure_proof": [
         "wrong-key PUT cannot change state",
-        "plaintext PUT receives 4.01 and cannot change state"
+        "unprotected PUT receives 4.01 and cannot change state"
       ],
       "executable": "tools/interop/run.py:main.oscore_state"
     },
@@ -2136,7 +2136,7 @@
       ],
       "failure_proof": [
         "wrong-key PUT cannot change state",
-        "plaintext PUT receives 4.01 and cannot change state"
+        "unprotected PUT receives 4.01 and cannot change state"
       ],
       "executable": "tools/interop/run.py:main.oscore_state"
     },
@@ -2166,7 +2166,7 @@
       ],
       "failure_proof": [
         "wrong-key PUT cannot change state",
-        "plaintext PUT receives 4.01 and cannot change state"
+        "unprotected PUT receives 4.01 and cannot change state"
       ],
       "executable": "tools/interop/run.py:main.oscore_state"
     },
@@ -4424,7 +4424,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "JSON Patch and merge-patch in the process fixture accept only replace, remove, or null of the member /n.",
+      "reason": "The process JSON Patch/merge-patch fixture intentionally implements only replace, remove or null of /n. This is an application-fixture limit, not an unfinished generic protocol parser or a promise of every application method/media codec.",
       "issue": 200,
       "executable_cases": []
     },
@@ -4456,7 +4456,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "Coaptic-to-libcoap Q-Block2 loss/refusal/fresh recovery is qualified over IPv4 and IPv6 plaintext loopback UDP. Protected IPv4 Q-Block1 recovery is qualified in #468; protected IPv4 and IPv6 CON Q-Block2 campaigns are tracked in #472/#492 against the explicitly patched peer. The separate protected IPv6 Q-Block1 campaign in #494 requires its own exact-source hosted report. These finite schedules do not qualify post-MAX_TRANSMIT_SPAN selective recovery, other protected modes or directions, scoped/routed addressing, or hardware. coap-rs has no Q-Block.",
+      "reason": "Retained finite direct UDP Q-Block schedules and separately source-bound protected reports cover their named directions only. They do not establish arbitrary post-MAX_TRANSMIT_SPAN recovery, every peer/direction or routed/scoped/device execution. coap-rs has no selected Q-Block fixture; unsupported capability remains explicit. Do not infer current-source proof from an older report.",
       "issue": 200,
       "executable_cases": []
     },
@@ -4472,7 +4472,7 @@
         "macos",
         "embedded"
       ],
-      "reason": "The bounded standalone coap-rs fixture qualifies IPv4 and IPv6 loopback UDP separate-response loss recovery, including IPv6 permanent-reply-loss timeout and fresh recovery. DTLS, scoped/routed addressing and embedded execution remain unqualified; this does not establish upstream coap-rs retransmission behavior.",
+      "reason": "Bounded standalone coap-rs separate-response loss recovery is covered on IPv4/IPv6 loopback. Discovery metadata and URI directions have additional source-bound proof in companion #91. This does not qualify upstream coap-rs retransmission behavior, scoped/routed addressing, DTLS contribution roles or embedded execution.",
       "issue": 200,
       "executable_cases": []
     },
@@ -4488,8 +4488,8 @@
         "macos",
         "embedded"
       ],
-      "reason": "The process peers speak DTLS-PSK only. Mutual X.509 between two Coaptic stacks is a plugtest, not a process case, and there is no X.509 process case against libcoap.",
-      "issue": 200,
+      "reason": "Independent X.509 process qualification is an optional DTLS contribution profile, outside selected direct UDP/OSCORE delivery. Existing same-Coaptic X.509 plugtests do not prove independent libcoap X.509 interoperability.",
+      "issue": 515,
       "executable_cases": []
     },
     {
@@ -4504,8 +4504,8 @@
         "macos",
         "embedded"
       ],
-      "reason": "These DTLS fixtures have no raw public key.",
-      "issue": 200,
+      "reason": "These optional DTLS contribution fixtures have no raw public key profile. This unsupported role is not a direct UDP/OSCORE milestone requirement and is never counted as PASS.",
+      "issue": 515,
       "executable_cases": []
     },
     {
@@ -4520,8 +4520,8 @@
         "macos",
         "embedded"
       ],
-      "reason": "ETSI DTLS cipher, Finished, alert, and loss schedules are not process cases.",
-      "issue": 199,
+      "reason": "The selected literal inventory in #199 is delivered with explicit conflict/unsupported dispositions. Broader independent process DTLS cipher/Finished/alert/loss schedules remain a separate optional binding contribution; these absent process cases are not literal PASS.",
+      "issue": 515,
       "executable_cases": []
     },
     {
@@ -4536,24 +4536,8 @@
         "macos",
         "embedded"
       ],
-      "reason": "Scoped IPv6 zone identifiers are not a loopback case. Coaptic-to-libcoap IPv4 and IPv6 loopback UDP now qualify a silent 256-byte relay datagram cap: small-response success, oversized Block2 loss with bounded timeout and fresh complete recovery after removing the cap. This is not ICMP path-MTU discovery or adaptive shrinking; separate protected IPv4 (#495) and IPv6 (#499) classic Block2 campaigns require their own authenticated exact-source reports. Other peers, protected modes/directions, scoped/routed and compound-fault cases remain unqualified.",
+      "reason": "Loopback IPv4/IPv6 relay caps prove only the named finite loss/refusal/fresh-recovery schedules, including separately retained protected reports. They do not prove nonzero zone routing, real PMTU/ICMP behavior or compound faults on a named physical topology. Q3 requires actual interfaces/routes; no loopback substitution.",
       "issue": 200,
-      "executable_cases": []
-    },
-    {
-      "feature": "concurrency-saturation-and-soak",
-      "status": "unqualified",
-      "role": "both",
-      "transport_security": "all",
-      "peers": "all",
-      "platforms": [
-        "linux",
-        "windows",
-        "macos",
-        "embedded"
-      ],
-      "reason": "Two concurrent counter POSTs are covered on the Coaptic and coap-rs servers. Saturation and long soak are not.",
-      "issue": 202,
       "executable_cases": []
     },
     {
@@ -4568,29 +4552,13 @@
         "macos",
         "embedded"
       ],
-      "reason": "Process runs do not measure MCU stack or runtime.",
-      "issue": 202,
-      "executable_cases": []
-    },
-    {
-      "feature": "property-fuzz-and-requirement-coverage",
-      "status": "unqualified",
-      "role": "both",
-      "transport_security": "all",
-      "peers": "all",
-      "platforms": [
-        "linux",
-        "windows",
-        "macos",
-        "embedded"
-      ],
-      "reason": "Separate qualification jobs provide finite seeded, coverage-guided fuzz smoke, and source/branch requirement-contract evidence. These are not process-interoperability cases or comprehensive campaigns; broader parser/state-machine, lifecycle and resource qualification remains tracked in #202.",
-      "issue": 202,
+      "reason": "Finite host #202 qualification is complete for its selected source-bound inventory. Actual installed ESP32 cold-power, interrupted commits, durable owner/effect recovery and physical transport behavior remain #333/#365. Host process runs and cross-compilation do not measure MCU stack/runtime.",
+      "issue": 333,
       "executable_cases": []
     },
     {
       "feature": "alternative-server-non-idempotent-deduplication",
-      "status": "unqualified",
+      "status": "fixture-unsupported",
       "role": "server",
       "transport_security": "udp",
       "peers": "coap-rs, libcoap",
@@ -4598,9 +4566,49 @@
         "linux",
         "windows"
       ],
-      "reason": "coap-rs and libcoap apply a duplicated counter POST twice.",
+      "reason": "Exact retained coap-rs/libcoap counter fixtures each applied a byte-identical duplicate POST twice, then accepted a distinct fresh POST and GET. Q4 characterization is delivered by companion #98 and tools/interop/duplicate_effects.py; missing suppression is a fixture limitation, not a deduplication PASS or whole-library RFC verdict.",
       "issue": 200,
       "executable_cases": []
+    },
+    {
+      "feature": "current-deployment-memory-and-performance",
+      "status": "unqualified",
+      "role": "both",
+      "transport_security": "selected UDP/OSCORE profiles",
+      "peers": "named compared implementations",
+      "platforms": [
+        "windows",
+        "embedded"
+      ],
+      "reason": "Whole deployed memory placement, runtime stack/heap peaks, transport/security reservations and equivalent current-source performance require their own measurements. Completed #202 host resource contracts do not establish those metrics or diagnostic exporter overhead. Long soak is not part of the selected quick-read scope.",
+      "issue": 341,
+      "executable_cases": []
+    }
+  ],
+  "separate_evidence": [
+    {
+      "slice": "Q1 / #199",
+      "status": "delivered-selected-inventory",
+      "evidence": "companion #90; tools/qualification/contracts.json and core architecture/requirements/VALIDATION-PLAN.md",
+      "limits": "Literal DTLS02 conflict dispositions and unsupported optional RPK scenarios are not PASS."
+    },
+    {
+      "slice": "Q5/Q6 / #202",
+      "status": "delivered-finite-host-gate",
+      "evidence": "companion #88; 52 finite protocol groups and nine diagnostic host/export tests",
+      "limits": "Not exhaustive fuzzing, long soak, platform recertification or measured overhead; retains original source identities."
+    },
+    {
+      "slice": "Q2 metadata/URI/token/Observe",
+      "status": "delivered-selected-directions",
+      "evidence": "tools/qualification/evidence/independent-udp/README.md; companion #91",
+      "limits": "15 selected positive cases have source-bound proof; native nonzero initial Observe remains unsupported, with separate refusal/fresh recovery proof. Compact-only coap-rs tokens remain explicit."
+    },
+    {
+      "slice": "Q2 EDHOC",
+      "status": "delivered-finite-independent-profile",
+      "evidence": "tools/qualification/evidence/independent-edhoc/index.json; companion #95",
+      "limits": "Method3 suites2/3 both roles, EAD, private-label exporters and six UDP error directions. Suite3 uses public custom native backend; native EAD callbacks are not claimed authenticated before callback. Device persistence/fault recovery is #333/#365."
     }
   ]
 }
