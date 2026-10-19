@@ -123,6 +123,7 @@ fn run(args: &[String]) -> Result<(), Error> {
     let mut app = App::profile::<profiles::Constrained>()
         .block_wise::<false>()
         .routes::<1>()
+        .allow_unprotected()
         .randomness(|bytes| getrandom::fill(bytes).is_ok())
         .route("/test", get(|_| Response::content(BODY)))
         .bind(transport)
@@ -183,6 +184,11 @@ fn main() -> std::process::ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unprotected_server_starts_and_exits_at_its_deadline() {
+        run(&["server".into(), "127.0.0.1:0".into(), "100".into()]).unwrap();
+    }
+
     #[test]
     fn explicit_local_and_remote_scope_survive_endpoint_conversion() {
         let bind = address("[fe80::10%7]:0", false).unwrap();

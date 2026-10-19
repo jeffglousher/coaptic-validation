@@ -138,6 +138,29 @@ class CleanupOwnership(unittest.TestCase):
             self.assertEqual(entry["name"], "c0" if failure == "addrgenmode" else next(iter(value.interfaces)))
             self.assertEqual(entry["ifindex"], None if failure == "moved-read" else 20)
 
+    def test_delayed_owned_peer_removal_is_allowed_but_replacement_is_not(self):
+        for replacement in (False, True):
+            value = Topology({})
+            value.created = {"owned-c":[1,2],"owned-r":[3,4]}
+            rows = {}
+            for key, namespace, index, peer, peer_index in (("a","owned-c",7,"b",8),("b","owned-r",8,"a",7)):
+                value.interfaces[key] = {"namespace":namespace,"name":key,"ifindex":index,"alias":value.token,"peer":peer}
+                rows[namespace] = [dict(ifname=key,ifindex=index,ifalias=value.token,link_index=peer_index)]
+            deleted = []
+            def command(*argv):
+                if argv[:2] == ("ip","-n"):
+                    return json.dumps(rows[argv[2]])
+                if argv[:3] == ("ip","netns","delete"):
+                    deleted.append(argv[-1])
+                    if replacement:
+                        rows["owned-c"][0]["ifalias"] = "foreign"
+                return "[]" if argv == ("ip","-j","link") else ""
+            value.command = command
+            with patch("scoped_topology.namespace_identity", side_effect=lambda name:value.created[name]), patch("pathlib.Path.exists", return_value=True):
+                value.cleanup()
+            self.assertEqual(value.report["cleanup"]["complete"], not replacement)
+            self.assertEqual(deleted, ["owned-r"] if replacement else ["owned-r","owned-c"])
+
     def test_received_nonzero_scope_cannot_be_replaced_with_zero(self):
         value = {"exit":0,"records":[{"event":"complete","code":69,"hex":b"coaptic-scoped-addressing".hex()},
                                      {"event":"receive","scope_id":7}]}

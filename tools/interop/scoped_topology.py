@@ -115,7 +115,9 @@ class Topology:
             if row is None:
                 require(key in removed, "owned interface missing before cleanup: " + name)
                 continue
-            require(key not in removed, "removed interface name reused: " + name)
+            # Namespace destruction can release a veth peer asynchronously.
+            # A still-present member must retain its exact owned identity;
+            # its absence is permitted only after recorded peer cleanup.
             require(entry["ifindex"] is not None and row["ifindex"] == entry["ifindex"]
                     and row.get("ifalias") == entry["alias"], "interface ownership changed: " + name)
             peer = self.interfaces[entry["peer"]]
