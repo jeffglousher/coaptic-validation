@@ -4558,7 +4558,7 @@
     },
     {
       "feature": "alternative-server-non-idempotent-deduplication",
-      "status": "unqualified",
+      "status": "fixture-unsupported",
       "role": "server",
       "transport_security": "udp",
       "peers": "coap-rs, libcoap",
@@ -4566,7 +4566,7 @@
         "linux",
         "windows"
       ],
-      "reason": "Existing coap-rs/libcoap process fixtures can apply duplicate counter POSTs twice. Q4 characterizes the exact byte-identical duplicate effect and fresh operation recovery separately; idempotent PUT success is not deduplication proof or whole-library RFC compliance.",
+      "reason": "Exact retained coap-rs/libcoap counter fixtures each applied a byte-identical duplicate POST twice, then accepted a distinct fresh POST and GET. Q4 characterization is delivered by companion #98 and tools/interop/duplicate_effects.py; missing suppression is a fixture limitation, not a deduplication PASS or whole-library RFC verdict.",
       "issue": 200,
       "executable_cases": []
     },
