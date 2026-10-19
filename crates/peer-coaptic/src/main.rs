@@ -616,7 +616,21 @@ fn fixture(
         .map_err(|e| format!("metadata: {e:?}"))?;
     Ok(bound)
 }
-#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
-async fn main() -> std::process::ExitCode {
-    support::finish(run().await)
+fn main() -> std::process::ExitCode {
+    // Debug builds retain large bounded App construction temporaries. Keep this
+    // desktop fixture's stack explicit, separate from embedded retained RAM.
+    std::thread::Builder::new()
+        .name("coaptic-peer".into())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+                .expect("fixture runtime");
+            support::finish(runtime.block_on(run()))
+        })
+        .expect("fixture thread")
+        .join()
+        .expect("fixture execution")
 }

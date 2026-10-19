@@ -60,7 +60,7 @@ def exchange_identity(trace, path, code, token_length=8):
     require(matching, "missing exact complete token response")
     for packet in matching:
         if (packet[0] >> 4) & 3 == 2:
-            require(packet[2:4] == first[2:4], "wrong piggyback MID")
+            require(any(packet[2:4] == sent[2:4] and packet_token(packet) == packet_token(sent) for sent in candidates), "wrong piggyback MID")
     return first, matching
 
 
@@ -173,7 +173,9 @@ def observation(client, server, initial=0, valid=False, qblock=False):
             finally:
                 if proc.poll() is None:
                     proc.kill()
-                    proc.communicate()
+                    output, error = proc.communicate()
+                    ACTIVE_COMMANDS.append({"argv": list(map(str, proc.args)), "exit_code": proc.returncode,
+                                            "stdout": output.decode(errors="replace"), "stderr": error.decode(errors="replace")})
             require(proc.returncode == 0 and len(output) <= 65536 and len(output.splitlines()) == 1, f"observation failed: {output[:500]!r} {error[-500:]!r}")
             result = json.loads(output)
             result["exit_code"] = proc.returncode
@@ -216,6 +218,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("coaptic", "coap-rs", "libcoap", "build-record", "output"):
         parser.add_argument("--" + name, required=True, type=Path)
+    parser.add_argument("--case", action="append", help="Exact case IDs; omitted runs the finite matrix")
     args = parser.parse_args()
     identity = source_identity()
     require(not identity["dirty"] and not identity["suite_dirty"], "source must be committed and clean")
@@ -242,6 +245,9 @@ def main():
         ("compact:coap-rs->coaptic", lambda: ordinary(peers["coap-rs"],peers["coaptic"],"test",body=b"core-test-payload")),
         ("compact:coaptic->coap-rs", lambda: ordinary(peers["coaptic"],peers["coap-rs"],"test",body=b"core-test-payload")),
     ])
+    if args.case:
+        require(set(args.case) <= {name for name, _ in cases}, "unknown selected case")
+        cases = [(name, work) for name, work in cases if name in args.case]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     for name, work in cases:
         ACTIVE_CAPTURES.clear()
