@@ -45,7 +45,7 @@ impl DatagramIo for DropReply {
         }
     }
 }
-struct QuietConsole(Rc<Cell<bool>>);
+struct QuietConsole(Rc<Cell<bool>>, Rc<Cell<usize>>);
 impl Console for QuietConsole {
     fn read(&mut self, _: &mut [u8]) -> Result<usize, Error> {
         Ok(0)
@@ -60,6 +60,11 @@ impl Console for QuietConsole {
         if event == 4 {
             self.0.set(true);
         }
+    }
+    fn diagnostics(&mut self, snapshot: &coaptic::app::diagnostics::Snapshot) {
+        assert!(snapshot.at_ms > 0);
+        assert!(snapshot.usage.storage.tx_datagram.capacity > 0);
+        self.1.set(self.1.get() + 1);
     }
 }
 
@@ -113,6 +118,7 @@ fn enrolled_udp_restart_recovers_one_effect_after_lost_receipt() {
     ));
     let mut journal = Journal::create(&path, authority.clone(), 2).unwrap();
     for phase in 0..2 {
+        let diagnostic_samples = Rc::new(Cell::new(0));
         let drop_next = Rc::new(Cell::new(false));
         let mut connection = ManagedConnection::<_, profiles::Constrained>::from_local_pairing(
             &host,
@@ -169,9 +175,10 @@ fn enrolled_udp_restart_recovers_one_effect_after_lost_receipt() {
                 }
             },
             Shared(store.clone()),
-            QuietConsole(completed.clone()),
+            QuietConsole(completed.clone(), diagnostic_samples.clone()),
         );
         assert_eq!(result, Ok(()));
+        assert!(diagnostic_samples.get() > 0);
         assert!(now <= 20_000, "enrolled service did not complete");
         assert_eq!(journal.effects().unwrap(), 1);
         let recovered = Device::recover(&mut Shared(store.clone()))
@@ -190,7 +197,6 @@ fn enrolled_udp_restart_recovers_one_effect_after_lost_receipt() {
             assert!(pending.pending().unwrap().is_none());
             assert_eq!(pending.completion().unwrap().unwrap().sequence(), 1);
         }
-        drop(pending);
         drop(journal);
         journal = Journal::open(&path, authority.clone()).unwrap();
     }

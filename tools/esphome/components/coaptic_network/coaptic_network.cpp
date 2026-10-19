@@ -4,6 +4,7 @@
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 #include "esp_random.h"
+#include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "esp_vfs_eventfd.h"
 #ifdef COAPTIC_PAIRING
@@ -22,6 +23,24 @@ extern "C" int32_t coaptic_network_run(void *context, const uint8_t *id);
 namespace esphome::coaptic_network {
 
 static constexpr const char *TAG = "coaptic_network";
+
+// One SDK snapshot on the calling stack; no retained buffer or task registry.
+// Region low-watermarks may occur at different times: never label their sum a
+// measured simultaneous whole-device peak. Task stacks are heap allocations,
+// so their reserved bytes must not also be added to heap allocation totals.
+static void log_resources(const char *run_id, const char *phase, uint32_t task_stack_bytes) {
+  multi_heap_info_t info{};
+  heap_caps_get_info(&info, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  ESP_LOGI(TAG, "COAPTIC_RESOURCES {\"run_id\":\"%s\",\"phase\":\"%s\","
+           "\"caps\":\"internal_8bit\",\"allocated_bytes\":%lu,\"free_bytes\":%lu,"
+           "\"region_min_free_sum_bytes\":%lu,\"largest_free_block_bytes\":%lu,"
+           "\"coaptic_task_stack_reserved_bytes\":%lu,\"sdk_snapshot_bytes\":%u}",
+           run_id, phase, static_cast<unsigned long>(info.total_allocated_bytes),
+           static_cast<unsigned long>(info.total_free_bytes),
+           static_cast<unsigned long>(info.minimum_free_bytes),
+           static_cast<unsigned long>(info.largest_free_block),
+           static_cast<unsigned long>(task_stack_bytes), static_cast<unsigned>(sizeof(info)));
+}
 
 // One process-lifetime descriptor, allocated only when the optional Rust driver
 // is claimed. Wakers contain no component pointer. Never close/reuse this fd:
@@ -69,6 +88,7 @@ void CoapticNetwork::loop() {
     if (security_mode_ != 5 && !network::is_connected() && !wifi::global_wifi_component->is_ap_active())
       return;
     started_ = true;
+    log_resources(run_id_.c_str(), "before_platform_setup", 0);
 #ifdef COAPTIC_PAIRING
     if (security_mode_ == 5 && !usb_serial_jtag_is_driver_installed()) {
       usb_serial_jtag_driver_config_t usb_config{};
@@ -98,6 +118,7 @@ void CoapticNetwork::loop() {
     }
     }
     if (xTaskCreate(run_, "coaptic_udp", STACK_BYTES, this, 1, &task_) != pdPASS) {
+      log_resources(run_id_.c_str(), "task_allocation_refused", 0);
       close(socket_);
       socket_ = -1;
       task_ = nullptr;
@@ -105,6 +126,7 @@ void CoapticNetwork::loop() {
       mark_failed();
       return;
     }
+    log_resources(run_id_.c_str(), "task_started", STACK_BYTES);
     if (security_mode_ == 4)
       ESP_LOGI(TAG, "COAPTIC_PENDING_PROVISION_START run_id=%s", run_id_.c_str());
     else if (security_mode_ == 2)
@@ -118,6 +140,10 @@ void CoapticNetwork::loop() {
   trace_dump_();
 #endif
   if (result_.load(std::memory_order_acquire) != 0) {
+    log_resources(run_id_.c_str(), "worker_stopped", STACK_BYTES);
+    ESP_LOGI(TAG, "COAPTIC_STACK_FINAL {\"run_id\":\"%s\",\"used_high_water_bytes\":%lu,\"capacity_bytes\":%lu}",
+             run_id_.c_str(), static_cast<unsigned long>(high_water_.load()),
+             static_cast<unsigned long>(STACK_BYTES));
     vTaskDelete(task_);
     task_ = nullptr;
     if (security_mode_ == 2 && result_.load() == 1) {
@@ -134,6 +160,7 @@ void CoapticNetwork::loop() {
   }
   if (millis() - logged_ >= 5000) {
     logged_ = millis();
+    log_resources(run_id_.c_str(), "running", STACK_BYTES);
     ESP_LOGI(TAG,
              "COAPTIC_NETWORK {\"run_id\":\"%s\",\"rx\":%lu,\"tx\":%lu,\"dropped\":%lu,"
              "\"stack_high_water_bytes\":%lu,\"stack_capacity_bytes\":%lu,"
@@ -159,10 +186,31 @@ void CoapticNetwork::run_(void *argument) {
     nvs_close(self->pairing_handle_);
     self->pairing_handle_ = 0;
   }
+  // Capture startup/terminal work even when the worker did not reach its next wait.
+  const uint32_t free_bytes = uxTaskGetStackHighWaterMark(nullptr);
+  self->high_water_.store(free_bytes < STACK_BYTES ? STACK_BYTES - free_bytes : 0,
+                          std::memory_order_relaxed);
   self->result_.store(result == 0 ? 1 : static_cast<uint32_t>(-result) + 1, std::memory_order_release);
   for (;;) {
     vTaskDelay(portMAX_DELAY);
   }
+}
+
+void CoapticNetwork::admission_diagnostics(uint64_t at_ms, uint32_t token_refused,
+                                          uint32_t rx_refused, uint32_t tx_refused,
+                                          uint32_t refusal_sent, uint32_t refusal_unsent,
+                                          uint32_t hard_rx, uint32_t hard_tx,
+                                          uint32_t rx_accepted, uint32_t progress) const {
+  ESP_LOGI(TAG, "COAPTIC_ADMISSION {\"run_id\":\"%s\",\"at_ms\":%llu,"
+           "\"scope\":\"retained_app\",\"token_refused\":%lu,\"rx_refused\":%lu,"
+           "\"tx_refused\":%lu,\"refusal_sent\":%lu,\"refusal_unsent\":%lu,"
+           "\"hard_rx\":%lu,\"hard_tx\":%lu,\"rx_accepted\":%lu,\"progress\":%lu}",
+           run_id_.c_str(), static_cast<unsigned long long>(at_ms),
+           static_cast<unsigned long>(token_refused), static_cast<unsigned long>(rx_refused),
+           static_cast<unsigned long>(tx_refused), static_cast<unsigned long>(refusal_sent),
+           static_cast<unsigned long>(refusal_unsent), static_cast<unsigned long>(hard_rx),
+           static_cast<unsigned long>(hard_tx), static_cast<unsigned long>(rx_accepted),
+           static_cast<unsigned long>(progress));
 }
 
 int32_t CoapticNetwork::receive(uint8_t *bytes, uint32_t capacity, uint64_t *peer) {
@@ -574,5 +622,16 @@ extern "C" void coaptic_pairing_restart(void *) {
 }
 extern "C" void coaptic_pairing_event(void *, uint32_t event) {
   ESP_LOGI("coaptic_network", "COAPTIC_PAIRING_EVENT %lu", static_cast<unsigned long>(event));
+}
+extern "C" void coaptic_pairing_diagnostics(void *context, uint64_t at_ms,
+                                            uint32_t token_refused, uint32_t rx_refused,
+                                            uint32_t tx_refused, uint32_t refusal_sent,
+                                            uint32_t refusal_unsent, uint32_t hard_rx,
+                                            uint32_t hard_tx, uint32_t rx_accepted,
+                                            uint32_t progress) {
+  if (context == nullptr) return;
+  static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->admission_diagnostics(
+      at_ms, token_refused, rx_refused, tx_refused, refusal_sent, refusal_unsent,
+      hard_rx, hard_tx, rx_accepted, progress);
 }
 #endif

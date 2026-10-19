@@ -293,6 +293,7 @@ fn connection<'a, T: AsyncDatagramIo>(
     Ok(connection)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
     device: &Device,
     store: &mut impl Store,
@@ -498,6 +499,9 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
             }
         }
         if call.is_none() && connection.is_connected() && now >= next_probe {
+            if let Some(snapshot) = connection.diagnostic_snapshot(now) {
+                console.diagnostics(&snapshot);
+            }
             // Durable telemetry retains exact operation bytes until a matching receipt.
             // Read-only pairing uses an authenticated identity read instead.
             prepare_sample(&mut pending, &mut sample, now, random)?;

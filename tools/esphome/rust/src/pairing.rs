@@ -178,6 +178,9 @@ pub trait Console {
     /// Public counters only: 1 recovered, 2 initialized, 3 connected, 4 receipt,
     /// 5 network stopped (USB remains available for inspection/restart).
     fn event(&mut self, event: u32);
+    /// Optional local observation. Never retain the borrow or alter protocol policy.
+    /// Counters belong to the retained App and may reset with a fresh session.
+    fn diagnostics(&mut self, _snapshot: &coaptic::app::diagnostics::Snapshot) {}
 }
 
 struct Device {
@@ -796,6 +799,9 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
             }
         }
         if call.is_none() && connection.is_connected() && now >= next_probe {
+            if let Some(snapshot) = connection.diagnostic_snapshot(now) {
+                console.diagnostics(&snapshot);
+            }
             // Durable telemetry retains exact operation bytes until a matching receipt.
             // Read-only pairing uses an authenticated identity read instead.
             prepare_sample(&mut pending, &mut sample, now, random)?;
@@ -1021,7 +1027,6 @@ mod tests {
         let mut wire = [0; 61];
         prepare_sample(&mut pending, &mut wire, 42, random).unwrap();
         let original = wire;
-        drop(pending);
         assert!(recovery_ready(&mut store, &device.private, &device.identity, &grant).is_err());
         let mut pending = recover_pending(&device, &mut store, true).unwrap();
         prepare_sample(&mut pending, &mut wire, 999, random).unwrap();
@@ -1032,7 +1037,6 @@ mod tests {
             coaptic::provisioning::Receipt::from_parts(operation.id(), *operation.digest(), 1)
                 .unwrap();
         assert!(accept_sample(&mut pending, Code::CHANGED, &receipt.encode(), &[]).unwrap());
-        drop(pending);
         assert!(recovery_ready(&mut store, &device.private, &device.identity, &grant).is_ok());
         store.pending = None;
         assert!(recovery_ready(&mut store, &device.private, &device.identity, &grant).is_err());
@@ -1375,7 +1379,6 @@ mod tests {
         let mut store = Shared(memory.clone());
         let mut pending = recover_pending(&device, &mut store, true).unwrap();
         prepare_sample(&mut pending, &mut [0; 61], 42, random).unwrap();
-        drop(pending);
         let before = memory.borrow().bytes.clone();
         let retained = memory.borrow().pending;
         let (result, replies) = campaign(memory.clone(), Plan::RecoverReadOnly);
