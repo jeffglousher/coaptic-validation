@@ -45,13 +45,13 @@ def validate_trace(trace):
     return client, server
 
 
-def exchange_identity(trace, path, code, token_length=8):
+def exchange_identity(trace, path, code, token_length=None):
     validate_trace(trace)
     candidates = []
     for row in trace:
         packet = bytes.fromhex(row["hex"])
         if row["direction"] == "request" and packet[1] == 1 and decoded_options(packet).get(11, []) == path:
-            if len(packet_token(packet)) == token_length:
+            if (1 <= len(packet_token(packet)) <= 8) if token_length is None else len(packet_token(packet)) == token_length:
                 candidates.append(packet)
     require(candidates, "missing exact request path/token length")
     first = candidates[0]
@@ -90,7 +90,7 @@ def metadata_body(payload):
     return sensors[0].href, sensors[0].attr_pairs
 
 
-def ordinary(client, server, path, flags=(), code=69, body=None, token_length=8):
+def ordinary(client, server, path, flags=(), code=69, body=None, token_length=None):
     with Server(server, "udp") as service:
         with Proxy(service.number, "profiles") as relay:
             ACTIVE_CAPTURES.append(relay.trace)
@@ -128,6 +128,26 @@ def probe(client, server):
         fresh = request(client, "udp", service.number)
         expect(fresh)
         return {"result": result, "trace": trace, "fresh": fresh}
+
+
+def native_capacity_refusal(client, server):
+    # libcoap probes its configured bound before the application request. Its
+    # public API then refuses the over-capacity send; grade that exact exchange.
+    with Server(server, "udp") as service:
+        with Proxy(service.number, "profiles") as relay:
+            ACTIVE_CAPTURES.append(relay.trace)
+            argv = command(client, "client", "udp", relay.number, timeout=6000) + ["token:64"]
+            process = subprocess.run(argv, capture_output=True, timeout=10)
+            evidence = {"argv": list(map(str, argv)), "exit_code": process.returncode,
+                        "stdout": process.stdout.decode(), "stderr": process.stderr.decode()}
+            ACTIVE_COMMANDS.append(evidence)
+            require(process.returncode != 0, "native send unexpectedly accepted refused bound")
+        first, replies = exchange_identity(relay.trace, [], 128, 64)
+        require(decoded_options(first) == {5: [b""]}, "not the native capacity probe")
+        require(not coap_payload(replies[0]), "capacity refusal payload changed")
+        fresh = request(client, "udp", service.number)
+        expect(fresh)
+        return {"native_send": evidence, "trace": relay.trace, "fresh": fresh, "refused_length": 64}
 
 
 def observation(client, server, initial=0, valid=False, qblock=False):
@@ -240,7 +260,7 @@ def main():
             (f"observe-nonzero:{left}->{right}", lambda c=client,s=server: observation(c,s,initial=1)),
         ])
     cases.extend([
-        ("token64-refusal:libcoap->coaptic", lambda: ordinary(peers["libcoap"],peers["coaptic"],"test",["token:64"],code=128,body=b"",token_length=64)),
+        ("token64-refusal:libcoap->coaptic", lambda: native_capacity_refusal(peers["libcoap"],peers["coaptic"])),
         ("token-probe:coaptic->libcoap", lambda: probe(peers["coaptic"],peers["libcoap"])),
         ("compact:coap-rs->coaptic", lambda: ordinary(peers["coap-rs"],peers["coaptic"],"test",body=b"core-test-payload")),
         ("compact:coaptic->coap-rs", lambda: ordinary(peers["coaptic"],peers["coap-rs"],"test",body=b"core-test-payload")),

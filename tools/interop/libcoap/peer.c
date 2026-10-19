@@ -490,7 +490,7 @@ int main(int argc,char **argv) {
   for(size_t epoch=0;epoch<3;epoch++)memset(observed_bodies[epoch],(int)('a'+epoch),96);
   coap_context_t *ctx=coap_new_context(NULL);
   if(!ctx){failure("context failed");coap_cleanup();return 1;}
-  coap_context_set_max_token_size(ctx,64);
+  coap_context_set_max_token_size(ctx,server?64:requested_token);
   /* A server with Q-Block answers Q-Block requests and still serves classic Block. */
   const int try_q_block=(server||q_block)&&coap_q_block_is_supported();
   coap_context_set_block_mode(ctx,COAP_BLOCK_USE_LIBCOAP|COAP_BLOCK_SINGLE_BODY|(try_q_block?COAP_BLOCK_TRY_Q_BLOCK:0));

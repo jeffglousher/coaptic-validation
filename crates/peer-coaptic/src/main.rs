@@ -392,6 +392,7 @@ async fn run() -> Result<(), Error> {
     let mut cancellation_sent = false;
     let mut quiet_until = None;
     let mut fresh_registration = false;
+    let mut response_bytes = [0; 4096];
     while start.elapsed() < Duration::from_millis(a.timeout) {
         if quiet_until.is_some_and(|until| start.elapsed() >= until) {
             call = app
@@ -405,14 +406,18 @@ async fn run() -> Result<(), Error> {
         }
         app.poll(start.elapsed().as_millis() as u64 + 1)
             .map_err(|e| format!("poll: {e}"))?;
-        let response = app.take_response(call).transpose()?.map(|r| {
-            (
-                r.code().as_raw(),
-                r.body().unwrap_or(r.payload()).to_vec(),
-                start.elapsed(),
-                r.echo_option(),
-            )
-        });
+        let response = app
+            .take_response_into(call, &mut response_bytes)
+            .map_err(|e| format!("response buffer: {e:?}"))?
+            .transpose()?
+            .map(|r| {
+                (
+                    r.code().as_raw(),
+                    r.body().unwrap_or(r.payload()).to_vec(),
+                    start.elapsed(),
+                    r.echo_option(),
+                )
+            });
         if let Some((code, body, elapsed, echo)) = response {
             if let Some(challenge) = retry_challenge(a.oscore, echo_retried, code, echo) {
                 // The configured App only admits authenticated responses. Echo
