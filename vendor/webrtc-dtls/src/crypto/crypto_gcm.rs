@@ -94,15 +94,16 @@ impl CryptoGcm {
             return Err(Error::ErrNotEnoughRoomForNonce);
         }
 
+        let out = &r[RECORD_LAYER_HEADER_SIZE + 8..];
+        if out.len() < CRYPTO_GCM_TAG_LENGTH {
+            return Err(Error::ErrInvalidPacketLength);
+        }
+
         let mut nonce = vec![];
         nonce.extend_from_slice(&self.remote_write_iv[..4]);
         nonce.extend_from_slice(&r[RECORD_LAYER_HEADER_SIZE..RECORD_LAYER_HEADER_SIZE + 8]);
         let nonce = GenericArray::from_slice(&nonce);
 
-        let out = &r[RECORD_LAYER_HEADER_SIZE + 8..];
-        if out.len() < CRYPTO_GCM_TAG_LENGTH {
-            return Err(Error::ErrInvalidPacketLength);
-        }
 
         let additional_data = generate_aead_additional_data(&h, out.len() - CRYPTO_GCM_TAG_LENGTH);
 
