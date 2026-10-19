@@ -77,7 +77,10 @@ mod linux {
     impl Drop for Veth {
         fn drop(&mut self) {
             if let Err(error) = self.cleanup() {
-                eprintln!("owned veth cleanup failed: {error}");
+                eprintln!(
+                    "owned veth cleanup failed: ingress={} peer={} ifindices={:?}: {error}",
+                    self.name, self.peer, self.indices
+                );
             }
         }
     }

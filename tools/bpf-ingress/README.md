@@ -1,7 +1,8 @@
 # Observation-only ingress pilot
 
-Portable classifier tests pass; Linux compilation, verifier and loaded-hook
-results remain unexecuted. Core CoAP parsing is
+Portable classifier tests, Linux loader cross-target checking and BPF target
+type-checking pass; linked object, verifier and loaded-hook results remain
+unexecuted. Core CoAP parsing is
 `coaptic::message::extended::decode`, with no separate CoAP parser. The BPF
 program always returns XDP_PASS and never writes packet bytes. Parsed syntax,
 including an OSCORE option, says nothing about authentication or valid checksums.
@@ -37,8 +38,12 @@ the Linux loader or BPF toolchain. All paths assume this directory is applied at
 
 Reviewed lockfiles pin Aya 0.14.0 and aya-ebpf 0.2.1 and their resolved dependencies.
 Windows classifier tests and strict Clippy pass; the Windows loader explicitly
-refuses execution with exit code 2. That path does not compile the Linux loader
-module or BPF program. Neither has target compilation or verifier proof yet.
+refuses execution with exit code 2. Linux loader check and strict Clippy pass
+with installed Rust 1.99.0 and x86_64-unknown-linux-gnu. BPF target cargo check
+passes with installed nightly-2026-10-01, rust-src and build-std=core. The latter
+reports two core no-OSCORE unreachable-expression warnings, not classifier/BPF
+errors. These checks do not generate a linked BPF object or prove verifier
+acceptance, kernel support, packet handling or cleanup on Linux.
 Linux needs BPF syscall/XDP/veth support, sufficient BPF/network privileges,
 and `ip` from iproute2. Check the actual WSL kernel configuration and capabilities;
 installation alone does not prove these. Retain uname, kernel config/probes,
