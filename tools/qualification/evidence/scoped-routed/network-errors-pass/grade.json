@@ -1,0 +1,28 @@
+{
+  "source": "567899121ace814ebfb417b55705adbcb1299215",
+  "suite_source": "d290314823343b0f6caf8f0b7a5cc0d0c6e39569",
+  "result_sha256": "c7ce870d21a4c6cb16daad00693ed002a32f0f319e49cf4c5a5e63b5eb607c51",
+  "binary_sha256": "649c753cbc80d56594589614aa18962bf9b932cedcdcb6e350c8566a83d8bd22",
+  "compound": {
+    "request_datagrams": 3,
+    "identical_retransmissions": 1,
+    "dropped_replies": 1,
+    "malformed_injections": 1,
+    "wrong_token_injections": 1,
+    "fresh_operations": 1
+  },
+  "pmtu": {
+    "probe_bytes": 1400,
+    "quoted_bytes": 1184,
+    "mtu_before": 1500,
+    "mtu_after": 1280,
+    "icmp_origin": 3,
+    "icmp_type": 2,
+    "icmp_code": 0,
+    "send_errno": 90,
+    "fresh_small_coap": true
+  },
+  "cleanup_complete": true,
+  "source_unchanged": true,
+  "grade": "passed"
+}
