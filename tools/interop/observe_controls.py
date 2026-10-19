@@ -102,6 +102,14 @@ def selected_lifecycle(port, selection, captures=None):
         # Re-registration establishes the explicit owner after a terminal error;
         # no assumption that an error leaves that prior relation alive.
         representation(channel.response(send(b"left", b"left"), 69), b"a")
+        # A well-formed right selector cannot retrieve the retained left
+        # relation's NUM1 block under its exact endpoint/token. The following
+        # notification must still use the original left representation.
+        changed_options = [item for item in options(b"right", 0) if item[0] != 6]
+        changed_options.append((23, b"\x11"))
+        changed = channel.send(method, b"left", changed_options, b"right" if method == 5 else b"")
+        refusal = channel.response(changed, 128)
+        require(6 not in decoded_options(refusal), "changed-selection refusal retained Observe")
         post = channel.send(2, b"post", [(11, b"obs-selected")])
         got = set()
         while len(got) < 3:

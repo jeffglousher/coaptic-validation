@@ -22,7 +22,8 @@ Uri-Query. Each observed representation has96 bytes, a selection-specific ETag,
 and three distinguishable epochs. Native clients exchange complete bodies
 through both servers. Additional independent Python wire controls retain one
 endpoint with two distinct observer tokens, exercise invalid-selector refusal,
-re-register, verify both selected notifications, cancel one selection, verify
+re-register, refuse a valid different selector on a same-token NUM1 follow-up,
+verify both original selected notifications, cancel one selection, verify
 the surviving relation, and register fresh. Those controls are identified as
 Python clients, not native CLI cancellation support.
 

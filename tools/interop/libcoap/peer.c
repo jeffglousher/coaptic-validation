@@ -519,7 +519,7 @@ int main(int argc,char **argv) {
   if(q_block && !coap_q_block_is_supported()){failure("Q-Block unavailable in libcoap build");coap_cleanup();return 2;}
   for(size_t i=0;i<sizeof(large_body);i++)large_body[i]=(uint8_t)(i%251);
   for(size_t epoch=0;epoch<3;epoch++)memset(observed_bodies[epoch],(int)('a'+epoch),96);
-    for(unsigned i=0;i<3;i++){memset(selected_right[i],'m'+i,96);memset(q_observed_bodies[i],'a'+i,704);}
+  for(unsigned i=0;i<3;i++){memset(selected_right[i],'m'+i,96);memset(q_observed_bodies[i],'a'+i,704);}
   coap_context_t *ctx=coap_new_context(NULL);
   if(!ctx){failure("context failed");coap_cleanup();return 1;}
   coap_context_set_max_token_size(ctx,server?64:requested_token);
