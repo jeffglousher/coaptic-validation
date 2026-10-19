@@ -14,8 +14,10 @@ from edhoc_udp import (Fixture, Wire, bootstrap_request, bootstrap_response,
                        case as recovery_case)
 
 
-async def codec(args, code, payload=None):
+async def codec(args, code, payload=None, record=None):
     peer = Peer(args.libedhoc, "libedhoc-error-codec", "error-compose" if payload is None else "error-process", args.timeout, [str(code)])
+    if record is not None:
+        record["error_codec"] = peer.record
     try:
         await peer.start()
         if payload is not None:
@@ -57,7 +59,7 @@ async def error_case(args, code, direction):
                 await wire.send(bootstrap_response(await independent_message(native, 2), request), remote, "message-2")
                 _, request = await wire.receive(remote, "message-3", args.timeout)
                 validate_bootstrap_request(request, 3)
-            payload, encoded = await codec(args, code)
+            payload, encoded = await codec(args, code, record=record)
             record["error_codec"] = encoded
             response = bootstrap_response(payload, request)
             response.code = aiocoap.BAD_REQUEST
@@ -84,7 +86,7 @@ async def error_case(args, code, direction):
             require(response.mtype == aiocoap.ACK and (int(response.code) >> 5) == 4, "wrong error response envelope")
             require((response.mid, response.token) == (request.mid, request.token), "error operation mismatch")
             require(options(response) == [(12, b"@")], "wrong error content format")
-            _, decoded = await codec(args, code, response.payload)
+            _, decoded = await codec(args, code, response.payload, record)
             record["error_codec"] = decoded
         await asyncio.wait_for(fixture.process.wait(), args.timeout)
         await fixture.stop()
@@ -108,8 +110,8 @@ async def run(args):
                            for name, path in (("coaptic", args.coaptic), ("libedhoc", args.libedhoc))}}
     def save():
         args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    for direction in ("to-coaptic", "from-coaptic"):
-        for code in (1, 2, 3):
+    for direction in ([args.direction] if args.direction else ("to-coaptic", "from-coaptic")):
+        for code in ([args.code] if args.code else (1, 2, 3)):
             report["cases"].append(await error_case(args, code, direction))
             save()
             role = "initiator" if direction == "to-coaptic" else "responder"
@@ -128,6 +130,8 @@ def main():
     for name in ("coaptic", "libedhoc", "core", "companion", "output"):
         parser.add_argument("--" + name, required=True, type=Path)
     parser.add_argument("--timeout", type=float, default=10)
+    parser.add_argument("--direction", choices=("to-coaptic", "from-coaptic"))
+    parser.add_argument("--code", type=int, choices=(1, 2, 3))
     args = parser.parse_args()
     require(args.timeout > 0, "positive timeout required")
     args.output.parent.mkdir(parents=True, exist_ok=True)
