@@ -106,12 +106,14 @@ workflow is `.github/workflows/scoped-addressing.yml`. Added source is under
 96 KB; no new Rust dependencies or Cargo target directory. The 256 KB subprocess
 output check bounds retained evidence after capture, not streaming subprocess
 memory. Trusted finite ip/sysctl commands and bounded peer trace producers keep
-this workload finite. PMTU and compound scenarios remain separate, unexecuted
-requirements; four successful addressing directions do not close issue #200.
+this workload finite. PMTU and compound scenarios execute separately with their
+own source-bound receipts; these finite results do not close other issue #200 profiles.
 
 ## Separate network-error mode
 
-`--mode network-errors` executes only two additional cases. The compound relay
+`--mode network-errors` executes only two additional cases; both pass in
+[run 39247160176](https://github.com/jeffglousher/coaptic-validation/actions/runs/39247160176),
+with exact sources and limits in the retained evidence above. The compound relay
 drops one reply, injects a malformed datagram and an ACK with an unmatched token,
 then records retransmission/recovery and a fresh operation. Exact client, relay
 and independent server traces must agree. ACK matching and response matching are

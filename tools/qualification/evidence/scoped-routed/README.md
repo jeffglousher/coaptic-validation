@@ -20,5 +20,25 @@ the fixture omitted explicit unprotected selection and cleanup misclassified an
 asynchronously retained owned veth peer. It is not a protocol pass. The corrected
 run preserves the exact interface ownership checks.
 
-PMTU/ICMP and compound traffic are separate cases, initially unexecuted. These
-four addressing results alone do not close the broader interoperability scope.
+Run [39247160176](https://github.com/jeffglousher/coaptic-validation/actions/runs/39247160176)
+passes the separate compound and host PMTU cases on core
+`567899121ace814ebfb417b55705adbcb1299215` and suite
+`d290314823343b0f6caf8f0b7a5cc0d0c6e39569`. `network-errors-pass/` preserves
+the original receipts plus a compact independent regrading result. Sources remain
+clean and unchanged, and cleanup completes with no retained resources.
+
+The compound capture contains one dropped reply, one malformed packet and one
+wrong-token ACK received by Coaptic, one byte-identical retransmission from the
+same endpoint, then a valid response and a fresh distinct call. All client,
+relay and independent server packet captures agree.
+
+The host PMTU probe records an actual ICMPv6 Packet Too Big (origin 3, type 2,
+code 0, MTU 1280) from the owned router, quoting 1184 bytes of the exact 1400-byte
+nonce-bearing probe to its actual destination. The Linux socket reports MTU
+1500 then 1280 and subsequent EMSGSIZE (90). A fresh small CoAP call succeeds.
+This is Linux host socket behavior, not automatic App PMTU adaptation; no App
+capacity changed. Result SHA-256:
+`c7ce870d21a4c6cb16daad00693ed002a32f0f319e49cf4c5a5e63b5eb607c51`.
+
+These six finite cases complete the selected Q3 addressing/network-error slice.
+They do not imply physical LAN qualification or close other issue #200 profiles.

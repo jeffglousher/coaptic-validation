@@ -1,0 +1,2241 @@
+{
+  "schema": "coaptic-scoped-routed/1",
+  "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+  "applied": true,
+  "files": {
+    "/home/runner/work/coaptic-validation/coaptic-validation/target/debug/addressing": "649c753cbc80d56594589614aa18962bf9b932cedcdcb6e350c8566a83d8bd22",
+    "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py": "5d11240b95eeb35bc7bd3aadc03ce4dfd32a87651a32b7d9393f00d9c02aa4cd"
+  },
+  "cases": [
+    {
+      "name": "routed-loss-malformed-fresh",
+      "server": {
+        "argv": [
+          "ip",
+          "netns",
+          "exec",
+          "cq3-2b89ffa9-s",
+          "/home/runner/work/_temp/q3-venv/bin/python",
+          "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py",
+          "server",
+          "--bind-host",
+          "fd42:c0a:2::2",
+          "--bind-port",
+          "56830",
+          "--bind-scope",
+          "0",
+          "--timeout",
+          "20"
+        ],
+        "pid": 5447,
+        "exit": -15,
+        "records": [
+          {
+            "event": "ready",
+            "local": [
+              "fd42:c0a:2::2",
+              56830,
+              0,
+              0
+            ],
+            "remote": null,
+            "implementation": "aiocoap-codec/python-UDP",
+            "security": "unprotected",
+            "receive_capacity": 1153
+          },
+          {
+            "event": "receive",
+            "peer": [
+              "fd42:c0a:2::1",
+              55614,
+              0,
+              0
+            ],
+            "hex": "48015b361832a9b9a53426dcb474657374"
+          },
+          {
+            "event": "send-attempt",
+            "peer": [
+              "fd42:c0a:2::1",
+              55614,
+              0,
+              0
+            ],
+            "hex": "68455b361832a9b9a53426dcff636f61707469632d73636f7065642d61646472657373696e67"
+          },
+          {
+            "event": "receive",
+            "peer": [
+              "fd42:c0a:2::1",
+              55614,
+              0,
+              0
+            ],
+            "hex": "48015b361832a9b9a53426dcb474657374"
+          },
+          {
+            "event": "send-attempt",
+            "peer": [
+              "fd42:c0a:2::1",
+              55614,
+              0,
+              0
+            ],
+            "hex": "68455b361832a9b9a53426dcff636f61707469632d73636f7065642d61646472657373696e67"
+          },
+          {
+            "event": "receive",
+            "peer": [
+              "fd42:c0a:2::1",
+              55614,
+              0,
+              0
+            ],
+            "hex": "480169ed21499731f7a7d61bb474657374"
+          },
+          {
+            "event": "send-attempt",
+            "peer": [
+              "fd42:c0a:2::1",
+              55614,
+              0,
+              0
+            ],
+            "hex": "684569ed21499731f7a7d61bff636f61707469632d73636f7065642d61646472657373696e67"
+          }
+        ],
+        "stderr": "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:66: DeprecationWarning: Initializing messages with an MID is deprecated. (No replacement: This needs to be managed by the library.)\n  reply = aiocoap.Message(code=aiocoap.CONTENT, mtype=aiocoap.ACK, mid=message.mid,\n/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:66: DeprecationWarning: Initializing messages with an mtype is deprecated. Instead, set transport_tuning=aiocoap.Reliable oraiocoap. Unreliable.\n  reply = aiocoap.Message(code=aiocoap.CONTENT, mtype=aiocoap.ACK, mid=message.mid,\n/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/addressing_peer.py:66: DeprecationWarning: Initializing messages with a token is deprecated. (No replacement: This needs to be managed by the library.)\n  reply = aiocoap.Message(code=aiocoap.CONTENT, mtype=aiocoap.ACK, mid=message.mid,\n"
+      },
+      "relay": {
+        "argv": [
+          "ip",
+          "netns",
+          "exec",
+          "cq3-2b89ffa9-r",
+          "/home/runner/work/_temp/q3-venv/bin/python",
+          "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/compound_relay.py",
+          "--front",
+          "fd42:c0a:1::1",
+          "--back",
+          "fd42:c0a:2::1",
+          "--remote",
+          "fd42:c0a:2::2"
+        ],
+        "pid": 5449,
+        "exit": 0,
+        "records": [
+          {
+            "event": "ready",
+            "front": [
+              "fd42:c0a:1::1",
+              56831,
+              0,
+              0
+            ],
+            "back": [
+              "fd42:c0a:2::1",
+              55614,
+              0,
+              0
+            ],
+            "remote": [
+              "fd42:c0a:2::2",
+              56830,
+              0,
+              0
+            ]
+          },
+          {
+            "event": "request",
+            "peer": [
+              "fd42:c0a:1::2",
+              54729,
+              0,
+              0
+            ],
+            "hex": "48015b361832a9b9a53426dcb474657374",
+            "action": "forward"
+          },
+          {
+            "event": "response",
+            "peer": [
+              "fd42:c0a:2::2",
+              56830,
+              0,
+              0
+            ],
+            "hex": "68455b361832a9b9a53426dcff636f61707469632d73636f7065642d61646472657373696e67",
+            "action": "drop"
+          },
+          {
+            "event": "inject",
+            "peer": [
+              "fd42:c0a:1::2",
+              54729,
+              0,
+              0
+            ],
+            "hex": "00"
+          },
+          {
+            "event": "inject",
+            "peer": [
+              "fd42:c0a:1::2",
+              54729,
+              0,
+              0
+            ],
+            "hex": "68455b361932a9b9a53426dcff636f61707469632d73636f7065642d61646472657373696e67"
+          },
+          {
+            "event": "request",
+            "peer": [
+              "fd42:c0a:1::2",
+              54729,
+              0,
+              0
+            ],
+            "hex": "48015b361832a9b9a53426dcb474657374",
+            "action": "forward"
+          },
+          {
+            "event": "response",
+            "peer": [
+              "fd42:c0a:2::2",
+              56830,
+              0,
+              0
+            ],
+            "hex": "68455b361832a9b9a53426dcff636f61707469632d73636f7065642d61646472657373696e67",
+            "action": "forward"
+          },
+          {
+            "event": "request",
+            "peer": [
+              "fd42:c0a:1::2",
+              60610,
+              0,
+              0
+            ],
+            "hex": "480169ed21499731f7a7d61bb474657374",
+            "action": "forward"
+          },
+          {
+            "event": "response",
+            "peer": [
+              "fd42:c0a:2::2",
+              56830,
+              0,
+              0
+            ],
+            "hex": "684569ed21499731f7a7d61bff636f61707469632d73636f7065642d61646472657373696e67",
+            "action": "forward"
+          },
+          {
+            "event": "complete",
+            "trace": [
+              {
+                "event": "request",
+                "peer": [
+                  "fd42:c0a:1::2",
+                  54729,
+                  0,
+                  0
+                ],
+                "hex": "48015b361832a9b9a53426dcb474657374",
+                "action": "forward"
+              },
+              {
+                "event": "response",
+                "peer": [
+                  "fd42:c0a:2::2",
+                  56830,
+                  0,
+                  0
+                ],
+                "hex": "68455b361832a9b9a53426dcff636f61707469632d73636f7065642d61646472657373696e67",
+                "action": "drop"
+              },
+              {
+                "event": "inject",
+                "peer": [
+                  "fd42:c0a:1::2",
+                  54729,
+                  0,
+                  0
+                ],
+                "hex": "00"
+              },
+              {
+                "event": "inject",
+                "peer": [
+                  "fd42:c0a:1::2",
+                  54729,
+                  0,
+                  0
+                ],
+                "hex": "68455b361932a9b9a53426dcff636f61707469632d73636f7065642d61646472657373696e67"
+              },
+              {
+                "event": "request",
+                "peer": [
+                  "fd42:c0a:1::2",
+                  54729,
+                  0,
+                  0
+                ],
+                "hex": "48015b361832a9b9a53426dcb474657374",
+                "action": "forward"
+              },
+              {
+                "event": "response",
+                "peer": [
+                  "fd42:c0a:2::2",
+                  56830,
+                  0,
+                  0
+                ],
+                "hex": "68455b361832a9b9a53426dcff636f61707469632d73636f7065642d61646472657373696e67",
+                "action": "forward"
+              },
+              {
+                "event": "request",
+                "peer": [
+                  "fd42:c0a:1::2",
+                  60610,
+                  0,
+                  0
+                ],
+                "hex": "480169ed21499731f7a7d61bb474657374",
+                "action": "forward"
+              },
+              {
+                "event": "response",
+                "peer": [
+                  "fd42:c0a:2::2",
+                  56830,
+                  0,
+                  0
+                ],
+                "hex": "684569ed21499731f7a7d61bff636f61707469632d73636f7065642d61646472657373696e67",
+                "action": "forward"
+              }
+            ],
+            "result": {
+              "dropped_replies": 1,
+              "malformed_injections": 1,
+              "unmatched_token_injections": 1,
+              "identical_retransmission": true,
+              "fresh_exchange": true
+            }
+          }
+        ],
+        "stderr": ""
+      },
+      "clients": [
+        {
+          "argv": [
+            "ip",
+            "netns",
+            "exec",
+            "cq3-2b89ffa9-c",
+            "/home/runner/work/coaptic-validation/coaptic-validation/target/debug/addressing",
+            "client",
+            "[fd42:c0a:1::2]:0",
+            "[fd42:c0a:1::1]:56831",
+            "8000"
+          ],
+          "exit": 0,
+          "records": [
+            {
+              "association_slots": 1,
+              "calls": 4,
+              "deferred": 0,
+              "event": "ready",
+              "local": "[fd42:c0a:1::2]:54729",
+              "profile": "Constrained; blockwise=false; routes=1",
+              "remote": "[fd42:c0a:1::1]:56831",
+              "requests": 4,
+              "security": "unprotected",
+              "trace_limit": 64,
+              "udp_receive_scratch": 1153
+            },
+            {
+              "event": "send-attempt",
+              "hex": "48015b361832a9b9a53426dcb474657374",
+              "peer": "[fd42:c0a:1::1]:56831",
+              "scope_id": 0
+            },
+            {
+              "bytes": 17,
+              "event": "sent"
+            },
+            {
+              "event": "receive",
+              "hex": "00",
+              "peer": "[fd42:c0a:1::1]:56831",
+              "scope_id": 0
+            },
+            {
+              "event": "receive",
+              "hex": "68455b361932a9b9a53426dcff636f61707469632d73636f7065642d61646472657373696e67",
+              "peer": "[fd42:c0a:1::1]:56831",
+              "scope_id": 0
+            },
+            {
+              "event": "send-attempt",
+              "hex": "48015b361832a9b9a53426dcb474657374",
+              "peer": "[fd42:c0a:1::1]:56831",
+              "scope_id": 0
+            },
+            {
+              "bytes": 17,
+              "event": "sent"
+            },
+            {
+              "event": "receive",
+              "hex": "68455b361832a9b9a53426dcff636f61707469632d73636f7065642d61646472657373696e67",
+              "peer": "[fd42:c0a:1::1]:56831",
+              "scope_id": 0
+            },
+            {
+              "code": 69,
+              "event": "complete",
+              "hex": "636f61707469632d73636f7065642d61646472657373696e67"
+            }
+          ],
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "ip",
+            "netns",
+            "exec",
+            "cq3-2b89ffa9-c",
+            "/home/runner/work/coaptic-validation/coaptic-validation/target/debug/addressing",
+            "client",
+            "[fd42:c0a:1::2]:0",
+            "[fd42:c0a:1::1]:56831",
+            "8000"
+          ],
+          "exit": 0,
+          "records": [
+            {
+              "association_slots": 1,
+              "calls": 4,
+              "deferred": 0,
+              "event": "ready",
+              "local": "[fd42:c0a:1::2]:60610",
+              "profile": "Constrained; blockwise=false; routes=1",
+              "remote": "[fd42:c0a:1::1]:56831",
+              "requests": 4,
+              "security": "unprotected",
+              "trace_limit": 64,
+              "udp_receive_scratch": 1153
+            },
+            {
+              "event": "send-attempt",
+              "hex": "480169ed21499731f7a7d61bb474657374",
+              "peer": "[fd42:c0a:1::1]:56831",
+              "scope_id": 0
+            },
+            {
+              "bytes": 17,
+              "event": "sent"
+            },
+            {
+              "event": "receive",
+              "hex": "684569ed21499731f7a7d61bff636f61707469632d73636f7065642d61646472657373696e67",
+              "peer": "[fd42:c0a:1::1]:56831",
+              "scope_id": 0
+            },
+            {
+              "code": 69,
+              "event": "complete",
+              "hex": "636f61707469632d73636f7065642d61646472657373696e67"
+            }
+          ],
+          "stderr": ""
+        }
+      ],
+      "status": "passed"
+    },
+    {
+      "name": "host-pmtu-icmp6",
+      "server": {
+        "argv": [
+          "ip",
+          "netns",
+          "exec",
+          "cq3-2b89ffa9-s",
+          "/home/runner/work/coaptic-validation/coaptic-validation/target/debug/addressing",
+          "server",
+          "[fd42:c0a:2::2]:56830",
+          "10000"
+        ],
+        "pid": 5460,
+        "exit": -15,
+        "records": [
+          {
+            "association_slots": 1,
+            "calls": 4,
+            "deferred": 0,
+            "event": "ready",
+            "local": "[fd42:c0a:2::2]:56830",
+            "profile": "Constrained; blockwise=false; routes=1",
+            "remote": null,
+            "requests": 4,
+            "security": "unprotected",
+            "trace_limit": 64,
+            "udp_receive_scratch": 1153
+          },
+          {
+            "event": "receive",
+            "hex": "480169ebc13c4972829172c1b474657374",
+            "peer": "[fd42:c0a:1::2]:33638",
+            "scope_id": 0
+          },
+          {
+            "event": "send-attempt",
+            "hex": "684569ebc13c4972829172c1ff636f61707469632d73636f7065642d61646472657373696e67",
+            "peer": "[fd42:c0a:1::2]:33638",
+            "scope_id": 0
+          },
+          {
+            "bytes": 38,
+            "event": "sent"
+          }
+        ],
+        "stderr": ""
+      },
+      "status": "passed",
+      "client": {
+        "argv": [
+          "ip",
+          "netns",
+          "exec",
+          "cq3-2b89ffa9-c",
+          "/home/runner/work/_temp/q3-venv/bin/python",
+          "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/pmtu_peer.py",
+          "--local",
+          "fd42:c0a:1::2",
+          "--remote",
+          "fd42:c0a:2::2",
+          "--router",
+          "fd42:c0a:1::1"
+        ],
+        "exit": 0,
+        "records": [
+          {
+            "implementation": "aiocoap-codec/python-UDP",
+            "status": "passed",
+            "headers": {
+              "/usr/include/linux/in6.h": "92e0885fdbb31b52efc2763818a4160b8c1be408934a119537647ec5676ba1b8",
+              "/usr/include/linux/errqueue.h": "36a4afc7797fb56548a32c499f7dbbc4d26217378090331e28179b081d75c0b4"
+            },
+            "probe_hex": "04816abc571aa73f7ca71f878b34bafa6c024d0a601ad543620bcc91bb349b32707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070",
+            "remote": [
+              "fd42:c0a:2::2",
+              56830,
+              0,
+              0
+            ],
+            "claim": "host Linux UDP PMTU/error queue; no Coaptic adaptation claim",
+            "local": [
+              "fd42:c0a:1::2",
+              33638,
+              0,
+              0
+            ],
+            "mtu_before": 1500,
+            "error_queue": {
+              "quoted_hex": "04816abc571aa73f7ca71f878b34bafa6c024d0a601ad543620bcc91bb349b32707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070",
+              "level": 41,
+              "type": 25,
+              "control_hex": "5a0000000302000000050000000000000a00000000000000fd420c0a00010000000000000000000100000000",
+              "flags": 8192,
+              "destination": [
+                "fd42:c0a:2::2",
+                56830,
+                0,
+                0
+              ]
+            },
+            "validated_error": {
+              "errno": 90,
+              "origin": 3,
+              "icmp_type": 2,
+              "icmp_code": 0,
+              "mtu": 1280,
+              "offender": "fd42:c0a:1::1",
+              "quoted_bytes": 1184
+            },
+            "mtu_after": 1280,
+            "subsequent_send_errno": 90,
+            "drained": [
+              {
+                "quoted_hex": "",
+                "flags": 8192
+              }
+            ],
+            "fresh": {
+              "request_hex": "480169ebc13c4972829172c1b474657374",
+              "response_hex": "684569ebc13c4972829172c1ff636f61707469632d73636f7065642d61646472657373696e67"
+            }
+          }
+        ],
+        "stderr": "/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/pmtu_peer.py:109: DeprecationWarning: Initializing messages with an MID is deprecated. (No replacement: This needs to be managed by the library.)\n  request = aiocoap.Message(code=aiocoap.GET, mtype=aiocoap.CON,\n/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/pmtu_peer.py:109: DeprecationWarning: Initializing messages with an mtype is deprecated. Instead, set transport_tuning=aiocoap.Reliable oraiocoap. Unreliable.\n  request = aiocoap.Message(code=aiocoap.GET, mtype=aiocoap.CON,\n/home/runner/work/coaptic-validation/coaptic-validation/tools/interop/pmtu_peer.py:109: DeprecationWarning: Initializing messages with a token is deprecated. (No replacement: This needs to be managed by the library.)\n  request = aiocoap.Message(code=aiocoap.GET, mtype=aiocoap.CON,\n"
+      }
+    }
+  ],
+  "mode": "network-errors",
+  "pmtu": "see host-pmtu-icmp6 case",
+  "source_identity": {
+    "source": "567899121ace814ebfb417b55705adbcb1299215",
+    "dirty": false,
+    "suite_source": "d290314823343b0f6caf8f0b7a5cc0d0c6e39569",
+    "suite_dirty": false,
+    "suite_locks": {
+      "Cargo.lock": "f711ce82fa0c978951b004095f37ad2cc4b05c1ceabbff406646ba6c87ed934b",
+      "tools/benchmark/native/Cargo.lock": "eb16c47c2f3539aaa45bd82e4eab48f229b252183998857f6a80a6ffc7432075",
+      "tools/security-interop/Cargo.lock": "e12762939ad364280a46bc526683de74567855448bf0f4e6263d79bad32e0653",
+      "tools/security-profile/Cargo.lock": "278f01b25bc5f2e9aab89f1c53cdbb97e3f12ae6269d81452a36393755e9e8c5",
+      "tools/esphome/rust/Cargo.lock": "7661bf627e28c7ec2eda22a2212081ce5f6e4e5b80d29d2da3d92c25ff74551d",
+      "tools/qualification/esp32/Cargo.lock": "5fda0d74045b28886c9b5dead108857d87e64b405ce193eeb7e1255483ef0773",
+      "tools/durable-host/Cargo.lock": "40a13b28dc161217c0f84afa18c3b870a840b48ccea2acf7071b0ef34b4205cf"
+    }
+  },
+  "build_record": {
+    "source": "567899121ace814ebfb417b55705adbcb1299215",
+    "dirty": false,
+    "suite_source": "d290314823343b0f6caf8f0b7a5cc0d0c6e39569",
+    "suite_dirty": false,
+    "suite_locks": {
+      "Cargo.lock": "f711ce82fa0c978951b004095f37ad2cc4b05c1ceabbff406646ba6c87ed934b",
+      "tools/benchmark/native/Cargo.lock": "eb16c47c2f3539aaa45bd82e4eab48f229b252183998857f6a80a6ffc7432075",
+      "tools/security-interop/Cargo.lock": "e12762939ad364280a46bc526683de74567855448bf0f4e6263d79bad32e0653",
+      "tools/security-profile/Cargo.lock": "278f01b25bc5f2e9aab89f1c53cdbb97e3f12ae6269d81452a36393755e9e8c5",
+      "tools/esphome/rust/Cargo.lock": "7661bf627e28c7ec2eda22a2212081ce5f6e4e5b80d29d2da3d92c25ff74551d",
+      "tools/qualification/esp32/Cargo.lock": "5fda0d74045b28886c9b5dead108857d87e64b405ce193eeb7e1255483ef0773",
+      "tools/durable-host/Cargo.lock": "40a13b28dc161217c0f84afa18c3b870a840b48ccea2acf7071b0ef34b4205cf"
+    },
+    "executable_sha256": "649c753cbc80d56594589614aa18962bf9b932cedcdcb6e350c8566a83d8bd22",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+    "python": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]",
+    "aiocoap": "0.4.16",
+    "kernel": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "iproute2": "ip utility, iproute2-6.1.0, libbpf 1.3.0\n",
+    "build_command": "cargo build --locked -p peer-coaptic --bin addressing"
+  },
+  "ownership": {
+    "token": "cq3-2b89ffa9",
+    "namespaces": {
+      "c": "cq3-2b89ffa9-c",
+      "r": "cq3-2b89ffa9-r",
+      "s": "cq3-2b89ffa9-s"
+    },
+    "created": {
+      "cq3-2b89ffa9-c": [
+        4,
+        4026532268
+      ],
+      "cq3-2b89ffa9-r": [
+        4,
+        4026532326
+      ],
+      "cq3-2b89ffa9-s": [
+        4,
+        4026532384
+      ]
+    },
+    "interfaces": {
+      "q32b89ffa9la": {
+        "namespace": "cq3-2b89ffa9-c",
+        "name": "c0",
+        "ifindex": 6,
+        "alias": "cq3-2b89ffa9",
+        "peer": "q32b89ffa9lb"
+      },
+      "q32b89ffa9lb": {
+        "namespace": "cq3-2b89ffa9-r",
+        "name": "r0",
+        "ifindex": 5,
+        "alias": "cq3-2b89ffa9",
+        "peer": "q32b89ffa9la"
+      },
+      "q32b89ffa9ra": {
+        "namespace": "cq3-2b89ffa9-r",
+        "name": "r1",
+        "ifindex": 8,
+        "alias": "cq3-2b89ffa9",
+        "peer": "q32b89ffa9rb"
+      },
+      "q32b89ffa9rb": {
+        "namespace": "cq3-2b89ffa9-s",
+        "name": "s0",
+        "ifindex": 7,
+        "alias": "cq3-2b89ffa9",
+        "peer": "q32b89ffa9ra"
+      }
+    }
+  },
+  "commands": [
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "list"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "add",
+        "cq3-2b89ffa9-c"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-c",
+        "link",
+        "set",
+        "lo",
+        "up"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "add",
+        "cq3-2b89ffa9-r"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "link",
+        "set",
+        "lo",
+        "up"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "add",
+        "cq3-2b89ffa9-s"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-s",
+        "link",
+        "set",
+        "lo",
+        "up"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "add",
+        "q32b89ffa9la",
+        "type",
+        "veth",
+        "peer",
+        "name",
+        "q32b89ffa9lb"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-j",
+        "link",
+        "show",
+        "dev",
+        "q32b89ffa9la"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":6,\"link\":\"q32b89ffa9lb\",\"ifname\":\"q32b89ffa9la\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"M-DOWN\"],\"mtu\":1500,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"ce:69:4d:2e:fb:71\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-j",
+        "link",
+        "show",
+        "dev",
+        "q32b89ffa9lb"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":5,\"link\":\"q32b89ffa9la\",\"ifname\":\"q32b89ffa9lb\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"M-DOWN\"],\"mtu\":1500,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"92:b9:22:94:52:10\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "dev",
+        "q32b89ffa9la",
+        "alias",
+        "cq3-2b89ffa9"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "dev",
+        "q32b89ffa9lb",
+        "alias",
+        "cq3-2b89ffa9"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "q32b89ffa9la",
+        "netns",
+        "cq3-2b89ffa9-c"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-c",
+        "-j",
+        "link",
+        "show",
+        "dev",
+        "q32b89ffa9la"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":6,\"link_index\":5,\"ifname\":\"q32b89ffa9la\",\"flags\":[\"BROADCAST\",\"MULTICAST\"],\"mtu\":1500,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"e6:4f:ae:30:ee:89\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-2b89ffa9\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-c",
+        "link",
+        "set",
+        "q32b89ffa9la",
+        "name",
+        "c0"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-c",
+        "link",
+        "set",
+        "dev",
+        "c0",
+        "addrgenmode",
+        "none"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-c",
+        "link",
+        "set",
+        "dev",
+        "c0",
+        "mtu",
+        "1500",
+        "up"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "q32b89ffa9lb",
+        "netns",
+        "cq3-2b89ffa9-r"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "-j",
+        "link",
+        "show",
+        "dev",
+        "q32b89ffa9lb"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":5,\"link_index\":6,\"ifname\":\"q32b89ffa9lb\",\"flags\":[\"BROADCAST\",\"MULTICAST\"],\"mtu\":1500,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"92:b9:22:94:52:10\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-2b89ffa9\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "link",
+        "set",
+        "q32b89ffa9lb",
+        "name",
+        "r0"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "link",
+        "set",
+        "dev",
+        "r0",
+        "addrgenmode",
+        "none"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "link",
+        "set",
+        "dev",
+        "r0",
+        "mtu",
+        "1500",
+        "up"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "add",
+        "q32b89ffa9ra",
+        "type",
+        "veth",
+        "peer",
+        "name",
+        "q32b89ffa9rb"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-j",
+        "link",
+        "show",
+        "dev",
+        "q32b89ffa9ra"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":8,\"link\":\"q32b89ffa9rb\",\"ifname\":\"q32b89ffa9ra\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"M-DOWN\"],\"mtu\":1500,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"26:03:e6:75:09:bc\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-j",
+        "link",
+        "show",
+        "dev",
+        "q32b89ffa9rb"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":7,\"link\":\"q32b89ffa9ra\",\"ifname\":\"q32b89ffa9rb\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"M-DOWN\"],\"mtu\":1500,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"e6:4a:b4:1d:db:67\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "dev",
+        "q32b89ffa9ra",
+        "alias",
+        "cq3-2b89ffa9"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "dev",
+        "q32b89ffa9rb",
+        "alias",
+        "cq3-2b89ffa9"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "q32b89ffa9ra",
+        "netns",
+        "cq3-2b89ffa9-r"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "-j",
+        "link",
+        "show",
+        "dev",
+        "q32b89ffa9ra"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":8,\"link_index\":7,\"ifname\":\"q32b89ffa9ra\",\"flags\":[\"BROADCAST\",\"MULTICAST\"],\"mtu\":1500,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"26:03:e6:75:09:bc\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":1,\"ifalias\":\"cq3-2b89ffa9\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "link",
+        "set",
+        "q32b89ffa9ra",
+        "name",
+        "r1"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "link",
+        "set",
+        "dev",
+        "r1",
+        "addrgenmode",
+        "none"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "link",
+        "set",
+        "dev",
+        "r1",
+        "mtu",
+        "1500",
+        "up"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "q32b89ffa9rb",
+        "netns",
+        "cq3-2b89ffa9-s"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-s",
+        "-j",
+        "link",
+        "show",
+        "dev",
+        "q32b89ffa9rb"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":7,\"link_index\":8,\"ifname\":\"q32b89ffa9rb\",\"flags\":[\"BROADCAST\",\"MULTICAST\"],\"mtu\":1500,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"e6:4a:b4:1d:db:67\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-2b89ffa9\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-s",
+        "link",
+        "set",
+        "q32b89ffa9rb",
+        "name",
+        "s0"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-s",
+        "link",
+        "set",
+        "dev",
+        "s0",
+        "addrgenmode",
+        "none"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-s",
+        "link",
+        "set",
+        "dev",
+        "s0",
+        "mtu",
+        "1500",
+        "up"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-c",
+        "-6",
+        "addr",
+        "add",
+        "fd42:c0a:1::2/64",
+        "dev",
+        "c0",
+        "nodad"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-c",
+        "-6",
+        "addr",
+        "add",
+        "fe80::c/64",
+        "dev",
+        "c0",
+        "nodad"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "-6",
+        "addr",
+        "add",
+        "fd42:c0a:1::1/64",
+        "dev",
+        "r0",
+        "nodad"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "-6",
+        "addr",
+        "add",
+        "fe80::1/64",
+        "dev",
+        "r0",
+        "nodad"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "-6",
+        "addr",
+        "add",
+        "fd42:c0a:2::1/64",
+        "dev",
+        "r1",
+        "nodad"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "-6",
+        "addr",
+        "add",
+        "fe80::2/64",
+        "dev",
+        "r1",
+        "nodad"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-s",
+        "-6",
+        "addr",
+        "add",
+        "fd42:c0a:2::2/64",
+        "dev",
+        "s0",
+        "nodad"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-s",
+        "-6",
+        "addr",
+        "add",
+        "fe80::5/64",
+        "dev",
+        "s0",
+        "nodad"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "exec",
+        "cq3-2b89ffa9-r",
+        "sysctl",
+        "-w",
+        "net.ipv6.conf.all.forwarding=1"
+      ],
+      "exit": 0,
+      "stdout": "net.ipv6.conf.all.forwarding = 1\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-c",
+        "-6",
+        "route",
+        "add",
+        "fd42:c0a:2::/64",
+        "via",
+        "fd42:c0a:1::1",
+        "dev",
+        "c0"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-s",
+        "-6",
+        "route",
+        "add",
+        "fd42:c0a:1::/64",
+        "via",
+        "fd42:c0a:2::1",
+        "dev",
+        "s0"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-c",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":6,\"link_index\":5,\"ifname\":\"c0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"e6:4f:ae:30:ee:89\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":1,\"ifalias\":\"cq3-2b89ffa9\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-c",
+        "-j",
+        "-6",
+        "addr"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"operstate\":\"UNKNOWN\",\"txqlen\":1000,\"addr_info\":[{\"family\":\"inet6\",\"local\":\"::1\",\"prefixlen\":128,\"scope\":\"host\",\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]},{\"ifindex\":6,\"link\":\"if5\",\"ifname\":\"c0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"operstate\":\"UP\",\"txqlen\":1000,\"addr_info\":[{\"family\":\"inet6\",\"local\":\"fd42:c0a:1::2\",\"prefixlen\":64,\"scope\":\"global\",\"nodad\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295},{\"family\":\"inet6\",\"local\":\"fe80::c\",\"prefixlen\":64,\"scope\":\"link\",\"nodad\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-c",
+        "-j",
+        "-6",
+        "route"
+      ],
+      "exit": 0,
+      "stdout": "[{\"dst\":\"fd42:c0a:1::/64\",\"dev\":\"c0\",\"protocol\":\"kernel\",\"metric\":256,\"flags\":[],\"pref\":\"medium\"},{\"dst\":\"fd42:c0a:2::/64\",\"gateway\":\"fd42:c0a:1::1\",\"dev\":\"c0\",\"metric\":1024,\"flags\":[],\"pref\":\"medium\"},{\"dst\":\"fe80::/64\",\"dev\":\"c0\",\"protocol\":\"kernel\",\"metric\":256,\"flags\":[],\"pref\":\"medium\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":5,\"link_index\":6,\"ifname\":\"r0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"92:b9:22:94:52:10\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-2b89ffa9\"},{\"ifindex\":8,\"link_index\":7,\"ifname\":\"r1\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"26:03:e6:75:09:bc\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":2,\"ifalias\":\"cq3-2b89ffa9\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "-j",
+        "-6",
+        "addr"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"operstate\":\"UNKNOWN\",\"txqlen\":1000,\"addr_info\":[{\"family\":\"inet6\",\"local\":\"::1\",\"prefixlen\":128,\"scope\":\"host\",\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]},{\"ifindex\":5,\"link\":\"if6\",\"ifname\":\"r0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"operstate\":\"UP\",\"txqlen\":1000,\"addr_info\":[{\"family\":\"inet6\",\"local\":\"fd42:c0a:1::1\",\"prefixlen\":64,\"scope\":\"global\",\"nodad\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295},{\"family\":\"inet6\",\"local\":\"fe80::1\",\"prefixlen\":64,\"scope\":\"link\",\"nodad\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]},{\"ifindex\":8,\"link\":\"if7\",\"ifname\":\"r1\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"operstate\":\"UP\",\"txqlen\":1000,\"addr_info\":[{\"family\":\"inet6\",\"local\":\"fd42:c0a:2::1\",\"prefixlen\":64,\"scope\":\"global\",\"nodad\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295},{\"family\":\"inet6\",\"local\":\"fe80::2\",\"prefixlen\":64,\"scope\":\"link\",\"nodad\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "-j",
+        "-6",
+        "route"
+      ],
+      "exit": 0,
+      "stdout": "[{\"dst\":\"fd42:c0a:1::/64\",\"dev\":\"r0\",\"protocol\":\"kernel\",\"metric\":256,\"flags\":[],\"pref\":\"medium\"},{\"dst\":\"fd42:c0a:2::/64\",\"dev\":\"r1\",\"protocol\":\"kernel\",\"metric\":256,\"flags\":[],\"pref\":\"medium\"},{\"dst\":\"fe80::/64\",\"dev\":\"r0\",\"protocol\":\"kernel\",\"metric\":256,\"flags\":[],\"pref\":\"medium\"},{\"dst\":\"fe80::/64\",\"dev\":\"r1\",\"protocol\":\"kernel\",\"metric\":256,\"flags\":[],\"pref\":\"medium\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-s",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":7,\"link_index\":8,\"ifname\":\"s0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"e6:4a:b4:1d:db:67\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-2b89ffa9\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-s",
+        "-j",
+        "-6",
+        "addr"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"operstate\":\"UNKNOWN\",\"txqlen\":1000,\"addr_info\":[{\"family\":\"inet6\",\"local\":\"::1\",\"prefixlen\":128,\"scope\":\"host\",\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]},{\"ifindex\":7,\"link\":\"if8\",\"ifname\":\"s0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"operstate\":\"UP\",\"txqlen\":1000,\"addr_info\":[{\"family\":\"inet6\",\"local\":\"fd42:c0a:2::2\",\"prefixlen\":64,\"scope\":\"global\",\"nodad\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295},{\"family\":\"inet6\",\"local\":\"fe80::5\",\"prefixlen\":64,\"scope\":\"link\",\"nodad\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-s",
+        "-j",
+        "-6",
+        "route"
+      ],
+      "exit": 0,
+      "stdout": "[{\"dst\":\"fd42:c0a:1::/64\",\"gateway\":\"fd42:c0a:2::1\",\"dev\":\"s0\",\"metric\":1024,\"flags\":[],\"pref\":\"medium\"},{\"dst\":\"fd42:c0a:2::/64\",\"dev\":\"s0\",\"protocol\":\"kernel\",\"metric\":256,\"flags\":[],\"pref\":\"medium\"},{\"dst\":\"fe80::/64\",\"dev\":\"s0\",\"protocol\":\"kernel\",\"metric\":256,\"flags\":[],\"pref\":\"medium\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "pids",
+        "cq3-2b89ffa9-r"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":5,\"link_index\":6,\"ifname\":\"r0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"92:b9:22:94:52:10\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-2b89ffa9\"},{\"ifindex\":8,\"link_index\":7,\"ifname\":\"r1\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"26:03:e6:75:09:bc\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":2,\"ifalias\":\"cq3-2b89ffa9\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "link",
+        "set",
+        "dev",
+        "r1",
+        "mtu",
+        "1280"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "pids",
+        "cq3-2b89ffa9-s"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-s",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":7,\"link_index\":8,\"ifname\":\"s0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"e6:4a:b4:1d:db:67\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-2b89ffa9\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-s",
+        "link",
+        "set",
+        "dev",
+        "s0",
+        "mtu",
+        "1280"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "pids",
+        "cq3-2b89ffa9-c"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-c",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":6,\"link_index\":5,\"ifname\":\"c0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"e6:4f:ae:30:ee:89\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":1,\"ifalias\":\"cq3-2b89ffa9\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "pids",
+        "cq3-2b89ffa9-r"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":5,\"link_index\":6,\"ifname\":\"r0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"92:b9:22:94:52:10\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-2b89ffa9\"},{\"ifindex\":8,\"link_index\":7,\"ifname\":\"r1\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1280,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"26:03:e6:75:09:bc\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":2,\"ifalias\":\"cq3-2b89ffa9\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "pids",
+        "cq3-2b89ffa9-s"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-s",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":7,\"link_index\":8,\"ifname\":\"s0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1280,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"e6:4a:b4:1d:db:67\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-2b89ffa9\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":2,\"ifname\":\"eth0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"mq\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"38:33:c5:f2:d1:6b\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"},{\"ifindex\":3,\"ifname\":\"docker0\",\"flags\":[\"NO-CARRIER\",\"BROADCAST\",\"MULTICAST\",\"UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"12:9f:ec:07:e2:f5\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"},{\"ifindex\":4,\"ifname\":\"enP48329s1\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"SLAVE\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"mq\",\"master\":\"eth0\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"38:33:c5:f2:d1:6b\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"vfinfo_list\":[],\"altnames\":[\"enP48329p0s2\"]}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "pids",
+        "cq3-2b89ffa9-s"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-s",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":7,\"link_index\":8,\"ifname\":\"s0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1280,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"e6:4a:b4:1d:db:67\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-2b89ffa9\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "delete",
+        "cq3-2b89ffa9-s"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "pids",
+        "cq3-2b89ffa9-r"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-r",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":5,\"link_index\":6,\"ifname\":\"r0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"92:b9:22:94:52:10\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0,\"ifalias\":\"cq3-2b89ffa9\"},{\"ifindex\":8,\"link_index\":7,\"ifname\":\"r1\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1280,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"26:03:e6:75:09:bc\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":2,\"ifalias\":\"cq3-2b89ffa9\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "delete",
+        "cq3-2b89ffa9-r"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "pids",
+        "cq3-2b89ffa9-c"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-n",
+        "cq3-2b89ffa9-c",
+        "-j",
+        "link"
+      ],
+      "exit": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":6,\"link_index\":5,\"ifname\":\"c0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"e6:4f:ae:30:ee:89\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":1,\"ifalias\":\"cq3-2b89ffa9\"}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "delete",
+        "cq3-2b89ffa9-c"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "topology": {
+    "c": {
+      "links": [
+        {
+          "ifindex": 1,
+          "ifname": "lo",
+          "flags": [
+            "LOOPBACK",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 65536,
+          "qdisc": "noqueue",
+          "operstate": "UNKNOWN",
+          "linkmode": "DEFAULT",
+          "group": "default",
+          "txqlen": 1000,
+          "link_type": "loopback",
+          "address": "00:00:00:00:00:00",
+          "broadcast": "00:00:00:00:00:00"
+        },
+        {
+          "ifindex": 6,
+          "link_index": 5,
+          "ifname": "c0",
+          "flags": [
+            "BROADCAST",
+            "MULTICAST",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 1500,
+          "qdisc": "noqueue",
+          "operstate": "UP",
+          "linkmode": "DEFAULT",
+          "group": "default",
+          "txqlen": 1000,
+          "link_type": "ether",
+          "address": "e6:4f:ae:30:ee:89",
+          "broadcast": "ff:ff:ff:ff:ff:ff",
+          "link_netnsid": 1,
+          "ifalias": "cq3-2b89ffa9"
+        }
+      ],
+      "addresses": [
+        {
+          "ifindex": 1,
+          "ifname": "lo",
+          "flags": [
+            "LOOPBACK",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 65536,
+          "operstate": "UNKNOWN",
+          "txqlen": 1000,
+          "addr_info": [
+            {
+              "family": "inet6",
+              "local": "::1",
+              "prefixlen": 128,
+              "scope": "host",
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            }
+          ]
+        },
+        {
+          "ifindex": 6,
+          "link": "if5",
+          "ifname": "c0",
+          "flags": [
+            "BROADCAST",
+            "MULTICAST",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 1500,
+          "operstate": "UP",
+          "txqlen": 1000,
+          "addr_info": [
+            {
+              "family": "inet6",
+              "local": "fd42:c0a:1::2",
+              "prefixlen": 64,
+              "scope": "global",
+              "nodad": true,
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            },
+            {
+              "family": "inet6",
+              "local": "fe80::c",
+              "prefixlen": 64,
+              "scope": "link",
+              "nodad": true,
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "dst": "fd42:c0a:1::/64",
+          "dev": "c0",
+          "protocol": "kernel",
+          "metric": 256,
+          "flags": [],
+          "pref": "medium"
+        },
+        {
+          "dst": "fd42:c0a:2::/64",
+          "gateway": "fd42:c0a:1::1",
+          "dev": "c0",
+          "metric": 1024,
+          "flags": [],
+          "pref": "medium"
+        },
+        {
+          "dst": "fe80::/64",
+          "dev": "c0",
+          "protocol": "kernel",
+          "metric": 256,
+          "flags": [],
+          "pref": "medium"
+        }
+      ]
+    },
+    "r": {
+      "links": [
+        {
+          "ifindex": 1,
+          "ifname": "lo",
+          "flags": [
+            "LOOPBACK",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 65536,
+          "qdisc": "noqueue",
+          "operstate": "UNKNOWN",
+          "linkmode": "DEFAULT",
+          "group": "default",
+          "txqlen": 1000,
+          "link_type": "loopback",
+          "address": "00:00:00:00:00:00",
+          "broadcast": "00:00:00:00:00:00"
+        },
+        {
+          "ifindex": 5,
+          "link_index": 6,
+          "ifname": "r0",
+          "flags": [
+            "BROADCAST",
+            "MULTICAST",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 1500,
+          "qdisc": "noqueue",
+          "operstate": "UP",
+          "linkmode": "DEFAULT",
+          "group": "default",
+          "txqlen": 1000,
+          "link_type": "ether",
+          "address": "92:b9:22:94:52:10",
+          "broadcast": "ff:ff:ff:ff:ff:ff",
+          "link_netnsid": 0,
+          "ifalias": "cq3-2b89ffa9"
+        },
+        {
+          "ifindex": 8,
+          "link_index": 7,
+          "ifname": "r1",
+          "flags": [
+            "BROADCAST",
+            "MULTICAST",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 1500,
+          "qdisc": "noqueue",
+          "operstate": "UP",
+          "linkmode": "DEFAULT",
+          "group": "default",
+          "txqlen": 1000,
+          "link_type": "ether",
+          "address": "26:03:e6:75:09:bc",
+          "broadcast": "ff:ff:ff:ff:ff:ff",
+          "link_netnsid": 2,
+          "ifalias": "cq3-2b89ffa9"
+        }
+      ],
+      "addresses": [
+        {
+          "ifindex": 1,
+          "ifname": "lo",
+          "flags": [
+            "LOOPBACK",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 65536,
+          "operstate": "UNKNOWN",
+          "txqlen": 1000,
+          "addr_info": [
+            {
+              "family": "inet6",
+              "local": "::1",
+              "prefixlen": 128,
+              "scope": "host",
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            }
+          ]
+        },
+        {
+          "ifindex": 5,
+          "link": "if6",
+          "ifname": "r0",
+          "flags": [
+            "BROADCAST",
+            "MULTICAST",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 1500,
+          "operstate": "UP",
+          "txqlen": 1000,
+          "addr_info": [
+            {
+              "family": "inet6",
+              "local": "fd42:c0a:1::1",
+              "prefixlen": 64,
+              "scope": "global",
+              "nodad": true,
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            },
+            {
+              "family": "inet6",
+              "local": "fe80::1",
+              "prefixlen": 64,
+              "scope": "link",
+              "nodad": true,
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            }
+          ]
+        },
+        {
+          "ifindex": 8,
+          "link": "if7",
+          "ifname": "r1",
+          "flags": [
+            "BROADCAST",
+            "MULTICAST",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 1500,
+          "operstate": "UP",
+          "txqlen": 1000,
+          "addr_info": [
+            {
+              "family": "inet6",
+              "local": "fd42:c0a:2::1",
+              "prefixlen": 64,
+              "scope": "global",
+              "nodad": true,
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            },
+            {
+              "family": "inet6",
+              "local": "fe80::2",
+              "prefixlen": 64,
+              "scope": "link",
+              "nodad": true,
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "dst": "fd42:c0a:1::/64",
+          "dev": "r0",
+          "protocol": "kernel",
+          "metric": 256,
+          "flags": [],
+          "pref": "medium"
+        },
+        {
+          "dst": "fd42:c0a:2::/64",
+          "dev": "r1",
+          "protocol": "kernel",
+          "metric": 256,
+          "flags": [],
+          "pref": "medium"
+        },
+        {
+          "dst": "fe80::/64",
+          "dev": "r0",
+          "protocol": "kernel",
+          "metric": 256,
+          "flags": [],
+          "pref": "medium"
+        },
+        {
+          "dst": "fe80::/64",
+          "dev": "r1",
+          "protocol": "kernel",
+          "metric": 256,
+          "flags": [],
+          "pref": "medium"
+        }
+      ]
+    },
+    "s": {
+      "links": [
+        {
+          "ifindex": 1,
+          "ifname": "lo",
+          "flags": [
+            "LOOPBACK",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 65536,
+          "qdisc": "noqueue",
+          "operstate": "UNKNOWN",
+          "linkmode": "DEFAULT",
+          "group": "default",
+          "txqlen": 1000,
+          "link_type": "loopback",
+          "address": "00:00:00:00:00:00",
+          "broadcast": "00:00:00:00:00:00"
+        },
+        {
+          "ifindex": 7,
+          "link_index": 8,
+          "ifname": "s0",
+          "flags": [
+            "BROADCAST",
+            "MULTICAST",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 1500,
+          "qdisc": "noqueue",
+          "operstate": "UP",
+          "linkmode": "DEFAULT",
+          "group": "default",
+          "txqlen": 1000,
+          "link_type": "ether",
+          "address": "e6:4a:b4:1d:db:67",
+          "broadcast": "ff:ff:ff:ff:ff:ff",
+          "link_netnsid": 0,
+          "ifalias": "cq3-2b89ffa9"
+        }
+      ],
+      "addresses": [
+        {
+          "ifindex": 1,
+          "ifname": "lo",
+          "flags": [
+            "LOOPBACK",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 65536,
+          "operstate": "UNKNOWN",
+          "txqlen": 1000,
+          "addr_info": [
+            {
+              "family": "inet6",
+              "local": "::1",
+              "prefixlen": 128,
+              "scope": "host",
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            }
+          ]
+        },
+        {
+          "ifindex": 7,
+          "link": "if8",
+          "ifname": "s0",
+          "flags": [
+            "BROADCAST",
+            "MULTICAST",
+            "UP",
+            "LOWER_UP"
+          ],
+          "mtu": 1500,
+          "operstate": "UP",
+          "txqlen": 1000,
+          "addr_info": [
+            {
+              "family": "inet6",
+              "local": "fd42:c0a:2::2",
+              "prefixlen": 64,
+              "scope": "global",
+              "nodad": true,
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            },
+            {
+              "family": "inet6",
+              "local": "fe80::5",
+              "prefixlen": 64,
+              "scope": "link",
+              "nodad": true,
+              "valid_life_time": 4294967295,
+              "preferred_life_time": 4294967295
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "dst": "fd42:c0a:1::/64",
+          "gateway": "fd42:c0a:2::1",
+          "dev": "s0",
+          "metric": 1024,
+          "flags": [],
+          "pref": "medium"
+        },
+        {
+          "dst": "fd42:c0a:2::/64",
+          "dev": "s0",
+          "protocol": "kernel",
+          "metric": 256,
+          "flags": [],
+          "pref": "medium"
+        },
+        {
+          "dst": "fe80::/64",
+          "dev": "s0",
+          "protocol": "kernel",
+          "metric": 256,
+          "flags": [],
+          "pref": "medium"
+        }
+      ]
+    }
+  },
+  "cleanup": {
+    "complete": true,
+    "retained_reasons": []
+  },
+  "source_identity_after": {
+    "source": "567899121ace814ebfb417b55705adbcb1299215",
+    "dirty": false,
+    "suite_source": "d290314823343b0f6caf8f0b7a5cc0d0c6e39569",
+    "suite_dirty": false,
+    "suite_locks": {
+      "Cargo.lock": "f711ce82fa0c978951b004095f37ad2cc4b05c1ceabbff406646ba6c87ed934b",
+      "tools/benchmark/native/Cargo.lock": "eb16c47c2f3539aaa45bd82e4eab48f229b252183998857f6a80a6ffc7432075",
+      "tools/security-interop/Cargo.lock": "e12762939ad364280a46bc526683de74567855448bf0f4e6263d79bad32e0653",
+      "tools/security-profile/Cargo.lock": "278f01b25bc5f2e9aab89f1c53cdbb97e3f12ae6269d81452a36393755e9e8c5",
+      "tools/esphome/rust/Cargo.lock": "7661bf627e28c7ec2eda22a2212081ce5f6e4e5b80d29d2da3d92c25ff74551d",
+      "tools/qualification/esp32/Cargo.lock": "5fda0d74045b28886c9b5dead108857d87e64b405ce193eeb7e1255483ef0773",
+      "tools/durable-host/Cargo.lock": "40a13b28dc161217c0f84afa18c3b870a840b48ccea2acf7071b0ef34b4205cf"
+    }
+  }
+}
