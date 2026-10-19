@@ -27,10 +27,12 @@ static uint8_t large_body[2000];
 static const uint8_t small_body[] = "core-test-payload";
 static int complete;
 static int observe_mode;
-static char observe_joined[192];
+/* Three 96-byte observed representations plus delimiters. */
+static char observe_joined[3 * 96 + 3];
 static size_t observe_joined_len;
 static int observe_count;
-static uint8_t pending_token[8];
+static uint8_t pending_token[64];
+static uint8_t observed_bodies[3][96];
 static size_t pending_token_len;
 static uint64_t started;
 static uint64_t clock_resolution_ns;
@@ -105,6 +107,44 @@ static void get_fixture(coap_resource_t *resource, coap_session_t *session,
     coap_add_data_large_response(resource,session,request,response,query,
         COAP_MEDIATYPE_APPLICATION_OCTET_STREAM,60,0,len,body,NULL,NULL);
   }
+}
+static void get_observed_large(coap_resource_t *resource, coap_session_t *session,
+    const coap_pdu_t *request, const coap_string_t *query, coap_pdu_t *response) {
+  const unsigned epoch = counter % 3;
+  coap_opt_iterator_t it;
+  coap_opt_t *tag = coap_check_option(request, COAP_OPTION_ETAG, &it);
+  if(tag && coap_opt_length(tag)==1 && coap_opt_value(tag)[0]==epoch+1) {
+    const uint8_t etag=(uint8_t)(epoch+1);
+    coap_pdu_set_code(response,COAP_RESPONSE_CODE_VALID);
+    coap_add_option(response,COAP_OPTION_ETAG,1,&etag);
+    return;
+  }
+  coap_pdu_set_code(response,COAP_RESPONSE_CODE_CONTENT);
+  coap_add_data_large_response(resource,session,request,response,query,
+      COAP_MEDIATYPE_TEXT_PLAIN,60,epoch+1,96,observed_bodies[epoch],NULL,NULL);
+}
+static void get_escaped(coap_resource_t *resource, coap_session_t *session,
+    const coap_pdu_t *request, const coap_string_t *query, coap_pdu_t *response) {
+  (void)resource;(void)session;(void)query;
+  coap_opt_iterator_t it;
+  coap_opt_t *option;
+  unsigned path=0, queries=0;
+  int valid=1;
+  coap_option_iterator_init(request,&it,COAP_OPT_ALL);
+  while((option=coap_option_next(&it))) {
+    const uint8_t *data=coap_opt_value(option);size_t len=coap_opt_length(option);
+    if(it.number==COAP_OPTION_URI_PATH) {
+      const char *expected=path==0?"escaped":"a/b";
+      valid=valid && path<2 && len==strlen(expected) && memcmp(data,expected,len)==0;
+      path++;
+    } else if(it.number==COAP_OPTION_URI_QUERY) {
+      valid=valid && queries==0 && len==7 && memcmp(data,"key=a&b",7)==0;
+      queries++;
+    }
+  }
+  if(!valid || path!=2 || queries!=1) {coap_pdu_set_code(response,COAP_RESPONSE_CODE_BAD_REQUEST);return;}
+  coap_pdu_set_code(response,COAP_RESPONSE_CODE_CONTENT);
+  coap_add_data(response,12,(const uint8_t *)"uri-identity");
 }
 static void get_separate(coap_resource_t *resource, coap_session_t *session,
                         const coap_pdu_t *request, const coap_string_t *query,
@@ -391,11 +431,20 @@ static coap_oscore_conf_t *oscore_config(int server, int wrong_key, uint64_t seq
 int main(int argc,char **argv) {
   setvbuf(stdout,NULL,_IONBF,0);
   int q_block1 = 0, q_block2 = 0, observe = 0, json_patch = 0;
-  while(argc > 8 && (!strcmp(argv[argc-1],"qblock1") || !strcmp(argv[argc-1],"qblock2") || !strcmp(argv[argc-1],"observe") || !strcmp(argv[argc-1],"jsonpatch"))) {
+  size_t requested_token=8;
+  int initial_valid=0, initial_block=-1;
+  while(argc > 8 && (!strcmp(argv[argc-1],"qblock1") || !strcmp(argv[argc-1],"qblock2") || !strcmp(argv[argc-1],"observe") || !strcmp(argv[argc-1],"jsonpatch") || !strncmp(argv[argc-1],"token:",6) || !strncmp(argv[argc-1],"block2:",7) || !strcmp(argv[argc-1],"initial-valid"))) {
     if(!strcmp(argv[argc-1],"qblock1")) q_block1 = 1;
     else if(!strcmp(argv[argc-1],"qblock2")) q_block2 = 1;
     else if(!strcmp(argv[argc-1],"observe")) observe = 1;
-    else json_patch = 1;
+    else if(!strcmp(argv[argc-1],"jsonpatch")) json_patch = 1;
+    else if(!strcmp(argv[argc-1],"initial-valid")) initial_valid = 1;
+    else {
+      char *end=NULL;const int token=!strncmp(argv[argc-1],"token:",6);
+      long value=strtol(argv[argc-1]+(token?6:7),&end,10);
+      if(*end || (token?(value<8 || value>64):(value<0 || value>2))) {failure("invalid bounded profile argument");return 2;}
+      if(token) requested_token=(size_t)value;else initial_block=(int)value;
+    }
     argc--;
   }
   const int q_block = q_block1 || q_block2;
@@ -411,7 +460,7 @@ int main(int argc,char **argv) {
   if(*end || port<1 || port>65535){failure("invalid port");return 2;}
   long timeout=strtol(argv[7],&end,10);
   if(*end || timeout<100 || timeout>30000){failure("invalid timeout");return 2;}
-  if(strcmp(argv[5],"test") && strcmp(argv[5],"large") && strcmp(argv[5],"counter") && strcmp(argv[5],"missing") && strcmp(argv[5],"methods") && strcmp(argv[5],"upload") && strcmp(argv[5],"separate") && strcmp(argv[5],"patch")){failure("unsupported path");return 2;}
+  if(strcmp(argv[5],"test") && strcmp(argv[5],"large") && strcmp(argv[5],"counter") && strcmp(argv[5],"missing") && strcmp(argv[5],"methods") && strcmp(argv[5],"upload") && strcmp(argv[5],"separate") && strcmp(argv[5],"patch") && strcmp(argv[5],".well-known/core") && strcmp(argv[5],"sensor") && strcmp(argv[5],"escaped") && strcmp(argv[5],"obs-large")){failure("unsupported path");return 2;}
   const char *methods[] = {"GET", "POST", "PUT", "DELETE", "FETCH", "PATCH", "IPATCH"};
   unsigned method = 0;
   for(unsigned i = 0; i < 7; i++) if(!strcmp(argv[6], methods[i])) method = i + 1;
@@ -438,8 +487,10 @@ int main(int argc,char **argv) {
   if(oscore && !coap_oscore_is_supported()){failure("OSCORE unavailable in libcoap build");coap_cleanup();return 2;}
   if(q_block && !coap_q_block_is_supported()){failure("Q-Block unavailable in libcoap build");coap_cleanup();return 2;}
   for(size_t i=0;i<sizeof(large_body);i++)large_body[i]=(uint8_t)(i%251);
+  for(size_t epoch=0;epoch<3;epoch++)memset(observed_bodies[epoch],(int)('a'+epoch),96);
   coap_context_t *ctx=coap_new_context(NULL);
   if(!ctx){failure("context failed");coap_cleanup();return 1;}
+  coap_context_set_max_token_size(ctx,64);
   /* A server with Q-Block answers Q-Block requests and still serves classic Block. */
   const int try_q_block=(server||q_block)&&coap_q_block_is_supported();
   coap_context_set_block_mode(ctx,COAP_BLOCK_USE_LIBCOAP|COAP_BLOCK_SINGLE_BODY|(try_q_block?COAP_BLOCK_TRY_Q_BLOCK:0));
@@ -467,6 +518,21 @@ int main(int argc,char **argv) {
       if(i==2){coap_register_handler(r,COAP_REQUEST_POST,post_counter);coap_resource_set_get_observable(r,1);}
       coap_add_resource(ctx,r);
     }
+    coap_resource_t *sensor=coap_resource_init(coap_make_str_const("sensor"),oscore?COAP_RESOURCE_FLAGS_OSCORE_ONLY:0);
+    coap_register_handler(sensor,COAP_REQUEST_GET,get_fixture);
+    coap_add_attr(sensor,coap_make_str_const("rt"),coap_make_str_const("\"temperature-c sensor\""),0);
+    coap_add_attr(sensor,coap_make_str_const("if"),coap_make_str_const("\"sensor\""),0);
+    coap_add_attr(sensor,coap_make_str_const("ct"),coap_make_str_const("\"0 50\""),0);
+    coap_add_attr(sensor,coap_make_str_const("sz"),coap_make_str_const("96"),0);
+    coap_add_attr(sensor,coap_make_str_const("title"),coap_make_str_const("\"Room \\\"one\\\"\""),0);
+    coap_resource_set_get_observable(sensor,1);
+    coap_add_resource(ctx,sensor);
+    coap_resource_t *observed=coap_resource_init(coap_make_str_const("obs-large"),oscore?COAP_RESOURCE_FLAGS_OSCORE_ONLY:0);
+    coap_register_handler(observed,COAP_REQUEST_GET,get_observed_large);
+    coap_register_handler(observed,COAP_REQUEST_POST,post_counter);
+    coap_resource_set_get_observable(observed,1);coap_add_resource(ctx,observed);
+    coap_resource_t *escaped=coap_resource_init(coap_make_str_const("escaped/a%2Fb"),oscore?COAP_RESOURCE_FLAGS_OSCORE_ONLY:0);
+    coap_register_handler(escaped,COAP_REQUEST_GET,get_escaped);coap_add_resource(ctx,escaped);
     coap_resource_t *methods_resource = coap_resource_init(coap_make_str_const("methods"), oscore?COAP_RESOURCE_FLAGS_OSCORE_ONLY:0);
     for(unsigned i = 1; i <= 7; i++) coap_register_handler(methods_resource, (coap_request_t)i, method_resource);
     coap_add_resource(ctx, methods_resource);
@@ -494,11 +560,20 @@ int main(int argc,char **argv) {
     coap_register_response_handler(ctx,response_handler);
     coap_pdu_t *pdu=coap_new_pdu(COAP_MESSAGE_CON,(coap_pdu_code_t)method,session);
     if(!pdu){failure("PDU allocation failed");coap_session_release(session);status=1;goto done;}
-    uint8_t token[8];size_t token_len=sizeof(token);coap_session_new_token(session,&token_len,token);
+    uint8_t token[64];size_t token_len=requested_token;
+    /* Fixed test identity, confined to this fresh session and full-token oracle. */
+    if(token_len==8)coap_session_new_token(session,&token_len,token);
+    else for(size_t i=0;i<token_len;i++)token[i]=(uint8_t)(i+1);
     memcpy(pending_token, token, token_len); pending_token_len = token_len;
     if(!coap_add_token(pdu,token_len,token)){coap_delete_pdu(pdu);failure("PDU construction failed");coap_session_release(session);status=1;goto done;}
+    if(initial_valid) {const uint8_t etag=1;if(!coap_add_option(pdu,COAP_OPTION_ETAG,1,&etag)){failure("etag option failed");status=1;coap_delete_pdu(pdu);coap_session_release(session);goto done;}}
     if(observe && !coap_add_option(pdu,COAP_OPTION_OBSERVE,0,(const uint8_t *)"")){coap_delete_pdu(pdu);failure("Observe option failed");coap_session_release(session);status=1;goto done;}
-    if(!coap_add_option(pdu,COAP_OPTION_URI_PATH,strlen(argv[5]),(const uint8_t *)argv[5])){coap_delete_pdu(pdu);failure("PDU construction failed");coap_session_release(session);status=1;goto done;}
+    const char *uri_path=strcmp(argv[5],"escaped")==0?"escaped/a%2Fb":argv[5];
+    uint8_t path_options[128];size_t path_len=sizeof(path_options);
+    int segments=coap_split_path((const uint8_t *)uri_path,strlen(uri_path),path_options,&path_len);
+    const uint8_t *part=path_options;
+    if(segments<0){failure("path encoding failed");status=1;coap_delete_pdu(pdu);coap_session_release(session);goto done;}
+    for(int i=0;i<segments;i++){if(!coap_add_option(pdu,COAP_OPTION_URI_PATH,coap_opt_length(part),coap_opt_value(part))){failure("path option failed");status=1;coap_delete_pdu(pdu);coap_session_release(session);goto done;}part+=coap_opt_size(part);}
     if((!strcmp(argv[5], "methods") || !strcmp(argv[5], "upload")) && (method == 2 || method == 3 || method == 5 || method == 6 || method == 7)) {
       const uint8_t format = 42;
       if(!coap_add_option(pdu, COAP_OPTION_CONTENT_FORMAT, 1, &format)) { coap_delete_pdu(pdu); failure("format option failed"); coap_session_release(session); status=1; goto done; }
@@ -507,6 +582,8 @@ int main(int argc,char **argv) {
       const uint8_t format = json_patch ? 51 : 52;
       if(!coap_add_option(pdu, COAP_OPTION_CONTENT_FORMAT, 1, &format)) { coap_delete_pdu(pdu); failure("format option failed"); coap_session_release(session); status=1; goto done; }
     }
+    if(!strcmp(argv[5],"escaped"))coap_add_option(pdu,COAP_OPTION_URI_QUERY,7,(const uint8_t *)"key=a&b");
+    if(initial_block>=0){const uint8_t value=(uint8_t)((initial_block<<4)|1);coap_add_option(pdu,COAP_OPTION_BLOCK2,1,&value);}
     if(q_block2) {
       /* NUM=0, M=0, SZX=6. libcoap sets M after the Q-Block probe. */
       const uint8_t qblock2 = 0x06;

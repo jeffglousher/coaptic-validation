@@ -31,6 +31,10 @@ pub struct Args {
     pub echo: bool,
     pub replay: Option<(u64, u32)>,
     pub jsonpatch: bool,
+    pub token_length: usize,
+    pub token_probe: bool,
+    pub block2_start: Option<u32>,
+    pub initial_valid: bool,
 }
 impl Args {
     pub fn parse() -> Result<Self, Error> {
@@ -40,6 +44,10 @@ impl Args {
         let mut replay = None;
         let mut q_block2_non = false;
         let mut observe_cancel = false;
+        let mut token_length = 8;
+        let mut token_probe = false;
+        let mut block2_start = None;
+        let mut initial_valid = false;
         while let Some(flag) = a.last().cloned() {
             match flag.as_str() {
                 "qblock1" => q_block1 = true,
@@ -55,6 +63,21 @@ impl Args {
                 }
                 "echo" => echo = true,
                 "jsonpatch" => jsonpatch = true,
+                "token-probe" => token_probe = true,
+                "initial-valid" => initial_valid = true,
+                _ if flag.starts_with("token:") => {
+                    token_length = flag[6..].parse()?;
+                    if !(8..=64).contains(&token_length) {
+                        return Err("fixture token length must be 8..64".into());
+                    }
+                }
+                _ if flag.starts_with("block2:") => {
+                    let value = flag[7..].parse::<u32>()?;
+                    if value > 2 {
+                        return Err("fixture initial block number must be 0..2".into());
+                    }
+                    block2_start = Some(value);
+                }
                 _ => {
                     let Some(rest) = flag.strip_prefix("replay:") else {
                         break;
@@ -87,7 +110,18 @@ impl Args {
         }
         if !matches!(
             a[4].as_str(),
-            "test" | "large" | "counter" | "missing" | "methods" | "upload" | "separate" | "patch"
+            "test"
+                | "large"
+                | "counter"
+                | "missing"
+                | "methods"
+                | "upload"
+                | "separate"
+                | "patch"
+                | ".well-known/core"
+                | "sensor"
+                | "escaped"
+                | "obs-large"
         ) {
             return Err("unsupported fixture path".into());
         }
@@ -149,6 +183,10 @@ impl Args {
             return Err("OSCORE sequence exceeds 40 bits".into());
         }
         Ok(Self {
+            token_length,
+            token_probe,
+            block2_start,
+            initial_valid,
             server: a[0] == "server",
             ipv6: family == "ipv6",
             dtls: a[1] == "dtls",

@@ -48,6 +48,12 @@ fn config(key: &str) -> Config {
 }
 async fn run() -> Result<(), Error> {
     let a = Args::parse()?;
+    if a.token_length != 8 || a.token_probe {
+        return Err("pinned coap-lite 0.13.3 rejects extended token lengths".into());
+    }
+    if a.block2_start.is_some() || a.initial_valid {
+        return Err("initial Block2/validator controls are not exposed by this fixture".into());
+    }
     if a.observe_cancel {
         return Err("observe-cancel is supported only by the Coaptic qualification peer".into());
     }
@@ -269,4 +275,21 @@ async fn run() -> Result<(), Error> {
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> std::process::ExitCode {
     support::finish(run().await)
+}
+
+#[cfg(test)]
+mod profile_capabilities {
+    #[test]
+    fn pinned_decoder_accepts_compact_and_refuses_extended_token() {
+        let compact = [0x48, 1, 0, 1, 1, 2, 3, 4, 5, 6, 7, 8];
+        let extended = [0x49, 1, 0, 1, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        assert_eq!(
+            coap_lite::Packet::from_bytes(&compact).unwrap().get_token(),
+            &compact[4..]
+        );
+        assert!(matches!(
+            coap_lite::Packet::from_bytes(&extended),
+            Err(coap_lite::error::MessageError::InvalidTokenLength)
+        ));
+    }
 }
