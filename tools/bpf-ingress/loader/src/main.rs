@@ -156,7 +156,9 @@ mod linux {
                 }
             }
         });
-        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        // Instrumented verifier loads on the recorded hosted kernel exceed 20s.
+        // Bound startup separately from the child's post-attachment sleep.
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
         loop {
             let remaining = deadline
                 .checked_duration_since(std::time::Instant::now())
