@@ -58,21 +58,24 @@ ClientHello match. These paths did not demonstrate private-key or master-secret
 disclosure. Static diagnostics now retain the same equality checks without
 certificate or cookie value dumps. No query is suppressed and no alert dismissed.
 
-Ten original files differ from the original hash manifest: the connection
-implementation/tests, handshake cache, handshaker, flight4, and four codec test
-files (extended-master-secret extension, certificate, certificate-request and
-certificate-verify), plus the CCM record codec. The private final-flight and record-policy test modules are new. The original hashes
-remain unchanged so each owned edit can be compared with the upstream package.
+Local edits retain their original file hashes in `webrtc-dtls-original.json`.
+The connection implementation/tests, handshake cache, handshaker, flight4,
+selected codec tests and CCM/GCM record codecs differ from that baseline;
+the final-flight and record-policy modules are local additions. The GCM policy
+increment records its changed-file hashes in `webrtc-dtls-gcm-policy.json`.
 
-Record-error policy (#485): CCM and CCM8 reject records shorter than their explicit
-nonce and authentication tag before subtracting tag length. Their authentication
-failures retain typed `ErrInvalidMac`; PSK CCM/CCM8 record authentication uses the existing
-fatal-close path with `bad_record_mac(20)` (RFC6347 section4.1.2.1 and RFC5246
-section6.2.3.3). CCM structural decrypt errors are silently discarded, without
-asserting that a PSK identity is unknown. Non-PSK discard policy is unchanged;
-the existing CBC suite is non-PSK. GCM internals and its preexisting PSK alert
-classification remain unchanged and unqualified by this increment. This does not
-change Finished verification or make the literal DTLS02 alert51 case pass.
+Record-error policy (#485/#486): CCM, CCM8 and GCM reject records shorter than
+their explicit nonce and authentication tag before subtracting tag length.
+Authentication failures retain typed `ErrInvalidMac`; supported PSK AEAD suites
+use the existing fatal-close path with `bad_record_mac(20)` (RFC6347 section
+4.1.2.1 and RFC5246 section6.2.3.3). Structural decrypt errors are silently
+discarded without asserting that a PSK identity is unknown. Non-PSK discard
+policy remains unchanged. This does not alter key derivation, Finished
+verification, identity lookup or the literal DTLS02 alert51 requirement.
 
 Offline targeted checks:
 `cargo test --locked --manifest-path vendor/webrtc-dtls/Cargo.toml --lib record_policy`.
+Finite loopback controls, known-identity wrong-key refusal and fresh recovery:
+`cargo test --locked -p coaptic-plugtest --features dtls --lib dtls_record_policy`.
+The two profile tests retain separate captures and exact source identities;
+GCM is not reported as the literal CCM8 TD_COAP_DTLS_01.

@@ -4,19 +4,29 @@ use crate::cipher_suite::cipher_suite_aes_128_ccm::CipherSuiteAes128Ccm;
 use crate::client_certificate_type::ClientCertificateType;
 use crate::crypto::crypto_ccm::CryptoCcmTagLen;
 
-fn suite(secret: u8, client: bool, psk: bool) -> CipherSuiteAes128Ccm {
-    let mut cipher = CipherSuiteAes128Ccm::new(
-        ClientCertificateType::Unsupported,
-        CipherSuiteId::Tls_Psk_With_Aes_128_Ccm_8,
-        psk,
-        CryptoCcmTagLen::CryptoCcm8TagLength,
-    );
+fn suite(secret: u8, client: bool, psk: bool, gcm: bool) -> Box<dyn CipherSuite + Send + Sync> {
+    use crate::cipher_suite::cipher_suite_aes_128_gcm_sha256::CipherSuiteAes128GcmSha256;
+    use crate::cipher_suite::cipher_suite_tls_psk_with_aes_128_gcm_sha256::CipherSuiteTlsPskWithAes128GcmSha256;
+    let mut cipher: Box<dyn CipherSuite + Send + Sync> = if gcm {
+        if psk {
+            Box::new(CipherSuiteTlsPskWithAes128GcmSha256::default())
+        } else {
+            Box::new(CipherSuiteAes128GcmSha256::new(false))
+        }
+    } else {
+        Box::new(CipherSuiteAes128Ccm::new(
+            ClientCertificateType::Unsupported,
+            CipherSuiteId::Tls_Psk_With_Aes_128_Ccm_8,
+            psk,
+            CryptoCcmTagLen::CryptoCcm8TagLength,
+        ))
+    };
     cipher
         .init(&[secret; 48], &[1; 32], &[2; 32], client)
         .unwrap();
     cipher
 }
-fn wire(secret: u8) -> Vec<u8> {
+fn wire(secret: u8, gcm: bool) -> Vec<u8> {
     let header = RecordLayerHeader {
         content_type: ContentType::ApplicationData,
         protocol_version: PROTOCOL_VERSION1_2,
@@ -27,10 +37,13 @@ fn wire(secret: u8) -> Vec<u8> {
     let mut plain = Vec::new();
     header.marshal(&mut plain).unwrap();
     plain.extend_from_slice(b"test");
-    suite(secret, true, true).encrypt(&header, &plain).unwrap()
+    suite(secret, true, true, gcm)
+        .encrypt(&header, &plain)
+        .unwrap()
 }
 fn reader(
     psk: bool,
+    gcm: bool,
 ) -> (
     ConnReaderContext,
     mpsc::Receiver<Result<Vec<u8>>>,
@@ -50,7 +63,7 @@ fn reader(
             encrypted_packets: vec![],
             fragment_buffer: FragmentBuffer::new(),
             cache: HandshakeCache::new(),
-            cipher_suite: Arc::new(Mutex::new(Some(Box::new(suite(3, false, psk))))),
+            cipher_suite: Arc::new(Mutex::new(Some(suite(3, false, psk, gcm)))),
             remote_epoch: Arc::new(AtomicU16::new(1)),
             handshake_tx,
             handshake_done_rx,
@@ -72,76 +85,78 @@ fn assert_alert(packets: Vec<Packet>) {
 }
 #[tokio::test]
 async fn record_policy_immediate_and_queued_auth_failure_close_without_delivery() {
-    for queued in [false, true] {
-        let (mut ctx, mut application, mut packets) = reader(true);
-        let epoch = Arc::new(AtomicU16::new(0));
-        let complete = Arc::new(AtomicBool::new(false));
-        let result = if queued {
-            ctx.remote_epoch.store(0, Ordering::SeqCst);
-            let (hs, alert, error) =
-                DTLSConn::handle_incoming_packet(&mut ctx, wire(9), true).await;
-            assert!(!hs && alert.is_none() && error.is_none());
-            assert_eq!(ctx.encrypted_packets.len(), 1);
-            ctx.remote_epoch.store(1, Ordering::SeqCst);
-            let pending = std::mem::take(&mut ctx.encrypted_packets);
-            DTLSConn::handle_queued_packets(&mut ctx, &epoch, &complete, pending).await
-        } else {
-            let (input, output) = util::conn::conn_pipe::pipe();
-            let input: Arc<dyn Conn + Send + Sync> = Arc::new(input);
-            output.send(&wire(9)).await.unwrap();
-            let (_, mut queue) = mpsc::channel(1);
-            DTLSConn::read_and_buffer(
-                &mut ctx,
-                &input,
-                &mut queue,
-                &mut [0; 128],
-                &epoch,
-                &complete,
-            )
-            .await
-        };
-        assert_eq!(result.unwrap_err(), Error::ErrAlertFatalOrClose);
-        assert!(application.try_recv().is_err());
-        assert_alert(packets.try_recv().unwrap().0);
-        assert!(packets.try_recv().is_err());
+    for gcm in [false, true] {
+        for queued in [false, true] {
+            let (mut ctx, mut application, mut packets) = reader(true, gcm);
+            let epoch = Arc::new(AtomicU16::new(0));
+            let complete = Arc::new(AtomicBool::new(false));
+            let result = if queued {
+                ctx.remote_epoch.store(0, Ordering::SeqCst);
+                let (hs, alert, error) =
+                    DTLSConn::handle_incoming_packet(&mut ctx, wire(9, gcm), true).await;
+                assert!(!hs && alert.is_none() && error.is_none());
+                assert_eq!(ctx.encrypted_packets.len(), 1);
+                ctx.remote_epoch.store(1, Ordering::SeqCst);
+                let pending = std::mem::take(&mut ctx.encrypted_packets);
+                DTLSConn::handle_queued_packets(&mut ctx, &epoch, &complete, pending).await
+            } else {
+                let (input, output) = util::conn::conn_pipe::pipe();
+                let input: Arc<dyn Conn + Send + Sync> = Arc::new(input);
+                output.send(&wire(9, gcm)).await.unwrap();
+                let (_, mut queue) = mpsc::channel(1);
+                DTLSConn::read_and_buffer(
+                    &mut ctx,
+                    &input,
+                    &mut queue,
+                    &mut [0; 128],
+                    &epoch,
+                    &complete,
+                )
+                .await
+            };
+            assert_eq!(result.unwrap_err(), Error::ErrAlertFatalOrClose);
+            assert!(application.try_recv().is_err());
+            assert_alert(packets.try_recv().unwrap().0);
+            assert!(packets.try_recv().is_err());
+        }
     }
 }
 #[tokio::test]
 async fn record_policy_structural_refusal_keeps_replay_and_valid_record_usable() {
-    let (mut ctx, mut application, mut packets) = reader(true);
-    let mut short = wire(3);
-    short.truncate(RECORD_LAYER_HEADER_SIZE + 9);
-    short[11..13].copy_from_slice(&9u16.to_be_bytes());
-    let (hs, alert, error) = DTLSConn::handle_incoming_packet(&mut ctx, short, true).await;
-    assert!(!hs && alert.is_none() && error.is_none());
-    assert!(application.try_recv().is_err());
-    assert!(packets.try_recv().is_err());
-    let (hs, alert, error) = DTLSConn::handle_incoming_packet(&mut ctx, wire(3), true).await;
-    assert!(!hs && alert.is_none() && error.is_none());
-    assert_eq!(application.try_recv().unwrap().unwrap(), b"test");
-    let (hs, alert, error) = DTLSConn::handle_incoming_packet(&mut ctx, wire(3), true).await;
-    assert!(!hs && alert.is_none() && error.is_none());
-    assert!(application.try_recv().is_err());
+    for gcm in [false, true] {
+        let (mut ctx, mut application, mut packets) = reader(true, gcm);
+        let mut short = wire(3, gcm);
+        short.truncate(RECORD_LAYER_HEADER_SIZE + 9);
+        short[11..13].copy_from_slice(&9u16.to_be_bytes());
+        let (hs, alert, error) = DTLSConn::handle_incoming_packet(&mut ctx, short, true).await;
+        assert!(!hs && alert.is_none() && error.is_none());
+        assert!(application.try_recv().is_err());
+        assert!(packets.try_recv().is_err());
+        let (hs, alert, error) =
+            DTLSConn::handle_incoming_packet(&mut ctx, wire(3, gcm), true).await;
+        assert!(!hs && alert.is_none() && error.is_none());
+        assert_eq!(application.try_recv().unwrap().unwrap(), b"test");
+        let (hs, alert, error) =
+            DTLSConn::handle_incoming_packet(&mut ctx, wire(3, gcm), true).await;
+        assert!(!hs && alert.is_none() && error.is_none());
+        assert!(application.try_recv().is_err());
+    }
 }
 #[tokio::test]
 async fn record_policy_non_psk_authentication_retains_silent_discard() {
-    let (mut ctx, mut application, mut packets) = reader(false);
-    let (hs, alert, error) = DTLSConn::handle_incoming_packet(&mut ctx, wire(9), true).await;
-    assert!(!hs && alert.is_none() && error.is_none());
-    assert!(application.try_recv().is_err());
-    assert!(packets.try_recv().is_err());
+    for gcm in [false, true] {
+        let (mut ctx, mut application, mut packets) = reader(false, gcm);
+        let (hs, alert, error) =
+            DTLSConn::handle_incoming_packet(&mut ctx, wire(9, gcm), true).await;
+        assert!(!hs && alert.is_none() && error.is_none());
+        assert!(application.try_recv().is_err());
+        assert!(packets.try_recv().is_err());
+    }
 }
 
 #[test]
-fn record_policy_other_psk_and_non_psk_classification_is_preserved() {
+fn record_policy_supported_psk_aead_and_non_psk_classification() {
     let error = Error::Other("test-only cipher failure".into());
-    let alert =
-        record_decrypt_alert(CipherSuiteId::Tls_Psk_With_Aes_128_Gcm_Sha256, true, &error).unwrap();
-    assert_eq!(alert.alert_level, AlertLevel::Fatal);
-    assert_eq!(
-        alert.alert_description,
-        AlertDescription::UnknownPskIdentity
-    );
     assert!(record_decrypt_alert(
         CipherSuiteId::Tls_Ecdhe_Ecdsa_With_Aes_256_Cbc_Sha,
         false,
@@ -151,6 +166,7 @@ fn record_policy_other_psk_and_non_psk_classification_is_preserved() {
     for id in [
         CipherSuiteId::Tls_Psk_With_Aes_128_Ccm,
         CipherSuiteId::Tls_Psk_With_Aes_128_Ccm_8,
+        CipherSuiteId::Tls_Psk_With_Aes_128_Gcm_Sha256,
     ] {
         assert!(record_decrypt_alert(id, true, &error).is_none());
         assert!(record_decrypt_alert(id, true, &Error::ErrInvalidPacketLength).is_none());
