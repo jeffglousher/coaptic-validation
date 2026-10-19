@@ -41,6 +41,24 @@
 #[cfg(feature = "network")]
 pub mod network;
 
+#[cfg(feature = "async-network")]
+pub(crate) async fn cooperate() {
+    let mut yielded = false;
+    core::future::poll_fn(|context| {
+        if yielded {
+            core::task::Poll::Ready(())
+        } else {
+            yielded = true;
+            context.waker().wake_by_ref();
+            core::task::Poll::Pending
+        }
+    })
+    .await
+}
+
+#[cfg(all(feature = "async-network", any(target_os = "none", test)))]
+pub mod async_network;
+
 #[cfg(all(feature = "network", feature = "oscore"))]
 pub mod security_state;
 
@@ -116,6 +134,18 @@ unsafe extern "C" {
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo<'_>) -> ! {
     unsafe { abort() }
+}
+
+// A transport refusal (including truncation) does not terminate a service on its
+// own. Timers/local wakes do not disguise a consecutive receive error streak.
+#[cfg(feature = "async-network")]
+fn receive_failed<E>(wake: &Result<coaptic::app::AppWake, E>, failures: &mut u8) -> bool {
+    match wake {
+        Ok(coaptic::app::AppWake::Ingress) => *failures = 0,
+        Err(_) => *failures = failures.saturating_add(1),
+        _ => {}
+    }
+    *failures >= 32
 }
 
 #[cfg(test)]

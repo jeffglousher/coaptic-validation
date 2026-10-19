@@ -244,7 +244,35 @@ python tools/qualification/esp32.py --chip esp32c3 --expected-library-revision L
 python tools/qualification/esphome_probe.py --chip esp32s3 --compile --expected-library-revision LIBRARY_COMMIT_SHA --output target/s3/build.json
 python tools/esphome/build_archive.py --expected-library-revision LIBRARY_COMMIT_SHA --oscore
 # For the pending-telemetry modes, add --telemetry to the protected archive build.
+# Add --async-network for a native async archive, matching async_network: true below.
 ```
+
+Set `coaptic_network.async_network: true` to run the same App, protected service,
+pairing or retained telemetry mode on socket readiness and absolute timers in
+the existing ESPHome worker task. Bundled archives must include `async-network`;
+source mode selects it automatically. Pairing also waits on the existing USB
+console, so local management remains available when its network session stops.
+The default synchronous integration remains available. The async driver adds
+no packet queue or payload staging buffer; ESP-IDF owns native select/eventfd
+bookkeeping. Its metadata and retained future have independent compile-time
+ceilings, and startup logs their actual sizes for the built configuration.
+The async task reserves 192 KiB; the synchronous task reserves 96 KiB. The larger
+async budget includes coroutine initialization and poll frames in addition to
+the retained root future. A 64 KiB future ceiling does not bound the whole task:
+the Xtensa pairing build requires approximately 162 KiB across those frames.
+Task allocation failure refuses startup, and runtime logs report the observed
+stack high-water mark. Native SDK heap and initialization peaks are separate
+from the App/pool and future-size measurements.
+
+The reserved ESPHome integration keeps its existing ESP-IDF/lwIP socket and
+FreeRTOS task. [Embassy's executor](https://github.com/embassy-rs/embassy/tree/main/embassy-executor)
+can support a custom RTOS platform, but that still needs a platform wake callback
+and sleep loop. This single-service adapter uses those existing task facilities
+directly. [Embassy-net](https://github.com/embassy-rs/embassy/tree/main/embassy-net)
+provides its own network stack; replacing the firmware's Wi-Fi/network ownership
+is unnecessary for this integration. Coaptic's portable async transport and timer
+traits remain executor-neutral. This ESPHome component permits one runtime;
+that platform choice does not restrict multiple Apps in other integrations.
 
 ESPHome tooling pins version 2026.9.1 and ESP-IDF 5.5.5. S3 compilation requires
 the `coaptic-esp-1.97` Espressif Rust toolchain. Generated archives stay out of

@@ -20,6 +20,13 @@
 use coaptic::platform::{CheckedClock, ClockError};
 use coaptic::storage::DatagramIo;
 use coaptic::{App, Request, Response, get, post, profiles};
+#[cfg(feature = "async-network")]
+mod async_service;
+#[cfg(feature = "async-network")]
+pub use async_service::run_async;
+#[cfg(all(feature = "async-network", feature = "oscore"))]
+pub use async_service::run_protected_async;
+
 use core::cell::Cell;
 use core::sync::atomic::{AtomicU8, AtomicU32, Ordering};
 use critical_section::Mutex;
@@ -267,9 +274,14 @@ mod tests {
     use coaptic::message::{Message, MessageId, Opt, Token, Type, decode, encode};
     use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
+    #[cfg(feature = "async-network")]
+    mod async_tests;
+
     struct Idle;
-    impl DatagramIo for Idle {
+    impl coaptic::storage::DatagramTransport for Idle {
         type Error = ();
+    }
+    impl DatagramIo for Idle {
         fn recv(&mut self, _: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
             Ok(None)
         }
@@ -284,8 +296,10 @@ mod tests {
         fail: bool,
     }
 
-    impl DatagramIo for Scripted {
+    impl coaptic::storage::DatagramTransport for Scripted {
         type Error = ();
+    }
+    impl DatagramIo for Scripted {
         fn recv(&mut self, bytes: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
             if self.fail {
                 return Err(());
@@ -310,8 +324,10 @@ mod tests {
         registrations: VecDeque<(u64, Vec<u8>)>,
         sent: TimedPackets,
     }
-    impl DatagramIo for OfflineObserver {
+    impl coaptic::storage::DatagramTransport for OfflineObserver {
         type Error = ();
+    }
+    impl DatagramIo for OfflineObserver {
         fn recv(&mut self, bytes: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
             if let Some(packet) = self.ack.take() {
                 bytes[..packet.len()].copy_from_slice(&packet);
@@ -451,8 +467,10 @@ mod tests {
     }
 
     struct Tracked(Scripted, Rc<Cell<usize>>);
-    impl DatagramIo for Tracked {
+    impl coaptic::storage::DatagramTransport for Tracked {
         type Error = ();
+    }
+    impl DatagramIo for Tracked {
         fn recv(&mut self, b: &mut [u8]) -> Result<Option<(usize, coaptic::Endpoint)>, ()> {
             self.1.set(self.1.get() + 1);
             self.0.recv(b)
@@ -726,6 +744,60 @@ mod tests {
             let mut wire = [0; 1152];
             let n = ctx.protect_request(&plain, &mut wire).unwrap();
             wire[..n].to_vec()
+        }
+
+        #[cfg(feature = "async-network")]
+        #[test]
+        fn native_async_checkpoint_failure_and_restart_preserve_replay_authority() {
+            use super::async_tests::{NativeOnly, Timer, drive};
+            let _test = TEST_LOCK.lock().unwrap();
+            let mut store = Memory::default();
+            provision(&mut store, &credentials()).unwrap();
+            store.0.borrow_mut().lose_ack_at = Some(3);
+            let mut peer = SecurityContext::derive(peer_credentials().parameters()).unwrap();
+            let packet = protected_request(&mut peer, 2, coaptic::Code::GET, "test", &[]);
+            for fail in [true, false] {
+                if !fail {
+                    store.0.borrow_mut().lose_ack_at = None;
+                }
+                let now = Rc::new(Cell::new(0));
+                let out = Rc::new(RefCell::new(Vec::new()));
+                let io = NativeOnly(Scripted {
+                    incoming: [packet.clone()].into(),
+                    outgoing: out.clone(),
+                    fail: false,
+                });
+                let mut protocol = Timer(now.clone());
+                let mut local = Timer(now.clone());
+                let credentials = credentials();
+                let result = drive(
+                    run_protected_async(
+                        io,
+                        |b| {
+                            b.fill(0x39);
+                            true
+                        },
+                        || (now.get() < 500).then_some(now.get()),
+                        &[1; 32],
+                        (&mut protocol, &mut local),
+                        &credentials,
+                        store.clone(),
+                    ),
+                    &now,
+                );
+                assert_eq!(
+                    result,
+                    if fail {
+                        Err("security checkpoint")
+                    } else {
+                        Ok(())
+                    }
+                );
+                assert!(
+                    out.borrow().is_empty(),
+                    "ambiguous durable commit must not release a response or replay effect"
+                );
+            }
         }
 
         #[test]

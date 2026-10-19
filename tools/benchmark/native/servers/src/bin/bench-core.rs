@@ -19,9 +19,10 @@ struct CoreIo {
     output_len: Option<usize>,
 }
 
-impl DatagramIo for CoreIo {
+impl coaptic::storage::DatagramTransport for CoreIo {
     type Error = &'static str;
-
+}
+impl DatagramIo for CoreIo {
     fn recv(&mut self, buf: &mut [u8]) -> Result<Option<(usize, Endpoint)>, Self::Error> {
         let Some(n) = self.input_len.take() else {
             return Ok(None);

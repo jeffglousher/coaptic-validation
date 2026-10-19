@@ -340,6 +340,9 @@ mod tests {
     use coaptic::provisioning::PinnedPeer;
     use std::{cell::RefCell, rc::Rc};
 
+    #[cfg(feature = "async-network")]
+    mod async_tests;
+
     #[test]
     fn telemetry_poll_fault_bound_and_clock_stop_preserve_complete_pending_work() {
         use crate::{protected_telemetry as runner, security_state as security};
@@ -365,8 +368,10 @@ mod tests {
             sends: Rc<Cell<usize>>,
             reset: bool,
         }
-        impl DatagramIo for Faults {
+        impl coaptic::storage::DatagramTransport for Faults {
             type Error = ();
+        }
+        impl DatagramIo for Faults {
             fn recv(&mut self, _: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
                 let count = self.reads.get() + 1;
                 self.reads.set(count);

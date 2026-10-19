@@ -103,7 +103,8 @@ def validate_runtime(config):
                     report["features"] != ["network", "standalone"] +
                     (["oscore"] if "oscore" in config or "pairing" in config else []) +
                     (["telemetry"] if "telemetry" in config else []) +
-                    (["pairing"] if "pairing" in config else [])):
+                    (["pairing"] if "pairing" in config else []) +
+                    (["async-network"] if config["async_network"] else [])):
                 raise cv.Invalid("Coaptic Rust archive target or features mismatch")
             if hashlib.sha256((root / "libcoaptic_esphome_probe.a").read_bytes()).hexdigest() != report["archive_sha256"]:
                 raise cv.Invalid("Coaptic Rust archive checksum mismatch")
@@ -118,6 +119,7 @@ CONFIG_SCHEMA = cv.All(
         cv.Required("run_id"): run_id,
         cv.Required("qualification_only"): cv.All(cv.boolean, cv.one_of(True)),
         cv.Optional("rust_runtime", default="source"): cv.one_of("source", "bundled", "external"),
+        cv.Optional("async_network", default=False): cv.boolean,
         cv.Optional("expected_library_revision"): source_revision,
         cv.Optional("expected_suite_revision"): source_revision,
         cv.Optional("allow_plaintext", default=False): cv.boolean,
@@ -173,6 +175,11 @@ async def to_code(config):
     await cg.register_component(component, config)
     cg.add(component.set_run_id(config["run_id"]))
     cg.add(component.set_port(config["port"]))
+    if config["async_network"]:
+        esp32.add_idf_sdkconfig_option("CONFIG_VFS_SUPPORT_SELECT", True)
+        if "pairing" in config:
+            esp32.add_idf_sdkconfig_option("CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG", True)
+        cg.add_define("COAPTIC_ASYNC_NETWORK")
     if "pairing" in config:
         cg.add(component.set_pairing())
         cg.add_define("COAPTIC_PAIRING")
@@ -202,6 +209,7 @@ async def to_code(config):
     esp32.add_idf_component(name="coaptic_rust_probe", path=str(rust_component))
     cg.add_cmake_arg("COAPTIC_RUST_MANIFEST", str(root / "rust" / "Cargo.toml"))
     cg.add_cmake_arg("COAPTIC_NETWORK", "ON")
+    cg.add_cmake_arg("COAPTIC_ASYNC_NETWORK", "ON" if config["async_network"] else "OFF")
     cg.add_cmake_arg("COAPTIC_OSCORE", "ON" if "oscore" in config or "pairing" in config else "OFF")
     cg.add_cmake_arg("COAPTIC_PAIRING", "ON" if "pairing" in config else "OFF")
     cg.add_cmake_arg("COAPTIC_TELEMETRY", "ON" if "telemetry" in config else "OFF")

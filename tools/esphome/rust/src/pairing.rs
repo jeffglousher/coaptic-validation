@@ -17,6 +17,11 @@ use coaptic::provisioning::{
 };
 use coaptic::storage::DatagramIo;
 use coaptic::{Code, ContentFormat, Endpoint, Method, Response, profiles};
+#[cfg(feature = "async-network")]
+mod async_service;
+#[cfg(feature = "async-network")]
+pub use async_service::{ConsoleWait, run_async};
+
 use zeroize::Zeroizing;
 
 pub const STORE_BYTES: usize = 320;
@@ -797,8 +802,10 @@ mod tests {
         }
     }
     struct Io;
-    impl DatagramIo for Io {
+    impl coaptic::storage::DatagramTransport for Io {
         type Error = ();
+    }
+    impl DatagramIo for Io {
         fn recv(&mut self, _: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
             Ok(None)
         }

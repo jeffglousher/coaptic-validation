@@ -19,8 +19,10 @@ struct CountIo {
     received: u64,
     sent: u64,
 }
-impl DatagramIo for CountIo {
+impl coaptic::storage::DatagramTransport for CountIo {
     type Error = std::io::Error;
+}
+impl DatagramIo for CountIo {
     fn recv(&mut self, bytes: &mut [u8]) -> Result<Option<(usize, Endpoint)>, Self::Error> {
         let result = self.io.recv(bytes)?;
         self.received += u64::from(result.is_some());

@@ -11,8 +11,10 @@ struct Burst {
     output: Rc<RefCell<Vec<Vec<u8>>>>,
     reads: Rc<Cell<usize>>,
 }
-impl DatagramIo for Burst {
+impl coaptic::storage::DatagramTransport for Burst {
     type Error = ();
+}
+impl DatagramIo for Burst {
     fn recv(&mut self, scratch: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
         self.reads.set(self.reads.get() + 1);
         match self.input.pop_front().expect("bounded scripted receive") {

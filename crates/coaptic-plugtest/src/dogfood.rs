@@ -2031,9 +2031,10 @@ impl<T> InjectPlainOnce<T> {
 }
 
 #[cfg(feature = "oscore")]
-impl<T: DatagramIo> DatagramIo for InjectPlainOnce<T> {
+impl<T: DatagramIo> coaptic::storage::DatagramTransport for InjectPlainOnce<T> {
     type Error = T::Error;
-
+}
+impl<T: DatagramIo> DatagramIo for InjectPlainOnce<T> {
     fn recv(&mut self, buf: &mut [u8]) -> Result<Option<(usize, Endpoint)>, Self::Error> {
         if let Some((ep, bytes)) = self.pending.take() {
             self.injected.store(true, Ordering::SeqCst);

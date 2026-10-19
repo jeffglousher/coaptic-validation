@@ -109,9 +109,10 @@ fn receive_guarded(
     }
 }
 
-impl DatagramIo for ReadyUdp {
+impl coaptic::storage::DatagramTransport for ReadyUdp {
     type Error = std::io::Error;
-
+}
+impl DatagramIo for ReadyUdp {
     fn recv(&mut self, buf: &mut [u8]) -> Result<Option<(usize, Endpoint)>, Self::Error> {
         self.received = false;
         let result = receive_guarded(buf, &mut self.scratch, |scratch| {
@@ -133,9 +134,10 @@ struct MioUdp {
     received: bool,
 }
 
-impl DatagramIo for MioUdp {
+impl coaptic::storage::DatagramTransport for MioUdp {
     type Error = std::io::Error;
-
+}
+impl DatagramIo for MioUdp {
     fn recv(&mut self, buf: &mut [u8]) -> Result<Option<(usize, Endpoint)>, Self::Error> {
         self.received = false;
         let result = receive_guarded(buf, &mut self.scratch, |scratch| {

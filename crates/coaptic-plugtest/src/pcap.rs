@@ -252,9 +252,10 @@ impl<T> CapturingIo<T> {
     }
 }
 
-impl<T: DatagramIo> DatagramIo for CapturingIo<T> {
+impl<T: DatagramIo> coaptic::storage::DatagramTransport for CapturingIo<T> {
     type Error = T::Error;
-
+}
+impl<T: DatagramIo> DatagramIo for CapturingIo<T> {
     fn recv(&mut self, buf: &mut [u8]) -> Result<Option<(usize, Endpoint)>, Self::Error> {
         match self.inner.recv(buf) {
             Ok(Some((n, ep))) => {

@@ -101,8 +101,10 @@ enum Io {
     Udp(UdpSocket),
     Dtls(dtls::DtlsIo),
 }
-impl DatagramIo for Io {
+impl coaptic::storage::DatagramTransport for Io {
     type Error = std::io::Error;
+}
+impl DatagramIo for Io {
     fn recv(&mut self, b: &mut [u8]) -> Result<Option<(usize, Endpoint)>, Self::Error> {
         match self {
             Self::Udp(s) => DatagramIo::recv(s, b),
