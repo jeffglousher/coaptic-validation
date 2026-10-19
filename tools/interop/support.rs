@@ -122,6 +122,8 @@ impl Args {
                 | "sensor"
                 | "escaped"
                 | "obs-large"
+                | "obs-selected"
+                | "obs-q"
         ) {
             return Err("unsupported fixture path".into());
         }

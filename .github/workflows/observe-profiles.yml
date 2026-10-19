@@ -1,0 +1,90 @@
+name: Manual independent Observe and token profiles
+on:
+  workflow_dispatch:
+    inputs:
+      library_revision:
+        description: Exact 40-character Coaptic commit
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: independent-observe-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  profiles:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      LIBRARY_REVISION: ${{ inputs.library_revision }}
+      CARGO_BUILD_JOBS: 2
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+      CARGO_INCREMENTAL: 0
+      PYTHONPATH: tools
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          repository: jeffglousher/coaptic
+          ref: ${{ inputs.library_revision }}
+          path: coaptic
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: 1.99.0
+          components: clippy
+      - name: Exact source and independent codec
+        run: |
+          python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/observe-evidence/source.json"
+          python -m venv "$RUNNER_TEMP/observe-venv"
+          "$RUNNER_TEMP/observe-venv/bin/pip" install 'aiocoap[oscore]==0.4.16'
+          pkg-config --modversion openssl
+          git init "$RUNNER_TEMP/native-libcoap"
+          git -C "$RUNNER_TEMP/native-libcoap" fetch --depth 1 https://github.com/obgm/libcoap.git 851533c3cf63d16984d370ce39d586ecb3694971
+          git -C "$RUNNER_TEMP/native-libcoap" checkout --detach FETCH_HEAD
+      - name: Focused peers and native crypto backend
+        run: |
+          "$RUNNER_TEMP/observe-venv/bin/python" -m unittest discover -s tools/interop -p test_observe_profiles.py
+          cargo test --locked -p peer-coaptic -p peer-coap-rs
+          cargo clippy --locked -p peer-coaptic -p peer-coap-rs --all-targets -- -D warnings
+          cargo build --locked -p peer-coaptic -p peer-coap-rs
+          cmake -S tools/interop/libcoap -B "$RUNNER_TEMP/native-build" -DLIBCOAP_SOURCE="$RUNNER_TEMP/native-libcoap" -DENABLE_DTLS=ON -DDTLS_BACKEND=openssl -DENABLE_OSCORE=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/native-build" --target peer-libcoap --parallel 2
+          PYTHONPATH=tools "$RUNNER_TEMP/observe-venv/bin/python" - <<'PY'
+          import hashlib,importlib.metadata,json,os,pathlib,platform,subprocess,sys
+          from source_identity import source_identity
+          record=source_identity()
+          peers={'coaptic':pathlib.Path('target/debug/peer-coaptic').resolve(),'coap-rs':pathlib.Path('target/debug/peer-coap-rs').resolve(),'libcoap':pathlib.Path(os.environ['RUNNER_TEMP'],'native-build','peer-libcoap').resolve()}
+          record['executables']={name:{'path':str(path),'sha256':hashlib.sha256(path.read_bytes()).hexdigest()} for name,path in peers.items()}
+          record['rustc']=subprocess.check_output(['rustc','-Vv'],text=True)
+          native=str(pathlib.Path(os.environ['RUNNER_TEMP'],'native-libcoap'))
+          record['native_revision']=subprocess.check_output(['git','-C',native,'rev-parse','HEAD'],text=True).strip()
+          record['native_status']=subprocess.check_output(['git','-C',native,'status','--porcelain'],text=True)
+          assert record['native_revision']=='851533c3cf63d16984d370ce39d586ecb3694971' and not record['native_status']
+          record['native_cmake_cache']=pathlib.Path(os.environ['RUNNER_TEMP'],'native-build','CMakeCache.txt').read_text()
+          record['python']=sys.version
+          record['aiocoap']=importlib.metadata.version('aiocoap')
+          record['python_packages']=subprocess.check_output([sys.executable,'-m','pip','freeze'],text=True)
+          record['kernel']=platform.platform()
+          record['openssl']=subprocess.check_output(['openssl','version','-a'],text=True)
+          pathlib.Path(os.environ['RUNNER_TEMP'],'observe-evidence','build.json').write_text(json.dumps(record,indent=2)+'\n')
+          PY
+      - name: Seven accepted independent directions
+        run: |
+          "$RUNNER_TEMP/observe-venv/bin/python" tools/interop/profiles.py \
+            --coaptic target/debug/peer-coaptic --coap-rs target/debug/peer-coap-rs \
+            --libcoap "$RUNNER_TEMP/native-build/peer-libcoap" \
+            --build-record "$RUNNER_TEMP/observe-evidence/build.json" --output "$RUNNER_TEMP/observe-evidence/result.json" \
+            --case 'observe-selected-query:coaptic->libcoap' --case 'observe-selected-query:libcoap->coaptic' \
+            --case 'observe-selected-fetch:coaptic->libcoap' --case 'observe-selected-fetch:libcoap->coaptic' \
+            --case 'observe-con-q:coaptic->libcoap' --case 'observe-con-q:libcoap->coaptic' \
+            --case 'protected-token-boundary:libcoap->coaptic'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: independent-observe-token-profiles
+          path: ${{ runner.temp }}/observe-evidence
+          retention-days: 14

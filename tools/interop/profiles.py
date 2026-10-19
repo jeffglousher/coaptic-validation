@@ -45,12 +45,12 @@ def validate_trace(trace):
     return client, server
 
 
-def exchange_identity(trace, path, code, token_length=None):
+def exchange_identity(trace, path, code, token_length=None, method_code=1):
     validate_trace(trace)
     candidates = []
     for row in trace:
         packet = bytes.fromhex(row["hex"])
-        if row["direction"] == "request" and packet[1] == 1 and decoded_options(packet).get(11, []) == path:
+        if row["direction"] == "request" and packet[1] == method_code and decoded_options(packet).get(11, []) == path:
             if (0 <= len(packet_token(packet)) <= 8) if token_length is None else len(packet_token(packet)) == token_length:
                 candidates.append(packet)
     require(candidates, "missing exact request path/token length")
@@ -159,7 +159,18 @@ def native_capacity_refusal(client, server):
         return {"native_send": evidence, "trace": relay.trace, "fresh": fresh, "refused_length": 64}
 
 
-def observation(client, server, initial=0, valid=False, qblock=False):
+def observation(client, server, initial=0, valid=False, qblock=False, selected=None):
+    require(selected in (None, "query", "fetch"), "unknown selected profile")
+    require(not (qblock and selected), "fixture profiles are separate")
+    path = "obs-q" if qblock else "obs-selected" if selected else "obs-large"
+    body_size = 704 if qblock else 96
+    blocks = body_size // 32
+    block_option = 31 if qblock else 23
+    method = "FETCH" if selected == "fetch" else "GET"
+    method_code = 5 if selected == "fetch" else 1
+    selection_payload = b"left" if selected == "fetch" else b""
+    def expected_etag(epoch):
+        return bytes([(epoch + 1) * 2 if selected else epoch + 1])
     def complete_epoch(trace, epoch):
         for row in trace:
             if row["direction"] != "response":
@@ -168,7 +179,7 @@ def observation(client, server, initial=0, valid=False, qblock=False):
             if wire[1] not in (67, 69):
                 continue
             options = decoded_options(wire)
-            if options.get(4) != [bytes([epoch + 1])]:
+            if options.get(4) != [expected_etag(epoch)]:
                 continue
             block = options.get(31 if qblock else 23, [b""])[0]
             if wire[1] == 67 or not int.from_bytes(block, "big") & 8:
@@ -191,11 +202,11 @@ def observation(client, server, initial=0, valid=False, qblock=False):
                 flags = ["observe", "qblock2"]
             if valid:
                 flags.append("initial-valid")
-            proc = subprocess.Popen(command(client, "client", "udp", relay.number, path="obs-large", timeout=15000) + flags, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            proc = subprocess.Popen(command(client, "client", "udp", relay.number, path=path, method=method, payload=selection_payload, timeout=15000) + flags, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
                 for epoch in (0, 1):
                     wait_epoch(relay, epoch)
-                    expect(request(client, "udp", service.number, path="obs-large", method="POST"), 68, b"")
+                    expect(request(client, "udp", service.number, path=path, method="POST"), 68, b"")
                 output, error = proc.communicate(timeout=20)
                 ACTIVE_COMMANDS.append({"argv": list(map(str, proc.args)), "exit_code": proc.returncode,
                                         "stdout": output.decode(errors="replace"), "stderr": error.decode(errors="replace")})
@@ -208,21 +219,25 @@ def observation(client, server, initial=0, valid=False, qblock=False):
             require(proc.returncode == 0 and len(output) <= 65536 and len(output.splitlines()) == 1, f"observation failed: {output[:500]!r} {error[-500:]!r}")
             result = json.loads(output)
             result["exit_code"] = proc.returncode
-            first_body = b"" if valid else b"a" * 96
-            expect(result, 69, first_body + b"," + b"b" * 96 + b"," + b"c" * 96)
+            first_body = b"" if valid else b"a" * body_size
+            expect(result, 69, first_body + b"," + b"b" * body_size + b"," + b"c" * body_size)
         trace = relay.trace
-        first, replies = exchange_identity(trace, [b"obs-large"], 67 if valid else 69)
+        first, replies = exchange_identity(trace, [path.encode()], 67 if valid else 69, method_code=method_code)
         require(decoded_options(first).get(6) == [b""], "registration omitted Observe")
-        require(decoded_options(first).get(23) == [bytes([(initial << 4) | 1])], "wrong initial Block2 selector")
+        require(decoded_options(first).get(block_option) == [bytes([9 if qblock else (initial << 4) | 1])], "wrong initial block selector")
+        if selected == "query":
+            require(decoded_options(first).get(15) == [b"pick=left"] and not coap_payload(first), "GET selection changed")
+        elif selected == "fetch":
+            require(decoded_options(first).get(12) == [b"*"] and not decoded_options(first).get(15) and coap_payload(first) == b"left", "FETCH selection changed")
         wire_replies = [bytes.fromhex(row["hex"]) for row in trace if row["direction"] == "response"]
         wire_requests = [bytes.fromhex(row["hex"]) for row in trace if row["direction"] == "request"]
         for reply in wire_replies:
             if reply[1] and (reply[0] >> 4) & 3 == 2:
-                require(any(sent[1] == 1 and sent[2:4] == reply[2:4] and packet_token(sent) == packet_token(reply)
+                require(any(sent[1] == method_code and sent[2:4] == reply[2:4] and packet_token(sent) == packet_token(reply)
                             for sent in wire_requests), "unowned Observe block response")
         previous_observe = None
         for epoch in range(3):
-            packets = [wire for wire in wire_replies if decoded_options(wire).get(4) == [bytes([epoch + 1])]]
+            packets = [wire for wire in wire_replies if decoded_options(wire).get(4) == [expected_etag(epoch)]]
             starts = [wire for wire in packets if 6 in decoded_options(wire)]
             require(starts, "missing Observe epoch start")
             require(packet_token(starts[0]) == packet_token(first), "notification token changed")
@@ -238,20 +253,34 @@ def observation(client, server, initial=0, valid=False, qblock=False):
             for wire in packets:
                 require(wire[1] == 69, "wrong representation code")
                 options = decoded_options(wire)
-                block = int.from_bytes(options.get(23, [b""])[0], "big")
+                block = int.from_bytes(options.get(block_option, [b""])[0], "big")
                 require(block & 7 == 1, "negotiated block size changed")
                 num = block >> 4
                 payload = coap_payload(wire)
                 require(payload == bytes([ord('a') + epoch]) * 32, "representation payload changed")
-                require(bool(block & 8) == (num < 2), "wrong final-block marker")
+                require(bool(block & 8) == (num < blocks - 1), "wrong final-block marker")
                 require(chunks.setdefault(num, payload) == payload, "inconsistent repeated block")
-            require(set(chunks) == {0, 1, 2}, "whole Observe representation missing blocks")
-            require(int.from_bytes(decoded_options(starts[0]).get(23, [b""])[0], "big") >> 4 == 0,
+            require(set(chunks) == set(range(blocks)), "whole Observe representation missing blocks")
+            if qblock and epoch > 0:
+                require(all((wire[0] >> 4) & 3 == 0 for wire in packets), "Q notification changed CON type")
+                require(all(any(control[1] == 0 and (control[0] >> 4) & 3 == 2 and control[2:4] == wire[2:4] for control in wire_requests) for wire in packets), "Q notification lacks exact ACK")
+                require(all(int.from_bytes(decoded_options(wire).get(28, [b" "])[0], "big") == body_size for wire in packets), "Q Size2 changed")
+            require(int.from_bytes(decoded_options(starts[0]).get(block_option, [b""])[0], "big") >> 4 == 0,
                     "Observe epoch did not start at block zero")
         require(all(complete_epoch(trace, epoch) for epoch in range(3)), "missing complete epoch")
         fresh = request(client, "udp", service.number)
         expect(fresh)
-        return {"result": result, "trace": trace, "fresh": fresh, "initial_block": initial, "initial_valid": valid, "qblock": qblock}
+        service.stderr.seek(0)
+        server_diagnostics = service.stderr.read(65537)
+        require(len(server_diagnostics) <= 65536, "server diagnostic bound")
+        if qblock:
+            require(b"q_max_payloads=10" in server_diagnostics, "missing configured server Q window receipt")
+        detail = {"result": result, "trace": trace, "fresh": fresh, "initial_block": initial, "initial_valid": valid, "qblock": qblock, "selection": selected, "body_bytes": body_size, "block_count": blocks, "server_ready": service.ready, "server_stderr": server_diagnostics.decode(errors="replace")}
+    if selected or qblock:
+        from observe_controls import selected_lifecycle, q_recovery_lifecycle
+        with Server(server, "udp") as control_service:
+            detail["independent_control"] = selected_lifecycle(control_service.number, selected, ACTIVE_CAPTURES) if selected else q_recovery_lifecycle(control_service.number, ACTIVE_CAPTURES)
+    return detail
 
 
 def main():
@@ -267,7 +296,7 @@ def main():
     require(builds["source"] == identity["source"] and builds["suite_source"] == identity["suite_source"], "build sources do not match")
     binaries = {name: {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()} for name, path in peers.items()}
     require(builds["executables"] == binaries, "binary build identity mismatch")
-    report = {"schema": "coaptic-independent-profiles/1", **identity, "platform": platform.platform(), "executables": binaries, "build_record": builds, "aiocoap": importlib.metadata.version("aiocoap"), "security": "unprotected", "capture_limit": 256, "cases": [], "unqualified": ["protected profiles", "routed/scoped IPv6", "independent EDHOC", "physical execution"]}
+    report = {"schema": "coaptic-independent-profiles/1", **identity, "platform": platform.platform(), "executables": binaries, "build_record": builds, "aiocoap": importlib.metadata.version("aiocoap"), "security": "per-case", "capture_limit": 256, "cases": [], "unqualified": ["protected profiles beyond named token boundary", "physical execution"]}
     cases = []
     for left, right in (("coaptic", "libcoap"), ("libcoap", "coaptic")):
         client, server = peers[left], peers[right]
@@ -276,10 +305,15 @@ def main():
             (f"uri:{left}->{right}", lambda c=client,s=server: ordinary(c,s,"escaped",body=b"uri-identity")),
             (f"token32:{left}->{right}", lambda c=client,s=server: ordinary(c,s,"test",["token:32"],body=b"core-test-payload",token_length=32)),
             (f"observe-large:{left}->{right}", lambda c=client,s=server: observation(c,s)),
+            (f"observe-selected-query:{left}->{right}", lambda c=client,s=server: observation(c,s,selected="query")),
+            (f"observe-selected-fetch:{left}->{right}", lambda c=client,s=server: observation(c,s,selected="fetch")),
+            (f"observe-con-q:{left}->{right}", lambda c=client,s=server: observation(c,s,qblock=True)),
             (f"observe-valid:{left}->{right}", lambda c=client,s=server: observation(c,s,valid=True)),
             (f"observe-nonzero:{left}->{right}", lambda c=client,s=server: observation(c,s,initial=1)),
         ])
+    from protected_tokens import workflow as protected_token_workflow
     cases.extend([
+        ("protected-token-boundary:libcoap->coaptic", lambda: protected_token_workflow(peers["libcoap"],peers["coaptic"],ACTIVE_CAPTURES,ACTIVE_COMMANDS)),
         ("token64-refusal:libcoap->coaptic", lambda: native_capacity_refusal(peers["libcoap"],peers["coaptic"])),
         ("observe-nonzero-refusal:coaptic->libcoap", lambda: ordinary(peers["coaptic"],peers["libcoap"],"obs-large",["observe","block2:1"],code=128,body=b"")),
         ("token-probe:coaptic->libcoap", lambda: probe(peers["coaptic"],peers["libcoap"])),
@@ -295,14 +329,18 @@ def main():
         ACTIVE_COMMANDS.clear()
         try:
             detail = work()
-            row = {"id": name, "passed": True, "evidence": detail}
+            row = {"id": name, "security": "oscore" if name.startswith("protected-token-") else "unprotected", "passed": True, "evidence": detail}
         except Exception as error:
-            row = {"id": name, "passed": False, "error": repr(error),
+            row = {"id": name, "security": "oscore" if name.startswith("protected-token-") else "unprotected", "passed": False, "error": repr(error),
                    "captures": list(ACTIVE_CAPTURES), "commands": list(ACTIVE_COMMANDS)}
         report["cases"].append(row)
         report["passed"] = len(report["cases"]) == len(cases) and all(case["passed"] for case in report["cases"])
         args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         print(("PASS " if row["passed"] else "FAIL ") + name + ("" if row["passed"] else " " + row["error"]), flush=True)
+    report["source_after"] = source_identity()
+    report["source_unchanged"] = report["source_after"] == identity
+    report["passed"] = report["passed"] and report["source_unchanged"]
+    args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return 0 if report["passed"] else 1
 
 

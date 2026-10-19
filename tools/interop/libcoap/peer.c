@@ -27,12 +27,14 @@ static uint8_t large_body[2000];
 static const uint8_t small_body[] = "core-test-payload";
 static int complete;
 static int observe_mode;
-/* Three 96-byte observed representations plus delimiters. */
-static char observe_joined[3 * 96 + 3];
+/* Host fixture: three bounded 704-byte Q representations plus delimiters. */
+static char observe_joined[3 * 704 + 3];
 static size_t observe_joined_len;
 static int observe_count;
 static uint8_t pending_token[64];
 static uint8_t observed_bodies[3][96];
+static uint8_t selected_right[3][96];
+static uint8_t q_observed_bodies[3][704];
 static size_t pending_token_len;
 static uint64_t started;
 static uint64_t clock_resolution_ns;
@@ -122,6 +124,35 @@ static void get_observed_large(coap_resource_t *resource, coap_session_t *sessio
   coap_pdu_set_code(response,COAP_RESPONSE_CODE_CONTENT);
   coap_add_data_large_response(resource,session,request,response,query,
       COAP_MEDIATYPE_TEXT_PLAIN,60,epoch+1,96,observed_bodies[epoch],NULL,NULL);
+}
+static void get_selected(coap_resource_t *resource, coap_session_t *session,
+    const coap_pdu_t *request, const coap_string_t *query, coap_pdu_t *response) {
+  int right=-1;
+  if(coap_pdu_get_code(request)==(coap_pdu_code_t)COAP_REQUEST_GET && query) {
+    if(query->length==9 && !memcmp(query->s,"pick=left",9))right=0;
+    if(query->length==10 && !memcmp(query->s,"pick=right",10))right=1;
+  } else if(coap_pdu_get_code(request)==(coap_pdu_code_t)COAP_REQUEST_FETCH && !query) {
+    size_t len=0;const uint8_t *data=NULL;coap_opt_iterator_t it;
+    coap_opt_t *format=coap_check_option(request,COAP_OPTION_CONTENT_FORMAT,&it);
+    if(format && coap_decode_var_bytes(coap_opt_value(format),coap_opt_length(format))==42 && coap_get_data(request,&len,&data)) {
+      if(len==4 && !memcmp(data,"left",4))right=0;
+      if(len==5 && !memcmp(data,"right",5))right=1;
+    }
+  }
+  if(right<0){coap_pdu_set_code(response,COAP_RESPONSE_CODE_BAD_REQUEST);return;}
+  const unsigned epoch=counter%3;
+  coap_pdu_set_code(response,COAP_RESPONSE_CODE_CONTENT);
+  coap_add_data_large_response(resource,session,request,response,query,
+      COAP_MEDIATYPE_TEXT_PLAIN,60,(epoch+1)*2+(unsigned)right,96,
+      right?selected_right[epoch]:observed_bodies[epoch],NULL,NULL);
+}
+static void get_q_observed(coap_resource_t *resource, coap_session_t *session,
+    const coap_pdu_t *request, const coap_string_t *query, coap_pdu_t *response) {
+  fprintf(stderr,"fixture.q_max_payloads=%u body_bytes=704\n",(unsigned)coap_session_get_max_payloads(session));
+  const unsigned epoch=counter%3;
+  coap_pdu_set_code(response,COAP_RESPONSE_CODE_CONTENT);
+  coap_add_data_large_response(resource,session,request,response,query,
+      COAP_MEDIATYPE_TEXT_PLAIN,60,epoch+1,704,q_observed_bodies[epoch],NULL,NULL);
 }
 static void get_escaped(coap_resource_t *resource, coap_session_t *session,
     const coap_pdu_t *request, const coap_string_t *query, coap_pdu_t *response) {
@@ -488,6 +519,7 @@ int main(int argc,char **argv) {
   if(q_block && !coap_q_block_is_supported()){failure("Q-Block unavailable in libcoap build");coap_cleanup();return 2;}
   for(size_t i=0;i<sizeof(large_body);i++)large_body[i]=(uint8_t)(i%251);
   for(size_t epoch=0;epoch<3;epoch++)memset(observed_bodies[epoch],(int)('a'+epoch),96);
+  for(unsigned i=0;i<3;i++){memset(selected_right[i],'m'+i,96);memset(q_observed_bodies[i],'a'+i,704);}
   coap_context_t *ctx=coap_new_context(NULL);
   if(!ctx){failure("context failed");coap_cleanup();return 1;}
   coap_context_set_max_token_size(ctx,server?64:requested_token);
@@ -531,6 +563,15 @@ int main(int argc,char **argv) {
     coap_register_handler(observed,COAP_REQUEST_GET,get_observed_large);
     coap_register_handler(observed,COAP_REQUEST_POST,post_counter);
     coap_resource_set_get_observable(observed,1);coap_add_resource(ctx,observed);
+    coap_resource_t *selected=coap_resource_init(coap_make_str_const("obs-selected"),oscore?COAP_RESOURCE_FLAGS_OSCORE_ONLY:0);
+    coap_register_handler(selected,COAP_REQUEST_GET,get_selected);
+    coap_register_handler(selected,COAP_REQUEST_FETCH,get_selected);
+    coap_register_handler(selected,COAP_REQUEST_POST,post_counter);
+    coap_resource_set_get_observable(selected,1);coap_add_resource(ctx,selected);
+    coap_resource_t *q_observed=coap_resource_init(coap_make_str_const("obs-q"),COAP_RESOURCE_FLAGS_NOTIFY_CON|(oscore?COAP_RESOURCE_FLAGS_OSCORE_ONLY:0));
+    coap_register_handler(q_observed,COAP_REQUEST_GET,get_q_observed);
+    coap_register_handler(q_observed,COAP_REQUEST_POST,post_counter);
+    coap_resource_set_get_observable(q_observed,1);coap_add_resource(ctx,q_observed);
     coap_resource_t *escaped=coap_resource_init(coap_make_str_const("escaped/a%2Fb"),oscore?COAP_RESOURCE_FLAGS_OSCORE_ONLY:0);
     coap_register_handler(escaped,COAP_REQUEST_GET,get_escaped);coap_add_resource(ctx,escaped);
     coap_resource_t *methods_resource = coap_resource_init(coap_make_str_const("methods"), oscore?COAP_RESOURCE_FLAGS_OSCORE_ONLY:0);
@@ -574,7 +615,7 @@ int main(int argc,char **argv) {
     const uint8_t *part=path_options;
     if(segments<0){failure("path encoding failed");status=1;coap_delete_pdu(pdu);coap_session_release(session);goto done;}
     for(int i=0;i<segments;i++){if(!coap_add_option(pdu,COAP_OPTION_URI_PATH,coap_opt_length(part),coap_opt_value(part))){failure("path option failed");status=1;coap_delete_pdu(pdu);coap_session_release(session);goto done;}part+=coap_opt_size(part);}
-    if((!strcmp(argv[5], "methods") || !strcmp(argv[5], "upload")) && (method == 2 || method == 3 || method == 5 || method == 6 || method == 7)) {
+    if((!strcmp(argv[5], "methods") || !strcmp(argv[5], "upload") || !strcmp(argv[5], "obs-selected")) && (method == 2 || method == 3 || method == 5 || method == 6 || method == 7)) {
       const uint8_t format = 42;
       if(!coap_add_option(pdu, COAP_OPTION_CONTENT_FORMAT, 1, &format)) { coap_delete_pdu(pdu); failure("format option failed"); coap_session_release(session); status=1; goto done; }
     }
@@ -583,10 +624,11 @@ int main(int argc,char **argv) {
       if(!coap_add_option(pdu, COAP_OPTION_CONTENT_FORMAT, 1, &format)) { coap_delete_pdu(pdu); failure("format option failed"); coap_session_release(session); status=1; goto done; }
     }
     if(!strcmp(argv[5],"escaped"))coap_add_option(pdu,COAP_OPTION_URI_QUERY,7,(const uint8_t *)"key=a&b");
+    if(!strcmp(argv[5],"obs-selected") && method==1)coap_add_option(pdu,COAP_OPTION_URI_QUERY,9,(const uint8_t *)"pick=left");
     if(initial_block>=0){const uint8_t value=(uint8_t)((initial_block<<4)|1);coap_add_option(pdu,COAP_OPTION_BLOCK2,1,&value);}
     if(q_block2) {
-      /* NUM=0, M=0, SZX=6. libcoap sets M after the Q-Block probe. */
-      const uint8_t qblock2 = 0x06;
+      /* Existing transfers keep SZX=6; observed Q profile requests NUM0/M1/SZX1. */
+      const uint8_t qblock2 = !strcmp(argv[5],"obs-q") ? 0x09 : 0x06;
       if(!coap_add_option(pdu, COAP_OPTION_Q_BLOCK2, 1, &qblock2)) { coap_delete_pdu(pdu); failure("Q-Block2 option failed"); coap_session_release(session); status=1; goto done; }
     }
     if(payload_length && !coap_add_data_large_request(session, pdu, payload_length, payload, NULL, NULL)) { coap_delete_pdu(pdu); failure("payload failed"); coap_session_release(session); status=1; goto done; }
