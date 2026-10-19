@@ -543,7 +543,7 @@ mod pairing_ffi {
             Usb(context),
             (&mut protocol, &mut local),
             console_ready,
-        );
+        ));
         fn worker_bytes<F>(_: &F) -> usize {
             // Leave 32 KiB of the 192 KiB task reservation for active call frames.
             const { assert!(core::mem::size_of::<F>() <= 160 * 1024) };
