@@ -203,6 +203,18 @@ impl Catalog {
 /// Grade one TD.
 pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), String> {
     let packets = capture.snapshot();
+    if crate::catalog::CORE.contains(&td)
+        || crate::catalog::BLOCK.contains(&td)
+        || crate::catalog::LINK.contains(&td)
+    {
+        grade_direct_ownership(&packets)?;
+    }
+    if matches!(
+        td,
+        "TD_COAP_CORE_20" | "TD_COAP_CORE_21" | "TD_COAP_CORE_22" | "TD_COAP_CORE_23"
+    ) {
+        return grade_conditional(td, &packets);
+    }
     if td == "TD_COAP_OBS_05" {
         grade_observe_client_off(&packets)?;
     }
@@ -314,6 +326,209 @@ pub fn grade_td(td: &str, expect: &ExpectTd, capture: &Capture) -> Result<(), St
                 "{td}: {n} leftover CoAP datagrams (set allow_extra if this TD is chatty)",
                 n = leftover.len()
             ));
+        }
+    }
+    Ok(())
+}
+
+/// Bind captured replies/control messages to actual requests, not matching bytes
+/// from an unrelated endpoint. Direct UDP fixtures have one server per run.
+fn grade_direct_ownership(packets: &[Packet]) -> Result<(), String> {
+    let parsed = packets
+        .iter()
+        .map(|p| decode(&p.bytes).map_err(|e| format!("invalid direct UDP capture: {e:?}")))
+        .collect::<Result<Vec<_>, _>>()?;
+    let first = parsed
+        .iter()
+        .position(|m| m.code().is_request() || (m.code().is_empty() && m.ty() == Type::Confirmable))
+        .ok_or("missing direct request")?;
+    let server = packets[first].dst;
+    for (packet, message) in packets.iter().zip(&parsed) {
+        if packet.src == packet.dst {
+            return Err("self-addressed capture".into());
+        }
+        if message.code().is_request()
+            || (message.code().is_empty() && message.ty() == Type::Confirmable)
+        {
+            if packet.dst != server {
+                return Err("request addressed to a different server".into());
+            }
+            continue;
+        }
+        let matched = packets.iter().zip(&parsed).any(|(prior, request)| {
+            if prior.src != packet.dst || prior.dst != packet.src || prior.t_ns > packet.t_ns {
+                return false;
+            }
+            if message.code().is_empty() {
+                return request.ty() == Type::Confirmable
+                    && request.message_id() == message.message_id();
+            }
+            packet.src == server
+                && request.code().is_request()
+                && request.token() == message.token()
+                && (message.ty() != Type::Acknowledgement
+                    || request.message_id() == message.message_id())
+        });
+        if !matched {
+            return Err("reply/control has no matching endpoint owner".into());
+        }
+        if message.code().is_empty()
+            && (!message.token().as_bytes().is_empty()
+                || !message.payload().is_empty()
+                || message.options().next().is_some())
+        {
+            return Err("empty control carries token/options/payload".into());
+        }
+        if !message.payload().is_empty() && !matches!(message.content_format(), Some(Ok(_))) {
+            return Err("nonempty direct response lacks Content-Format".into());
+        }
+    }
+    Ok(())
+}
+
+/// Full literal conditional workflows, including application-state readback.
+fn grade_conditional(td: &str, packets: &[Packet]) -> Result<(), String> {
+    let mut ordered = packets.to_vec();
+    ordered.sort_by_key(|p| p.t_ns);
+    let mut seen = HashSet::new();
+    ordered.retain(|p| seen.insert((p.src, p.dst, p.bytes.clone())));
+    let messages = ordered
+        .iter()
+        .map(|p| decode(&p.bytes).map_err(|e| format!("conditional capture: {e:?}")))
+        .collect::<Result<Vec<_>, _>>()?;
+    let methods: &[Code] = match td {
+        "TD_COAP_CORE_20" => &[Code::GET, Code::GET],
+        "TD_COAP_CORE_21" => &[Code::GET, Code::GET, Code::PUT, Code::GET],
+        "TD_COAP_CORE_22" => &[
+            Code::GET,
+            Code::PUT,
+            Code::GET,
+            Code::PUT,
+            Code::PUT,
+            Code::GET,
+        ],
+        _ => &[Code::PUT, Code::PUT, Code::GET],
+    };
+    let codes: &[Code] = match td {
+        "TD_COAP_CORE_20" => &[Code::CONTENT, Code::CONTENT],
+        "TD_COAP_CORE_21" => &[Code::CONTENT, Code::VALID, Code::CHANGED, Code::CONTENT],
+        "TD_COAP_CORE_22" => &[
+            Code::CONTENT,
+            Code::CHANGED,
+            Code::CONTENT,
+            Code::CHANGED,
+            Code::PRECONDITION_FAILED,
+            Code::CONTENT,
+        ],
+        _ => &[Code::CREATED, Code::PRECONDITION_FAILED, Code::CONTENT],
+    };
+    if messages.len() != methods.len() * 2 {
+        return Err(format!("{td}: missing or extra literal transaction"));
+    }
+    let path = match td {
+        "TD_COAP_CORE_20" => "multi-format",
+        "TD_COAP_CORE_23" => "create1",
+        _ => "validate",
+    };
+    for (i, pair) in messages.chunks_exact(2).enumerate() {
+        let (request, response) = (&pair[0], &pair[1]);
+        if request.ty() != Type::Confirmable
+            || request.code() != methods[i]
+            || request.uri_path().collect::<Vec<_>>() != [Ok(path)]
+            || response.ty() != Type::Acknowledgement
+            || response.code() != codes[i]
+            || response.message_id() != request.message_id()
+            || response.token() != request.token()
+            || ordered[i * 2].src != ordered[i * 2 + 1].dst
+            || ordered[i * 2].dst != ordered[i * 2 + 1].src
+        {
+            return Err(format!("{td}: transaction {i} identity/code"));
+        }
+        if request.code() == Code::PUT
+            && request.content_format() != Some(Ok(coaptic::message::ContentFormat::TEXT_PLAIN))
+        {
+            return Err("PUT Content-Format".into());
+        }
+        if request.code() == Code::GET && !request.payload().is_empty() {
+            return Err("GET payload".into());
+        }
+        if response.code() != Code::CONTENT && !response.payload().is_empty() {
+            return Err("unexpected conditional response body".into());
+        }
+    }
+    let tags = |i: usize| messages[i].etag().map(|v| v.to_vec()).collect::<Vec<_>>();
+    let matches = |i: usize| {
+        messages[i]
+            .if_match()
+            .map(|v| v.to_vec())
+            .collect::<Vec<_>>()
+    };
+    let body = |i: usize, expected: &[u8]| -> Result<(), String> {
+        if messages[i].payload() != expected {
+            return Err(format!("{td}: payload at {i}"));
+        }
+        Ok(())
+    };
+    match td {
+        "TD_COAP_CORE_20" => {
+            for (i, format, payload) in [
+                (0, 0, crate::site::TEST_BODY),
+                (2, 41, crate::site::XML_BODY),
+            ] {
+                if messages[i].accept().and_then(Result::ok).map(u16::from) != Some(format)
+                    || messages[i + 1]
+                        .content_format()
+                        .and_then(Result::ok)
+                        .map(u16::from)
+                        != Some(format)
+                {
+                    return Err("CORE20 negotiated format".into());
+                }
+                body(i + 1, payload)?;
+            }
+        }
+        "TD_COAP_CORE_21" => {
+            if !tags(0).is_empty()
+                || tags(1).len() != 1
+                || tags(2) != tags(1)
+                || tags(3) != tags(1)
+                || tags(6) != tags(1)
+                || tags(7).len() != 1
+                || tags(7) == tags(1)
+            {
+                return Err("CORE21 ETag lifecycle".into());
+            }
+            body(1, crate::site::TEST_BODY)?;
+            body(4, crate::site::UPDATE_BODY)?;
+            body(7, crate::site::UPDATE_BODY)?;
+        }
+        "TD_COAP_CORE_22" => {
+            if !tags(0).is_empty()
+                || tags(1).len() != 1
+                || matches(2) != tags(1)
+                || tags(5).len() != 1
+                || tags(5) == tags(1)
+                || !matches(6).is_empty()
+                || matches(8) != tags(5)
+                || tags(11).len() != 1
+                || tags(11) == tags(5)
+            {
+                return Err("CORE22 conditional ETag lifecycle".into());
+            }
+            body(1, crate::site::TEST_BODY)?;
+            body(2, crate::site::UPDATE_BODY)?;
+            body(5, crate::site::UPDATE_BODY)?;
+            body(6, crate::site::CONCURRENT_BODY)?;
+            body(8, crate::site::REFUSED_BODY)?;
+            body(11, crate::site::CONCURRENT_BODY)?;
+        }
+        _ => {
+            if !messages[0].if_none_match() || !messages[2].if_none_match() {
+                return Err("CORE23 If-None-Match".into());
+            }
+            body(0, crate::site::UPDATE_BODY)?;
+            body(2, crate::site::REFUSED_BODY)?;
+            body(5, crate::site::UPDATE_BODY)?;
         }
     }
     Ok(())

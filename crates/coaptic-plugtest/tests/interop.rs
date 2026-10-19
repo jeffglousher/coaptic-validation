@@ -106,6 +106,154 @@ fn td_coap_core() {
 }
 
 #[test]
+fn conditional_literal_workflows_refuse_incomplete_or_unowned_evidence() {
+    use coaptic::message::{Code, Message, decode, encode};
+    use coaptic_plugtest::pcap::Capture;
+    let catalog = Catalog::load().unwrap();
+    for id in [
+        "TD_COAP_CORE_20",
+        "TD_COAP_CORE_21",
+        "TD_COAP_CORE_22",
+        "TD_COAP_CORE_23",
+    ] {
+        for pair in runner::default_pairs() {
+            let result = runner::run_td(id, pair);
+            assert!(
+                result.error.is_none(),
+                "{id} {}: {:?}",
+                pair.label(),
+                result.error
+            );
+            let packets = result.capture.snapshot();
+            let first = packets
+                .iter()
+                .find(|p| decode(&p.bytes).unwrap().code() == Code::CONTENT)
+                .unwrap()
+                .bytes
+                .clone();
+            let last = packets
+                .iter()
+                .filter(|p| decode(&p.bytes).unwrap().code() == Code::CONTENT)
+                .max_by_key(|p| p.t_ns)
+                .unwrap()
+                .bytes
+                .clone();
+            for fault in [
+                "missing-first",
+                "missing-last",
+                "endpoint",
+                "malformed",
+                "payload",
+                "format",
+                "etag",
+                "condition",
+            ] {
+                if fault == "etag" && matches!(id, "TD_COAP_CORE_20" | "TD_COAP_CORE_23") {
+                    continue;
+                }
+                if fault == "condition" && matches!(id, "TD_COAP_CORE_20" | "TD_COAP_CORE_21") {
+                    continue;
+                }
+                let changed = Capture::new();
+                for packet in &packets {
+                    if (fault == "missing-first" && packet.bytes == first)
+                        || (fault == "missing-last" && packet.bytes == last)
+                    {
+                        continue;
+                    }
+                    let parsed = decode(&packet.bytes).unwrap();
+                    let mut bytes = packet.bytes.clone();
+                    let mut src = packet.src;
+                    if packet.bytes == first {
+                        match fault {
+                            "endpoint" => src.set_port(1),
+                            "malformed" => bytes.truncate(1),
+                            "payload" => *bytes.last_mut().unwrap() ^= 1,
+                            _ => {}
+                        }
+                    }
+                    let remove = match fault {
+                        "format" => Some(12),
+                        "etag" => Some(4),
+                        "condition" if id == "TD_COAP_CORE_22" => Some(1),
+                        "condition" => Some(5),
+                        _ => None,
+                    };
+                    if let Some(number) = remove {
+                        let options: Vec<_> = parsed
+                            .options()
+                            .filter(|option| option.number().get() != number)
+                            .collect();
+                        let message = Message::new(parsed.ty(), parsed.code(), parsed.message_id())
+                            .with_token(parsed.token())
+                            .with_options(&options)
+                            .with_payload(parsed.payload());
+                        let mut wire = [0; 512];
+                        let length = encode(&message, &mut wire).unwrap();
+                        bytes = wire[..length].to_vec();
+                    }
+                    changed.push(src, packet.dst, &bytes, packet.decrypted);
+                }
+                assert!(
+                    catalog.grade(id, &changed).is_err(),
+                    "{id} {} accepted {fault}",
+                    pair.label()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn direct_core_capture_rejects_wrong_endpoint_malformed_and_missing_format() {
+    use coaptic::message::{Code, Message, decode, encode};
+    use coaptic_plugtest::pcap::Capture;
+    let result = runner::run_td(
+        "TD_COAP_CORE_01",
+        Pair {
+            client: "coaptic",
+            server: "coaptic",
+        },
+    );
+    assert!(result.error.is_none(), "{:?}", result.error);
+    for fault in ["endpoint", "malformed", "format"] {
+        let changed = Capture::new();
+        for packet in result.capture.snapshot() {
+            let parsed = decode(&packet.bytes).unwrap();
+            let mut bytes = packet.bytes.clone();
+            let mut src = packet.src;
+            if parsed.code() == Code::CONTENT {
+                match fault {
+                    "endpoint" => src.set_port(1),
+                    "malformed" => bytes.truncate(1),
+                    _ => {
+                        let options: Vec<_> = parsed
+                            .options()
+                            .filter(|o| o.number().get() != 12)
+                            .collect();
+                        let message = Message::new(parsed.ty(), parsed.code(), parsed.message_id())
+                            .with_token(parsed.token())
+                            .with_options(&options)
+                            .with_payload(parsed.payload());
+                        let mut wire = [0; 512];
+                        let length = encode(&message, &mut wire).unwrap();
+                        bytes = wire[..length].to_vec();
+                    }
+                }
+            }
+            changed.push(src, packet.dst, &bytes, packet.decrypted);
+        }
+        assert!(
+            Catalog::load()
+                .unwrap()
+                .grade("TD_COAP_CORE_01", &changed)
+                .is_err(),
+            "accepted {fault}"
+        );
+    }
+}
+
+#[test]
 fn td_coap_block() {
     assert_suite("BLOCK", catalog::BLOCK, &runner::default_pairs());
 }
@@ -235,10 +383,23 @@ fn inventory() {
         88,
         "every vendored scenario is accounted for"
     );
-    assert!(
-        ran >= 19,
-        "qualified basic CORE scenarios must remain runnable"
+    for id in catalog::CORE
+        .iter()
+        .chain(catalog::BLOCK)
+        .chain(catalog::OBS)
+        .chain(catalog::LINK)
+    {
+        assert_eq!(
+            catalog::skip_reason(id),
+            None,
+            "required direct-UDP scenario {id} cannot become a SKIP"
+        );
+    }
+    assert_eq!(
+        catalog::CORE.len() + catalog::BLOCK.len() + catalog::OBS.len() + catalog::LINK.len(),
+        52
     );
+    assert_eq!(ran, if cfg!(feature = "dtls") { 54 } else { 52 });
 }
 
 #[test]

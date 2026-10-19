@@ -277,9 +277,16 @@ fn drive_td(
             separate_get(client, dest, id, Duration::from_secs(8))
         }
         "TD_COAP_CORE_20" => {
-            let mut r = ClientRequest::get(&["test"]);
-            r.accept = Some(0);
-            basic(client, dest, r, Code::CONTENT)
+            for (format, body) in [(0, site::TEST_BODY), (41, site::XML_BODY)] {
+                let mut request = ClientRequest::get(&["multi-format"]);
+                request.accept = Some(format);
+                let got = client.send_request(dest, &request)?;
+                expect_codes(id, got.code, &[Code::CONTENT])?;
+                if got.content_format != Some(format) || got.payload != body {
+                    return Err(PeerError("CORE20 negotiated representation".into()));
+                }
+            }
+            Ok(())
         }
         "TD_COAP_CORE_21" => {
             let first = client.send_request(dest, &ClientRequest::get(&["validate"]))?;
@@ -288,26 +295,90 @@ fn drive_td(
                 return Err(PeerError("CORE_21 expected ETag".into()));
             }
             let mut r = ClientRequest::get(&["validate"]);
-            r.etag = first.etag;
+            r.etag = first.etag.clone();
             let second = client.send_request(dest, &r)?;
-            expect_codes(id, second.code, &[Code::VALID])
+            expect_codes(id, second.code, &[Code::VALID])?;
+            if second.etag != first.etag || !second.payload.is_empty() {
+                return Err("CORE21 valid cache response".into());
+            }
+            let mut update = ClientRequest::request(Code::PUT, &["validate"]);
+            update.content_format = Some(0);
+            update.payload = site::UPDATE_BODY.to_vec();
+            expect_codes(
+                id,
+                client.send_request(dest, &update)?.code,
+                &[Code::CHANGED],
+            )?;
+            let third = client.send_request(dest, &r)?;
+            expect_codes(id, third.code, &[Code::CONTENT])?;
+            if third.payload != site::UPDATE_BODY
+                || third.etag.is_empty()
+                || third.etag == first.etag
+            {
+                return Err("CORE21 changed representation/ETag".into());
+            }
+            Ok(())
         }
         "TD_COAP_CORE_22" => {
+            let first = client.send_request(dest, &ClientRequest::get(&["validate"]))?;
+            expect_codes(id, first.code, &[Code::CONTENT])?;
+            if first.etag.is_empty() {
+                return Err("CORE22 initial ETag".into());
+            }
             let mut ok = ClientRequest::request(Code::PUT, &["validate"]);
-            ok.payload = site::TEST_BODY.to_vec();
-            ok.if_match = vec![b"etag1".to_vec()];
+            ok.payload = site::UPDATE_BODY.to_vec();
+            ok.content_format = Some(0);
+            ok.if_match = first.etag.clone();
             let got = client.send_request(dest, &ok)?;
             expect_codes(id, got.code, &[Code::CHANGED])?;
+            let current = client.send_request(dest, &ClientRequest::get(&["validate"]))?;
+            expect_codes(id, current.code, &[Code::CONTENT])?;
+            if current.payload != site::UPDATE_BODY
+                || current.etag.is_empty()
+                || current.etag == first.etag
+            {
+                return Err("CORE22 update readback".into());
+            }
+            let mut concurrent = ClientRequest::request(Code::PUT, &["validate"]);
+            concurrent.content_format = Some(0);
+            concurrent.payload = site::CONCURRENT_BODY.to_vec();
+            expect_codes(
+                id,
+                client.send_request(dest, &concurrent)?.code,
+                &[Code::CHANGED],
+            )?;
             let mut bad = ClientRequest::request(Code::PUT, &["validate"]);
-            bad.if_match = vec![b"wrong".to_vec()];
+            bad.content_format = Some(0);
+            bad.payload = site::REFUSED_BODY.to_vec();
+            bad.if_match = current.etag;
             let got = client.send_request(dest, &bad)?;
-            expect_codes(id, got.code, &[Code::PRECONDITION_FAILED])
+            expect_codes(id, got.code, &[Code::PRECONDITION_FAILED])?;
+            let recovered = client.send_request(dest, &ClientRequest::get(&["validate"]))?;
+            expect_codes(id, recovered.code, &[Code::CONTENT])?;
+            if recovered.payload != site::CONCURRENT_BODY {
+                return Err("CORE22 refused write changed resource".into());
+            }
+            Ok(())
         }
         "TD_COAP_CORE_23" => {
-            let mut r = ClientRequest::request(Code::PUT, &["validate"]);
+            let mut r = ClientRequest::request(Code::PUT, &["create1"]);
             r.if_none_match = true;
+            r.content_format = Some(0);
+            r.payload = site::UPDATE_BODY.to_vec();
             let got = client.send_request(dest, &r)?;
-            expect_codes(id, got.code, &[Code::PRECONDITION_FAILED])
+            expect_codes(id, got.code, &[Code::CREATED])?;
+            r.payload = site::REFUSED_BODY.to_vec();
+            expect_codes(
+                id,
+                client.send_request(dest, &r)?.code,
+                &[Code::PRECONDITION_FAILED],
+            )?;
+            let recovered = client.send_request(dest, &ClientRequest::get(&["create1"]))?;
+            expect_codes(id, recovered.code, &[Code::CONTENT])?;
+            if recovered.payload != site::UPDATE_BODY {
+                return Err("CORE23 failed creation changed resource".into());
+            }
+            Ok(())
         }
         "TD_COAP_CORE_31" => {
             let got = client.send_request(dest, &ClientRequest::ping())?;

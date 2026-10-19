@@ -9,6 +9,11 @@ use coaptic::{Code, ContentFormat, Request, Response, get, post, put};
 
 /// Text body for `/test` GET.
 pub const TEST_BODY: &[u8] = b"core-test-payload";
+/// Second representation of the CORE20 resource.
+pub const XML_BODY: &[u8] = b"<value>core-test-payload</value>";
+pub(crate) const UPDATE_BODY: &[u8] = b"atomic-update-one";
+pub(crate) const CONCURRENT_BODY: &[u8] = b"concurrent-update-two";
+pub(crate) const REFUSED_BODY: &[u8] = b"refused-update-three";
 /// Body for `/separate`.
 pub const SEP_BODY: &[u8] = b"separate-payload";
 /// Body for `/secure` (DTLS TDs).
@@ -158,6 +163,39 @@ fn validate_etag() -> &'static Mutex<Vec<u8>> {
     VALIDATE_ETAG.get_or_init(|| Mutex::new(b"etag1".to_vec()))
 }
 
+pub(crate) fn validation_snapshot() -> (Vec<u8>, Vec<u8>) {
+    (
+        validate_body().lock().unwrap().clone(),
+        validate_etag().lock().unwrap().clone(),
+    )
+}
+
+pub(crate) fn validation_update(body: &[u8]) {
+    *validate_body().lock().unwrap() = body.to_vec();
+    let mut etag = validate_etag().lock().unwrap();
+    // One bounded revision byte is sufficient for this finite per-TD fixture.
+    let revision = etag.last().copied().unwrap_or(0).wrapping_add(1);
+    *etag = vec![revision];
+}
+
+fn created_body() -> &'static Mutex<Option<Vec<u8>>> {
+    static BODY: OnceLock<Mutex<Option<Vec<u8>>>> = OnceLock::new();
+    BODY.get_or_init(|| Mutex::new(None))
+}
+
+pub(crate) fn create_once(body: &[u8]) -> bool {
+    let mut saved = created_body().lock().unwrap();
+    if saved.is_some() {
+        return false;
+    }
+    *saved = Some(body.to_vec());
+    true
+}
+
+pub(crate) fn created_snapshot() -> Option<Vec<u8>> {
+    created_body().lock().unwrap().clone()
+}
+
 fn large_update_slot() -> &'static Mutex<Option<Vec<u8>>> {
     LARGE_UPDATE.get_or_init(|| Mutex::new(None))
 }
@@ -175,6 +213,7 @@ pub fn set_large_update(body: &[u8]) {
 
 /// Reset per-TD resource state.
 pub fn reset() {
+    *created_body().lock().unwrap() = None;
     *validate_body().lock().expect("body") = TEST_BODY.to_vec();
     *validate_etag().lock().expect("etag") = b"etag1".to_vec();
     *large_update_slot().lock().expect("large-update") = None;
@@ -204,6 +243,7 @@ fn post_test(_req: Request<'_>) -> Response<'static> {
     Response::created()
         .location_path("location1")
         .location_path("location2")
+        .location_path("location3")
         .location_query("first=1")
         .location_query("second=2")
 }
@@ -248,12 +288,39 @@ fn put_validate(req: Request<'_>) -> Response<'static> {
     let exists = true;
     match req.precondition(exists, Some(etag.as_slice())) {
         Precondition::Unconditional | Precondition::Satisfied => {
-            *validate_body().lock().expect("body") = req.payload().to_vec();
+            validation_update(req.payload());
             Response::changed()
         }
         Precondition::FailedIfMatch | Precondition::FailedIfNoneMatch => {
             Response::precondition_failed()
         }
+    }
+}
+
+fn get_multi_format(req: Request<'_>) -> Response<'static> {
+    match req.accept() {
+        Some(Ok(ContentFormat::XML)) => {
+            Response::content(XML_BODY).content_format(ContentFormat::XML)
+        }
+        None | Some(Ok(ContentFormat::TEXT_PLAIN)) => {
+            Response::content(TEST_BODY).content_format(ContentFormat::TEXT_PLAIN)
+        }
+        _ => Response::new(Code::NOT_ACCEPTABLE),
+    }
+}
+
+fn put_create(req: Request<'_>) -> Response<'static> {
+    if !req.if_none_match() || !create_once(req.payload()) {
+        Response::precondition_failed()
+    } else {
+        Response::created()
+    }
+}
+
+fn get_create(_: Request<'_>) -> Response<'static> {
+    match created_snapshot() {
+        Some(body) => Response::content_copy(&body).content_format(ContentFormat::TEXT_PLAIN),
+        None => Response::not_found(),
     }
 }
 
@@ -450,7 +517,7 @@ fn attr_match(link: &str, attr: &str, value: &str) -> bool {
 }
 
 /// Method router table for the coaptic App server (24 slots).
-pub fn routers() -> [(&'static str, MethodRouter); 19] {
+pub fn routers() -> [(&'static str, MethodRouter); 21] {
     [
         (
             "test",
@@ -462,6 +529,8 @@ pub fn routers() -> [(&'static str, MethodRouter); 19] {
         ("separate", get(get_separate)),
         ("query", get(get_query)),
         ("validate", get(get_validate).put(put_validate)),
+        ("multi-format", get(get_multi_format)),
+        ("create1", get(get_create).put(put_create)),
         ("seg1/seg2/seg3", get(get_seg)),
         ("large", get(get_large)),
         ("large-update", put(put_large)),

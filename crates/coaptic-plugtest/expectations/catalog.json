@@ -2,7 +2,7 @@
   "TD_COAP_CORE_01": {
     "coap": [
       {"type": "CON", "code": "0.01", "mid": "*", "token": "*", "uri_path": ["test"]},
-      {"type": "ACK", "code": "2.05", "mid": "echo", "token": "echo", "payload": "nonempty"}
+      {"type": "ACK", "code": "2.05", "mid": "echo", "token": "echo", "payload": "nonempty", "content_format": 0}
     ]
   },
   "TD_COAP_CORE_02": {
@@ -13,20 +13,20 @@
   },
   "TD_COAP_CORE_03": {
     "coap": [
-      {"type": "CON", "code": "0.03", "mid": "*", "token": "*", "uri_path": ["test"], "payload": "nonempty"},
+      {"type": "CON", "code": "0.03", "mid": "*", "token": "*", "uri_path": ["test"], "payload": "nonempty", "content_format": 0},
       {"type": "ACK", "code": ["2.04", "2.01"], "mid": "echo", "token": "echo"}
     ]
   },
   "TD_COAP_CORE_04": {
     "coap": [
-      {"type": "CON", "code": "0.02", "mid": "*", "token": "*", "uri_path": ["test"]},
+      {"type": "CON", "code": "0.02", "mid": "*", "token": "*", "uri_path": ["test"], "content_format": 0},
       {"type": "ACK", "code": ["2.01", "2.04"], "mid": "echo", "token": "echo"}
     ]
   },
   "TD_COAP_CORE_05": {
     "coap": [
       {"type": "NON", "code": "0.01", "token": "*", "uri_path": ["test"]},
-      {"type": "NON", "code": "2.05", "token": "echo", "payload": "nonempty"}
+      {"type": "NON", "code": "2.05", "token": "echo", "payload": "nonempty", "content_format": 0}
     ]
   },
   "TD_COAP_CORE_06": {
@@ -37,13 +37,13 @@
   },
   "TD_COAP_CORE_07": {
     "coap": [
-      {"type": "NON", "code": "0.03", "token": "*", "uri_path": ["test"]},
+      {"type": "NON", "code": "0.03", "token": "*", "uri_path": ["test"], "content_format": 0},
       {"type": "NON", "code": ["2.04", "2.01"], "token": "echo"}
     ]
   },
   "TD_COAP_CORE_08": {
     "coap": [
-      {"type": "NON", "code": "0.02", "token": "*", "uri_path": ["test"]},
+      {"type": "NON", "code": "0.02", "token": "*", "uri_path": ["test"], "content_format": 0},
       {"type": "NON", "code": ["2.01", "2.04"], "token": "echo"}
     ]
   },
@@ -58,40 +58,40 @@
   "TD_COAP_CORE_10": {
     "coap": [
       {"type": "CON", "code": "0.01", "mid": "*", "token": "*", "uri_path": ["test"]},
-      {"type": "ACK", "code": "2.05", "mid": "echo", "token": "echo"}
+      {"type": "ACK", "code": "2.05", "mid": "echo", "token": "echo", "content_format": 0}
     ]
   },
   "TD_COAP_CORE_11": {
     "coap": [
       {"type": "CON", "code": "0.01", "mid": "*", "token": "*", "token_len": {"min": 1, "max": 8}, "uri_path": ["separate"]},
       {"type": "ACK", "code": "0.00", "mid": "echo", "payload": "empty"},
-      {"type": "CON", "code": "2.05", "mid": "fresh", "token": "echo", "payload": "separate-payload"},
+      {"type": "CON", "code": "2.05", "mid": "fresh", "token": "echo", "payload": "separate-payload", "content_format": 0},
       {"type": "ACK", "code": "0.00", "mid": "prev", "payload": "empty"}
     ]
   },
   "TD_COAP_CORE_12": {
     "coap": [
       {"type": "CON", "code": "0.01", "mid": "*", "token": "*", "uri_path": ["test"]},
-      {"type": "ACK", "code": "2.05", "mid": "echo", "token": "echo"}
+      {"type": "ACK", "code": "2.05", "mid": "echo", "token": "echo", "content_format": 0}
     ]
   },
   "TD_COAP_CORE_13": {
     "coap": [
       {"type": "CON", "code": "0.01", "mid": "*", "token": "*", "uri_path": ["seg1", "seg2", "seg3"]},
-      {"type": "ACK", "code": "2.05", "mid": "echo", "token": "echo"}
+      {"type": "ACK", "code": "2.05", "mid": "echo", "token": "echo", "content_format": 0}
     ]
   },
   "TD_COAP_CORE_14": {
     "coap": [
       {"type": "CON", "code": "0.01", "mid": "*", "token": "*", "uri_path": ["query"], "uri_query": ["first=1", "second=2", "third=3"]},
-      {"type": "ACK", "code": "2.05", "mid": "echo", "token": "echo"}
+      {"type": "ACK", "code": "2.05", "mid": "echo", "token": "echo", "content_format": 0}
     ]
   },
   "TD_COAP_CORE_15": {
     "coap": [
       {"type": "CON", "code": "0.01", "mid": "*", "token": "*", "uri_path": ["test"]},
       {"type": "CON", "code": "0.01", "mid": "echo", "token": "echo", "uri_path": ["test"]},
-      {"type": "ACK", "code": "2.05", "mid": "echo", "token": "echo", "payload": "core-test-payload"}
+      {"type": "ACK", "code": "2.05", "mid": "echo", "token": "echo", "payload": "core-test-payload", "content_format": 0}
     ]
   },
   "TD_COAP_CORE_16": {
@@ -99,7 +99,7 @@
       {"type": "CON", "code": "0.01", "mid": "*", "token": "*", "uri_path": ["separate"]},
       {"type": "CON", "code": "0.01", "mid": "echo", "token": "echo", "uri_path": ["separate"]},
       {"type": "ACK", "code": "0.00", "mid": "echo", "payload": "empty"},
-      {"type": "CON", "code": "2.05", "mid": "fresh", "token": "echo", "payload": "separate-payload"},
+      {"type": "CON", "code": "2.05", "mid": "fresh", "token": "echo", "payload": "separate-payload", "content_format": 0},
       {"type": "ACK", "code": "0.00", "mid": "prev", "payload": "empty"}
     ]
   },
@@ -112,42 +112,60 @@
   },
   "TD_COAP_CORE_18": {
     "coap": [
-      {"type": "CON", "code": "0.02", "mid": "*", "token": "*", "uri_path": ["test"]},
-      {"type": "ACK", "code": ["2.01", "2.04"], "mid": "echo", "token": "echo", "location_path": ["location1", "location2"]}
+      {"type": "CON", "code": "0.02", "mid": "*", "token": "*", "uri_path": ["test"], "content_format": 0},
+      {"type": "ACK", "code": "2.01", "mid": "echo", "token": "echo", "location_path": ["location1", "location2", "location3"]}
     ]
   },
   "TD_COAP_CORE_19": {
     "coap": [
-      {"type": "CON", "code": "0.02", "mid": "*", "token": "*", "uri_path": ["test"]},
-      {"type": "ACK", "code": ["2.01", "2.04"], "mid": "echo", "token": "echo", "location_query": ["first=1", "second=2"]}
+      {"type": "CON", "code": "0.02", "mid": "*", "token": "*", "uri_path": ["test"], "content_format": 0},
+      {"type": "ACK", "code": "2.01", "mid": "echo", "token": "echo", "location_query": ["first=1", "second=2"]}
     ]
   },
   "TD_COAP_CORE_20": {
     "coap": [
-      {"type": "CON", "code": "0.01", "mid": "*", "token": "*", "uri_path": ["test"], "accept": 0},
-      {"type": "ACK", "code": "2.05", "mid": "echo", "token": "echo"}
+      {"type": "CON", "code": "0.01", "uri_path": ["multi-format"]},
+      {"type": "ACK", "code": "2.05"},
+      {"type": "CON", "code": "0.01", "uri_path": ["multi-format"]},
+      {"type": "ACK", "code": "2.05"}
     ]
   },
   "TD_COAP_CORE_21": {
     "coap": [
-      {"type": "CON", "code": "0.01", "mid": "*", "token": "*", "uri_path": ["validate"]},
-      {"type": "ACK", "code": "2.05", "mid": "echo", "token": "echo"},
       {"type": "CON", "code": "0.01", "uri_path": ["validate"]},
-      {"type": "ACK", "code": "2.03"}
+      {"type": "ACK", "code": "2.05"},
+      {"type": "CON", "code": "0.01", "uri_path": ["validate"]},
+      {"type": "ACK", "code": "2.03"},
+      {"type": "CON", "code": "0.03", "uri_path": ["validate"]},
+      {"type": "ACK", "code": "2.04"},
+      {"type": "CON", "code": "0.01", "uri_path": ["validate"]},
+      {"type": "ACK", "code": "2.05"}
     ]
   },
   "TD_COAP_CORE_22": {
     "coap": [
-      {"type": "CON", "code": "0.03", "mid": "*", "token": "*", "uri_path": ["validate"]},
-      {"type": "ACK", "code": "2.04", "mid": "echo", "token": "echo"},
+      {"type": "CON", "code": "0.01", "uri_path": ["validate"]},
+      {"type": "ACK", "code": "2.05"},
       {"type": "CON", "code": "0.03", "uri_path": ["validate"]},
-      {"type": "ACK", "code": "4.12"}
+      {"type": "ACK", "code": "2.04"},
+      {"type": "CON", "code": "0.01", "uri_path": ["validate"]},
+      {"type": "ACK", "code": "2.05"},
+      {"type": "CON", "code": "0.03", "uri_path": ["validate"]},
+      {"type": "ACK", "code": "2.04"},
+      {"type": "CON", "code": "0.03", "uri_path": ["validate"]},
+      {"type": "ACK", "code": "4.12"},
+      {"type": "CON", "code": "0.01", "uri_path": ["validate"]},
+      {"type": "ACK", "code": "2.05"}
     ]
   },
   "TD_COAP_CORE_23": {
     "coap": [
-      {"type": "CON", "code": "0.03", "mid": "*", "token": "*", "uri_path": ["validate"], "if_none_match": true},
-      {"type": "ACK", "code": "4.12", "mid": "echo", "token": "echo"}
+      {"type": "CON", "code": "0.03", "uri_path": ["create1"]},
+      {"type": "ACK", "code": "2.01"},
+      {"type": "CON", "code": "0.03", "uri_path": ["create1"]},
+      {"type": "ACK", "code": "4.12"},
+      {"type": "CON", "code": "0.01", "uri_path": ["create1"]},
+      {"type": "ACK", "code": "2.05"}
     ]
   },
   "TD_COAP_CORE_31": {
