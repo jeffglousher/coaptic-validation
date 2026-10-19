@@ -126,8 +126,18 @@ version = "0.0.10"
 dependencies = [
  "aes",
  "ccm",
+ "coaptic-io",
  "hkdf",
  "sha2",
+]
+
+[[package]]
+name = "coaptic-io"
+version = "0.0.10"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
