@@ -42,6 +42,101 @@ pub enum Error {
 pub trait Store {
     fn read(&mut self, output: &mut [u8; STORE_BYTES]) -> Result<usize, Error>;
     fn commit(&mut self, expected: &[u8], next: &[u8]) -> Result<(), Error>;
+    fn pending_read(
+        &mut self,
+    ) -> Result<Option<[u8; crate::pending_telemetry::RECORD_BYTES]>, Error> {
+        Err(Error::Storage)
+    }
+    fn pending_commit(
+        &mut self,
+        _: &[u8; crate::pending_telemetry::RECORD_BYTES],
+    ) -> Result<(), Error> {
+        Err(Error::Storage)
+    }
+}
+
+struct PendingStore<'a, S>(&'a mut S);
+impl<S: Store> crate::pending_telemetry::Store for PendingStore<'_, S> {
+    fn read(
+        &mut self,
+    ) -> Result<Option<[u8; crate::pending_telemetry::RECORD_BYTES]>, crate::pending_telemetry::Error>
+    {
+        self.0
+            .pending_read()
+            .map_err(|_| crate::pending_telemetry::Error::Storage)
+    }
+    fn commit(
+        &mut self,
+        bytes: &[u8; crate::pending_telemetry::RECORD_BYTES],
+    ) -> Result<(), crate::pending_telemetry::Error> {
+        self.0
+            .pending_commit(bytes)
+            .map_err(|_| crate::pending_telemetry::Error::Storage)
+    }
+}
+
+fn pending_binding<'a>(
+    private: &'a [u8; 32],
+    record: &PairingRecord,
+) -> crate::pending_telemetry::Binding<'a> {
+    crate::pending_telemetry::Binding::Enrolled {
+        private,
+        grant: record.commitment(),
+    }
+}
+
+// Called only inside an authenticated policy update's durable commit callback.
+// Prepare pending storage first; ambiguous writes never activate the new grant.
+fn prepare_pending(
+    store: &mut impl Store,
+    private: &[u8; 32],
+    identity: &Identity,
+    old: &PairingRecord,
+    record: &PairingRecord,
+) -> Result<(), Error> {
+    if !record.enabled()
+        || record
+            .policy()
+            .is_none_or(|policy| *policy.resource_policy() != permissions(true))
+    {
+        return Ok(());
+    }
+    let binding = pending_binding(private, record);
+    if store.pending_read()?.is_none() {
+        if old
+            .policy()
+            .is_some_and(|policy| *policy.resource_policy() == permissions(true))
+        {
+            return Err(Error::Storage);
+        }
+        crate::pending_telemetry::provision_bound(
+            &mut PendingStore(store),
+            binding,
+            identity.peer().principal(),
+        )
+        .map_err(|_| Error::Storage)?;
+    } else {
+        // A retry of the exact candidate can reconcile its prior durable write.
+        // Another grant's unresolved record is preserved and refuses activation.
+        if crate::pending_telemetry::Pending::recover_bound(
+            PendingStore(&mut *store),
+            binding,
+            identity.peer().principal(),
+        )
+        .is_err()
+        {
+            let mut pending = crate::pending_telemetry::Pending::recover_bound(
+                PendingStore(store),
+                pending_binding(private, old),
+                identity.peer().principal(),
+            )
+            .map_err(|_| Error::Storage)?;
+            pending
+                .rebind(binding, identity.peer().principal())
+                .map_err(|_| Error::Storage)?;
+        }
+    }
+    Ok(())
 }
 
 /// Synchronous borrowed buffers on the sole privileged USB channel.
@@ -204,7 +299,14 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
                     };
                     let mut next = Zeroizing::new([0; STORE_BYTES]);
                     let mut next_len = 0;
-                    let result = update.apply(&mut device.pairing, now, |_, record| {
+                    let result = update.apply(&mut device.pairing, now, |old, record| {
+                        prepare_pending(
+                            &mut store,
+                            &device.private,
+                            &device.identity,
+                            old,
+                            record,
+                        )?;
                         next_len = encode_store(
                             &device.private,
                             device.identity.peer().kid(),
@@ -250,6 +352,7 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
             // exchanges and sessions before any policy mutation above.
             let result = session(
                 device,
+                &mut store,
                 socket(),
                 random,
                 &mut clock,
@@ -362,15 +465,104 @@ fn permissions(write: bool) -> [u8; 32] {
     blake3::derive_key(
         "coaptic local service permissions v1",
         if write {
-            b"GET /identity;POST /echo".as_slice()
+            b"GET /identity;POST /echo;POST /telemetry".as_slice()
         } else {
             b"GET /identity".as_slice()
         },
     )
 }
 
+fn echo_permissions() -> [u8; 32] {
+    blake3::derive_key(
+        "coaptic local service permissions v1",
+        b"GET /identity;POST /echo",
+    )
+}
+
+fn telemetry_resource() -> [u8; 32] {
+    blake3::derive_key("coaptic local service resource v1", b"POST /telemetry")
+}
+
+fn recover_pending<'a, S: Store>(
+    device: &'a Device,
+    store: &'a mut S,
+    telemetry: bool,
+) -> Result<Option<crate::pending_telemetry::Pending<'a, PendingStore<'a, S>>>, Error> {
+    if !telemetry {
+        return Ok(None);
+    }
+    crate::pending_telemetry::Pending::recover_bound(
+        PendingStore(store),
+        pending_binding(&device.private, device.pairing.checkpoint()),
+        device.identity.peer().principal(),
+    )
+    .map(Some)
+    .map_err(|_| Error::Storage)
+}
+
+fn prepare_sample<S: Store>(
+    pending: &mut Option<crate::pending_telemetry::Pending<'_, PendingStore<'_, S>>>,
+    sample: &mut [u8; 61],
+    now: u64,
+    random: fn(&mut [u8]) -> bool,
+) -> Result<(), Error> {
+    let Some(pending) = pending.as_mut() else {
+        sample[53..].copy_from_slice(&now.to_be_bytes());
+        return Ok(());
+    };
+    if pending.pending().map_err(|_| Error::Storage)?.is_none() {
+        sample[53..].copy_from_slice(&now.to_be_bytes());
+        let mut id = [0; 16];
+        if !random(&mut id) || id == [0; 16] {
+            return Err(Error::Identity);
+        }
+        pending
+            .begin(
+                coaptic::provisioning::OperationId::new(id),
+                telemetry_resource(),
+                Some(ContentFormat::CBOR.get()),
+                &sample[16..],
+            )
+            .map_err(|_| Error::Storage)?;
+    }
+    let operation = pending
+        .pending()
+        .map_err(|_| Error::Storage)?
+        .ok_or(Error::Storage)?;
+    if operation.payload().len() != 45
+        || operation.resource() != &telemetry_resource()
+        || operation.content_format() != Some(ContentFormat::CBOR.get())
+    {
+        return Err(Error::Storage);
+    }
+    sample[..16].copy_from_slice(operation.id().as_bytes());
+    sample[16..].copy_from_slice(operation.payload());
+    Ok(())
+}
+
+fn accept_sample<S: Store>(
+    pending: &mut Option<crate::pending_telemetry::Pending<'_, PendingStore<'_, S>>>,
+    code: Code,
+    payload: &[u8],
+    expected: &[u8],
+) -> Result<bool, Error> {
+    if let Some(pending) = pending.as_mut() {
+        if code != Code::CHANGED {
+            return Ok(false);
+        }
+        match pending.accept_authenticated_receipt(payload) {
+            Ok(_) => Ok(true),
+            Err(crate::pending_telemetry::Error::InvalidReceipt) => Ok(false),
+            Err(_) => Err(Error::Storage),
+        }
+    } else {
+        Ok(code == Code::CONTENT && payload == expected)
+    }
+}
+
 fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
     device: &Device,
+    store: &mut impl Store,
     socket: T,
     random: fn(&mut [u8]) -> bool,
     clock: &mut CheckedClock<F>,
@@ -390,10 +582,12 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
         .policy()
         .ok_or(Error::Storage)?
         .resource_policy();
-    let write = *permission == permissions(true);
+    let telemetry = *permission == permissions(true);
+    let write = telemetry || *permission == echo_permissions();
     if !write && *permission != permissions(false) {
         return Err(Error::Permissions);
     }
+    let mut pending = recover_pending(device, store, telemetry)?;
     let Some(start) = next_time(clock)? else {
         return Ok(None);
     };
@@ -424,10 +618,10 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
     let mut connected_reported = false;
     let mut failed_polls = 0u8;
     let mut reply = [0; 128];
-    let mut sample = [0; 45];
-    sample[..4].copy_from_slice(&[0x83, 1, 0x58, 32]);
-    sample[4..36].copy_from_slice(device.identity.peer().principal().fingerprint());
-    sample[36] = 0x1b;
+    let mut sample = [0; 61];
+    sample[16..20].copy_from_slice(&[0x83, 1, 0x58, 32]);
+    sample[20..52].copy_from_slice(device.identity.peer().principal().fingerprint());
+    sample[52] = 0x1b;
     loop {
         let Some(now) = next_time(clock)? else {
             return Ok(None);
@@ -516,13 +710,16 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
             call = None;
             match response {
                 Ok(response)
-                    if response.code() == Code::CONTENT
-                        && response.payload()
-                            == if write {
-                                &sample[..]
-                            } else {
-                                peer.fingerprint()
-                            } =>
+                    if accept_sample(
+                        &mut pending,
+                        response.code(),
+                        response.payload(),
+                        if write {
+                            &sample[16..]
+                        } else {
+                            peer.fingerprint()
+                        },
+                    )? =>
                 {
                     if !connected_reported {
                         console.event(3);
@@ -560,11 +757,23 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
             }
         }
         if call.is_none() && connection.is_connected() && now >= next_probe {
-            // A small native CBOR sample receives an exact protected receipt.
+            // Durable telemetry retains exact operation bytes until a matching receipt.
             // Read-only pairing uses an authenticated identity read instead.
-            sample[37..].copy_from_slice(&now.to_be_bytes());
-            let (method, path, payload, format) = if write {
-                (Method::Post, "echo", &sample[..], Some(ContentFormat::CBOR))
+            prepare_sample(&mut pending, &mut sample, now, random)?;
+            let (method, path, payload, format) = if telemetry {
+                (
+                    Method::Post,
+                    "telemetry",
+                    &sample[..],
+                    Some(ContentFormat::CBOR),
+                )
+            } else if write {
+                (
+                    Method::Post,
+                    "echo",
+                    &sample[16..],
+                    Some(ContentFormat::CBOR),
+                )
             } else {
                 (Method::Get, "identity", &[][..], None)
             };
@@ -708,12 +917,27 @@ mod tests {
     use super::*;
     use std::{cell::RefCell, collections::VecDeque, rc::Rc, vec::Vec};
 
+    mod enrolled_loopback;
+
     #[derive(Default)]
     struct Memory {
         bytes: Vec<u8>,
+        pending: Option<[u8; crate::pending_telemetry::RECORD_BYTES]>,
         uncertain: bool,
     }
     impl Store for Memory {
+        fn pending_read(
+            &mut self,
+        ) -> Result<Option<[u8; crate::pending_telemetry::RECORD_BYTES]>, Error> {
+            Ok(self.pending)
+        }
+        fn pending_commit(
+            &mut self,
+            bytes: &[u8; crate::pending_telemetry::RECORD_BYTES],
+        ) -> Result<(), Error> {
+            self.pending = Some(*bytes);
+            Ok(())
+        }
         fn read(&mut self, output: &mut [u8; STORE_BYTES]) -> Result<usize, Error> {
             if self.bytes.len() > output.len() {
                 return Err(Error::Storage);
@@ -735,6 +959,53 @@ mod tests {
     }
     fn random(bytes: &mut [u8]) -> bool {
         getrandom::fill(bytes).is_ok()
+    }
+
+    #[test]
+    fn enrolled_pending_retries_exact_bytes_and_missing_state_cannot_reinitialize_a_grant() {
+        let mut store = Memory::default();
+        let mut device = Device::initialize(&mut store, 17, random).unwrap();
+        let old = device.pairing.checkpoint().clone();
+        let peer = Identity::from_private_key([2; 32], 18).unwrap().peer();
+        let challenge = device.pairing.begin(&device.identity, 0, random).unwrap();
+        let policy =
+            coaptic::provisioning::EnrollmentPolicy::new(peer, [7; 32], permissions(true)).unwrap();
+        device
+            .pairing
+            .pair(&challenge, policy, 1, |prior, next| {
+                prepare_pending(&mut store, &device.private, &device.identity, prior, next)
+            })
+            .unwrap();
+        let grant = device.pairing.checkpoint().clone();
+        assert_ne!(old.commitment(), grant.commitment());
+        let mut pending = recover_pending(&device, &mut store, true).unwrap();
+        let mut wire = [0; 61];
+        prepare_sample(&mut pending, &mut wire, 42, random).unwrap();
+        let original = wire;
+        drop(pending);
+        let mut pending = recover_pending(&device, &mut store, true).unwrap();
+        prepare_sample(&mut pending, &mut wire, 999, random).unwrap();
+        assert_eq!(wire, original);
+        assert!(!accept_sample(&mut pending, Code::CONTENT, &wire[16..], &[]).unwrap());
+        let operation = pending.as_ref().unwrap().pending().unwrap().unwrap();
+        let receipt =
+            coaptic::provisioning::Receipt::from_parts(operation.id(), *operation.digest(), 1)
+                .unwrap();
+        assert!(accept_sample(&mut pending, Code::CHANGED, &receipt.encode(), &[]).unwrap());
+        drop(pending);
+        store.pending = None;
+        assert!(recover_pending(&device, &mut store, true).is_err());
+        assert!(
+            prepare_pending(
+                &mut store,
+                &device.private,
+                &device.identity,
+                &grant,
+                &grant
+            )
+            .is_err()
+        );
+        assert!(store.pending.is_none());
     }
 
     #[test]
@@ -794,6 +1065,17 @@ mod tests {
 
     struct Shared(Rc<RefCell<Memory>>);
     impl Store for Shared {
+        fn pending_read(
+            &mut self,
+        ) -> Result<Option<[u8; crate::pending_telemetry::RECORD_BYTES]>, Error> {
+            self.0.borrow_mut().pending_read()
+        }
+        fn pending_commit(
+            &mut self,
+            bytes: &[u8; crate::pending_telemetry::RECORD_BYTES],
+        ) -> Result<(), Error> {
+            self.0.borrow_mut().pending_commit(bytes)
+        }
         fn read(&mut self, output: &mut [u8; STORE_BYTES]) -> Result<usize, Error> {
             self.0.borrow_mut().read(output)
         }
@@ -968,7 +1250,7 @@ mod tests {
         let mut pairing = LocalPairing::restore(&identity, record).unwrap();
         let challenge = pairing.begin(&identity, 0, random).unwrap();
         let policy =
-            coaptic::provisioning::EnrollmentPolicy::new(peer.clone(), [7; 32], permissions(true))
+            coaptic::provisioning::EnrollmentPolicy::new(peer.clone(), [7; 32], echo_permissions())
                 .unwrap();
         coaptic::provisioning::PairingUpdate::new(challenge, policy, false)
             .apply(&mut pairing, 1, |_, _| Ok::<_, ()>(()))
@@ -985,6 +1267,7 @@ mod tests {
         let memory = Rc::new(RefCell::new(Memory {
             bytes: stored[..len].to_vec(),
             uncertain: false,
+            pending: None,
         }));
         let before = memory.borrow().bytes.clone();
         let replies = Rc::new(RefCell::new(Vec::new()));

@@ -174,7 +174,14 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
                     };
                     let mut next = Zeroizing::new([0; STORE_BYTES]);
                     let mut next_len = 0;
-                    let result = update.apply(&mut device.pairing, now, |_, record| {
+                    let result = update.apply(&mut device.pairing, now, |old, record| {
+                        prepare_pending(
+                            &mut store,
+                            &device.private,
+                            &device.identity,
+                            old,
+                            record,
+                        )?;
                         next_len = encode_store(
                             &device.private,
                             device.identity.peer().kid(),
@@ -220,6 +227,7 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
             // exchanges and sessions before any policy mutation above.
             let result = session_async(
                 device,
+                &mut store,
                 &mut socket,
                 random,
                 &mut clock,
@@ -279,6 +287,7 @@ fn connection<'a, T: AsyncDatagramIo>(
 
 async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
     device: &Device,
+    store: &mut impl Store,
     socket: &mut T,
     random: fn(&mut [u8]) -> bool,
     clock: &mut CheckedClock<F>,
@@ -299,10 +308,12 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
         .policy()
         .ok_or(Error::Storage)?
         .resource_policy();
-    let write = *permission == permissions(true);
+    let telemetry = *permission == permissions(true);
+    let write = telemetry || *permission == echo_permissions();
     if !write && *permission != permissions(false) {
         return Err(Error::Permissions);
     }
+    let mut pending = recover_pending(device, store, telemetry)?;
     let Some(start) = next_time(clock)? else {
         return Ok(None);
     };
@@ -323,10 +334,10 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
     let mut failed_polls = 0u8;
     let mut receive_errors = 0;
     let mut reply = [0; 128];
-    let mut sample = [0; 45];
-    sample[..4].copy_from_slice(&[0x83, 1, 0x58, 32]);
-    sample[4..36].copy_from_slice(device.identity.peer().principal().fingerprint());
-    sample[36] = 0x1b;
+    let mut sample = [0; 61];
+    sample[16..20].copy_from_slice(&[0x83, 1, 0x58, 32]);
+    sample[20..52].copy_from_slice(device.identity.peer().principal().fingerprint());
+    sample[52] = 0x1b;
     loop {
         crate::cooperate().await;
         let Some(now) = next_time(clock)? else {
@@ -432,13 +443,16 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
             call = None;
             match response {
                 Ok(response)
-                    if response.code() == Code::CONTENT
-                        && response.payload()
-                            == if write {
-                                &sample[..]
-                            } else {
-                                peer.fingerprint()
-                            } =>
+                    if accept_sample(
+                        &mut pending,
+                        response.code(),
+                        response.payload(),
+                        if write {
+                            &sample[16..]
+                        } else {
+                            peer.fingerprint()
+                        },
+                    )? =>
                 {
                     if !connected_reported {
                         console.event(3);
@@ -476,11 +490,23 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
             }
         }
         if call.is_none() && connection.is_connected() && now >= next_probe {
-            // A small native CBOR sample receives an exact protected receipt.
+            // Durable telemetry retains exact operation bytes until a matching receipt.
             // Read-only pairing uses an authenticated identity read instead.
-            sample[37..].copy_from_slice(&now.to_be_bytes());
-            let (method, path, payload, format) = if write {
-                (Method::Post, "echo", &sample[..], Some(ContentFormat::CBOR))
+            prepare_sample(&mut pending, &mut sample, now, random)?;
+            let (method, path, payload, format) = if telemetry {
+                (
+                    Method::Post,
+                    "telemetry",
+                    &sample[..],
+                    Some(ContentFormat::CBOR),
+                )
+            } else if write {
+                (
+                    Method::Post,
+                    "echo",
+                    &sample[16..],
+                    Some(ContentFormat::CBOR),
+                )
             } else {
                 (Method::Get, "identity", &[][..], None)
             };

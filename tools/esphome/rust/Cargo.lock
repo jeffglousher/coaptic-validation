@@ -130,6 +130,7 @@ version = "0.0.0"
 dependencies = [
  "blake3",
  "coaptic",
+ "coaptic-receipts",
  "critical-section",
  "getrandom",
  "hmac",
@@ -145,6 +146,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "coaptic-receipts"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "coaptic",
 ]
 
 [[package]]

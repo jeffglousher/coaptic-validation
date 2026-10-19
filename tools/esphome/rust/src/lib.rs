@@ -157,6 +157,11 @@ mod tests {
             super::coaptic_probe_oscore(),
             u32::from(cfg!(feature = "oscore"))
         );
-        assert_eq!(super::coaptic_probe_run(), 0);
+        assert_eq!(
+            super::coaptic_probe_run(),
+            0,
+            "{:?}",
+            qualification_no_std::protocol_runtime_probe()
+        );
     }
 }

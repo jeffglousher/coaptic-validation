@@ -16,7 +16,7 @@ network = ["dep:coaptic", "dep:critical-section"]
 async-network = ["network"]
 host = ["coaptic?/std", "dep:getrandom"]
 telemetry = ["network", "oscore", "coaptic?/edhoc"]
-pairing = ["network", "oscore", "coaptic?/edhoc", "dep:zeroize", "dep:blake3"]
+pairing = ["telemetry", "dep:zeroize", "dep:blake3"]
 library-only = []
 standalone = []
 
@@ -33,6 +33,9 @@ blake3 = { version = "=1.8.7", default-features = false, optional = true }
 
 [target.'cfg(not(target_os = "none"))'.dependencies]
 critical-section = { version = "1.2.0", features = ["std"], optional = true }
+
+[dev-dependencies]
+coaptic-receipts = { path = "../../../coaptic/tools/coaptic-receipts" }
 
 [profile.release]
 opt-level = 3

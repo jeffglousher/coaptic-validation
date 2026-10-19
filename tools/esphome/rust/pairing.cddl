@@ -9,6 +9,11 @@ device-pairing-custody = [
 ; integrity=BLAKE3 derive-key("coaptic device custody integrity v1", preceding bytes).
 ; The endpoint with the lexicographically greater pinned principal initiates EDHOC.
 
-; Development protected sample and exact echo receipt. Sent only after EDHOC.
+; Protected sample. Sent only after enrolled EDHOC/current-policy authorization.
 paired-sample = [version: 1, device: bstr .size 32, at-ms: uint]
+; Existing echo-only grants retain their exact echo behavior.
 paired-sample-receipt = paired-sample
+; Newly approved telemetry grants use the shared application operation envelope:
+; 16-byte operation ID followed by paired-sample CBOR. The 56-byte durable receipt
+; encodes ID(16), complete content digest(32), committed sequence big-endian(8).
+; Its principal, service and grant come from the authenticated managed session.
