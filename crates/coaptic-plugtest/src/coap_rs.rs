@@ -413,6 +413,8 @@ fn handle_request(
                 resp.message
                     .add_option(CoapOption::LocationPath, b"location2".to_vec());
                 resp.message
+                    .add_option(CoapOption::LocationPath, b"location3".to_vec());
+                resp.message
                     .add_option(CoapOption::LocationQuery, b"first=1".to_vec());
                 resp.message
                     .add_option(CoapOption::LocationQuery, b"second=2".to_vec());
@@ -450,34 +452,76 @@ fn handle_request(
                 resp.message.set_content_format(LiteCf::TextPlain);
             }
             (RequestType::Get, "validate") => {
+                let (body, etag) = site::validation_snapshot();
                 let etags = request
                     .message
                     .get_option(CoapOption::ETag)
                     .map(|v| v.iter().cloned().collect::<Vec<_>>())
                     .unwrap_or_default();
-                if etags.iter().any(|t| t.as_slice() == b"etag1") {
+                if etags.iter().any(|t| t == &etag) {
                     resp.set_status(ResponseType::Valid);
-                    resp.message.add_option(CoapOption::ETag, b"etag1".to_vec());
+                    resp.message.add_option(CoapOption::ETag, etag);
                 } else {
                     resp.set_status(ResponseType::Content);
-                    resp.message.payload = site::TEST_BODY.to_vec();
+                    resp.message.payload = body;
                     resp.message.set_content_format(LiteCf::TextPlain);
-                    resp.message.add_option(CoapOption::ETag, b"etag1".to_vec());
+                    resp.message.add_option(CoapOption::ETag, etag);
                 }
             }
             (RequestType::Put, "validate") => {
+                let (_, etag) = site::validation_snapshot();
                 let if_match = request.message.get_option(CoapOption::IfMatch);
                 let if_none = request.message.get_option(CoapOption::IfNoneMatch);
                 if if_none.is_some() {
                     resp.set_status(ResponseType::PreconditionFailed);
                 } else if let Some(tags) = if_match {
-                    if tags.iter().any(|t| t.as_slice() == b"etag1") {
+                    if tags.iter().any(|t| t.is_empty() || t == &etag) {
+                        site::validation_update(&request.message.payload);
                         resp.set_status(ResponseType::Changed);
                     } else {
                         resp.set_status(ResponseType::PreconditionFailed);
                     }
                 } else {
+                    site::validation_update(&request.message.payload);
                     resp.set_status(ResponseType::Changed);
+                }
+            }
+            (RequestType::Get, "multi-format") => {
+                let accept = request
+                    .message
+                    .get_option(CoapOption::Accept)
+                    .and_then(|v| v.front());
+                if accept.is_some_and(|v| v.as_slice() == [41]) {
+                    resp.set_status(ResponseType::Content);
+                    resp.message.payload = site::XML_BODY.to_vec();
+                    resp.message.add_option(CoapOption::ContentFormat, vec![41]);
+                } else {
+                    resp.set_status(ResponseType::Content);
+                    resp.message.payload = site::TEST_BODY.to_vec();
+                    resp.message.set_content_format(LiteCf::TextPlain);
+                }
+            }
+            (RequestType::Put, "create1") => {
+                resp.set_status(
+                    if request
+                        .message
+                        .get_option(CoapOption::IfNoneMatch)
+                        .is_some()
+                        && site::create_once(&request.message.payload)
+                    {
+                        ResponseType::Created
+                    } else {
+                        ResponseType::PreconditionFailed
+                    },
+                );
+            }
+            (RequestType::Get, "create1") => {
+                if let Some(body) = site::created_snapshot() {
+                    resp.set_status(ResponseType::Content);
+                    resp.message.payload = body;
+                    resp.message.set_content_format(LiteCf::TextPlain);
+                } else {
+                    resp.set_status(ResponseType::NotFound);
                 }
             }
             (RequestType::Get, "large") => {

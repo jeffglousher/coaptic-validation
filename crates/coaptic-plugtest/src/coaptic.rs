@@ -674,6 +674,8 @@ fn intern_path(path: &[String]) -> Result<&'static str, PeerError> {
         ["separate"] => "separate",
         ["query"] => "query",
         ["validate"] => "validate",
+        ["multi-format"] => "multi-format",
+        ["create1"] => "create1",
         ["seg1", "seg2", "seg3"] => "seg1/seg2/seg3",
         ["large"] => "large",
         ["large-update"] => "large-update",

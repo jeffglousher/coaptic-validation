@@ -144,10 +144,10 @@ pub fn skip_reason(id: &str) -> Option<&'static str> {
     }
     match id {
         "TD_COAP_DTLS_02" => Some(
-            "coverage gap #199: wrong-PSK record authentication is distinct from the prescribed decrypt_error alert",
+            "reviewed literal conflict #199: RFC6347 4.1.2.1 record authentication failure uses fatal bad_record_mac(20), not the YAML decrypt_error(51); PR87 proves refusal/recovery separately",
         ),
         "TD_COAP_DTLS_04" | "TD_COAP_DTLS_05" | "TD_COAP_DTLS_06" | "TD_COAP_DTLS_07" => Some(
-            "coverage gap #199: DTLS backend has no RFC 7250 raw public key; an X.509 run is a different test",
+            "unsupported role: RFC7250 raw public key is outside accepted direct-UDP/OSCORE scope; an X.509 run is a different test",
         ),
         _ if OBS.contains(&id)
             && !matches!(
