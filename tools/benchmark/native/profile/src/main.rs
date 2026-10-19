@@ -188,7 +188,7 @@ fn core_probe(bytes: usize, operations: usize) -> Result<(), Box<dyn std::error:
     }));
     begin();
     let bind_result = App::builder()
-        .allow_plaintext()
+        .allow_unprotected()
         .routes::<1>()
         .block_wise::<true>()
         .randomness(|buffer| getrandom::fill(buffer).is_ok())
@@ -448,7 +448,7 @@ fn socket_probe(
     };
     begin();
     let bind_result = App::builder()
-        .allow_plaintext()
+        .allow_unprotected()
         .routes::<1>()
         .block_wise::<true>()
         .randomness(|buffer| getrandom::fill(buffer).is_ok())

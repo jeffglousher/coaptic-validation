@@ -41,7 +41,7 @@ fn main() {
         let owned = coaptic::App::profile::<coaptic::profiles::Constrained>()
             .routes::<1>()
             .block_wise::<false>()
-            .allow_plaintext()
+            .allow_unprotected()
             .bind_with_entropy(Io, move |bytes| {
                 state = state.wrapping_add(1);
                 bytes.fill(state as u8);
@@ -52,7 +52,7 @@ fn main() {
         let borrowed = coaptic::App::profile::<coaptic::profiles::Constrained>()
             .routes::<1>()
             .block_wise::<false>()
-            .allow_plaintext()
+            .allow_unprotected()
             .bind_with_entropy(Io, |bytes| {
                 state = state.wrapping_add(1);
                 bytes.fill(state as u8);

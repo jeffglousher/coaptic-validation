@@ -147,7 +147,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let builder = if let Some(context) = context {
         builder.oscore(context)
     } else {
-        builder.allow_plaintext()
+        builder.allow_unprotected()
     };
     let capacity = size.div_ceil(1024) * 1024;
     let capacities = Capacities {
@@ -163,7 +163,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // GET has no request body; response length does not size TX storage.
         tx_body_bytes: Some(1024),
     };
-    let heap_limit = AllocMemory::required_heap_bytes(capacities)?;
+    let heap_limit = AllocMemory::<coaptic::message::Token>::required_heap_bytes(capacities)?;
     let storage = AllocMemory::try_new(capacities, heap_limit)?;
     let mut client = builder.bind_storage(
         CountIo {

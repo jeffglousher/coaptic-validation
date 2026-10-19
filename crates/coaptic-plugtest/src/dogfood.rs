@@ -1672,7 +1672,7 @@ fn run_coaptic_client(
     let mut app = App::profile::<profiles::Default>()
         .randomness(|bytes| getrandom::fill(bytes).is_ok())
         .block_wise::<true>()
-        .allow_plaintext()
+        .allow_unprotected()
         .bind(sock)
         .map_err(|e| format!("bind: {e}"))?;
     app.reset_metrics();
@@ -1835,7 +1835,7 @@ fn run_coaptic_observe_notify(
     let mut app = App::profile::<profiles::Default>()
         .randomness(|bytes| getrandom::fill(bytes).is_ok())
         .block_wise::<true>()
-        .allow_plaintext()
+        .allow_unprotected()
         .bind(sock)
         .map_err(|e| format!("bind: {e}"))?;
     app.reset_metrics();
@@ -2204,7 +2204,7 @@ fn oscore_plain_get(dest: SocketAddr, timeout: Duration) -> Result<Code, PeerErr
     let mut app = App::profile::<profiles::Default>()
         .randomness(|bytes| getrandom::fill(bytes).is_ok())
         .block_wise::<true>()
-        .allow_plaintext()
+        .allow_unprotected()
         .bind(sock)
         .map_err(|e| format!("bind plain GET: {e}"))?;
     let origin = Instant::now();

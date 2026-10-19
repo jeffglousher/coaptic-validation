@@ -98,7 +98,7 @@ fn exchange(
         .block_wise::<false>()
         .randomness(random);
     let mut client = if matches!(mode, Mode::Plain) {
-        builder.allow_plaintext().bind(client_io).unwrap()
+        builder.allow_unprotected().bind(client_io).unwrap()
     } else {
         builder
             .oscore(context)

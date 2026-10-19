@@ -95,7 +95,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("large", get(large).put(upload))
         .route("observe", get(observe));
     let builder = if plaintext {
-        builder.allow_plaintext()
+        builder.allow_unprotected()
     } else {
         builder.oscore(context)
     };
