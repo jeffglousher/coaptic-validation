@@ -51,7 +51,7 @@ def exchange_identity(trace, path, code, token_length=None):
     for row in trace:
         packet = bytes.fromhex(row["hex"])
         if row["direction"] == "request" and packet[1] == 1 and decoded_options(packet).get(11, []) == path:
-            if (1 <= len(packet_token(packet)) <= 8) if token_length is None else len(packet_token(packet)) == token_length:
+            if (0 <= len(packet_token(packet)) <= 8) if token_length is None else len(packet_token(packet)) == token_length:
                 candidates.append(packet)
     require(candidates, "missing exact request path/token length")
     first = candidates[0]

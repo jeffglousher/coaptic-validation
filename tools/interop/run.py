@@ -292,10 +292,6 @@ class Proxy:
         self.front = socket.socket(address_family, socket.SOCK_DGRAM)
         self.back = socket.socket(address_family, socket.SOCK_DGRAM)
         for endpoint in (self.front, self.back):
-            # This finite application profile grades datagrams, not ICMP from a
-            # client that has already completed and closed its UDP endpoint.
-            if mode == "profiles" and hasattr(socket, "SIO_UDP_CONNRESET"):
-                endpoint.ioctl(socket.SIO_UDP_CONNRESET, False)
             if family == "ipv6":
                 endpoint.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
             endpoint.bind((address, 0))
@@ -324,7 +320,7 @@ class Proxy:
                     except ConnectionResetError:
                         # Windows reports late ICMP port-unreachable when a
                         # one-shot client exits after the first duplicate reply.
-                        if self.mode in ("duplicate-request", "dtls-reconnect", "drop-qblock2", "drop-qblock2-permanent", "drop-qblock2-once", "reorder-qblock2") and sock is self.front:
+                        if self.mode in ("profiles", "duplicate-request", "dtls-reconnect", "drop-qblock2", "drop-qblock2-permanent", "drop-qblock2-once", "reorder-qblock2") and sock is self.front:
                             continue
                         raise
                     incoming = sock is self.front

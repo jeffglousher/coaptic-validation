@@ -558,6 +558,7 @@ fn fixture(
 ) -> Result<App<PeerProfile, Io, 12, true>, Error> {
     let app = App::profile::<PeerProfile>()
         .token_length(token_length)
+        .full_responses()
         .randomness(|bytes| getrandom::fill(bytes).is_ok())
         .block_wise::<true>()
         .routes::<12>()
