@@ -2,6 +2,7 @@
 #![no_main]
 use aya_ebpf::{
     bindings::xdp_action,
+    helpers::bpf_xdp_load_bytes,
     macros::{map, xdp},
     maps::PerCpuArray,
     programs::XdpContext,
@@ -24,12 +25,21 @@ pub fn coaptic_observe(ctx: XdpContext) -> u32 {
     let start = ctx.data();
     let end = ctx.data_end();
     count(TOTAL);
-    let class = if end < start || end - start > MAX_FRAME {
+    let class = if end < start || end - start < 14 || end - start > MAX_FRAME {
         Class::Uninspected
     } else {
-        // Bounds cover the complete linear packet; no packet copy or write.
-        let frame = unsafe { core::slice::from_raw_parts(start as *const u8, end - start) };
-        classify(frame)
+        let len = end - start;
+        // LLVM's scalar slice checks do not establish verifier packet ranges.
+        // One bounded stack copy lets the unchanged shared decoder read ordinary
+        // memory. This scratch is per invocation; no map or packet is modified.
+        let mut frame = [0u8; MAX_FRAME];
+        let loaded =
+            unsafe { bpf_xdp_load_bytes(ctx.ctx, 0, frame.as_mut_ptr().cast(), len as u32) };
+        if loaded == 0 {
+            classify(&frame[..len])
+        } else {
+            Class::Uninspected
+        }
     };
     count(class as u32);
     xdp_action::XDP_PASS

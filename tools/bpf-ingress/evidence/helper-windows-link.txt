@@ -1,0 +1,8 @@
+Patched Windows emitted-object check
+Companion141769e; core1ba5ebb6e78c1f5f8d21c30995ca4e4b6cfff21b (clean).
+Installed nightly2026-10-01 rustc1.101.0-nightly21b707e3f, LLVM23.1.1; official bpf-linker0.12.0 binarySHAa87f3d64096aac1eeac8be81ac44fd6bc1976ec76991fff319fe9958a1cda78b.
+Registered coaptic-core-reusable; offline/locked release, jobs2 incremental0 debug0, build-std=core. PASS31.06s. Two existing no-OSCORE unreachable-expression warnings.
+ELF64-bpf little-endian SHA256fe0fa0df652f8abed5a098391ae5f3ba0ecca0081c68fe2f99c4166cb25216ef.
+Disassembly: coaptic_observe lowest stack address r10-0x154 (340bytes);338byte scratch shares storage with temporally exclusive map lookup key. Only BPF-to-BPF call is memset (relocation at0x108); memset has no r10/local stack access. Uncalled memcpy/memmove likewise have no local stack. Entry xdp section2472bytes=309 eight-byte instruction slots; helper189 atinstruction38. These static measurements do not replace kernel verifier call-depth rounding/acceptance.
+Full disassembly, ELF, layout and first build log retained under C:/Users/jeffg/AppData/Local/CoapticQualification/bpf-run-39238844488.
+This source has not yet passed actual kernel verifier or finite differential/lifecycle probe. Copy latency unmeasured.

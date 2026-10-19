@@ -39,7 +39,11 @@ non-UDP traffic, other ports and incomplete linear packets remain uninspected.
 Ports 5683 source or destination qualify for syntax inspection. No reassembly.
 The complete linear frame must fit 338 bytes; UDP CoAP payload at most 256 bytes.
 This is a named inspection profile, not a network packet size limit. Everything
-outside the profile still passes. Datagram bytes are borrowed, not copied.
+outside the profile still passes. The BPF adapter uses one 338-byte invocation-local
+stack buffer and helper 189 (`bpf_xdp_load_bytes`) to copy exactly the bounded
+linear frame into memory the unchanged shared decoder can read. Helper failure
+counts as uninspected and still passes. No persistent buffer or map is added.
+The total emitted stack must remain within 512 bytes; copy cost is unmeasured.
 
 One PerCpuArray contains five u64 counters: uninspected, oversized CoAP,
 malformed CoAP, CoAP syntax, total. Value storage is 40 bytes per possible CPU,
