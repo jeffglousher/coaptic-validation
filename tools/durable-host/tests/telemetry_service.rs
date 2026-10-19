@@ -133,7 +133,9 @@ fn exchange(
     let mut output = [0; 56];
     let mut reply = None;
     let mut polls = 0;
-    let report = telemetry::run(
+    let diagnostics = coaptic_durable_host::diagnostics::Diagnostics::new(7);
+    let diagnostic_source = if matches!(mode, Mode::Drop) { 8 } else { 7 };
+    let report = telemetry::run_observed(
         server_io,
         random,
         || {
@@ -167,8 +169,25 @@ fn exchange(
         },
         server_store,
         journal,
+        || true,
+        &diagnostics,
+        diagnostic_source,
     )
     .unwrap();
+    let diagnostic_report = diagnostics.report().unwrap();
+    if diagnostic_source == 7 {
+        assert_eq!(report.diagnostic_failures, 0);
+        assert_eq!(
+            diagnostic_report.recorder.samples(),
+            u64::from(report.polls)
+        );
+    } else {
+        // A diagnostic source mismatch cannot change durable receipt behavior.
+        assert_eq!(report.diagnostic_failures, report.polls);
+        assert_eq!(diagnostic_report.recorder.samples(), 0);
+    }
+    let mut export = [0; 2048];
+    diagnostic_report.encode(&mut export).unwrap();
     (report, reply)
 }
 #[test]

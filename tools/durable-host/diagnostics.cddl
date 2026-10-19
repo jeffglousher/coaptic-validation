@@ -1,0 +1,31 @@
+; Fixed host export. All IDs are local configuration; no peer/user labels.
+diagnostics = [
+  version: 1,
+  source: uint .le 4294967295,
+  reasons: [capacity:uint, backoff:uint, protocol:uint, security:uint,
+    deadline:uint, cancelled:uint, transport:uint, delivery-uncertain:uint,
+    local-state:uint, progress-required:uint, unsupported:uint, identity:uint],
+  samples: uint,
+  latest: snapshot / null,
+  sampled-maxima: usage / null
+]
+snapshot = [at-ms:uint, counters:metrics, resources:usage,
+  next-timeout-ms:uint / null, next-poll-ms:uint / null]
+pool = [occupied:uint, capacity:uint]
+usage = [
+  rx-datagram:pool, tx-datagram:pool, dedup:pool, observe:pool,
+  rx-body:pool / null, tx-body:pool / null,
+  ordinary-tx-capacity:uint, full-response-capacity:uint,
+  routes:pool, client-requests:pool, client-cooldowns:uint,
+  client-replies:pool, completed-replies:uint, deferred:pool,
+  security:pool / null, revoked-associations:uint
+]
+metrics = [
+  token-capacity-refused:uint, admission-rx-refused:uint, admission-tx-refused:uint,
+  admission-refusal-sent:uint, admission-refusal-unsent:uint,
+  hard-rx-exhausted:uint, hard-tx-exhausted:uint, rx-accepted:uint, rx-error:uint,
+  tx-ok:uint, tx-fail:uint, con-retransmit:uint, give-up:uint, observe-notify:uint,
+  observe-register:uint, observe-cancel:uint, block1-assemble:uint, block2-assemble:uint,
+  progress:uint, saturated:uint, nstart-reject:uint, empty-ack:uint, empty-rst:uint
+]
+

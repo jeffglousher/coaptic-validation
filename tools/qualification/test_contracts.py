@@ -31,8 +31,11 @@ class ContractEvidenceTests(unittest.TestCase):
         names = {name for row in manifest["requirements"] for name in row["tests"]}
         for identity, current, old in (
             ("deferred-observe-initial-block2",
-             "deferred_observe_block2_nonzero_and_q_requests_stay_refused_then_recover",
-             "deferred_observe_block2_explicit_block_requests_stay_refused_then_recover"),
+             "nonzero_initial_observe_registers_whole_resource_direct_and_deferred",
+             "deferred_observe_block2_nonzero_and_q_requests_stay_refused_then_recover"),
+            ("deferred-observe-registration",
+             "deferred_observe_capacity_fallback_and_unavailable_source_recover",
+             "deferred_observe_capacity_fallback_and_unsupported_registration_recover"),
             ("deferred-observe-registration",
              "deferred_observe_large_initial_without_etag_refuses_available_body_storage",
              "deferred_observe_large_initial_never_uses_available_block_body_storage"),
