@@ -2,7 +2,7 @@
 ; The final digest detects accidental corruption; it does not resist physical rollback.
 device-pairing-custody = [
   version: 1, kid: 0..255, private_scalar: bstr .size 32,
-  public_pairing: bstr, endpoint: (bstr .size 6 / null), integrity: bstr .size 32
+  public_pairing: bstr .size (1..251), endpoint: (bstr .size 6 / null), integrity: bstr .size 32
 ]
 ; public_pairing is the library pairing-record CBOR.
 ; endpoint is IPv4(4) || port-big-endian(2), or null before first pairing.

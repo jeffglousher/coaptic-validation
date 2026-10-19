@@ -24,7 +24,7 @@ pub use async_service::{ConsoleWait, run_async};
 
 use zeroize::Zeroizing;
 
-pub const STORE_BYTES: usize = 320;
+pub const STORE_BYTES: usize = 332;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -135,6 +135,37 @@ fn prepare_pending(
                 .rebind(binding, identity.peer().principal())
                 .map_err(|_| Error::Storage)?;
         }
+    }
+    Ok(())
+}
+
+// Recovery cannot abandon a durable effect, including when the destination
+// selects read-only access. Missing storage for an approved telemetry grant is
+// ambiguous, not proof that no operation exists.
+fn recovery_ready(
+    store: &mut impl Store,
+    private: &[u8; 32],
+    identity: &Identity,
+    old: &PairingRecord,
+) -> Result<(), Error> {
+    if store.pending_read()?.is_none() {
+        return if old
+            .policy()
+            .is_some_and(|policy| *policy.resource_policy() == permissions(true))
+        {
+            Err(Error::Storage)
+        } else {
+            Ok(())
+        };
+    }
+    let pending = crate::pending_telemetry::Pending::recover_bound(
+        PendingStore(store),
+        pending_binding(private, old),
+        identity.peer().principal(),
+    )
+    .map_err(|_| Error::Storage)?;
+    if pending.pending().map_err(|_| Error::Storage)?.is_some() {
+        return Err(Error::Storage);
     }
     Ok(())
 }
@@ -297,9 +328,17 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
                         send(&mut console, &CommissioningReply::Refused(2))?;
                         continue;
                     };
+                    let next_endpoint = if update.is_recovery_configuration() {
+                        device.endpoint
+                    } else {
+                        Some(endpoint)
+                    };
                     let mut next = Zeroizing::new([0; STORE_BYTES]);
                     let mut next_len = 0;
                     let result = update.apply(&mut device.pairing, now, |old, record| {
+                        if update.is_recovery() {
+                            recovery_ready(&mut store, &device.private, &device.identity, old)?;
+                        }
                         prepare_pending(
                             &mut store,
                             &device.private,
@@ -311,7 +350,7 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
                             &device.private,
                             device.identity.peer().kid(),
                             record,
-                            Some(endpoint),
+                            next_endpoint,
                             &mut next,
                         )?;
                         store.commit(&device.stored[..device.stored_len], &next[..next_len])
@@ -320,7 +359,7 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
                         Ok(()) => {
                             device.stored = next;
                             device.stored_len = next_len;
-                            device.endpoint = Some(endpoint);
+                            device.endpoint = next_endpoint;
                             network_stopped = false;
                             send(
                                 &mut console,
@@ -803,7 +842,7 @@ fn encode_store(
     endpoint: Option<Endpoint>,
     output: &mut [u8; STORE_BYTES],
 ) -> Result<usize, Error> {
-    let mut public = [0; 224];
+    let mut public = [0; PairingRecord::MAX_ENCODED_LEN];
     let length = record.encode(&mut public).map_err(|_| Error::Storage)?;
     let mut pos = 0;
     put(output, &mut pos, &[0x86, 1])?;
@@ -858,7 +897,7 @@ fn decode_store(input: &[u8]) -> Result<Stored, Error> {
     let private = Zeroizing::new(cursor.take(32)?.try_into().map_err(|_| Error::Storage)?);
     cursor.exact(&[0x58])?;
     let len = usize::from(cursor.take(1)?[0]);
-    if !(24..=224).contains(&len) {
+    if !(24..=PairingRecord::MAX_ENCODED_LEN).contains(&len) {
         return Err(Error::Storage);
     }
     let record = PairingRecord::decode(cursor.take(len)?).map_err(|_| Error::Storage)?;
@@ -983,6 +1022,7 @@ mod tests {
         prepare_sample(&mut pending, &mut wire, 42, random).unwrap();
         let original = wire;
         drop(pending);
+        assert!(recovery_ready(&mut store, &device.private, &device.identity, &grant).is_err());
         let mut pending = recover_pending(&device, &mut store, true).unwrap();
         prepare_sample(&mut pending, &mut wire, 999, random).unwrap();
         assert_eq!(wire, original);
@@ -993,7 +1033,9 @@ mod tests {
                 .unwrap();
         assert!(accept_sample(&mut pending, Code::CHANGED, &receipt.encode(), &[]).unwrap());
         drop(pending);
+        assert!(recovery_ready(&mut store, &device.private, &device.identity, &grant).is_ok());
         store.pending = None;
+        assert!(recovery_ready(&mut store, &device.private, &device.identity, &grant).is_err());
         assert!(recover_pending(&device, &mut store, true).is_err());
         assert!(
             prepare_pending(
@@ -1100,6 +1142,9 @@ mod tests {
         Pair,
         Inspect,
         Revoke,
+        Backup,
+        Recover,
+        RecoverReadOnly,
     }
     struct Usb {
         plan: Plan,
@@ -1156,23 +1201,44 @@ mod tests {
                 }
                 CommissioningReply::Challenge(challenge) => {
                     let revoke = matches!(self.plan, Plan::Revoke);
-                    let policy = if revoke {
+                    let recovering = matches!(self.plan, Plan::Recover | Plan::RecoverReadOnly);
+                    let policy = if revoke || matches!(self.plan, Plan::Backup) {
                         self.prior.clone().unwrap()
                     } else {
                         coaptic::provisioning::EnrollmentPolicy::new(
                             self.peer.clone(),
-                            [7; 32],
-                            permissions(true),
+                            [if recovering { 9 } else { 7 }; 32],
+                            permissions(!matches!(self.plan, Plan::RecoverReadOnly)),
                         )
                         .unwrap()
                     };
-                    self.enqueue(CommissioningRequest::Update {
-                        update: coaptic::provisioning::PairingUpdate::new(
+                    let update = if matches!(self.plan, Plan::Backup) {
+                        coaptic::provisioning::PairingUpdate::set_recovery(
                             challenge.clone(),
                             policy,
-                            revoke,
+                            Some([8; 32]),
+                        )
+                        .unwrap()
+                    } else if recovering {
+                        coaptic::provisioning::PairingUpdate::recover(
+                            challenge.clone(),
+                            [8; 32],
+                            policy,
+                        )
+                        .unwrap()
+                    } else {
+                        coaptic::provisioning::PairingUpdate::new(challenge.clone(), policy, revoke)
+                    };
+                    self.enqueue(CommissioningRequest::Update {
+                        update,
+                        endpoint: Endpoint::v4(
+                            [127, 0, 0, 1],
+                            if matches!(self.plan, Plan::Backup) {
+                                9999
+                            } else {
+                                5683
+                            },
                         ),
-                        endpoint: Endpoint::v4([127, 0, 0, 1], 5683),
                     });
                 }
                 _ => {}
@@ -1200,7 +1266,11 @@ mod tests {
         malformed: bool,
     ) -> (Result<(), Error>, Vec<CommissioningReply>) {
         let replies = Rc::new(RefCell::new(Vec::new()));
-        let peer = Identity::from_private_key([2; 32], 2).unwrap().peer();
+        let peer = if matches!(plan, Plan::Recover | Plan::RecoverReadOnly) {
+            Identity::from_private_key([3; 32], 3).unwrap().peer()
+        } else {
+            Identity::from_private_key([2; 32], 2).unwrap().peer()
+        };
         let mut console = Usb {
             plan,
             incoming: VecDeque::new(),
@@ -1234,6 +1304,93 @@ mod tests {
         );
         let output = replies.borrow().clone();
         (result, output)
+    }
+
+    #[test]
+    fn usb_recovery_preserves_identity_and_endpoint_then_clears_backup_after_restart() {
+        let memory = Rc::new(RefCell::new(Memory::default()));
+        assert_eq!(campaign(memory.clone(), Plan::Pair).0, Ok(()));
+        let original = Device::recover(&mut Shared(memory.clone()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(campaign(memory.clone(), Plan::Backup).0, Ok(()));
+        let backup = Device::recover(&mut Shared(memory.clone()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(backup.endpoint, original.endpoint);
+        assert_eq!(backup.pairing.checkpoint().recovery_owner(), Some(&[8; 32]));
+        let (result, replies) = campaign(memory.clone(), Plan::Recover);
+        assert_eq!(result, Ok(()));
+        assert!(replies.iter().any(|reply| matches!(reply,CommissioningReply::Committed(record) if record.recovery_owner().is_none())));
+        let recovered = Device::recover(&mut Shared(memory.clone()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            recovered.identity.peer().principal(),
+            original.identity.peer().principal()
+        );
+        assert_eq!(
+            recovered.pairing.checkpoint().store(),
+            original.pairing.checkpoint().store()
+        );
+        assert_eq!(
+            recovered.pairing.checkpoint().policy().unwrap().owner(),
+            &[9; 32]
+        );
+        assert!(
+            !recovered.pairing.permits(
+                &Identity::from_private_key([2; 32], 2)
+                    .unwrap()
+                    .peer()
+                    .principal()
+            )
+        );
+        assert!(
+            recovered.pairing.permits(
+                &Identity::from_private_key([3; 32], 3)
+                    .unwrap()
+                    .peer()
+                    .principal()
+            )
+        );
+        assert!(recover_pending(&recovered, &mut Shared(memory.clone()), true).is_ok());
+        let before = memory.borrow().bytes.clone();
+        let (_, replies) = campaign(memory.clone(), Plan::Recover);
+        assert!(
+            replies
+                .iter()
+                .any(|reply| matches!(reply, CommissioningReply::Refused(3)))
+        );
+        assert_eq!(memory.borrow().bytes, before);
+    }
+
+    #[test]
+    fn usb_read_only_recovery_cannot_abandon_an_unresolved_effect() {
+        let memory = Rc::new(RefCell::new(Memory::default()));
+        assert_eq!(campaign(memory.clone(), Plan::Pair).0, Ok(()));
+        assert_eq!(campaign(memory.clone(), Plan::Backup).0, Ok(()));
+        let device = Device::recover(&mut Shared(memory.clone()))
+            .unwrap()
+            .unwrap();
+        let mut store = Shared(memory.clone());
+        let mut pending = recover_pending(&device, &mut store, true).unwrap();
+        prepare_sample(&mut pending, &mut [0; 61], 42, random).unwrap();
+        drop(pending);
+        let before = memory.borrow().bytes.clone();
+        let retained = memory.borrow().pending;
+        let (result, replies) = campaign(memory.clone(), Plan::RecoverReadOnly);
+        assert_eq!(result, Err(Error::Storage));
+        assert!(
+            replies
+                .iter()
+                .any(|reply| matches!(reply, CommissioningReply::Refused(4)))
+        );
+        assert_eq!(memory.borrow().bytes, before);
+        assert_eq!(memory.borrow().pending, retained);
+        let device = Device::recover(&mut Shared(memory.clone()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(device.pairing.checkpoint().recovery_owner(), Some(&[8; 32]));
     }
 
     #[test]
