@@ -159,10 +159,11 @@ def native_capacity_refusal(client, server):
         return {"native_send": evidence, "trace": relay.trace, "fresh": fresh, "refused_length": 64}
 
 
-def observation(client, server, initial=0, valid=False, qblock=False, selected=None):
+def observation(client, server, initial=0, valid=False, qblock=False, selected=None, client_kind=None, server_kind=None):
     require(selected in (None, "query", "fetch"), "unknown selected profile")
     require(not (qblock and selected), "fixture profiles are separate")
     path = "obs-q" if qblock else "obs-selected" if selected else "obs-large"
+    requested_q_szx = 6 if client_kind == "coaptic" else 1
     body_size = 704 if qblock else 96
     blocks = body_size // 32
     block_option = 31 if qblock else 23
@@ -194,7 +195,7 @@ def observation(client, server, initial=0, valid=False, qblock=False, selected=N
             time.sleep(.01)
         raise AssertionError(f"epoch {epoch} did not finish")
 
-    with Server(server, "udp") as service:
+    with Server(server, "udp", path="obs-q" if qblock else "test") as service:
         with Proxy(service.number, "profiles") as relay:
             ACTIVE_CAPTURES.append(relay.trace)
             flags = ["observe", f"block2:{initial}"]
@@ -203,6 +204,7 @@ def observation(client, server, initial=0, valid=False, qblock=False, selected=N
             if valid:
                 flags.append("initial-valid")
             proc = subprocess.Popen(command(client, "client", "udp", relay.number, path=path, method=method, payload=selection_payload, timeout=15000) + flags, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            recorded = False
             try:
                 for epoch in (0, 1):
                     wait_epoch(relay, epoch)
@@ -210,9 +212,11 @@ def observation(client, server, initial=0, valid=False, qblock=False, selected=N
                 output, error = proc.communicate(timeout=20)
                 ACTIVE_COMMANDS.append({"argv": list(map(str, proc.args)), "exit_code": proc.returncode,
                                         "stdout": output.decode(errors="replace"), "stderr": error.decode(errors="replace")})
+                recorded = True
             finally:
                 if proc.poll() is None:
                     proc.kill()
+                if not recorded:
                     output, error = proc.communicate()
                     ACTIVE_COMMANDS.append({"argv": list(map(str, proc.args)), "exit_code": proc.returncode,
                                             "stdout": output.decode(errors="replace"), "stderr": error.decode(errors="replace")})
@@ -224,7 +228,9 @@ def observation(client, server, initial=0, valid=False, qblock=False, selected=N
         trace = relay.trace
         first, replies = exchange_identity(trace, [path.encode()], 67 if valid else 69, method_code=method_code)
         require(decoded_options(first).get(6) == [b""], "registration omitted Observe")
-        require(decoded_options(first).get(block_option) == [bytes([9 if qblock else (initial << 4) | 1])], "wrong initial block selector")
+        require(decoded_options(first).get(block_option) == [bytes([8 | requested_q_szx if qblock else (initial << 4) | 1])], "wrong initial block selector")
+        if qblock:
+            require(23 not in decoded_options(first), "Q registration also carried classic Block2")
         if selected == "query":
             require(decoded_options(first).get(15) == [b"pick=left"] and not coap_payload(first), "GET selection changed")
         elif selected == "fetch":
@@ -276,10 +282,12 @@ def observation(client, server, initial=0, valid=False, qblock=False, selected=N
         if qblock:
             require(b"q_max_payloads=10" in server_diagnostics, "missing configured server Q window receipt")
         detail = {"result": result, "trace": trace, "fresh": fresh, "initial_block": initial, "initial_valid": valid, "qblock": qblock, "selection": selected, "body_bytes": body_size, "block_count": blocks, "server_ready": service.ready, "server_stderr": server_diagnostics.decode(errors="replace")}
+    if qblock:
+        detail.update(requested_szx=requested_q_szx, negotiated_szx=1, max_payloads=10)
     if selected or qblock:
         from observe_controls import selected_lifecycle, q_recovery_lifecycle
-        with Server(server, "udp") as control_service:
-            detail["independent_control"] = selected_lifecycle(control_service.number, selected, ACTIVE_CAPTURES) if selected else q_recovery_lifecycle(control_service.number, ACTIVE_CAPTURES)
+        with Server(server, "udp", path="obs-q" if qblock else "test") as control_service:
+            detail["independent_control"] = selected_lifecycle(control_service.number, selected, ACTIVE_CAPTURES, strict_refusal=server_kind == "coaptic") if selected else q_recovery_lifecycle(control_service.number, ACTIVE_CAPTURES)
     return detail
 
 
@@ -305,9 +313,9 @@ def main():
             (f"uri:{left}->{right}", lambda c=client,s=server: ordinary(c,s,"escaped",body=b"uri-identity")),
             (f"token32:{left}->{right}", lambda c=client,s=server: ordinary(c,s,"test",["token:32"],body=b"core-test-payload",token_length=32)),
             (f"observe-large:{left}->{right}", lambda c=client,s=server: observation(c,s)),
-            (f"observe-selected-query:{left}->{right}", lambda c=client,s=server: observation(c,s,selected="query")),
-            (f"observe-selected-fetch:{left}->{right}", lambda c=client,s=server: observation(c,s,selected="fetch")),
-            (f"observe-con-q:{left}->{right}", lambda c=client,s=server: observation(c,s,qblock=True)),
+            (f"observe-selected-query:{left}->{right}", lambda c=client,s=server,r=right: observation(c,s,selected="query",server_kind=r)),
+            (f"observe-selected-fetch:{left}->{right}", lambda c=client,s=server,r=right: observation(c,s,selected="fetch",server_kind=r)),
+            (f"observe-con-q:{left}->{right}", lambda c=client,s=server,l=left,r=right: observation(c,s,qblock=True,client_kind=l,server_kind=r)),
             (f"observe-valid:{left}->{right}", lambda c=client,s=server: observation(c,s,valid=True)),
             (f"observe-nonzero:{left}->{right}", lambda c=client,s=server: observation(c,s,initial=1)),
         ])

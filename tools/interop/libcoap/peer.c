@@ -491,7 +491,7 @@ int main(int argc,char **argv) {
   if(*end || port<1 || port>65535){failure("invalid port");return 2;}
   long timeout=strtol(argv[7],&end,10);
   if(*end || timeout<100 || timeout>30000){failure("invalid timeout");return 2;}
-  if(strcmp(argv[5],"test") && strcmp(argv[5],"large") && strcmp(argv[5],"counter") && strcmp(argv[5],"missing") && strcmp(argv[5],"methods") && strcmp(argv[5],"upload") && strcmp(argv[5],"separate") && strcmp(argv[5],"patch") && strcmp(argv[5],".well-known/core") && strcmp(argv[5],"sensor") && strcmp(argv[5],"escaped") && strcmp(argv[5],"obs-large")){failure("unsupported path");return 2;}
+  if(strcmp(argv[5],"test") && strcmp(argv[5],"large") && strcmp(argv[5],"counter") && strcmp(argv[5],"missing") && strcmp(argv[5],"methods") && strcmp(argv[5],"upload") && strcmp(argv[5],"separate") && strcmp(argv[5],"patch") && strcmp(argv[5],".well-known/core") && strcmp(argv[5],"sensor") && strcmp(argv[5],"escaped") && strcmp(argv[5],"obs-large") && strcmp(argv[5],"obs-selected") && strcmp(argv[5],"obs-q")){failure("unsupported path");return 2;}
   const char *methods[] = {"GET", "POST", "PUT", "DELETE", "FETCH", "PATCH", "IPATCH"};
   unsigned method = 0;
   for(unsigned i = 0; i < 7; i++) if(!strcmp(argv[6], methods[i])) method = i + 1;
@@ -526,6 +526,14 @@ int main(int argc,char **argv) {
   /* A server with Q-Block answers Q-Block requests and still serves classic Block. */
   const int try_q_block=(server||q_block)&&coap_q_block_is_supported();
   coap_context_set_block_mode(ctx,COAP_BLOCK_USE_LIBCOAP|COAP_BLOCK_SINGLE_BODY|(try_q_block?COAP_BLOCK_TRY_Q_BLOCK:0));
+  /* Named fixture negotiation; other server profiles retain upstream defaults. */
+  if (server && !strcmp(argv[5], "obs-q") &&
+      !coap_context_set_max_block_size(ctx, 32)) {
+    failure("cannot configure obs-q block size");
+    coap_free_context(ctx);
+    coap_cleanup();
+    return 2;
+  }
   coap_address_t addr;coap_address_init(&addr);
   if(ipv6) {
     addr.addr.sin6.sin6_family=AF_INET6;

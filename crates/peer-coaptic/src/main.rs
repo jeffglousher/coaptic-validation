@@ -406,10 +406,6 @@ async fn run() -> Result<(), Error> {
     }
     if a.q_block2 {
         outgoing = outgoing.q_block2();
-        if a.path == "obs-q" {
-            outgoing = outgoing
-                .block2(coaptic::message::BlockValue::new(0, true, 1).expect("fixed Q selector"));
-        }
     }
     if a.q_block2_non {
         outgoing = outgoing.non();

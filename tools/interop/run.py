@@ -79,12 +79,12 @@ def decode(line):
 
 
 class Server:
-    def __init__(self, exe, transport, number=None, family="ipv4", echo=False, sequence=None, replay=None):
+    def __init__(self, exe, transport, number=None, family="ipv4", echo=False, sequence=None, replay=None, path="test"):
         self.number = number or port(family)
         self.stderr = tempfile.TemporaryFile()
         start = time.perf_counter_ns()
         self.proc = subprocess.Popen(
-            command(exe, "server", transport, self.number, family=family, echo=echo, sequence=sequence, replay=replay),
+            command(exe, "server", transport, self.number, family=family, echo=echo, sequence=sequence, replay=replay, path=path),
                                      stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                      stderr=self.stderr)
         events = queue.Queue(maxsize=1)
