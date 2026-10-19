@@ -181,6 +181,34 @@ def grade_fetch_continuation(wire):
             coap_payload(wire) == b"left", "FETCH continuation changed selection/format/URI")
 
 
+def grade_q_notification_epoch(packets, requests, token, body_size, blocks):
+    notifications = [wire for wire in packets if 6 in decoded_options(wire)]
+    require(notifications, "Q notification epoch absent")
+    sequence = decoded_options(notifications[0])[6]
+    nums = set()
+    for wire in packets:
+        options = decoded_options(wire)
+        require(packet_token(wire) == token, "Q epoch response owner changed")
+        require(options.get(28) == [body_size.to_bytes((body_size.bit_length()+7)//8, "big")],
+                "Q Size2 changed")
+        if 6 in options:
+            require((wire[0] >> 4) & 3 == 0 and options[6] == sequence, "Q notification changed CON/epoch")
+            require(b"\x60\x00" + wire[2:4] in requests, "Q notification lacks exact ACK")
+            nums.add(int.from_bytes(options[31][0], "big") >> 4)
+        else:
+            # A final native cancellation can return current block0 with the
+            # same ETag. It is solicited work, not an unsolicited notification.
+            owners = [sent for sent in requests if sent[1] == 1 and packet_token(sent) == token and
+                      decoded_options(sent).get(6) == [b"\x01"] and
+                      decoded_options(sent).get(11) == [b"obs-q"] and not decoded_options(sent).get(15) and not coap_payload(sent)]
+            require(len(options.get(31, [])) == 1 and int.from_bytes(options[31][0], "big") >> 4 == 0,
+                    "Q cancellation response changed block")
+            require(any((((sent[0] >> 4) & 3 == 1) and ((wire[0] >> 4) & 3 == 1)) or
+                        (((sent[0] >> 4) & 3 == 0) and ((wire[0] >> 4) & 3 == 2) and sent[2:4] == wire[2:4])
+                        for sent in owners), "unexplained non-Observe Q response")
+    require(nums == set(range(blocks)), "Q CON notification omitted blocks")
+
+
 def observation(client, server, initial=0, valid=False, qblock=False, selected=None, client_kind=None, server_kind=None):
     require(selected in (None, "query", "fetch"), "unknown selected profile")
     require(not (qblock and selected), "fixture profiles are separate")
@@ -296,9 +324,7 @@ def observation(client, server, initial=0, valid=False, qblock=False, selected=N
                 require(chunks.setdefault(num, payload) == payload, "inconsistent repeated block")
             require(set(chunks) == set(range(blocks)), "whole Observe representation missing blocks")
             if qblock and epoch > 0:
-                require(all((wire[0] >> 4) & 3 == 0 for wire in packets), "Q notification changed CON type")
-                require(all(any(control[1] == 0 and (control[0] >> 4) & 3 == 2 and control[2:4] == wire[2:4] for control in wire_requests) for wire in packets), "Q notification lacks exact ACK")
-                require(all(int.from_bytes(decoded_options(wire).get(28, [b" "])[0], "big") == body_size for wire in packets), "Q Size2 changed")
+                grade_q_notification_epoch(packets, wire_requests, packet_token(first), body_size, blocks)
             require(int.from_bytes(decoded_options(starts[0]).get(block_option, [b""])[0], "big") >> 4 == 0,
                     "Observe epoch did not start at block zero")
         require(all(complete_epoch(trace, epoch) for epoch in range(3)), "missing complete epoch")
