@@ -6,6 +6,10 @@ on:
         description: Exact 40-character Coaptic commit
         required: true
         type: string
+      full_qualification:
+        description: Run the full corpus, verifier metrics, lifecycle and refusal checks
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -52,24 +56,11 @@ jobs:
         with:
           toolchain: nightly-2026-10-13
           components: rust-src, llvm-tools
-      - name: Install bounded runner-only inspection tools and pinned linker
+      - name: Install runner-only network tool and pinned linker
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y linux-tools-generic iproute2 libcap2-bin
-          # Ubuntu's bpftool name is virtual; its common wrapper selects uname-r.
-          # Resolve the installed generic userspace binary without changing kernels.
-          tools_package="$(dpkg-query -W -f='${Depends}' linux-tools-generic)"
-          tools_package="${tools_package%% *}"
-          [[ "$tools_package" == linux-tools-*-generic ]]
-          mapfile -t tool_paths < <(dpkg-query -L "$tools_package" | grep '/bpftool$')
-          test "${#tool_paths[@]}" -eq 1
-          BPFTOOL="$(readlink -f "${tool_paths[0]}")"
-          test -x "$BPFTOOL"
-          mkdir "$RUNNER_TEMP/bpf-bin"
-          ln -s "$BPFTOOL" "$RUNNER_TEMP/bpf-bin/bpftool"
-          echo "$RUNNER_TEMP/bpf-bin" >> "$GITHUB_PATH"
-          export PATH="$RUNNER_TEMP/bpf-bin:$PATH"
+          sudo apt-get install --no-install-recommends -y iproute2
           mkdir "$RUNNER_TEMP/bpf-linker"
           curl --fail --location --retry 2 https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-x86_64-unknown-linux-musl.tar.zst -o "$RUNNER_TEMP/bpf-linker/archive.tar.zst"
           echo "6789717c8cb6a2a5d920f3b6bfac2bd7efc00f6228ecd149108a99699a75c679  $RUNNER_TEMP/bpf-linker/archive.tar.zst" | sha256sum --check
@@ -83,13 +74,33 @@ jobs:
             cargo -V
             "$RUNNER_TEMP/bpf-linker/bpf-linker" --version
             sha256sum "$RUNNER_TEMP/bpf-linker/archive.tar.zst" "$RUNNER_TEMP/bpf-linker/bpf-linker"
-            bpftool version
             ip -Version
-            printf 'bpftool_real_path=%s\n' "$BPFTOOL"
-            dpkg-query -W linux-tools-generic "$tools_package" linux-tools-common iproute2 libcap2-bin
-            sha256sum "$(command -v bpftool)" "$(command -v ip)"
-            sudo capsh --print
+            dpkg-query -W iproute2
+            sha256sum "$(command -v ip)"
           } > "$RUNNER_TEMP/bpf-evidence/tools.txt"
+      - name: Install full qualification inspection tools
+        if: inputs.full_qualification
+        run: |
+          set -euo pipefail
+          sudo apt-get install --no-install-recommends -y linux-tools-generic libcap2-bin
+          # Resolve Ubuntu's real generic binary without changing the running kernel.
+          tools_package="$(dpkg-query -W -f='${Depends}' linux-tools-generic)"
+          tools_package="${tools_package%% *}"
+          [[ "$tools_package" == linux-tools-*-generic ]]
+          mapfile -t tool_paths < <(dpkg-query -L "$tools_package" | grep '/bpftool$')
+          test "${#tool_paths[@]}" -eq 1
+          BPFTOOL="$(readlink -f "${tool_paths[0]}")"
+          test -x "$BPFTOOL"
+          mkdir "$RUNNER_TEMP/bpf-bin"
+          ln -s "$BPFTOOL" "$RUNNER_TEMP/bpf-bin/bpftool"
+          echo "$RUNNER_TEMP/bpf-bin" >> "$GITHUB_PATH"
+          {
+            "$BPFTOOL" version
+            printf 'bpftool_real_path=%s\n' "$BPFTOOL"
+            dpkg-query -W linux-tools-generic "$tools_package" linux-tools-common libcap2-bin
+            sha256sum "$BPFTOOL"
+            sudo capsh --print
+          } > "$RUNNER_TEMP/bpf-evidence/qualification-tools.txt"
           sudo "$BPFTOOL" feature probe kernel full > "$RUNNER_TEMP/bpf-evidence/kernel-features.txt" 2>&1
       - name: Build identical portable classifier, loader and BPF object
         run: |
@@ -103,7 +114,16 @@ jobs:
           LLVM="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin"
           "$LLVM/llvm-objdump" --section-headers --syms "$RUNNER_TEMP/bpf-evidence/ingress.elf" > "$RUNNER_TEMP/bpf-evidence/object-layout.txt"
           "$LLVM/llvm-objdump" -d "$RUNNER_TEMP/bpf-evidence/ingress.elf" > "$RUNNER_TEMP/bpf-evidence/object-disassembly.txt"
+      - name: Load and attach once with unmodified Aya
+        run: |
+          set -euo pipefail
+          ip -j link show > "$RUNNER_TEMP/bpf-evidence/smoke-before.json"
+          trap 'ip -j link show > "$RUNNER_TEMP/bpf-evidence/smoke-after.json"' EXIT
+          sudo "$RUNNER_TEMP/bpf-target/release/coaptic-ingress-loader" "$RUNNER_TEMP/bpf-evidence/ingress.elf" 1 1 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/kernel-smoke.log"
+          ip -j link show > "$RUNNER_TEMP/bpf-evidence/smoke-after.json"
+          cmp "$RUNNER_TEMP/bpf-evidence/smoke-before.json" "$RUNNER_TEMP/bpf-evidence/smoke-after.json"
       - name: Build qualification-only Aya verifier logger from verified original crate
+        if: inputs.full_qualification
         run: |
           set -euo pipefail
           qual="$RUNNER_TEMP/bpf-qualification"
@@ -133,6 +153,7 @@ jobs:
           CARGO_TARGET_DIR="$RUNNER_TEMP/bpf-target" cargo build --locked --offline --release --manifest-path "$qual/tools/bpf-ingress/loader/Cargo.toml" --config "$qual/patch.toml" 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/instrumented-loader-build.log"
           sha256sum "$RUNNER_TEMP/bpf-target/release/coaptic-ingress-loader" > "$RUNNER_TEMP/bpf-evidence/instrumented-loader.sha256"
       - name: Verifier log, actual XDP differential and owned-veth lifecycle
+        if: inputs.full_qualification
         run: |
           set -euo pipefail
           ip -j link show > "$RUNNER_TEMP/bpf-evidence/lifecycle-before.json"
@@ -144,6 +165,7 @@ jobs:
           ip -j link show > "$RUNNER_TEMP/bpf-evidence/lifecycle-after.json"
           cmp "$RUNNER_TEMP/bpf-evidence/lifecycle-before.json" "$RUNNER_TEMP/bpf-evidence/lifecycle-after.json"
       - name: Unsupported-capability refusal leaves no interfaces
+        if: inputs.full_qualification
         run: |
           set -euo pipefail
           # A root process with all capabilities dropped cannot bypass the
