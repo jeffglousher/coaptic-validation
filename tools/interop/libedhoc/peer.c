@@ -19,6 +19,8 @@ struct peer_policy {
     struct identity local;
     struct identity expected;
     unsigned int authenticated;
+    unsigned suite, ead, critical_stage;
+    unsigned ead_received[4], ead_after_success;
 };
 
 static void wipe(void *buffer, size_t length)
@@ -72,7 +74,7 @@ static int select_local(void *context, const struct edhoc_call_context *call,
                         struct edhoc_credential_selected *selected)
 {
     struct peer_policy *policy = context;
-    if (call->method != EDHOC_METHOD_3 || call->selected_cipher_suite != 2) return EDHOC_ERROR_CREDENTIALS_FAILURE;
+    if (call->method != EDHOC_METHOD_3 || call->selected_cipher_suite != (int32_t)policy->suite) return EDHOC_ERROR_CREDENTIALS_FAILURE;
     selected->asymmetric.label = EDHOC_COSE_HEADER_KID;
     selected->asymmetric.kid.identifier.value = &policy->local.kid;
     selected->asymmetric.kid.identifier.length = 1;
@@ -89,7 +91,7 @@ static int authenticate_peer(void *context, const struct edhoc_call_context *cal
                              struct edhoc_credential_trusted *trusted)
 {
     struct peer_policy *policy = context;
-    if (call->method != EDHOC_METHOD_3 || call->selected_cipher_suite != 2 ||
+    if (call->method != EDHOC_METHOD_3 || call->selected_cipher_suite != (int32_t)policy->suite ||
         received->label != EDHOC_COSE_HEADER_KID || received->kid.identifier.length != 1 ||
         received->kid.identifier.value[0] != policy->expected.kid) return EDHOC_ERROR_CREDENTIALS_FAILURE;
     trusted->asymmetric.credential.value = policy->expected.credential;
@@ -135,6 +137,8 @@ static size_t read_message(uint8_t bytes[MESSAGE_CAPACITY])
     return length / 2;
 }
 
+#include "profiles.h"
+
 static void export_result(struct edhoc_context *context, const struct peer_policy *policy)
 {
     uint8_t secret[16], salt[8], sender[1], recipient[1];
@@ -148,23 +152,39 @@ static void export_result(struct edhoc_context *context, const struct peer_polic
     printf("\",\"recipient_id\":\""); print_hex(recipient, recipient_length);
     printf("\",\"peer_credential\":\""); print_hex(policy->expected.credential, sizeof(policy->expected.credential));
     printf("\",\"local_credential\":\""); print_hex(policy->local.credential, sizeof(policy->local.credential));
-    printf("\",\"method\":3,\"suite\":2,\"message4\":true}\n");
+    printf("\",\"method\":3,\"suite\":%u,\"message4\":true,",policy->suite);
+    emit_export_vectors(context);
+    printf(",\"ead_received\":[%u,%u,%u,%u],\"ead_after_success\":%u}\n", policy->ead_received[0],policy->ead_received[1],policy->ead_received[2],policy->ead_received[3],policy->ead_after_success);
     fflush(stdout);
     wipe(secret, sizeof(secret)); wipe(salt, sizeof(salt));
 }
 
 int main(int argc, char **argv)
 {
+    if (argc > 1 && (!strcmp(argv[1], "error-compose") || !strcmp(argv[1], "error-process"))) return error_codec(argc, argv);
     if (argc < 2 ||
         (strcmp(argv[1], "initiator") != 0 && strcmp(argv[1], "responder") != 0)) {
         fprintf(stderr, "usage: libedhoc-peer initiator|responder [wrong-identity] [--cid 0..23]\n");
         return 2;
     }
     const int initiator = strcmp(argv[1], "initiator") == 0;
-    int wrong_identity = 0, cid_supplied = 0;
+    int wrong_identity = 0, cid_supplied = 0, unknown_kid = 0;
+    unsigned suite_id=2, ead=0, critical_stage=0;
     uint8_t cid = initiator ? 0 : 1;
     for (int index = 2; index < argc; index++) {
-        if (strcmp(argv[index], "wrong-identity") == 0 && !wrong_identity) {
+        if (strcmp(argv[index], "--suite") == 0 && index+1<argc) {
+            const char *value=argv[++index];
+            if (strcmp(value,"2") && strcmp(value,"3")) return 2;
+            suite_id=(unsigned)(value[0]-'0');
+        } else if (strcmp(argv[index], "--unknown-kid") == 0) {
+            unknown_kid=1;
+        } else if (strcmp(argv[index], "--ead") == 0) {
+            ead=1;
+        } else if (strcmp(argv[index], "--critical-stage") == 0 && index+1<argc) {
+            const char *value=argv[++index];
+            if (strlen(value)!=1 || value[0]<'1' || value[0]>'4') return 2;
+            critical_stage=(unsigned)(value[0]-'0');
+        } else if (strcmp(argv[index], "wrong-identity") == 0 && !wrong_identity) {
             wrong_identity = 1;
         } else if (strcmp(argv[index], "--cid") == 0 && !cid_supplied && index + 1 < argc) {
             char *end = NULL;
@@ -177,9 +197,10 @@ int main(int argc, char **argv)
             return 2;
         }
     }
-    struct peer_policy policy = {0};
+    if(critical_stage && !ead) return 2;
+    struct peer_policy policy = {.suite=suite_id,.ead=ead,.critical_stage=critical_stage};
     check("psa-init", psa_crypto_init());
-    identity_init(&policy.local, initiator ? 0 : 1, wrong_identity ? 3 : (initiator ? 1 : 2));
+    identity_init(&policy.local, unknown_kid ? 23 : (initiator ? 0 : 1), wrong_identity ? 3 : (initiator ? 1 : 2));
     identity_init(&policy.expected, initiator ? 1 : 0, initiator ? 2 : 1);
     check("expected-private-destroy", psa_destroy_key(policy.expected.private_key));
     policy.expected.private_key = PSA_KEY_ID_NULL;
@@ -187,19 +208,24 @@ int main(int argc, char **argv)
     if (context == NULL) fail("context-allocation", -1);
     check("context-init", edhoc_context_init(context));
     const enum edhoc_method method = EDHOC_METHOD_3;
-    const struct edhoc_cipher_suite *suite = edhoc_cipher_suite_get_params(EDHOC_CIPHER_SUITE_2);
-    const struct edhoc_crypto *crypto = edhoc_cipher_suite_get_crypto(EDHOC_CIPHER_SUITE_2);
-    if (suite == NULL || crypto == NULL) fail("suite-config", -1);
+    const struct edhoc_cipher_suite *reference_suite = edhoc_cipher_suite_get_params(EDHOC_CIPHER_SUITE_2);
+    reference_crypto = edhoc_cipher_suite_get_crypto(EDHOC_CIPHER_SUITE_2);
+    if (reference_suite == NULL || reference_crypto == NULL) fail("suite-config", -1);
+    struct edhoc_cipher_suite suite = *reference_suite;
+    struct edhoc_crypto crypto = *reference_crypto;
+    if(suite_id==3) { suite.value=3; suite.mac_length=16; suite.aead_tag_length=16; crypto.expand=profile_expand; }
     const struct edhoc_buffer connection_id = {.value = &cid, .length = 1};
     const struct edhoc_platform platform = {.zeroize = wipe};
     const struct edhoc_credentials credentials = {.select_local = select_local, .authenticate_peer = authenticate_peer};
     check("methods", edhoc_set_methods(context, &method, 1));
-    check("suites", edhoc_set_cipher_suites(context, suite, 1));
+    check("suites", edhoc_set_cipher_suites(context, &suite, 1));
     check("connection-id", edhoc_set_connection_id(context, &connection_id));
     check("user-context", edhoc_set_user_context(context, &policy));
-    check("bind-crypto", edhoc_bind_crypto(context, crypto));
+    check("bind-crypto", edhoc_bind_crypto(context, &crypto));
     check("bind-platform", edhoc_bind_platform(context, &platform));
     check("bind-credentials", edhoc_bind_credentials(context, &credentials));
+    const struct edhoc_ead callbacks = {.compose=compose_ead,.process=process_ead};
+    check("bind-ead",edhoc_bind_ead(context,&callbacks));
     uint8_t message[MESSAGE_CAPACITY] = {0};
     size_t length = 0;
     if (initiator) {

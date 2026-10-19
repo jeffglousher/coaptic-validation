@@ -1,0 +1,78 @@
+{
+  "scope": "Finite selected EDHOC interoperability; retained failures are not replaced by later passes.",
+  "records": [
+    {
+      "file": "profiles-first.json",
+      "original_path": "C:\\Users\\jeffg\\AppData\\Local\\CoapticQualification\\libedhoc-0363bd3\\profiles-first.json",
+      "original_sha256": "6d0f7638ee7646213723a10ae4eb7beccc0189602e5a77344ad60ff8b2494efb",
+      "retained_sha256": "f351f2c9a1c832437b88be4dc0c4796870d4b3be33744082e6b56bdecc66f403"
+    },
+    {
+      "file": "wire-errors-first.json",
+      "original_path": "C:\\Users\\jeffg\\AppData\\Local\\CoapticQualification\\libedhoc-0363bd3\\wire-errors-first.json",
+      "original_sha256": "5bdd77c6c7f02e5da735e3569409ea8e0489073a890cb95ebb5a9f0439874aed",
+      "retained_sha256": "abc9423bd7b3b280a1eed75e42f4af7095c3c049f567a498834eff5d9e13ab9e"
+    },
+    {
+      "file": "wire-error2-recovery.json",
+      "original_path": "C:\\Users\\jeffg\\AppData\\Local\\CoapticQualification\\libedhoc-0363bd3\\wire-error2-recovery.json",
+      "original_sha256": "214dae7bfffb6ecfaacee45c3fa2e12cc362d49a35f4ca83f87a52c505ec9767",
+      "retained_sha256": "ace6dbe467e9a0ccafd5686b5bb44742d7632a6dc3cb9e7a40930392b8696ae9"
+    },
+    {
+      "file": "20261019T104104.868706Z-native-build.json",
+      "original_path": "C:\\Users\\jeffg\\AppData\\Local\\CoapticQualification\\libedhoc-0363bd3\\build\\evidence\\20261019T104104.868706Z\\manifest.json",
+      "original_sha256": "a523a24856dbac7bcac119d6e08ed13eca1a9a97f0bac9a1f4c8b4373e57a4ec",
+      "retained_sha256": "db533f6cc60bb8bac4aaf0a425cf8677eb1eb4a96b6622cc8f129f52f1619439"
+    },
+    {
+      "file": "20261019T104213.552302Z-native-build.json",
+      "original_path": "C:\\Users\\jeffg\\AppData\\Local\\CoapticQualification\\libedhoc-0363bd3\\build\\evidence\\20261019T104213.552302Z\\manifest.json",
+      "original_sha256": "e94b4c3349faf1c6ed70fac53e6f7daac0002027a7583393c1fd525bd7483f97",
+      "retained_sha256": "c897f9c966c77d0e44785780c381c2f58f82b50477b9664c9858dbfdf30bda00"
+    },
+    {
+      "file": "20261019T104403.477179Z-native-build.json",
+      "original_path": "C:\\Users\\jeffg\\AppData\\Local\\CoapticQualification\\libedhoc-0363bd3\\build\\evidence\\20261019T104403.477179Z\\manifest.json",
+      "original_sha256": "a4e880dc69df6709883cae10d8bc86d760a8e8c510fabc39d99caf07fbd52ecd",
+      "retained_sha256": "fc4fe28e29a385782896c691f405b4383191ac9d735b6809306030be5fc4f402"
+    },
+    {
+      "file": "profiles-receipts.json",
+      "original_path": "C:\\Users\\jeffg\\AppData\\Local\\CoapticQualification\\libedhoc-0363bd3\\profiles-receipts.json",
+      "original_sha256": "0a241e69871e1eb71a282abda662cb7e7120e8bb49fb73cd9cfb9d0730494f48",
+      "retained_sha256": "8a69abf1bcfba6d6074597a7af0718edcfc4acc7e9fd585b20fbe0ecb325422a"
+    },
+    {
+      "file": "20261019T104557.231963Z-native-build.json",
+      "original_path": "C:\\Users\\jeffg\\AppData\\Local\\CoapticQualification\\libedhoc-0363bd3\\build\\evidence\\20261019T104557.231963Z\\manifest.json",
+      "original_sha256": "666387548394ec9b8799d43e44d428c6a9cc88b8d3c33a842059816b82d5ed18",
+      "retained_sha256": "1b6cc4e17c663f8393c496d6757efdd681faafaf76939735c3ac586c43615f76"
+    }
+  ],
+  "core_build": {
+    "commit": "0c14097",
+    "base": "6fa8e1b",
+    "commands": [
+      "cargo +1.99.0 build --example edhoc_peer --example edhoc_udp_peer --features std,edhoc"
+    ],
+    "result": "passed",
+    "dev_debug": 0,
+    "incremental": false,
+    "jobs": 2,
+    "target": "D:/coaptic-batch-interop-target",
+    "clippy": {
+      "source": "7dcbdef",
+      "command": "cargo +1.99.0 clippy --example edhoc_peer --example edhoc_udp_peer --features std,edhoc -- -D warnings",
+      "result": "passed",
+      "subsequent_change": "one fixture padding item removed to fit native three-item bound; rebuilt both peers"
+    }
+  },
+  "limits": [
+    "Suite3 uses a public custom backend descriptor plus PSA CCM16; not a built-in native suite.",
+    "Native EAD limit3; padding handled in same-tree tests, not these independent sessions.",
+    "Private labels32768..65535 only: native exporter cannot qualify the full Coaptic u64 label range.",
+    "Fresh recovery explicitly restarts both host peers; no device or transparent one-sided restart claim."
+  ],
+  "native_ead_receipt_correction": "Native ead_authenticated in original captures counted stages observed before final successful handshake; it did NOT prove MAC verification before callbacks. Renamed ead_after_success at471178e; eight successful configurations recaptured. Rust ead_authenticated checks actual verified Principal at callback time."
+}
