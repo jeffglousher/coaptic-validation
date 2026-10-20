@@ -55,6 +55,10 @@ def validate_security(config):
     if "telemetry" in config:
         if "oscore" not in config or config["oscore"]["provision_only"]:
             raise cv.Invalid("telemetry requires existing protected OSCORE state")
+    if "read_campaign" in config:
+        if ("oscore" not in config or config["oscore"]["provision_only"] or
+                "telemetry" in config or config["async_network"]):
+            raise cv.Invalid("read_campaign requires existing protected OSCORE state, synchronous driving and no telemetry")
     if "legacy_custody_permit" in config and "pairing" not in config:
         raise cv.Invalid("legacy custody migration requires privileged pairing and reviewed provenance")
     return config
@@ -74,6 +78,15 @@ def bounded_payload(value):
     value = cv.string(value)
     if len(value) > 2048 or len(value) % 2 or not re.fullmatch(r"[0-9a-f]*", value):
         raise cv.Invalid("telemetry payload must be 0..1024 bytes of lowercase hexadecimal")
+    return value
+
+
+def private_peer_address(value):
+    value = peer_address(value)
+    address = ipaddress.IPv4Address(value)
+    if not any(address in ipaddress.IPv4Network(network)
+               for network in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")):
+        raise cv.Invalid("read_campaign requires an explicit private IPv4 host")
     return value
 
 
@@ -139,6 +152,11 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional("provision_only", default=False): cv.boolean,
         }),
         cv.Optional("port", default=5683): cv.int_range(min=1, max=65535),
+        cv.Optional("read_campaign"): cv.Schema({
+            cv.Required("peer_address"): private_peer_address,
+            cv.Optional("peer_port", default=5683): cv.int_range(min=1, max=65535),
+            cv.Optional("start_delay_ms", default=30000): cv.int_range(min=0, max=120000),
+        }),
         cv.Optional("telemetry"): cv.Schema({
             cv.Required("principal_public_key"): fixed_hex(33),
             cv.Required("principal_kid"): cv.int_range(min=0, max=255),
@@ -209,6 +227,10 @@ async def to_code(config):
                                       telemetry["peer_port"], telemetry["timeout_ms"],
                                       pending.get("operation_id", ""), pending.get("content_format", -1),
                                       pending.get("payload_hex", "")))
+    if "read_campaign" in config:
+        campaign = config["read_campaign"]
+        cg.add(component.set_read_campaign(int(ipaddress.IPv4Address(campaign["peer_address"])),
+                                          campaign["peer_port"], campaign["start_delay_ms"]))
     if config["rust_runtime"] == "external":
         return
     if config["rust_runtime"] == "bundled":

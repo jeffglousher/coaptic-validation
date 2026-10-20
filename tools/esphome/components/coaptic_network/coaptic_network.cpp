@@ -121,6 +121,9 @@ void CoapticNetwork::trace_dump_() {
 
 void CoapticNetwork::loop() {
   if (!started_) {
+    // Reuse the mutually exclusive telemetry timer field. A selected finite
+    // boot delay lets the external recorder and authenticated host be ready.
+    if (security_mode_ == 6 && millis() < telemetry_timeout_) return;
     if (security_mode_ != 5 && !network::is_connected() && !wifi::global_wifi_component->is_ap_active())
       return;
     started_ = true;
@@ -188,6 +191,8 @@ void CoapticNetwork::loop() {
       ESP_LOGI(TAG, "COAPTIC_PENDING_PROVISIONED run_id=%s; no network service", run_id_.c_str());
     } else if (security_mode_ == 3 && result_.load() == 1) {
       ESP_LOGI(TAG, "COAPTIC_TELEMETRY_COMPLETE run_id=%s", run_id_.c_str());
+    } else if (security_mode_ == 6 && result_.load() == 1) {
+      ESP_LOGI(TAG, "COAPTIC_READ_CAMPAIGN_COMPLETE run_id=%s", run_id_.c_str());
     } else {
       ESP_LOGE(TAG, "COAPTIC_NETWORK_STOPPED result=%lu", static_cast<unsigned long>(result_.load()));
       mark_failed();
@@ -402,6 +407,40 @@ uint64_t CoapticNetwork::clock() {
   if (ready > 0) trace_poll_start_us_ = static_cast<uint64_t>(esp_timer_get_time());
 #endif
   return stop_.load(std::memory_order_acquire) ? UINT64_MAX : static_cast<uint64_t>(esp_timer_get_time() / 1000);
+}
+
+bool CoapticNetwork::read_campaign_config(uint8_t *bytes, uint32_t length) const {
+  if (security_mode_ != 6 || bytes == nullptr || length != 6 || peer_address_ == 0 || peer_port_ == 0)
+    return false;
+  bytes[0] = static_cast<uint8_t>(peer_address_ >> 24);
+  bytes[1] = static_cast<uint8_t>(peer_address_ >> 16);
+  bytes[2] = static_cast<uint8_t>(peer_address_ >> 8);
+  bytes[3] = static_cast<uint8_t>(peer_address_);
+  bytes[4] = static_cast<uint8_t>(peer_port_ >> 8);
+  bytes[5] = static_cast<uint8_t>(peer_port_);
+  return true;
+}
+
+uint64_t CoapticNetwork::read_campaign_clock_ns() const {
+  if (stop_.load(std::memory_order_acquire)) return UINT64_MAX;
+  const auto now = static_cast<uint64_t>(esp_timer_get_time());
+  return now <= UINT64_MAX / 1000 ? now * 1000 : UINT64_MAX;
+}
+
+void CoapticNetwork::read_campaign_record(const uint64_t *words, uint32_t count) const {
+  if (security_mode_ != 6 || words == nullptr || count != 16) return;
+  // Stream one fixed metadata record after each measured operation. No trace
+  // queue, payload copy or formatting string allocation is retained here.
+  ESP_LOGI(TAG, "COAPTIC_READ_RECORD {\"run_id\":\"%s\",\"words\":["
+           "%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu]}",
+           run_id_.c_str(), static_cast<unsigned long long>(words[0]), static_cast<unsigned long long>(words[1]),
+           static_cast<unsigned long long>(words[2]), static_cast<unsigned long long>(words[3]),
+           static_cast<unsigned long long>(words[4]), static_cast<unsigned long long>(words[5]),
+           static_cast<unsigned long long>(words[6]), static_cast<unsigned long long>(words[7]),
+           static_cast<unsigned long long>(words[8]), static_cast<unsigned long long>(words[9]),
+           static_cast<unsigned long long>(words[10]), static_cast<unsigned long long>(words[11]),
+           static_cast<unsigned long long>(words[12]), static_cast<unsigned long long>(words[13]),
+           static_cast<unsigned long long>(words[14]), static_cast<unsigned long long>(words[15]));
 }
 
 bool CoapticNetwork::security_config(uint8_t *bytes, uint32_t length) {
@@ -670,6 +709,24 @@ extern "C" void coaptic_leave_critical() {
 
 extern "C" uint32_t coaptic_security_mode(void *context) {
   return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->security_mode();
+}
+extern "C" bool coaptic_read_campaign_config(void *context, uint8_t *bytes, uint32_t length) {
+  return context != nullptr &&
+         static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->read_campaign_config(bytes, length);
+}
+extern "C" uint64_t coaptic_read_campaign_clock_ns(void *context) {
+  return context == nullptr ? UINT64_MAX :
+         static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->read_campaign_clock_ns();
+}
+extern "C" bool coaptic_read_campaign_wait(uint32_t milliseconds) {
+  if (milliseconds == 0 || milliseconds > 100) return false;
+  const TickType_t ticks = pdMS_TO_TICKS(milliseconds);
+  vTaskDelay(ticks == 0 ? 1 : ticks);
+  return true;
+}
+extern "C" void coaptic_read_campaign_record(void *context, const uint64_t *words, uint32_t count) {
+  if (context != nullptr)
+    static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->read_campaign_record(words, count);
 }
 extern "C" bool coaptic_security_config(void *context, uint8_t *bytes, uint32_t length) {
   return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->security_config(bytes, length);

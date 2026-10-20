@@ -33,6 +33,14 @@ unsafe extern "C" {
     #[cfg(feature = "telemetry")]
     fn coaptic_pending_commit(context: *mut c_void, bytes: *const u8, length: u32) -> bool;
     fn coaptic_socket_random(bytes: *mut u8, length: u32) -> bool;
+    #[cfg(all(feature = "oscore", not(feature = "async-network")))]
+    fn coaptic_read_campaign_config(context: *mut c_void, bytes: *mut u8, length: u32) -> bool;
+    #[cfg(all(feature = "oscore", not(feature = "async-network")))]
+    fn coaptic_read_campaign_clock_ns(context: *mut c_void) -> u64;
+    #[cfg(all(feature = "oscore", not(feature = "async-network")))]
+    fn coaptic_read_campaign_wait(milliseconds: u32) -> bool;
+    #[cfg(all(feature = "oscore", not(feature = "async-network")))]
+    fn coaptic_read_campaign_record(context: *mut c_void, words: *const u64, count: u32);
     fn coaptic_enter_critical();
     fn coaptic_leave_critical();
 }
@@ -204,12 +212,14 @@ fn telemetry(
 ///
 /// # Safety
 /// `context` must point to a live ESPHome `CoapticNetwork` for the entire call.
-/// `id` must reference 32 readable bytes, valid for the initial copy. Call only
+/// `id` must reference 32 readable bytes, valid for the entire call. Call only
 /// once per firmware boot, from the socket's sole task. C callbacks must not
 /// retain buffers, unwind, alias mutable buffers, or report unwritten bytes.
 /// The clock callback must periodically yield within a bounded poll budget,
 /// bound idle waits for timer progress, remain monotonic, and return u64::MAX
 /// to stop. It may return immediately during a bounded ready burst.
+/// Mode6 instead uses the nonblocking nanosecond clock and explicit bounded
+/// wait callbacks; its clock also returns u64::MAX when the component stops.
 /// Entropy must be supplied while the Wi-Fi hardware RNG source is enabled.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn coaptic_network_run(context: *mut c_void, id: *const u8) -> i32 {
@@ -217,6 +227,12 @@ pub unsafe extern "C" fn coaptic_network_run(context: *mut c_void, id: *const u8
         return -1;
     }
     let mode = unsafe { coaptic_security_mode(context) };
+    if mode == 6 {
+        #[cfg(all(feature = "oscore", not(feature = "async-network")))]
+        return unsafe { run_read_campaign(context, id) };
+        #[cfg(any(not(feature = "oscore"), feature = "async-network"))]
+        return -12;
+    }
     #[cfg(feature = "pairing")]
     if mode == 5 {
         return if pairing_ffi::run(context).is_ok() {
@@ -226,6 +242,74 @@ pub unsafe extern "C" fn coaptic_network_run(context: *mut c_void, id: *const u8
         };
     }
     unsafe { run_legacy(context, id, mode) }
+}
+
+// This selected synchronous owner has no lifetime overlap with service or
+// pairing App construction. Keep its large frame on a separate call path.
+#[cfg(all(feature = "oscore", not(feature = "async-network")))]
+#[inline(never)]
+unsafe fn run_read_campaign(context: *mut c_void, id: *const u8) -> i32 {
+    use super::read_campaign_device::{self, Selection};
+    use core::cell::Cell;
+    let mut config = [0; 6];
+    if !unsafe { coaptic_read_campaign_config(context, config.as_mut_ptr(), 6) } {
+        return -12;
+    }
+    let mut bytes = [0; 66];
+    if !unsafe { coaptic_security_config(context, bytes.as_mut_ptr(), 66) } {
+        return -12;
+    }
+    let mut credentials = super::security_state::Credentials {
+        secret: bytes[..32].try_into().unwrap(),
+        salt: bytes[32..48].try_into().unwrap(),
+        context: bytes[48..64].try_into().unwrap(),
+        sender: bytes[64],
+        recipient: bytes[65],
+    };
+    bytes.fill(0);
+    let failed_wait = Cell::new(false);
+    // The ABI guarantees these run-ID bytes remain valid while this sole task
+    // runs. Borrow the existing ID instead of creating another identity buffer.
+    let identity = unsafe { &*id.cast::<[u8; 32]>() };
+    let result = read_campaign_device::run(
+        Socket(context),
+        |bytes| unsafe { coaptic_socket_random(bytes.as_mut_ptr(), bytes.len() as u32) },
+        &credentials,
+        Nvs(context),
+        Selection {
+            peer: Endpoint::v4(
+                config[..4].try_into().unwrap(),
+                u16::from_be_bytes(config[4..].try_into().unwrap()),
+            ),
+            expected_identity: identity,
+            async_network: false,
+        },
+        || {
+            if failed_wait.get() {
+                return None;
+            }
+            let now = unsafe { coaptic_read_campaign_clock_ns(context) };
+            (now != u64::MAX).then_some(now)
+        },
+        || {
+            if !unsafe { coaptic_read_campaign_wait(1) } {
+                failed_wait.set(true);
+            }
+        },
+        |record| {
+            unsafe { coaptic_read_campaign_record(context, record.words.as_ptr(), 16) };
+            true
+        },
+    );
+    credentials.secret.fill(0);
+    credentials.salt.fill(0);
+    credentials.context.fill(0);
+    match result {
+        Ok(()) => 0,
+        Err(read_campaign_device::Error::Campaign(_)) => -13,
+        Err(read_campaign_device::Error::Output) => -14,
+        Err(_) => -12,
+    }
 }
 
 // Keep the legacy App's large construction frame off the paired worker's stack.
