@@ -86,7 +86,9 @@ fn retryable<E, C>(error: &ManagedAsyncError<E, C>) -> bool {
             matches!(io, AsyncIoError::Transport(_) | AsyncIoError::Deadline)
         }
         ManagedAsyncError::Call(AsyncCallError::Request(
-            coaptic::app::Error::Saturated | coaptic::app::Error::Io(_),
+            coaptic::app::Error::Saturated
+            | coaptic::app::Error::Backoff { .. }
+            | coaptic::app::Error::Io(_),
         )) => true,
         _ => false,
     }

@@ -3,6 +3,7 @@
 #include "esphome/components/wifi/wifi_component.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
+#include "esphome/core/main_task.h"
 #include "esp_random.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
@@ -19,11 +20,73 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-extern "C" int32_t coaptic_network_run(void *context, const uint8_t *id);
+extern "C" int32_t coaptic_network_run(void *context, const uint8_t *id, uint8_t *seed);
+extern "C" bool coaptic_entropy_fill(void *owner, uint8_t *bytes, uint32_t length);
+extern "C" uint64_t coaptic_entropy_requirement(uint32_t index);
+extern "C" uint8_t _thread_local_data_start, _thread_local_data_end;
+extern "C" uint8_t _thread_local_bss_start, _thread_local_bss_end;
+
+// IDF 5.5.5 uxInitialiseStackTLS puts trivial compiler TLS on every task's
+// existing stack, rounded to 16 bytes. No emutls allocation or TLSP slot is used.
+struct CoapticEntropyBinding { void *owner; bool busy; };
+static __thread CoapticEntropyBinding entropy_binding{};
+static_assert(sizeof(CoapticEntropyBinding) <= 2 * sizeof(void *));
 
 namespace esphome::coaptic_network {
 
 static constexpr const char *TAG = "coaptic_network";
+#ifdef COAPTIC_TIMING_TRACE
+static constexpr size_t COMPONENT_INLINE_BYTE_CEILING = 32768;
+#else
+static constexpr size_t COMPONENT_INLINE_BYTE_CEILING = 1024;
+#endif
+// std::string allocations remain part of the separately sampled SDK heap.
+static_assert(sizeof(CoapticNetwork) <= COMPONENT_INLINE_BYTE_CEILING, "whole component inline ceiling");
+
+bool CoapticNetwork::seed_entropy_() {
+  std::memset(entropy_seed_, 0, sizeof(entropy_seed_));
+  // ESPHome dispatches component loops and queued Wi-Fi lifecycle events on
+  // this main task. Raw SDK teardown from another task violates this contract.
+  if (esphome_main_task_handle == nullptr || xTaskGetCurrentTaskHandle() != esphome_main_task_handle)
+    return false;
+  const auto ready = []() {
+    uint8_t primary = 0;
+    wifi_second_chan_t secondary = WIFI_SECOND_CHAN_NONE;
+    wifi_ps_type_t power_save = WIFI_PS_MAX_MODEM;
+    return esp_wifi_get_home_channel(&primary, &secondary) == ESP_OK &&
+           esp_wifi_get_ps(&power_save) == ESP_OK && power_save == WIFI_PS_NONE;
+  };
+  if (!ready() || esp_wifi_force_wakeup_acquire() != ESP_OK) return false;
+  const bool before = ready();
+  if (before) esp_fill_random(entropy_seed_, sizeof(entropy_seed_));
+  const bool after = ready();
+  const bool released = esp_wifi_force_wakeup_release() == ESP_OK;
+  bool nonzero = false;
+  for (const auto byte : entropy_seed_) nonzero |= byte != 0;
+  if (!before || !after || !released || !nonzero) {
+    std::memset(entropy_seed_, 0, sizeof(entropy_seed_));
+    return false;
+  }
+  const auto tls_data = reinterpret_cast<uintptr_t>(&_thread_local_data_end) -
+                        reinterpret_cast<uintptr_t>(&_thread_local_data_start);
+  const auto tls_bss = reinterpret_cast<uintptr_t>(&_thread_local_bss_end) -
+                       reinterpret_cast<uintptr_t>(&_thread_local_bss_start);
+  ESP_LOGI(TAG, "COAPTIC_ENTROPY {\"run_id\":\"%s\",\"worker_owner_bytes\":%llu,"
+           "\"owner_ceiling_bytes\":%llu,\"seed_handoff_bytes\":%u,\"seed_scratch_bytes\":%llu,"
+           "\"max_request_bytes\":%llu,\"generation_limit_bytes\":%llu,\"component_inline_bytes\":%u,"
+           "\"component_inline_ceiling_bytes\":%u,\"tls_binding_bytes_per_task\":%u,\"tls_binding_alignment\":%u,"
+           "\"linked_tls_reserved_bytes_per_task\":%u}", run_id_.c_str(),
+           static_cast<unsigned long long>(coaptic_entropy_requirement(0)),
+           static_cast<unsigned long long>(coaptic_entropy_requirement(1)),
+           static_cast<unsigned>(sizeof(entropy_seed_)),
+           static_cast<unsigned long long>(coaptic_entropy_requirement(5)),
+           static_cast<unsigned long long>(coaptic_entropy_requirement(3)),
+           static_cast<unsigned long long>(coaptic_entropy_requirement(4)),
+           static_cast<unsigned>(sizeof(*this)), static_cast<unsigned>(COMPONENT_INLINE_BYTE_CEILING),
+           static_cast<unsigned>(sizeof(CoapticEntropyBinding)), static_cast<unsigned>(alignof(CoapticEntropyBinding)),
+           static_cast<unsigned>((tls_data + tls_bss + 15) & ~uintptr_t{15}));
+  return true;
+}
 
 // One SDK snapshot on the calling stack; no retained buffer or task registry.
 // Region low-watermarks may occur at different times: never label their sum a
@@ -121,6 +184,9 @@ void CoapticNetwork::trace_dump_() {
 
 void CoapticNetwork::loop() {
   if (!started_) {
+    // Application::setup may dispatch loops while another component is still
+    // setting up. Wait until it publishes the main owner before seeding.
+    if (esphome_main_task_handle == nullptr) return;
     // Reuse the mutually exclusive telemetry timer field. A selected finite
     // boot delay lets the external recorder and authenticated host be ready.
     if (security_mode_ == 6 && millis() < telemetry_timeout_) return;
@@ -128,12 +194,18 @@ void CoapticNetwork::loop() {
       return;
     started_ = true;
     log_resources(run_id_.c_str(), "before_platform_setup", 0);
+    if (!seed_entropy_()) {
+      ESP_LOGE(TAG, "COAPTIC_ENTROPY_REFUSED; worker not started");
+      mark_failed();
+      return;
+    }
 #ifdef COAPTIC_PAIRING
     if (security_mode_ == 5 && !usb_serial_jtag_is_driver_installed()) {
       usb_serial_jtag_driver_config_t usb_config{};
       usb_config.rx_buffer_size = 1024;
       usb_config.tx_buffer_size = 1024;
       if (usb_serial_jtag_driver_install(&usb_config) != ESP_OK) {
+        std::memset(entropy_seed_, 0, sizeof(entropy_seed_));
         ESP_LOGE(TAG, "COAPTIC_PAIRING_FAIL USB setup");
         mark_failed();
         return;
@@ -151,12 +223,14 @@ void CoapticNetwork::loop() {
       if (socket_ >= 0)
         close(socket_);
       socket_ = -1;
+      std::memset(entropy_seed_, 0, sizeof(entropy_seed_));
       ESP_LOGE(TAG, "COAPTIC_NETWORK_FAIL socket setup errno=%d", errno);
       mark_failed();
       return;
     }
     }
     if (xTaskCreate(run_, "coaptic_udp", STACK_BYTES, this, 1, &task_) != pdPASS) {
+      std::memset(entropy_seed_, 0, sizeof(entropy_seed_));
       log_resources(run_id_.c_str(), "task_allocation_refused", 0);
       close(socket_);
       socket_ = -1;
@@ -216,7 +290,9 @@ void CoapticNetwork::loop() {
 
 void CoapticNetwork::run_(void *argument) {
   auto *self = static_cast<CoapticNetwork *>(argument);
-  int32_t result = coaptic_network_run(self, reinterpret_cast<const uint8_t *>(self->run_id_.data()));
+  int32_t result = coaptic_network_run(self, reinterpret_cast<const uint8_t *>(self->run_id_.data()),
+                                      self->entropy_seed_);
+  std::memset(self->entropy_seed_, 0, sizeof(self->entropy_seed_));
   if (self->socket_ >= 0) close(self->socket_);
   self->socket_ = -1;
   if (self->security_handle_ != 0) {
@@ -679,24 +755,27 @@ extern "C" uint64_t coaptic_socket_clock(void *context) {
 }
 extern "C" bool coaptic_socket_random(uint8_t *bytes, uint32_t length) {
   if (length == 0) return true;
-  if (bytes == nullptr) return false;
-  std::memset(bytes, 0, length);
-  // Guaranteed hardware entropy requires active RF. Require started Wi-Fi with
-  // modem sleep disabled; these checks do not serialize platform RF teardown.
-  const auto rf_ready = []() {
-    uint8_t primary = 0;
-    wifi_second_chan_t secondary = WIFI_SECOND_CHAN_NONE;
-    wifi_ps_type_t power_save = WIFI_PS_MAX_MODEM;
-    return esp_wifi_get_home_channel(&primary, &secondary) == ESP_OK &&
-           esp_wifi_get_ps(&power_save) == ESP_OK && power_save == WIFI_PS_NONE;
-  };
-  if (!rf_ready()) return false;
-  esp_fill_random(bytes, length);
-  if (!rf_ready()) {
+  if (bytes == nullptr || length > coaptic_entropy_requirement(3)) return false;
+  if (xPortInIsrContext() || entropy_binding.owner == nullptr || entropy_binding.busy) {
     std::memset(bytes, 0, length);
     return false;
   }
+  entropy_binding.busy = true;
+  const bool result = coaptic_entropy_fill(entropy_binding.owner, bytes, length);
+  entropy_binding.busy = false;
+  return result;
+}
+
+extern "C" bool coaptic_entropy_bind(void *owner) {
+  if (xPortInIsrContext() || owner == nullptr || entropy_binding.owner != nullptr || entropy_binding.busy)
+    return false;
+  entropy_binding.owner = owner;
   return true;
+}
+
+extern "C" void coaptic_entropy_unbind() {
+  entropy_binding.owner = nullptr;
+  entropy_binding.busy = false;
 }
 
 static portMUX_TYPE COAPTIC_MUX = portMUX_INITIALIZER_UNLOCKED;

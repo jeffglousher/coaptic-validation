@@ -12,7 +12,7 @@ crate-type = ["rlib"]
 [features]
 default = []
 oscore = ["qualification-no-std/oscore", "coaptic?/oscore", "dep:hmac", "dep:sha2"]
-network = ["dep:coaptic", "dep:critical-section"]
+network = ["dep:coaptic", "dep:critical-section", "dep:chacha20", "dep:zeroize"]
 async-network = ["network"]
 host = ["coaptic?/std", "dep:getrandom"]
 telemetry = ["network", "oscore", "coaptic?/edhoc"]
@@ -24,6 +24,7 @@ standalone = []
 qualification-no-std = { path = "../../../crates/qualification-no-std" }
 coaptic = { path = "../../../coaptic", default-features = false, optional = true }
 critical-section = { version = "1.2.0", optional = true }
+chacha20 = { version = "=0.10.2", default-features = false, features = ["rng", "zeroize"], optional = true }
 
 getrandom = { version = "=0.3.4", optional = true }
 hmac = { version = "0.13.0", default-features = false, optional = true }

@@ -4,6 +4,14 @@
 //! static library. Feature `network` also supplies a live IPv4 UDP qualification
 //! service. ESPHome owns sockets, tasks, console and stack accounting. This is
 //! not yet a device driver, Home Assistant entity integration or Taldra gateway.
+//! The ESPHome main task obtains a 32-byte seed before worker creation; the
+//! worker constructs one RustCrypto ChaCha20 owner and generates without RF
+//! access or allocation.
+//! It refuses requests over 256 bytes and permanent exhaustion after 4 GiB of
+//! word-rounded stream consumption per boot; there is no automatic reseed or
+//! fallback. The worker owns its zeroizing generator and scoped borrowed task
+//! binding. Whole owner, seed handoff/startup scratch and per-task compiler TLS
+//! reservations are reported separately from the App and measured stack peak.
 //!
 //! Generate a pinned ESPHome configuration with `tools/qualification/esphome_probe.py`.
 //! The component links this crate using Rust 1.97.1 for C3/C6 or Espressif Rust
@@ -40,6 +48,9 @@
 
 #[cfg(feature = "network")]
 pub mod network;
+
+#[cfg(feature = "network")]
+pub mod entropy;
 
 #[cfg(feature = "async-network")]
 pub(crate) async fn cooperate() {
