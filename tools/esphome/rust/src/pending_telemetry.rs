@@ -231,6 +231,15 @@ pub struct Pending<'a, S> {
     poisoned: bool,
 }
 
+/// Authenticated operation metadata for privileged receipt reconciliation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Metadata {
+    pub id: OperationId,
+    pub resource: [u8; 32],
+    pub digest: [u8; 32],
+    pub receipt: Option<Receipt>,
+}
+
 impl<'a, S: Store> Pending<'a, S> {
     /// Authenticate a borrowed record without reaffirming or changing storage.
     /// True means unresolved work; false means empty or completed.
@@ -241,6 +250,29 @@ impl<'a, S: Store> Pending<'a, S> {
     ) -> Result<bool, Error> {
         validate(bytes, binding, principal)?;
         Ok(bytes[48] == 1)
+    }
+
+    /// Read metadata without reaffirming storage or exposing the payload.
+    pub fn metadata_bound(
+        bytes: &[u8; RECORD_BYTES],
+        binding: Binding<'_>,
+        principal: Principal,
+    ) -> Result<Option<Metadata>, Error> {
+        validate(bytes, binding, principal)?;
+        if bytes[48] == 0 {
+            return Ok(None);
+        }
+        let operation = operation(bytes)?;
+        Ok(Some(Metadata {
+            id: operation.id(),
+            resource: *operation.resource(),
+            digest: *operation.digest(),
+            receipt: if bytes[48] == 2 {
+                Some(Receipt::decode(&bytes[RECEIPT..TAG]).ok_or(Error::Corrupt)?)
+            } else {
+                None
+            },
+        }))
     }
 
     pub fn recover(
@@ -286,6 +318,23 @@ impl<'a, S: Store> Pending<'a, S> {
         let mut next = self.next()?;
         next[8..40].copy_from_slice(&identity(binding, principal));
         next[48..TAG].fill(0);
+        self.credentials = binding;
+        self.persist(next)
+    }
+
+    /// Move only completed custody to a revoked record, retaining the complete
+    /// operation and exact receipt so a lost administrative reply is retryable.
+    pub fn rebind_completed(
+        &mut self,
+        binding: Binding<'a>,
+        principal: Principal,
+    ) -> Result<(), Error> {
+        self.ready()?;
+        if self.completion()?.is_none() {
+            return Err(Error::NotPending);
+        }
+        let mut next = self.next()?;
+        next[8..40].copy_from_slice(&identity(binding, principal));
         self.credentials = binding;
         self.persist(next)
     }
