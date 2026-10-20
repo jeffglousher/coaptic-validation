@@ -6,6 +6,214 @@ use coaptic::storage::{DatagramTransport, UdpSocketIo};
 use coaptic_receipts::{Authority, Journal, Policy};
 use std::{cell::Cell, net::UdpSocket};
 
+#[cfg(feature = "async-network")]
+mod async_read_only {
+    use super::*;
+    use coaptic::{platform::AsyncTimer, storage::AsyncDatagramIo};
+    use core::{
+        future::Future,
+        task::{Context, Poll, Waker},
+    };
+
+    struct Socket(UdpSocket);
+    impl DatagramTransport for Socket {
+        type Error = std::io::Error;
+    }
+    impl AsyncDatagramIo for Socket {
+        async fn recv(&mut self, out: &mut [u8]) -> Result<(usize, Endpoint), Self::Error> {
+            core::future::poll_fn(|_| match self.0.recv_from(out) {
+                Ok((n, peer)) => Poll::Ready(Ok((n, peer.into()))),
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Poll::Pending,
+                Err(error) => Poll::Ready(Err(error)),
+            })
+            .await
+        }
+        async fn send(&mut self, to: Endpoint, bytes: &[u8]) -> Result<usize, Self::Error> {
+            let (ip, port) = to.as_ipv4().unwrap();
+            self.0
+                .send_to(bytes, std::net::SocketAddrV4::new(ip.into(), port))
+        }
+    }
+    struct Timer(Rc<Cell<u64>>);
+    impl AsyncTimer for Timer {
+        async fn wait_until(&mut self, deadline: u64) {
+            core::future::poll_fn(|_| {
+                if self.0.get() >= deadline {
+                    Poll::Ready(())
+                } else {
+                    Poll::Pending
+                }
+            })
+            .await
+        }
+    }
+    struct NoConsole;
+    impl ConsoleWait for NoConsole {
+        async fn wait(&mut self) -> Result<(), Error> {
+            core::future::pending().await
+        }
+    }
+    struct StatusConsole(Rc<Cell<bool>>);
+    impl Console for StatusConsole {
+        fn read(&mut self, _: &mut [u8]) -> Result<usize, Error> {
+            Ok(0)
+        }
+        fn write(&mut self, _: &[u8]) -> Result<(), Error> {
+            Ok(())
+        }
+        fn restart(&mut self) -> Result<(), Error> {
+            Ok(())
+        }
+        fn event(&mut self, event: u32) {
+            if event == 5 {
+                self.0.set(true);
+            }
+        }
+    }
+
+    #[test]
+    fn enrolled_async_read_only_denies_echo_while_observing_and_reading() {
+        let device_socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let host_socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        device_socket.set_nonblocking(true).unwrap();
+        host_socket.set_nonblocking(true).unwrap();
+        let device_endpoint = Endpoint::from(device_socket.local_addr().unwrap());
+        let host_endpoint = Endpoint::from(host_socket.local_addr().unwrap());
+        let store = Rc::new(RefCell::new(Memory::default()));
+        let mut shared = Shared(store.clone());
+        let mut device = Device::initialize(&mut shared, 17, random).unwrap();
+        let host = (1..=255)
+            .find_map(|byte| {
+                Identity::from_private_key([byte; 32], 18)
+                    .ok()
+                    .filter(|host| {
+                        host.peer().principal().fingerprint()
+                            > device.identity.peer().principal().fingerprint()
+                    })
+            })
+            .unwrap();
+        let challenge = device.pairing.begin(&device.identity, 0, random).unwrap();
+        device
+            .pairing
+            .pair(
+                &challenge,
+                EnrollmentPolicy::new(host.peer(), [7; 32], permissions(false)).unwrap(),
+                1,
+                |old, next| {
+                    prepare_pending(&mut shared, &device.private, &device.identity, old, next)?;
+                    let mut bytes = [0; STORE_BYTES];
+                    let len =
+                        encode_store(&device.private, 17, next, Some(host_endpoint), &mut bytes)?;
+                    shared.commit(&device.stored[..device.stored_len], &bytes[..len])
+                },
+            )
+            .unwrap();
+        let mut pairing =
+            LocalPairing::restore(&host, PairingRecord::unpaired(&host, [9; 32]).unwrap()).unwrap();
+        let challenge = pairing.begin(&host, 0, random).unwrap();
+        pairing
+            .pair(
+                &challenge,
+                EnrollmentPolicy::new(device.identity.peer(), [7; 32], permissions(false)).unwrap(),
+                1,
+                |_, _| Ok::<_, ()>(()),
+            )
+            .unwrap();
+        let mut host_connection =
+            ManagedConnection::<_, profiles::Constrained>::from_local_pairing(
+                &host,
+                &pairing,
+                device_endpoint,
+                UdpSocketIo::new(host_socket, [0; 1473]).unwrap(),
+                random,
+                0,
+            )
+            .unwrap();
+        host_connection.observable_manual("identity").unwrap();
+        host_connection.connect(0).unwrap();
+        let now = Rc::new(Cell::new(0));
+        let mut protocol = Timer(now.clone());
+        let mut local = Timer(now.clone());
+        let stopped = Rc::new(Cell::new(false));
+        let mut future = core::pin::pin!(run_async(
+            Socket(device_socket),
+            random,
+            || Some(now.get()),
+            Shared(store),
+            StatusConsole(stopped.clone()),
+            (&mut protocol, &mut local),
+            NoConsole
+        ));
+        let mut context = Context::from_waker(Waker::noop());
+        let mut call = None;
+        let mut due = 0;
+        let mut refused = 0;
+        let mut denied = false;
+        let mut output = [0; 128];
+        for tick in 0..3000 {
+            let time = tick * 10;
+            now.set(time);
+            host_connection
+                .poll_with(time, |_, request, _| {
+                    assert_eq!(request.path(), ["identity"]);
+                    let reply =
+                        Response::content_copy(host.peer().principal().fingerprint()).max_age(10);
+                    if request.is_observe_register() {
+                        reply.observe(0)
+                    } else {
+                        reply
+                    }
+                })
+                .or_else(|error| match error {
+                    ManagedError::Recovery(_) => Ok(()),
+                    error => Err(error),
+                })
+                .unwrap();
+            if host_connection.is_connected() && call.is_none() && time >= due {
+                match host_connection.request(
+                    Method::Post,
+                    "echo",
+                    b"must refuse",
+                    Some(ContentFormat::CBOR),
+                    time,
+                ) {
+                    Ok(next) => call = Some(next),
+                    Err(ManagedError::Application(coaptic::app::Error::Backoff { until_ms })) => {
+                        due = until_ms
+                    }
+                    Err(error) => panic!("probe admission: {error:?}"),
+                }
+            }
+            if let Some(current) = call
+                && let Some(reply) = host_connection
+                    .take_response_into(current, &mut output, time)
+                    .unwrap()
+            {
+                let reply = reply.unwrap();
+                call = None;
+                if reply.code() == Code::FORBIDDEN {
+                    assert!(reply.payload().is_empty());
+                    denied = true;
+                    break;
+                }
+                assert_eq!(reply.code(), Code::SERVICE_UNAVAILABLE);
+                refused += 1;
+                due = time + u64::from(reply.max_age_secs().unwrap_or(60)) * 1000;
+            }
+            if let Poll::Ready(result) = future.as_mut().poll(&mut context) {
+                panic!("async device stopped: {result:?}")
+            }
+        }
+        assert!(
+            denied,
+            "read-only service never dispatched denial; stopped={}, temporary refusals={refused}, host metrics={:?}",
+            stopped.get(),
+            host_connection.diagnostic_snapshot(now.get())
+        );
+        assert!(!stopped.get());
+    }
+}
+
 #[test]
 fn enrolled_pending_owner_has_an_independent_memory_ceiling() {
     type Io = UdpSocketIo<[u8; 1473]>;

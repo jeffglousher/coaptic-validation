@@ -33,6 +33,8 @@ unsafe extern "C" {
     #[cfg(feature = "telemetry")]
     fn coaptic_pending_commit(context: *mut c_void, bytes: *const u8, length: u32) -> bool;
     fn coaptic_socket_random(bytes: *mut u8, length: u32) -> bool;
+    fn coaptic_entropy_bind(owner: *mut c_void) -> bool;
+    fn coaptic_entropy_unbind();
     #[cfg(all(feature = "oscore", not(feature = "async-network")))]
     fn coaptic_read_campaign_config(context: *mut c_void, bytes: *mut u8, length: u32) -> bool;
     #[cfg(all(feature = "oscore", not(feature = "async-network")))]
@@ -212,7 +214,8 @@ fn telemetry(
 ///
 /// # Safety
 /// `context` must point to a live ESPHome `CoapticNetwork` for the entire call.
-/// `id` must reference 32 readable bytes, valid for the entire call. Call only
+/// `id` must reference 32 readable bytes, valid for the entire call. `seed` must
+/// reference 32 exclusively writable, freshly seeded platform bytes. Call only
 /// once per firmware boot, from the socket's sole task. C callbacks must not
 /// retain buffers, unwind, alias mutable buffers, or report unwritten bytes.
 /// The clock callback must periodically yield within a bounded poll budget,
@@ -220,12 +223,77 @@ fn telemetry(
 /// to stop. It may return immediately during a bounded ready burst.
 /// Mode6 instead uses the nonblocking nanosecond clock and explicit bounded
 /// wait callbacks; its clock also returns u64::MAX when the component stops.
-/// Entropy must be supplied while the Wi-Fi hardware RNG source is enabled.
+/// The ESPHome main owner must seed before worker creation while it excludes RF
+/// lifecycle changes. This worker consumes and wipes that handoff, owns its
+/// generator exclusively, and clears the borrowed task binding before dropping
+/// the zeroizing generator. Generation never samples RF or silently reseeds.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn coaptic_network_run(context: *mut c_void, id: *const u8) -> i32 {
-    if context.is_null() || id.is_null() {
+pub unsafe extern "C" fn coaptic_network_run(
+    context: *mut c_void,
+    id: *const u8,
+    seed: *mut u8,
+) -> i32 {
+    if context.is_null() || id.is_null() || seed.is_null() {
         return -1;
     }
+    let seed = unsafe { &mut *seed.cast::<[u8; super::entropy::SEED_BYTES]>() };
+    let Some(rng) = super::entropy::Entropy::from_seed(seed) else {
+        return -15;
+    };
+    let mut rng = core::pin::pin!(rng);
+    let owner = core::ptr::from_mut(rng.as_mut().get_mut()).cast::<c_void>();
+    if !unsafe { coaptic_entropy_bind(owner) } {
+        return -15;
+    }
+    struct Binding;
+    impl Drop for Binding {
+        fn drop(&mut self) {
+            unsafe { coaptic_entropy_unbind() };
+        }
+    }
+    let binding = Binding;
+    let result = unsafe { run_seeded(context, id) };
+    drop(binding);
+    result
+}
+
+/// Fill only through the sole worker's nonreentrant borrowed RNG binding.
+///
+/// # Safety
+/// `owner` must be the live pinned Entropy passed to `coaptic_entropy_bind` in
+/// this same task. No other access or reentrant call may overlap. `bytes` must
+/// name `length` exclusively writable bytes; neither pointer may escape.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn coaptic_entropy_fill(
+    owner: *mut c_void,
+    bytes: *mut u8,
+    length: u32,
+) -> bool {
+    if owner.is_null() || bytes.is_null() || length as usize > super::entropy::MAX_REQUEST_BYTES {
+        return false;
+    }
+    let rng = unsafe { &mut *owner.cast::<super::entropy::Entropy>() };
+    rng.fill(unsafe { core::slice::from_raw_parts_mut(bytes, length as usize) })
+}
+
+/// Scalar resource values: whole owner, ceiling, seed, max request, generation
+/// budget and temporary zeroizing seed copy. These are not an additive peak.
+#[unsafe(no_mangle)]
+pub extern "C" fn coaptic_entropy_requirement(index: u32) -> u64 {
+    use super::entropy::*;
+    match index {
+        0 => core::mem::size_of::<Entropy>() as u64,
+        1 => OWNER_BYTE_CEILING as u64,
+        2 => SEED_BYTES as u64,
+        3 => MAX_REQUEST_BYTES as u64,
+        4 => MAX_GENERATED_BYTES,
+        5 => core::mem::size_of::<zeroize::Zeroizing<[u8; SEED_BYTES]>>() as u64,
+        _ => 0,
+    }
+}
+
+#[inline(never)]
+unsafe fn run_seeded(context: *mut c_void, id: *const u8) -> i32 {
     let mode = unsafe { coaptic_security_mode(context) };
     if mode == 6 {
         #[cfg(all(feature = "oscore", not(feature = "async-network")))]

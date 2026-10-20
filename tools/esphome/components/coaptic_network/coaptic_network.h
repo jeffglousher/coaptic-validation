@@ -65,6 +65,10 @@ class CoapticNetwork : public Component {
 
  protected:
   static void run_(void *argument);
+  bool seed_entropy_();
+  // Main owner writes once before task creation; only the worker then consumes
+  // and zeroizes this handoff. No live RNG state is shared with the main loop.
+  uint8_t entropy_seed_[32]{};
 #ifdef COAPTIC_ASYNC_NETWORK
   // Includes retained future plus measured Xtensa coroutine construction/poll
   // frames. A future-size ceiling alone does not bound the native task peak.

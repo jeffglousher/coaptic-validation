@@ -1000,7 +1000,9 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
             match connection.poll_subscription(&mut subscription, now) {
                 Ok(_) | Err(ManagedError::Busy | ManagedError::NotConnected) => {}
                 Err(ManagedError::Application(
-                    coaptic::app::Error::Io(_) | coaptic::app::Error::Saturated,
+                    coaptic::app::Error::Io(_)
+                    | coaptic::app::Error::Saturated
+                    | coaptic::app::Error::Backoff { .. },
                 )) => {}
                 Err(_) => return Err(Error::Network),
             }
@@ -1122,7 +1124,9 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
                 }
                 Err(ManagedError::Busy | ManagedError::NotConnected)
                 | Err(ManagedError::Application(
-                    coaptic::app::Error::Io(_) | coaptic::app::Error::Saturated,
+                    coaptic::app::Error::Io(_)
+                    | coaptic::app::Error::Saturated
+                    | coaptic::app::Error::Backoff { .. },
                 )) => {
                     // Observe and application calls share the bounded packet pools.
                     // Admission pressure leaves the session intact and retries later.
