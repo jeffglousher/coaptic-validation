@@ -1,0 +1,463 @@
+{
+  "schema": "coaptic-installed-current-selected-results/1",
+  "core": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+  "suite_archive": "27b0e6438eff112f17646f4023abb44a41da40cc",
+  "suite_same_tree_merge": "421f666bf7bf6cafcbbdb0ff5ea026389e85c05f",
+  "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+  "method": "Selected metadata-only CLI lines; each extraction retains byte length, encoding and SHA-256 of its non-published original. Raw API captures, public-key dumps, payloads and private files are excluded.",
+  "cases": [
+    {
+      "case": "read-only admission and warm restart",
+      "observed_outcome": "Both authenticated probes received retryable 5.03/Max-Age 1s then expected 4.03; the second followed acknowledged esp_restart.",
+      "evidence": [
+        {
+          "source": {
+            "file": "fixed-probe-denied.log",
+            "bytes": 638,
+            "sha256": "48dba3828a7324ebcd4afe11b8f0f2b3998a6f031f83607675fa8e7725c1ad82",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Protected probe received code 5.03 (Max-Age 1s); retrying this idempotent probe in the same session.",
+            "Protected probe passed (code 4.03)."
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-probe-denied-restart.log",
+            "bytes": 638,
+            "sha256": "48dba3828a7324ebcd4afe11b8f0f2b3998a6f031f83607675fa8e7725c1ad82",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Protected probe received code 5.03 (Max-Age 1s); retrying this idempotent probe in the same session.",
+            "Protected probe passed (code 4.03)."
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-readonly-restart.log",
+            "bytes": 180,
+            "sha256": "a306b8aa90d288986de7ce281fe18930762b088ece6e6b066ec99ad01cafdfce",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Device restarting; it will restore pairing and establish a fresh session automatically."
+          ]
+        }
+      ],
+      "limits": []
+    },
+    {
+      "case": "commit-before-receipt markers",
+      "observed_outcome": "Three finite qualification processes reported durable sync before receipt.",
+      "evidence": [
+        {
+          "source": {
+            "file": "fixed-lost-receipt.log",
+            "bytes": 512,
+            "sha256": "bf98d42a8ccdcd97e34c721cfa7473b787d0bbfc3f6a75ddb120ab7fb2d8a103",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Qualification checkpoint: durable effect synced; exiting75 before receipt."
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-lost-receipt-second.log",
+            "bytes": 512,
+            "sha256": "bf98d42a8ccdcd97e34c721cfa7473b787d0bbfc3f6a75ddb120ab7fb2d8a103",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Qualification checkpoint: durable effect synced; exiting75 before receipt."
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-lost-receipt-third.log",
+            "bytes": 512,
+            "sha256": "bf98d42a8ccdcd97e34c721cfa7473b787d0bbfc3f6a75ddb120ab7fb2d8a103",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Qualification checkpoint: durable effect synced; exiting75 before receipt."
+          ]
+        }
+      ],
+      "limits": [
+        "Deliberate process-exit checkpoints, not cold power cuts or injected radio packet loss. A marker alone is not an independently captured exit status."
+      ]
+    },
+    {
+      "case": "host and both-side warm restart receipts",
+      "observed_outcome": "Host recovery returned receipt 1; a separate acknowledged device restart plus host restart returned receipt 3.",
+      "evidence": [
+        {
+          "source": {
+            "file": "fixed-host-restart-service.log",
+            "bytes": 217,
+            "sha256": "178c39a31d6ada312fc3423d618bc0900591af4628cdfcfb306efe32a533a8ce",
+            "encoding": "utf-8-sig"
+          },
+          "selected_verbatim_lines": [
+            "Durable telemetry receipt 1 (45 bytes)."
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-both-restart-device.log",
+            "bytes": 180,
+            "sha256": "a306b8aa90d288986de7ce281fe18930762b088ece6e6b066ec99ad01cafdfce",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Device restarting; it will restore pairing and establish a fresh session automatically."
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-both-restart-service.log",
+            "bytes": 217,
+            "sha256": "4b06c891e0b4e0a6116c42a493d5d30d71b857fa4c7c51bbb78a6fd90dc49953",
+            "encoding": "utf-8-sig"
+          },
+          "selected_verbatim_lines": [
+            "Durable telemetry receipt 3 (45 bytes)."
+          ]
+        }
+      ],
+      "limits": [
+        "No live before/after byte-identical journal equality is inferred from these logs."
+      ]
+    },
+    {
+      "case": "revoked unresolved work and reconciliation",
+      "observed_outcome": "Grant change refused missing/unverifiable history. Receipt 2 reconciled while policy stayed revoked at revision 13, then returned the same receipt-only result after acknowledged warm restart.",
+      "evidence": [
+        {
+          "source": {
+            "file": "fixed-unresolved-grant-refused.log",
+            "bytes": 1154,
+            "sha256": "fa5e1fb739d22adeb23583d45bb2e03bbc6d9dd5c3c67e06f137eb8f95de47d6",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "coaptic-enroll.exe : coaptic-enroll: device durable history is missing or unverifiable; preserve the device and host"
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-reconcile-revoked.log",
+            "bytes": 1632,
+            "sha256": "df7e0bbf16980a30e9eef904ce692939fd9fd2d0389e1139b5c29d5a2c0a3e77",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Committed receipt 2 reconciled. Device policy remains revoked at revision 13; no effect, identity or permission was created."
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-reconciled-restart.log",
+            "bytes": 180,
+            "sha256": "a306b8aa90d288986de7ce281fe18930762b088ece6e6b066ec99ad01cafdfce",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Device restarting; it will restore pairing and establish a fresh session automatically."
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-reconcile-retry-restart.log",
+            "bytes": 1632,
+            "sha256": "639a99d6d0fd34ce51eb91d87237af21488af2304eb59951905fd235fef7f663",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Committed receipt 2 reconciled. Device policy remains revoked at revision 13; no effect, identity or permission was created."
+          ]
+        }
+      ],
+      "limits": []
+    },
+    {
+      "case": "unavailable host journal",
+      "observed_outcome": "An already exclusively locked journal refused opening with Windows error 32.",
+      "evidence": [
+        {
+          "source": {
+            "file": "fixed-unavailable-journal-refusal.log",
+            "bytes": 1006,
+            "sha256": "2141b10780cbd3e5aa02c78e67f1b889afb741260b2edd415e20f890d100fabb",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "coaptic-enroll.exe : coaptic-enroll: Io(Os { code: 32, kind: Uncategorized, message: \"The process cannot access the",
+            "file because it is being used by another process.\" })"
+          ]
+        }
+      ],
+      "limits": [
+        "Lock refusal is evidenced; no saved byte-identical pre/post pair is inferred."
+      ]
+    },
+    {
+      "case": "ownership round trip and restored owner A echo",
+      "observed_outcome": "A to B and B to A updates committed; inspection recorded revision 16 owned by B. Restored original owner A passed protected 45-byte echo/2.05.",
+      "evidence": [
+        {
+          "source": {
+            "file": "fixed-transfer-a-to-b.log",
+            "bytes": 1330,
+            "sha256": "bea0fef89aa809d7a40d8459b4f79357af1ecf1807df082ff7f1c31992355804",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Device and host pairing committed. Peer be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8."
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-inspect-owner-b.log",
+            "bytes": 2110,
+            "sha256": "352945eea8c724935150f88a96239e9cde67e0776c265d6b9f6e8ab62c926d08",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Pairing revision 16 enabled true"
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-transfer-b-to-a.log",
+            "bytes": 1330,
+            "sha256": "0716fc994286fb10414b01a63716188daa98ed8706efb812ac81611d8acfbd45",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Device and host pairing committed. Peer be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8."
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-echo-after-owner-roundtrip.log",
+            "bytes": 746,
+            "sha256": "d9d41e29ef0abb88a37a5c4eb9b7bbc0cdd617ceacf8b6d219d6a85e9dd3e159",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Protected echo received and acknowledged (45 bytes).",
+            "Protected probe passed (code 2.05)."
+          ]
+        }
+      ],
+      "limits": [
+        "The B-host probe timed out and is not a protected owner-B echo pass."
+      ]
+    },
+    {
+      "case": "backup authorization and selected recovery refusals",
+      "observed_outcome": "Both credentials proved possession for backup authorization. Selected recovery attempts refused; no successful co-signed ownership recovery is claimed.",
+      "evidence": [
+        {
+          "source": {
+            "file": "fixed-authorize-backup-b.log",
+            "bytes": 2338,
+            "sha256": "c4897553a47838cfe86dba5b094f75866e06916ad3db0a175fef7baee1b49eaf",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Recovery credential authorized after both credentials proved possession."
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-owner-recovery-b.log",
+            "bytes": 1360,
+            "sha256": "757b6b63ccbf7901f500276c798be081c32f703e593ca21456b9a5910a31455a",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "coaptic-enroll: operator approval refused: Input"
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-backup-recover-original-owner.log",
+            "bytes": 3562,
+            "sha256": "a938d79bc6bac75787c7d5d72cb29716fa67f7f0bf391f220926d674bf6aaeca",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "coaptic-enroll: device refused commissioning request (code 3)"
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-recovered-host-echo.log",
+            "bytes": 808,
+            "sha256": "81522975daf938de01a1974f791d73b66c36d545b7c61faa082935d09e6a83a3",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "coaptic-enroll.exe : coaptic-enroll: local pairing refused: Unauthorized"
+          ]
+        }
+      ],
+      "limits": []
+    },
+    {
+      "case": "ungraded network probes",
+      "observed_outcome": "Two selected network attempts ended at their finite paired-probe deadline.",
+      "evidence": [
+        {
+          "source": {
+            "file": "fixed-old-owner-refusal.log",
+            "bytes": 906,
+            "sha256": "0dc7ff244d2583ce92e37b3a7e9e89e28ed41c93f791d65b872d910f0a517541",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "coaptic-enroll.exe : coaptic-enroll: paired probe deadline",
+            "+ CategoryInfo          : NotSpecified: (coaptic-enroll: paired probe deadline:String) [], RemoteException"
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-owner-b-echo.log",
+            "bytes": 906,
+            "sha256": "fce7b0fc9a30d9d5ba62f991d1559af541442f4c5935702ef234e8844de0bb79",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "coaptic-enroll.exe : coaptic-enroll: paired probe deadline",
+            "+ CategoryInfo          : NotSpecified: (coaptic-enroll: paired probe deadline:String) [], RemoteException"
+          ]
+        }
+      ],
+      "limits": [
+        "Timeout is not an authenticated network authorization-refusal observation."
+      ]
+    },
+    {
+      "case": "device-only warm restart with live host",
+      "observed_outcome": "The same PID 29284 withheld original receipt 4 at generation 1, acknowledged serial esp_restart occurred, then receipt 4 was released at generation 2. Completion and quiescence preceded host stop; closed journal has four unique operations/sequences and preserves the prior three-row prefix.",
+      "evidence": [
+        {
+          "source": {
+            "file": "fixed-device-only-service.log",
+            "bytes": 824,
+            "sha256": "11c9b4fc8e8479dce7d983c6a7e9586465920825904109f982e40305a1a1c2a3",
+            "encoding": "utf-8-sig"
+          },
+          "selected_verbatim_lines": [
+            "Device-restart checkpoint armed: host PID 29284 remains alive; receipt 4 withheld at generation 1. Restart only the ESP32 now; preserve this host and journal.",
+            "Device-restart receipt released: host PID 29284, original receipt 4, generation 1 -> 2. Confirm device durable completion and quiesce while this host remains alive; a fresh session alone does not prove a device restart.",
+            "Durable telemetry receipt 4 (45 bytes)."
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-device-only-restart.log",
+            "bytes": 180,
+            "sha256": "a306b8aa90d288986de7ce281fe18930762b088ece6e6b066ec99ad01cafdfce",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Device restarting; it will restore pairing and establish a fresh session automatically."
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-device-only-quiesce.log",
+            "bytes": 340,
+            "sha256": "61caacfd9134600c2908114a2821e12d114ea93e67e98f5f905b68ceaee081a6",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Durable work drained; production held for 60 seconds. Stop the host service before changing its pairing; an administrative challenge extends the hold through approval."
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-device-only-final-echo.log",
+            "bytes": 746,
+            "sha256": "d9d41e29ef0abb88a37a5c4eb9b7bbc0cdd617ceacf8b6d219d6a85e9dd3e159",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Protected echo received and acknowledged (45 bytes).",
+            "Protected probe passed (code 2.05)."
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-device-only-inspect-pending.log",
+            "bytes": 1020,
+            "sha256": "007b7ddb66a70cca3ce7b3000389d3211e6155a4d38f269b81a35efe887c7ab6",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Durable work: authenticated unresolved work; serve receipts and quiesce before grant changes",
+            "Pairing revision 19 enabled true"
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-device-only-inspect-complete.log",
+            "bytes": 928,
+            "sha256": "6e83520c0e3cc436109bccf5325468ad30716cf6fd0e0c2df33163d64ea4e1a9",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Durable work: authenticated empty or completed",
+            "Pairing revision 19 enabled true"
+          ]
+        }
+      ],
+      "limits": [
+        "Exact corrected result is copied separately. The armed journal hash is explicitly null because of its exclusive lock; null is never evidence of equality. Warm restart is not cold power loss."
+      ]
+    },
+    {
+      "case": "former-owner USB administrative regrant refusal",
+      "observed_outcome": "Former owner supplied live touchless approval; device refused code 3. Inspection retained revision 20/original owner A and completed work; closed journal hash retained its receipt-4 value.",
+      "evidence": [
+        {
+          "source": {
+            "file": "fixed-old-owner-b-regrant-refusal.log",
+            "bytes": 2102,
+            "sha256": "46ffa4ef3c9772db818e58986347a65041a9248f2b639d6b44d3504bf90df052",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "coaptic-enroll: device refused commissioning request (code 3)"
+          ]
+        },
+        {
+          "source": {
+            "file": "fixed-old-owner-b-regrant-inspect.log",
+            "bytes": 928,
+            "sha256": "5370103ffad28f461037061d815bfe589fd3e92ec54a0db229308935514309a0",
+            "encoding": "utf-16"
+          },
+          "selected_verbatim_lines": [
+            "Durable work: authenticated empty or completed",
+            "Pairing revision 20 enabled true"
+          ]
+        }
+      ],
+      "limits": [
+        "USB administrative boundary only. Exact result/source/binary/journal hash are copied separately; no network-authentication refusal claim."
+      ]
+    }
+  ],
+  "limits": [
+    "Finite functional observations, not performance/stability qualification.",
+    "No cold power cut, touch-required third-credential recovery, successful co-signed recovery or inbound matched-GET timing result.",
+    "The memory capture ended before later ownership/device-only operations; those operations add no later memory-peak measurement."
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "elf_sha256": "7cc9cd1cfcf82b259cd7225f9e87d2dda299f852b49e149ee1c6062489ef3e48",
+  "zip_sha256": "b849200d4f870eb12d77ed8b23a9d7a803e8735e3b3f39d4cea0d6b01c23d81c",
+  "tls": {
+    "_thread_local_data_start": 1008883300,
+    "_thread_local_data_end": 1008883300,
+    "_thread_local_bss_start": 1008883300,
+    "_thread_local_bss_end": 1008883308,
+    "_tls_section_alignment": 4,
+    "initialized_data_bytes": 0,
+    "bss_bytes": 8,
+    "reserved_per_task_bytes": 16,
+    "binding_bytes": 8
+  }
+}

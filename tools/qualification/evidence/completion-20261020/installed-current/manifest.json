@@ -1,0 +1,106 @@
+{
+  "schema": "coaptic-installed-current-public-manifest/1",
+  "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+  "maximum_total_bytes": 524288,
+  "entries": [
+    {
+      "file": "fixed-both-restart-before.json",
+      "bytes": 141,
+      "sha256": "bf31e80d2e4ccaf2a2ae0cd56737cda4e222f49b1298c39b4c85d1fa5eb4995d",
+      "kind": "byte-identical retained numeric receipt",
+      "encoding": "utf-8-sig"
+    },
+    {
+      "file": "fixed-device-only-process.json",
+      "bytes": 375,
+      "sha256": "86245d82eba6ad895a8c127a5451d86879beff701dd57b04e7a4801dfc73dcd9",
+      "kind": "byte-identical retained numeric receipt",
+      "encoding": "utf-8"
+    },
+    {
+      "file": "fixed-device-only-result.json",
+      "bytes": 4496,
+      "sha256": "689741bae4019cdd62f8b13077714d8aac51e9f0e0fceaaf70458dab5896f829",
+      "kind": "byte-identical retained numeric receipt",
+      "encoding": "utf-16"
+    },
+    {
+      "file": "fixed-old-owner-b-regrant-result.json",
+      "bytes": 1520,
+      "sha256": "d1eb8e05c830ff171de9e44e7cc058cb82a3675abd2a7467721142e33e09ae0d",
+      "kind": "byte-identical retained numeric receipt",
+      "encoding": "utf-16"
+    },
+    {
+      "file": "fixed-owner-layout.receipt.json",
+      "bytes": 3357,
+      "sha256": "4adb00026560a28dbe8b72a4544dd841d64fffdc90bd7954444dd2821742a8c1",
+      "kind": "byte-identical retained numeric receipt",
+      "encoding": "utf-8"
+    },
+    {
+      "file": "fixed-runtime-metrics.json",
+      "bytes": 8256,
+      "sha256": "128b023665866eb079a3032339a0e7f7392a16306175b1a681d452172b5f9de7",
+      "kind": "byte-identical retained numeric receipt",
+      "encoding": "utf-8"
+    },
+    {
+      "file": "fixed-static-summary.json",
+      "bytes": 789,
+      "sha256": "c8625664fcb0294065b9c456d2a3d028e30dffbb7cb2b9807b99ceb490d2e5f2",
+      "kind": "byte-identical retained numeric receipt",
+      "encoding": "utf-8"
+    },
+    {
+      "file": "fixed-static.receipt.json",
+      "bytes": 1359,
+      "sha256": "6cb929be4ac67523ac59ae3a69bbe5b3188a5fe3bdb18e2383de5ba40351e6fa",
+      "kind": "byte-identical retained numeric receipt",
+      "encoding": "utf-8"
+    },
+    {
+      "file": "fixed-tls-layout.json",
+      "bytes": 516,
+      "sha256": "551754bfc95f21eaaed3d3ebd18aa98184a3ebc15231d9eed8d101fec2190cbb",
+      "kind": "byte-identical retained numeric receipt",
+      "encoding": "utf-8"
+    },
+    {
+      "file": "functional.json",
+      "bytes": 18660,
+      "sha256": "958910a4631c3302f3466c033fba8f5a4af8bc35979aa0dc2155cd811a598271",
+      "kind": "derived public metadata or explanation",
+      "encoding": "utf-8"
+    },
+    {
+      "file": "post-install-observation.json",
+      "bytes": 1444,
+      "sha256": "6b482fe5e33ca4933696daf37641bb0acdd109394556886cd655e32c53eddedb",
+      "kind": "derived public metadata or explanation",
+      "encoding": "utf-8"
+    },
+    {
+      "file": "README.md",
+      "bytes": 5130,
+      "sha256": "7c180917d7627af984d069ddb5df7ca22fbcedff8bd7c1cb51d811f294d9e5f8",
+      "kind": "derived public metadata or explanation",
+      "encoding": "utf-8"
+    },
+    {
+      "file": "source.json",
+      "bytes": 4802,
+      "sha256": "e4a7228c0bee9045d8c3aec113b3f174ecd1f2ec7b75b02264d195ef581d86e6",
+      "kind": "derived public metadata or explanation",
+      "encoding": "utf-8"
+    }
+  ],
+  "exclusions": [
+    "private configuration",
+    "firmware/ELF/map/archive binaries",
+    "credentials/keys/certificates",
+    "payloads",
+    "raw API logs"
+  ],
+  "integrity": "Exact stored byte hashes; manifest excludes itself. Derived CLI excerpts retain hashes of non-published source logs."
+}

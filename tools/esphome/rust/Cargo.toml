@@ -38,6 +38,14 @@ critical-section = { version = "1.2.0", features = ["std"], optional = true }
 [dev-dependencies]
 coaptic-receipts = { path = "../../../coaptic/tools/coaptic-receipts" }
 
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.test]
+debug = 0
+incremental = false
+
 [profile.release]
 opt-level = 3
 lto = "thin"

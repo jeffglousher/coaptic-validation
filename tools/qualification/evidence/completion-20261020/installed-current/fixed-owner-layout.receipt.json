@@ -1,0 +1,68 @@
+{
+  "schema": "coaptic-installed-owner-layout/1",
+  "core": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+  "suite_archive": "27b0e6438eff112f17646f4023abb44a41da40cc",
+  "suite_same_tree_merge": "421f666bf7bf6cafcbbdb0ff5ea026389e85c05f",
+  "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+  "elf_sha256": "7cc9cd1cfcf82b259cd7225f9e87d2dda299f852b49e149ee1c6062489ef3e48",
+  "private_zip_sha256": "b849200d4f870eb12d77ed8b23a9d7a803e8735e3b3f39d4cea0d6b01c23d81c",
+  "managed_owner_bytes": 29184,
+  "worker_future_bytes": 49560,
+  "async_runtime_metadata_bytes": 104,
+  "entropy_owner_bytes": 336,
+  "entropy_owner_ceiling_bytes": 512,
+  "entropy_seed_handoff_bytes": 32,
+  "entropy_seed_scratch_bytes": 32,
+  "entropy_max_request_bytes": 256,
+  "entropy_generation_limit_bytes": 4294967296,
+  "worker_stack_reserved_bytes": 196608,
+  "tls": {
+    "_thread_local_data_start": 1008883300,
+    "_thread_local_data_end": 1008883300,
+    "_thread_local_bss_start": 1008883300,
+    "_thread_local_bss_end": 1008883308,
+    "_tls_section_alignment": 4,
+    "initialized_data_bytes": 0,
+    "bss_bytes": 8,
+    "reserved_per_task_bytes": 16,
+    "binding_bytes": 8
+  },
+  "cpp_dwarf_public_layouts": {
+    "CoapticNetwork": 336,
+    "CoapticEntropyBinding": 8
+  },
+  "cpp_component_storage": {
+    "symbol": "_ZL60coaptic_network__coaptic_network_coapticnetwork_id__pstorage",
+    "bytes": 336,
+    "section": ".dram0.bss",
+    "strings_excluded": true
+  },
+  "selected_nested_frames_bytes": {
+    "cpp_worker_entry": 32,
+    "rust_entropy_owner_entry": 816,
+    "run_seeded": 32,
+    "pairing_owner": 49760,
+    "async_driver": 10464
+  },
+  "proof": {
+    "managed_future_call": "4214c26b a11=29184;4214c26e a12=49560;4214c271 callback;4214c276 callx8",
+    "runtime_future_call": "42026f11 a10=104;42026f14 a11=49560;42026f17 callback;42026f1a callx8",
+    "rng_requirement": "index0 jump at3c217ce4 ->42151af5 movi a2,336; index4 ->42151aff a3=1,a2=0",
+    "tls_layout": "data0 + bss8 rounded to16 by IDF; binding STT_TLS size8; linker alignment4",
+    "component": "DWARF CoapticNetwork byte_size336 agrees exact336-byte STT_OBJECT in .dram0.bss"
+  },
+  "disassembly": {
+    "file": "fixed-owner-layout.disassembly.txt",
+    "bytes": 9325,
+    "sha256": "a4fc145be8565dc39a61b52024a575efd30b31e80598d5a78ebcf52eebb37c75"
+  },
+  "limits": [
+    "Managed29184 is nested in future49560, which is contained in pairing frame49760; Runtime104 is inside Driver frame10464",
+    "RNG336 is inside outer network_run frame816, separate from the future; do not add it again to that frame or measured worker stack",
+    "The listed compiled frames follow the selected nested call path; they omit deeper callees, interrupt/port save areas and initialization transients and do not establish the worker peak",
+    "Per-task TLS16 consumes each existing stack reservation, including tasks created before the Coaptic worker; do not add to heap or stack totals again",
+    "Component inline336 including seed32 is already in static DRAM; out-of-line string capacities remain in SDK heap",
+    "Seed scratch32 is an object layout, not a whole initialization-frame bound; no complete startup/rekey worst-case is claimed",
+    "This source cohort is separate from755485/ccb411 and68664/1990 firmware evidence"
+  ]
+}
