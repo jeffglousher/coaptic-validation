@@ -21,6 +21,11 @@ class CoapticNetwork : public Component {
   }
   uint32_t security_mode() const { return security_mode_; }
   void set_pairing() { security_mode_ = 5; }
+  int32_t legacy_custody_permit(uint8_t *bytes, uint32_t capacity) const;
+  bool claim_legacy_custody(const uint8_t *claim, uint32_t length);
+#ifdef COAPTIC_LEGACY_CUSTODY
+  void set_legacy_custody_permit(const std::string &value) { legacy_custody_permit_ = value; }
+#endif
   int32_t read_pairing(uint8_t *bytes, uint32_t capacity);
   bool commit_pairing(const uint8_t *bytes, uint32_t length);
   bool security_config(uint8_t *bytes, uint32_t length);
@@ -77,6 +82,9 @@ class CoapticNetwork : public Component {
   uint32_t security_mode_{0};
   nvs_handle_t security_handle_{0};
   nvs_handle_t pairing_handle_{0};
+#ifdef COAPTIC_LEGACY_CUSTODY
+  std::string legacy_custody_permit_;
+#endif
   std::string principal_, resource_, operation_, payload_;
   uint8_t principal_kid_{0};
   uint32_t peer_address_{0}, telemetry_timeout_{0};

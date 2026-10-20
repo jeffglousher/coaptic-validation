@@ -416,6 +416,16 @@ mod pairing_ffi {
         fn coaptic_pairing_restart(context: *mut c_void);
         fn coaptic_pairing_event(context: *mut c_void, event: u32);
         fn coaptic_pairing_owner_sizes(context: *mut c_void, managed: u32, worker: u32);
+        fn coaptic_pairing_legacy_custody_permit(
+            context: *mut c_void,
+            bytes: *mut u8,
+            capacity: u32,
+        ) -> i32;
+        fn coaptic_pairing_claim_legacy_custody(
+            context: *mut c_void,
+            claim: *const u8,
+            length: u32,
+        ) -> bool;
         fn coaptic_pairing_diagnostics(
             context: *mut c_void,
             at_ms: u64,
@@ -433,6 +443,15 @@ mod pairing_ffi {
 
     struct Nvs(*mut c_void);
     impl Store for Nvs {
+        fn claim_legacy_custody(&mut self, claim: &[u8; 32]) -> Result<(), Error> {
+            if unsafe {
+                coaptic_pairing_claim_legacy_custody(self.0, claim.as_ptr(), claim.len() as u32)
+            } {
+                Ok(())
+            } else {
+                Err(Error::Storage)
+            }
+        }
         fn pending_read(
             &mut self,
         ) -> Result<Option<[u8; crate::pending_telemetry::RECORD_BYTES]>, Error> {
@@ -519,6 +538,24 @@ mod pairing_ffi {
         }
     }
 
+    // The default callback returns zero. A selected one-shot permit runs before
+    // either protocol owner exists; any ambiguity stops the complete service.
+    #[inline(never)]
+    fn legacy_custody(context: *mut c_void) -> Result<(), &'static str> {
+        let mut permit = [0; crate::pairing::LEGACY_CUSTODY_PERMIT_BYTES];
+        let len = unsafe {
+            coaptic_pairing_legacy_custody_permit(context, permit.as_mut_ptr(), permit.len() as u32)
+        };
+        match len {
+            0 => Ok(()),
+            len if len == permit.len() as i32 => {
+                crate::pairing::initialize_legacy_custody(&mut Nvs(context), &permit)
+                    .map_err(|_| "legacy custody refused")
+            }
+            _ => Err("legacy custody permit"),
+        }
+    }
+
     #[cfg(feature = "async-network")]
     impl crate::pairing::ConsoleWait for crate::async_network::ConsoleReady<'_> {
         async fn wait(&mut self) -> Result<(), Error> {
@@ -531,6 +568,7 @@ mod pairing_ffi {
     #[cfg(feature = "async-network")]
     #[inline(never)]
     pub(super) fn run(context: *mut c_void) -> Result<(), &'static str> {
+        legacy_custody(context)?;
         let mut runtime =
             unsafe { crate::async_network::Runtime::new(context) }.map_err(|_| "async driver")?;
         let (socket, mut protocol, mut local, console_ready, mut driver) =
@@ -566,6 +604,7 @@ mod pairing_ffi {
     #[cfg(not(feature = "async-network"))]
     #[inline(never)]
     pub(super) fn run(context: *mut c_void) -> Result<(), &'static str> {
+        legacy_custody(context)?;
         crate::pairing::run(
             || Socket(context),
             |bytes| unsafe { coaptic_socket_random(bytes.as_mut_ptr(), bytes.len() as u32) },

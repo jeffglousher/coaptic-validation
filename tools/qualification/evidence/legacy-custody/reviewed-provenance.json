@@ -1,0 +1,90 @@
+{
+    "schema":  "coaptic-reviewed-legacy-first-use/1",
+    "decision":  "Eligible only for exact checkpoint and controlled-workflow ordinary-flash boundary",
+    "checkpoint":  {
+                       "permissions":  "7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56",
+                       "device":  "be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8",
+                       "store":  "9f3f52a3fce0f8794f6872a0f054f4ce4ad6012f100ded42906f9e3c76edef02",
+                       "commitment":  "9d0f79a22c7a14ace39bcf850d49cd8c637bbf5c48bb4735b164fa65123f13e7",
+                       "revision":  8,
+                       "custody_blob_sha256":  "843feb3a8f7b50733c0663ddf5e2b4494a7ce86e95ee6434c9176078685dee6f",
+                       "enabled":  true
+                   },
+    "evidence":  {
+                     "forensic_scan_sha256":  "a8954c939ff30aa44b89559a9faa105154776638cf69206223323c1b9d9a9a39",
+                     "genesis_witness":  {
+                                             "position":  386,
+                                             "event":  "Actual serial-init COM6 KID31 created same key and disabled revision1, followed by explicit echo-only pairing",
+                                             "item":  "exec-ac6e91d9-ca7f-42a4-9aee-32298c8a5816",
+                                             "thread":  "93198369-ff02-4a4f-be45-59c378ae4c22"
+                                         },
+                     "protected_at_rest":  "Windows DPAPI CurrentUser, user-only ACL, exact roundtrip verified",
+                     "enrolled_pending_entries_active_or_superseded":  0,
+                     "single_store":  true,
+                     "page_generations":  [
+                                              0,
+                                              1,
+                                              2,
+                                              3,
+                                              4,
+                                              5,
+                                              6,
+                                              7,
+                                              8,
+                                              9,
+                                              10,
+                                              11,
+                                              12,
+                                              13,
+                                              14,
+                                              15,
+                                              16,
+                                              17,
+                                              18,
+                                              19,
+                                              20,
+                                              21,
+                                              22,
+                                              23,
+                                              24
+                                          ],
+                     "private_sealed_snapshot_sha256":  "505a98c642398a81e0ffef813c0b35ef633860da021315b6961cfd70faa3a366",
+                     "other_qualification_namespace":  "Two retained coaptic_sec Pending entries are separate and preserved; never treated as enrolled custody",
+                     "original_flash_witness":  {
+                                                    "position":  384,
+                                                    "event":  "Original app and OTAdata writes; NVS partition at0xF90000 preserved",
+                                                    "thread":  "93198369-ff02-4a4f-be45-59c378ae4c22"
+                                                },
+                     "all_custody_checksums_valid":  true,
+                     "custody_revisions":  [
+                                               1,
+                                               2,
+                                               3,
+                                               4,
+                                               5,
+                                               6,
+                                               7,
+                                               8
+                                           ],
+                     "raw_nvs_sha256":  "7099cd6372509d199bf06df2c475f0c2e85c2aa10d790160e8ec5bfaa8a361c9",
+                     "parser":  "Cached ESP-IDF5.5.5 nvs_parser.py; checksum/P256 validation in memory, cached Rust BLAKE3 derive_key helper",
+                     "public_chain_sha256":  "52bdb54cd94b6372df2b101eec80477cba6cc30fa45d05750f4b14edcf682cab",
+                     "single_identity":  true,
+                     "fully_erased_remaining_pages":  87,
+                     "known_session_audit":  "Independent reviewer bounded scan of6545 T3activity prefixes and retained actual flash logs found no NVS erase/restore. All8 retained policy checkpoints are unpaired/echo-only/revoked/read-only; none authorizes enrolled telemetry."
+                 },
+    "operator_statement":  "Only used by this CoAP development workflow across an unknown number of sessions; no other users. Operator requested trust but verify and continued autonomous ownership.",
+    "independent_review":  {
+                               "outcome":  "Approved eligibility after retained original NVS chain and primary genesis/storage witnesses; chronology-only rejection superseded",
+                               "mechanism":  "Exact device/store/revision/commitment/evidence digest; defaultdisabled; existing history refused; create-only durable claim before Pending; full identity blob compared before/after; commit and readback; errors stop before protocol owners",
+                               "reviewer":  "/root/acceptance_closeout (general independent reviewer)"
+                           },
+    "limits":  [
+                   "This is externally reviewed controlled-deployment provenance, not a signature or automatically authenticated historical proof.",
+                   "Ordinary-flash integrity is selected. Hostile full-snapshot rollback and privileged out-of-workflow firmware/storage editing are outside the qualified boundary.",
+                   "No old operation is reconstructed, discarded or relabeled. This initializes only the proven unused enrolled namespace.",
+                   "Any checkpoint drift, existing/corrupt/unresolved Pending, existing/corrupt claim or ambiguous persistence refuses.",
+                   "Selected migration image must be replaced with normal defaultdisabled image after the attempt; consumed claim is never cleared automatically."
+               ],
+    "previous_rejected_proposal_sha256":  "fa087474048baddf28783808268e90d2f4f75e0fd9bcd147573cc2b1ae65fcc7"
+}

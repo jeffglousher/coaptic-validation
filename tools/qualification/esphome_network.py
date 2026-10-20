@@ -36,7 +36,8 @@ def main():
     config["external_components"][0]["components"] = ["coaptic_network"]
     del config["coaptic_probe"]
     config["coaptic_network"] = {"run_id": run_id, "qualification_only": True, "allow_plaintext": True}
-    config["wifi"] = {"ap": {"ssid": ssid, "password": password}, "reboot_timeout": "0s"}
+    config["wifi"] = {"ap": {"ssid": ssid, "password": password}, "reboot_timeout": "0s",
+                      "power_save_mode": "NONE"}
     config["logger"]["level"] = "INFO"
     path = directory / "network.yaml"
     path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")

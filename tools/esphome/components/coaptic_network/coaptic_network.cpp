@@ -7,6 +7,7 @@
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "esp_vfs_eventfd.h"
+#include "esp_wifi.h"
 #ifdef COAPTIC_PAIRING
 #include "driver/usb_serial_jtag.h"
 #include "driver/usb_serial_jtag_select.h"
@@ -28,18 +29,53 @@ static constexpr const char *TAG = "coaptic_network";
 // Region low-watermarks may occur at different times: never label their sum a
 // measured simultaneous whole-device peak. Task stacks are heap allocations,
 // so their reserved bytes must not also be added to heap allocation totals.
-static void log_resources(const char *run_id, const char *phase, uint32_t task_stack_bytes) {
+static void log_heap_resources(const char *run_id, const char *phase, const char *name,
+                               uint32_t caps, uint32_t task_stack_bytes) {
   multi_heap_info_t info{};
-  heap_caps_get_info(&info, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  heap_caps_get_info(&info, caps);
+  const size_t total = heap_caps_get_total_size(caps);
   ESP_LOGI(TAG, "COAPTIC_RESOURCES {\"run_id\":\"%s\",\"phase\":\"%s\","
-           "\"caps\":\"internal_8bit\",\"allocated_bytes\":%lu,\"free_bytes\":%lu,"
+           "\"caps\":\"%s\",\"total_bytes\":%lu,\"allocated_bytes\":%lu,\"free_bytes\":%lu,"
            "\"region_min_free_sum_bytes\":%lu,\"largest_free_block_bytes\":%lu,"
            "\"coaptic_task_stack_reserved_bytes\":%lu,\"sdk_snapshot_bytes\":%u}",
-           run_id, phase, static_cast<unsigned long>(info.total_allocated_bytes),
+           run_id, phase, name, static_cast<unsigned long>(total),
+           static_cast<unsigned long>(info.total_allocated_bytes),
            static_cast<unsigned long>(info.total_free_bytes),
            static_cast<unsigned long>(info.minimum_free_bytes),
            static_cast<unsigned long>(info.largest_free_block),
            static_cast<unsigned long>(task_stack_bytes), static_cast<unsigned>(sizeof(info)));
+}
+
+static void log_resources(const char *run_id, const char *phase, uint32_t task_stack_bytes) {
+  log_heap_resources(run_id, phase, "internal_8bit", MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT,
+                     task_stack_bytes);
+#ifdef COAPTIC_RESOURCE_QUALIFICATION
+  // all_8bit includes internal and external RAM; these are overlapping views.
+  log_heap_resources(run_id, phase, "all_8bit", MALLOC_CAP_8BIT, task_stack_bytes);
+  if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) != 0)
+    log_heap_resources(run_id, phase, "spiram_8bit", MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT, 0);
+
+  // SDK enumeration needs caller-owned scratch. It lives on the existing loop
+  // stack only during this optional snapshot; neither App pools nor heap grow.
+  // A full buffer is refused by the SDK rather than reported as a full inventory.
+  TaskStatus_t tasks[32]{};
+  static_assert(sizeof(tasks) <= 2048, "qualification scratch budget");
+  static_assert(sizeof(StackType_t) == 1, "ESP-IDF stack watermark byte units");
+  const UBaseType_t count = uxTaskGetSystemState(tasks, 32, nullptr);
+  ESP_LOGI(TAG, "COAPTIC_TASKS {\"run_id\":\"%s\",\"phase\":\"%s\","
+           "\"count\":%lu,\"capacity\":32,\"complete_snapshot\":%s,\"scratch_bytes\":%u}",
+           run_id, phase, static_cast<unsigned long>(count), count != 0 ? "true" : "false",
+           static_cast<unsigned>(sizeof(tasks)));
+  for (UBaseType_t i = 0; i < count; ++i) {
+    // Names point into possibly deleted TCBs after the SDK releases its lock.
+    // Numeric copied values remain valid; never dereference a retained task.
+    ESP_LOGI(TAG, "COAPTIC_TASK_STACK {\"run_id\":\"%s\",\"phase\":\"%s\","
+             "\"task_id\":%lu,\"priority\":%lu,\"minimum_free_stack_bytes\":%lu}",
+             run_id, phase, static_cast<unsigned long>(tasks[i].xTaskNumber),
+             static_cast<unsigned long>(tasks[i].uxCurrentPriority),
+             static_cast<unsigned long>(tasks[i].usStackHighWaterMark));
+  }
+#endif
 }
 
 // One process-lifetime descriptor, allocated only when the optional Rust driver
@@ -488,6 +524,42 @@ bool CoapticNetwork::commit_pairing(const uint8_t *bytes, uint32_t length) {
   return nvs_set_blob(pairing_handle_, "custody_v1", bytes, length) == ESP_OK && nvs_commit(pairing_handle_) == ESP_OK;
 }
 
+int32_t CoapticNetwork::legacy_custody_permit(uint8_t *bytes, uint32_t capacity) const {
+#ifdef COAPTIC_LEGACY_CUSTODY
+  if (security_mode_ != 5 || bytes == nullptr || capacity < 136 || legacy_custody_permit_.size() != 272)
+    return -1;
+  auto nibble = [](char c) -> int {
+    return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1;
+  };
+  for (size_t i = 0; i < 136; ++i) {
+    const int high = nibble(legacy_custody_permit_[2 * i]);
+    const int low = nibble(legacy_custody_permit_[2 * i + 1]);
+    if (high < 0 || low < 0) return -1;
+    bytes[i] = static_cast<uint8_t>((high << 4) | low);
+  }
+  return 136;
+#else
+  return 0;
+#endif
+}
+
+bool CoapticNetwork::claim_legacy_custody(const uint8_t *claim, uint32_t length) {
+  if (security_mode_ != 5 || claim == nullptr || length != 32 || pairing_handle_ == 0)
+    return false;
+  size_t stored = 0;
+  // Create-only, even for the same permit. Later loss of Pending never revives
+  // this authority; interrupted/ambiguous initialization needs explicit repair.
+  if (nvs_get_blob(pairing_handle_, "legacy_init_v1", nullptr, &stored) != ESP_ERR_NVS_NOT_FOUND)
+    return false;
+  if (nvs_set_blob(pairing_handle_, "legacy_init_v1", claim, length) != ESP_OK ||
+      nvs_commit(pairing_handle_) != ESP_OK)
+    return false;
+  uint8_t readback[32]{};
+  stored = sizeof(readback);
+  return nvs_get_blob(pairing_handle_, "legacy_init_v1", readback, &stored) == ESP_OK &&
+         stored == length && std::memcmp(readback, claim, length) == 0;
+}
+
 void CoapticNetwork::on_shutdown() {
   stop_.store(true, std::memory_order_release);
   const int event = async_event_fd.load(std::memory_order_acquire);
@@ -567,7 +639,24 @@ extern "C" uint64_t coaptic_socket_clock(void *context) {
   return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->clock();
 }
 extern "C" bool coaptic_socket_random(uint8_t *bytes, uint32_t length) {
+  if (length == 0) return true;
+  if (bytes == nullptr) return false;
+  std::memset(bytes, 0, length);
+  // Guaranteed hardware entropy requires active RF. Require started Wi-Fi with
+  // modem sleep disabled; these checks do not serialize platform RF teardown.
+  const auto rf_ready = []() {
+    uint8_t primary = 0;
+    wifi_second_chan_t secondary = WIFI_SECOND_CHAN_NONE;
+    wifi_ps_type_t power_save = WIFI_PS_MAX_MODEM;
+    return esp_wifi_get_home_channel(&primary, &secondary) == ESP_OK &&
+           esp_wifi_get_ps(&power_save) == ESP_OK && power_save == WIFI_PS_NONE;
+  };
+  if (!rf_ready()) return false;
   esp_fill_random(bytes, length);
+  if (!rf_ready()) {
+    std::memset(bytes, 0, length);
+    return false;
+  }
   return true;
 }
 
@@ -607,6 +696,14 @@ extern "C" int32_t coaptic_pairing_read(void *context, uint8_t *bytes, uint32_t 
 }
 extern "C" bool coaptic_pairing_commit(void *context, const uint8_t *bytes, uint32_t length) {
   return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->commit_pairing(bytes, length);
+}
+extern "C" int32_t coaptic_pairing_legacy_custody_permit(void *context, uint8_t *bytes, uint32_t capacity) {
+  if (context == nullptr) return -1;
+  return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->legacy_custody_permit(bytes, capacity);
+}
+extern "C" bool coaptic_pairing_claim_legacy_custody(void *context, const uint8_t *claim, uint32_t length) {
+  if (context == nullptr) return false;
+  return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->claim_legacy_custody(claim, length);
 }
 extern "C" int32_t coaptic_pairing_console_read(void *, uint8_t *bytes, uint32_t capacity) {
   if (bytes == nullptr || capacity == 0 || capacity > 512) return -1;

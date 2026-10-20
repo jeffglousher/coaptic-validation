@@ -25,6 +25,8 @@ mod async_service;
 pub(crate) use async_service::managed_owner_bytes;
 #[cfg(feature = "async-network")]
 pub use async_service::{ConsoleWait, run_async};
+mod legacy_custody;
+pub use legacy_custody::{LEGACY_CUSTODY_PERMIT_BYTES, initialize_legacy_custody};
 
 use zeroize::Zeroizing;
 
@@ -159,6 +161,12 @@ pub trait Store {
         &mut self,
         _: &[u8; crate::pending_telemetry::RECORD_BYTES],
     ) -> Result<(), Error> {
+        Err(Error::Storage)
+    }
+    /// Durably create a one-use migration claim only when its separate key has
+    /// never been set. Existing, unreadable or ambiguous claims refuse, including
+    /// an exact repeat. Confirm commit and exact readback before success.
+    fn claim_legacy_custody(&mut self, _claim: &[u8; 32]) -> Result<(), Error> {
         Err(Error::Storage)
     }
 }
@@ -1217,6 +1225,7 @@ mod tests {
     use std::{cell::RefCell, collections::VecDeque, rc::Rc, vec::Vec};
 
     mod enrolled_loopback;
+    mod legacy_custody;
 
     #[derive(Default)]
     struct Memory {
