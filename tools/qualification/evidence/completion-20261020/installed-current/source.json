@@ -1,0 +1,128 @@
+{
+  "schema": "coaptic-installed-current-source/1",
+  "core": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+  "suite_archive": "27b0e6438eff112f17646f4023abb44a41da40cc",
+  "suite_same_tree_merge": "421f666bf7bf6cafcbbdb0ff5ea026389e85c05f",
+  "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+  "target": "ESP32-S3",
+  "driving": "native async pairing/UDP endpoint with OSCORE/EDHOC",
+  "storage": "ordinary durable NVS; app-only authenticated OTA preserving original identity",
+  "profile": {
+    "name": "EnrolledDevice (Constrained-derived)",
+    "rx_datagrams": 3,
+    "tx_datagrams": 2,
+    "datagram_bytes": 1152,
+    "blockwise": false,
+    "body_pools_instantiated": false,
+    "route_slots": 8,
+    "client_calls": 4,
+    "deferred_slots": 0,
+    "security_request_bindings": 4,
+    "security_associations": 1,
+    "recovery_caches": 2,
+    "dedup_entries": 4,
+    "observe_entries": 2,
+    "declared_rx_body": [
+      1,
+      4096
+    ],
+    "declared_tx_body": [
+      1,
+      4096
+    ],
+    "selection_reason": "Persistent Observe and one ordinary Call need two response credits plus shared receive headroom; other pool dimensions remain Constrained."
+  },
+  "versions_in_retained_receipts": {
+    "esp_idf": "5.5.5",
+    "esphome": "2026.9.1"
+  },
+  "artifacts": [
+    {
+      "name": "firmware.elf",
+      "bytes": 14839552,
+      "sha256": "7cc9cd1cfcf82b259cd7225f9e87d2dda299f852b49e149ee1c6062489ef3e48"
+    },
+    {
+      "name": "coaptic-waveshare.map",
+      "bytes": 11934889,
+      "sha256": "f7334d96fc4ef49da8f8b14bc4673c63c676844bb69fa4569f42637c7c94b75b"
+    },
+    {
+      "name": "firmware.ota.bin",
+      "bytes": 2329584,
+      "sha256": "6cf39f75f884bd7327b628ef5731b67f76b188142653310a14a05220f49fd6d6"
+    },
+    {
+      "name": "libcoaptic_esphome_probe.a",
+      "bytes": 4734894,
+      "sha256": "2f06b093d72bc864916fb6e73a2db95480dcd3fe03bd1970cd5e82be488c5bf4"
+    },
+    {
+      "name": "build.json",
+      "bytes": 19869,
+      "sha256": "128dabebc80d16bddc81f425a358109edad62ed0c3cae9636e34615a1d2cec17"
+    }
+  ],
+  "build_receipt": {
+    "file": "cooldown-entropy-built-artifacts.json",
+    "bytes": 1557,
+    "sha256": "403b31ac4cd320e86ea347b21082159321ff045e1a43dbcbd2f35fc391436667",
+    "installed_field_at_build": false,
+    "interpretation": "Pre-install build receipt. Later successful OTA and identified runtime capture establish execution; this flag is not rewritten."
+  },
+  "ota": {
+    "source": {
+      "file": "cooldown-entropy-ota.log",
+      "bytes": 2044,
+      "sha256": "49a887593e2c84eb682bf4861e7b7f79067b6a5be5991d7ecda1ef465d24deae",
+      "encoding": "utf-16"
+    },
+    "selected_verbatim_lines": [
+      "python.exe : INFO ESPHome 2026.9.1",
+      "+ CategoryInfo          : NotSpecified: (INFO ESPHome 2026.9.1:String) [], RemoteException",
+      "INFO OTA successful",
+      "INFO Successfully uploaded program."
+    ]
+  },
+  "raw_runtime_source": {
+    "file": "fixed-device-runtime-api.jsonl",
+    "bytes": 105410,
+    "sha256": "9956d0fed8082803c3ba3d3cdcf6f602c4c50032437dabf3d06c296e3b188631"
+  },
+  "host_cli_device_only_cohort": {
+    "merged": "ee753f974d36a41eab7266ed42e143a184e2018c",
+    "started": "2026-10-20T14:32:25.0213377Z",
+    "source": "c9e7ad8826becb6381e4bcfa7a1bb7341ef17b62",
+    "pid": 29284,
+    "binarySha256": "38d32ddb2dd43884f5769c039efdbab58c19392edf430305ea7fe8f22a95ad7b",
+    "journalBefore": "39c49598a110649b24b7d18c269d08b8e106a5be7254d111a92d77f14f53555e"
+  },
+  "limits": [
+    "Local hashes establish source/build correlation, not authenticated device attestation.",
+    "Earlier fixed CLI logs do not embed the host executable hash; it is not reconstructed here.",
+    "Device-only restart and former-owner USB refusal use c9e7ad8 CLI / same-tree merge ee753f9 against the unchanged c08de23 device image.",
+    "This source cohort differs from the parent directory's 755485/ccb411 baseline and its ea242 Linux cloud fixture."
+  ],
+  "profile_source_blobs": [
+    {
+      "revision": "27b0e6438eff112f17646f4023abb44a41da40cc",
+      "path": "tools/esphome/rust/src/pairing.rs",
+      "sha256": "1dec223824c34937adfeb893ff6f2f8222130df36f4dc0ecae16540d88e96b88"
+    },
+    {
+      "revision": "27b0e6438eff112f17646f4023abb44a41da40cc",
+      "path": "tools/esphome/rust/src/pairing/async_service.rs",
+      "sha256": "0ec66bd4f946fe826c3451c861c6269a9893624c2e9259287aed12022284e930"
+    },
+    {
+      "revision": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+      "path": "src/provisioning/managed.rs",
+      "sha256": "f65d165cc1490a03b48007d16971a552c02c1a6a0a316bf53ad20e7fb1ac885c"
+    },
+    {
+      "revision": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+      "path": "src/app/mod.rs",
+      "sha256": "4b106d703ee9effc15ad6ad8588f3e363f5071632d2bfd96cb15f2045566cca5"
+    }
+  ]
+}

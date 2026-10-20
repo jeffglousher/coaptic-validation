@@ -1,0 +1,23 @@
+{
+  "schema": "coaptic-static-accounting/1",
+  "core": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+  "suite_archive": "27b0e6438eff112f17646f4023abb44a41da40cc",
+  "suite_same_tree_merge": "421f666bf7bf6cafcbbdb0ff5ea026389e85c05f",
+  "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+  "elf_sha256": "7cc9cd1cfcf82b259cd7225f9e87d2dda299f852b49e149ee1c6062489ef3e48",
+  "map_sha256": "f7334d96fc4ef49da8f8b14bc4673c63c676844bb69fa4569f42637c7c94b75b",
+  "ota_sha256": "6cf39f75f884bd7327b628ef5731b67f76b188142653310a14a05220f49fd6d6",
+  "ota_bytes": 2329584,
+  "summary": {
+    "file": "fixed-static-summary.json",
+    "bytes": 789,
+    "sha256": "c8625664fcb0294065b9c456d2a3d028e30dffbb7cb2b9807b99ceb490d2e5f2"
+  },
+  "method": "Installed ESP-IDF5.5.5 esp_idf_size --format json --target esp32s3 against live exacthash-verified map; ELF code/layout independently read from hash-verified private archive in memory",
+  "limits": [
+    "SDK size domains are the tool's dealiased categories, not a fabricated physical grand total",
+    "Flash image estimate from map differs from OTA binary length; both are named separately",
+    "Runtime task stacks/kernel/socket/transport allocations are already counted in heap snapshots",
+    "Whole startup/rekey/interrupt peak remains unqualified; per-region minima need not be simultaneous"
+  ]
+}

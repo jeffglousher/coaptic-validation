@@ -1,0 +1,31 @@
+{
+  "schema": "coaptic-installed-current-observation/1",
+  "core": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+  "suite_archive": "27b0e6438eff112f17646f4023abb44a41da40cc",
+  "suite_same_tree_merge": "421f666bf7bf6cafcbbdb0ff5ea026389e85c05f",
+  "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+  "ota": {
+    "source": {
+      "file": "cooldown-entropy-ota.log",
+      "bytes": 2044,
+      "sha256": "49a887593e2c84eb682bf4861e7b7f79067b6a5be5991d7ecda1ef465d24deae",
+      "encoding": "utf-16"
+    },
+    "selected_verbatim_lines": [
+      "INFO Update took 22.35 seconds (prepare 0.06, upload 21.73, commit 0.56)",
+      "INFO OTA successful",
+      "INFO Successfully uploaded program."
+    ]
+  },
+  "runtime": {
+    "summary_file": "fixed-runtime-metrics.json",
+    "summary_sha256": "128b023665866eb079a3032339a0e7f7392a16306175b1a681d452172b5f9de7",
+    "first_selected_record_at": "2026-10-20T13:58:16.827376+00:00",
+    "last_selected_record_at": "2026-10-20T14:00:32.643634+00:00",
+    "capture_complete": true,
+    "overflow": false,
+    "selected_task_snapshots": 21,
+    "selected_task_count": 12
+  },
+  "interpretation": "Later local OTA success and matching selected runtime records are installation/execution observations. The earlier build receipt explicitly recorded installed:false and is not rewritten. Local source/hash correlation is not authenticated remote attestation. No missing entropy startup log is reconstructed."
+}

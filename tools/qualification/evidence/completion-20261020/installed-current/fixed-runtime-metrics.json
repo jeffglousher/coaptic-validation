@@ -1,0 +1,276 @@
+{
+  "schema": "coaptic-fixed-finite-runtime/1",
+  "core": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+  "suite_archive": "27b0e6438eff112f17646f4023abb44a41da40cc",
+  "suite_same_tree_merge": "421f666bf7bf6cafcbbdb0ff5ea026389e85c05f",
+  "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+  "source": {
+    "file": "fixed-device-runtime-api.jsonl",
+    "bytes": 105410,
+    "sha256": "9956d0fed8082803c3ba3d3cdcf6f602c4c50032437dabf3d06c296e3b188631"
+  },
+  "capture_complete": {
+    "at": "2026-10-20T14:00:33.333053+00:00",
+    "kind": "capture_complete",
+    "overflow": false,
+    "connections": 3
+  },
+  "first_selected_record_at": "2026-10-20T13:58:16.827376+00:00",
+  "last_selected_record_at": "2026-10-20T14:00:32.643634+00:00",
+  "other_run_ids_excluded": [
+    "407105ebaaac4bd4da558ccd78bac5f4"
+  ],
+  "record_counts": {
+    "COAPTIC_RESOURCES": 42,
+    "COAPTIC_TASKS": 21,
+    "COAPTIC_TASK_STACK": 252,
+    "COAPTIC_NETWORK": 21,
+    "COAPTIC_ADMISSION": 6
+  },
+  "heap": {
+    "internal_8bit": {
+      "samples": 21,
+      "total_bytes": [
+        361796
+      ],
+      "allocated_payload_max": 288600,
+      "nonfree_max": 293604,
+      "free_min": 68192,
+      "conservative_region_minimum_nonfree_envelope": 306976,
+      "largest_free_min": 31744
+    },
+    "all_8bit": {
+      "samples": 21,
+      "total_bytes": [
+        361796
+      ],
+      "allocated_payload_max": 290712,
+      "nonfree_max": 295728,
+      "free_min": 66068,
+      "conservative_region_minimum_nonfree_envelope": 306976,
+      "largest_free_min": 31744
+    }
+  },
+  "capture_connection_segments": [
+    {
+      "capture_connection": 2,
+      "task_snapshots": 17,
+      "task_counts": [
+        12
+      ],
+      "task_minimum_free_stack_bytes": {
+        "1": 540,
+        "2": 532,
+        "3": 3100,
+        "5": 820,
+        "6": 828,
+        "7": 1380,
+        "8": 4466,
+        "10": 1876,
+        "11": 2992,
+        "12": 4508,
+        "13": 2400,
+        "14": 19520
+      },
+      "worker_used_highwater_max": 177088,
+      "network_samples": 17,
+      "network_last": {
+        "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+        "rx": 5,
+        "tx": 11,
+        "dropped": 0,
+        "stack_high_water_bytes": 177088,
+        "stack_capacity_bytes": 196608,
+        "polls": 45,
+        "idle_waits": 8,
+        "scheduler_yields": 0,
+        "wait_errors": 0
+      },
+      "resource_phases": [
+        "running"
+      ],
+      "entropy_startup_rows": []
+    },
+    {
+      "capture_connection": 3,
+      "task_snapshots": 4,
+      "task_counts": [
+        12
+      ],
+      "task_minimum_free_stack_bytes": {
+        "1": 540,
+        "2": 532,
+        "3": 3148,
+        "5": 820,
+        "6": 828,
+        "7": 1380,
+        "8": 4466,
+        "10": 1860,
+        "11": 2992,
+        "12": 4524,
+        "13": 2260,
+        "14": 19528
+      },
+      "worker_used_highwater_max": 177080,
+      "network_samples": 4,
+      "network_last": {
+        "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+        "rx": 14,
+        "tx": 21,
+        "dropped": 0,
+        "stack_high_water_bytes": 177080,
+        "stack_capacity_bytes": 196608,
+        "polls": 75,
+        "idle_waits": 14,
+        "scheduler_yields": 0,
+        "wait_errors": 0
+      },
+      "resource_phases": [
+        "running"
+      ],
+      "entropy_startup_rows": []
+    }
+  ],
+  "admission": [
+    {
+      "capture_connection": 2,
+      "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+      "at_ms": 63918,
+      "scope": "retained_app",
+      "token_refused": 0,
+      "rx_refused": 0,
+      "tx_refused": 0,
+      "refusal_sent": 0,
+      "refusal_unsent": 0,
+      "hard_rx": 0,
+      "hard_tx": 0,
+      "rx_accepted": 0,
+      "progress": 1
+    },
+    {
+      "capture_connection": 2,
+      "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+      "at_ms": 64923,
+      "scope": "retained_app",
+      "token_refused": 0,
+      "rx_refused": 0,
+      "tx_refused": 2,
+      "refusal_sent": 1,
+      "refusal_unsent": 0,
+      "hard_rx": 0,
+      "hard_tx": 0,
+      "rx_accepted": 2,
+      "progress": 4
+    },
+    {
+      "capture_connection": 2,
+      "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+      "at_ms": 65928,
+      "scope": "retained_app",
+      "token_refused": 0,
+      "rx_refused": 0,
+      "tx_refused": 2,
+      "refusal_sent": 1,
+      "refusal_unsent": 0,
+      "hard_rx": 0,
+      "hard_tx": 0,
+      "rx_accepted": 3,
+      "progress": 7
+    },
+    {
+      "capture_connection": 2,
+      "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+      "at_ms": 80938,
+      "scope": "retained_app",
+      "token_refused": 0,
+      "rx_refused": 0,
+      "tx_refused": 2,
+      "refusal_sent": 1,
+      "refusal_unsent": 0,
+      "hard_rx": 0,
+      "hard_tx": 0,
+      "rx_accepted": 3,
+      "progress": 11
+    },
+    {
+      "capture_connection": 3,
+      "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+      "at_ms": 48815,
+      "scope": "retained_app",
+      "token_refused": 0,
+      "rx_refused": 0,
+      "tx_refused": 0,
+      "refusal_sent": 0,
+      "refusal_unsent": 0,
+      "hard_rx": 0,
+      "hard_tx": 0,
+      "rx_accepted": 0,
+      "progress": 1
+    },
+    {
+      "capture_connection": 3,
+      "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+      "at_ms": 49820,
+      "scope": "retained_app",
+      "token_refused": 0,
+      "rx_refused": 0,
+      "tx_refused": 2,
+      "refusal_sent": 1,
+      "refusal_unsent": 0,
+      "hard_rx": 0,
+      "hard_tx": 0,
+      "rx_accepted": 2,
+      "progress": 4
+    }
+  ],
+  "owner_layout": {
+    "file": "fixed-owner-layout.receipt.json",
+    "sha256": "4adb00026560a28dbe8b72a4544dd841d64fffdc90bd7954444dd2821742a8c1"
+  },
+  "static_summary": {
+    "file": "fixed-static-summary.json",
+    "sha256": "c8625664fcb0294065b9c456d2a3d028e30dffbb7cb2b9807b99ceb490d2e5f2",
+    "values": {
+      "dram_data": 0,
+      "dram_bss": 0,
+      "dram_rodata": 0,
+      "dram_other": 0,
+      "used_dram": 0,
+      "dram_total": 0,
+      "used_dram_ratio": 0,
+      "dram_remain": 0,
+      "iram_vectors": 1028,
+      "iram_text": 15356,
+      "iram_other": 0,
+      "used_iram": 16384,
+      "iram_total": 16384,
+      "used_iram_ratio": 1.0,
+      "iram_remain": 0,
+      "diram_data": 18632,
+      "diram_bss": 28016,
+      "diram_text": 53743,
+      "diram_vectors": 0,
+      "diram_rodata": 0,
+      "diram_other": 160,
+      "diram_total": 341760,
+      "used_diram": 100551,
+      "used_diram_ratio": 0.29421523876404493,
+      "diram_remain": 241209,
+      "flash_code": 2087528,
+      "flash_rodata": 152900,
+      "flash_other": 264,
+      "used_flash_non_ram": 2240692,
+      "total_size": 2329451
+    }
+  },
+  "limits": [
+    "Only selected802aed run records are aggregated; API connection segments are not inferred to be distinct boots, and task IDs are not correlated across a possible reset",
+    "Every complete TaskStatus snapshot was checked for exactly the declared count of unique task IDs; margins are lifetime free-stack watermarks, not a sum of simultaneous used stacks",
+    "Capability heap views overlap and are sequential; allocated payload differs from total-minus-free nonfree including allocator/region overhead",
+    "Region-minimum nonfree envelopes can combine different times and are not measured simultaneous peaks",
+    "App, future, RNG, runtime and TLS are nested within existing worker stack; component inline storage is already in static .dram0.bss; string capacities/dynamic stacks/TCBs/socket/runtime allocations already affect SDK heap",
+    "ELF layouts and compiled frames do not prove worst-case transient initialization, rekey, interrupt or terminal worker use; only retained snapshots are measured",
+    "Missing startup entropy log is not reconstructed as an executed log; compiled ELF owner/TLS constants are reported separately",
+    "This capture alone proves no physical power-cut, queued-work reconciliation, comparative performance improvement or comprehensive entropy qualification"
+  ]
+}
