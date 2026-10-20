@@ -26,6 +26,7 @@ pub(crate) use async_service::managed_owner_bytes;
 #[cfg(feature = "async-network")]
 pub use async_service::{ConsoleWait, run_async};
 mod legacy_custody;
+mod reconciliation;
 pub use legacy_custody::{LEGACY_CUSTODY_PERMIT_BYTES, initialize_legacy_custody};
 
 use zeroize::Zeroizing;
@@ -559,6 +560,36 @@ pub fn run<T: DatagramIo, S: Store, C: Console>(
                         }
                         Err(PairingCommitError::Store(_)) => {
                             // No more network work after an uncertain write.
+                            let _ = send(&mut console, &CommissioningReply::Refused(4));
+                            return Err(Error::Storage);
+                        }
+                    }
+                }
+                CommissioningRequest::Pending { prior } => {
+                    let reply = device
+                        .as_ref()
+                        .map_or(CommissioningReply::Refused(2), |device| {
+                            device.pending_reply(&mut store, &prior)
+                        });
+                    send(&mut console, &reply)?;
+                }
+                CommissioningRequest::Reconcile {
+                    challenge,
+                    prior,
+                    receipt,
+                } => {
+                    let Some(device) = &mut device else {
+                        send(&mut console, &CommissioningReply::Refused(2))?;
+                        continue;
+                    };
+                    match device.reconcile_receipt(&mut store, &challenge, &prior, receipt, now) {
+                        Ok(receipt) => {
+                            send(&mut console, &CommissioningReply::Reconciled(receipt))?
+                        }
+                        Err(PairingCommitError::State(_)) => {
+                            send(&mut console, &CommissioningReply::Refused(3))?
+                        }
+                        Err(PairingCommitError::Store(_)) => {
                             let _ = send(&mut console, &CommissioningReply::Refused(4));
                             return Err(Error::Storage);
                         }

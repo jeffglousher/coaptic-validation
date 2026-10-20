@@ -262,6 +262,36 @@ pub async fn run_async<T: AsyncDatagramIo, S: Store, C: Console>(
                         }
                     }
                 }
+                CommissioningRequest::Pending { prior } => {
+                    let reply = device
+                        .as_ref()
+                        .map_or(CommissioningReply::Refused(2), |device| {
+                            device.pending_reply(&mut store, &prior)
+                        });
+                    send(&mut console, &reply)?;
+                }
+                CommissioningRequest::Reconcile {
+                    challenge,
+                    prior,
+                    receipt,
+                } => {
+                    let Some(device) = &mut device else {
+                        send(&mut console, &CommissioningReply::Refused(2))?;
+                        continue;
+                    };
+                    match device.reconcile_receipt(&mut store, &challenge, &prior, receipt, now) {
+                        Ok(receipt) => {
+                            send(&mut console, &CommissioningReply::Reconciled(receipt))?
+                        }
+                        Err(PairingCommitError::State(_)) => {
+                            send(&mut console, &CommissioningReply::Refused(3))?
+                        }
+                        Err(PairingCommitError::Store(_)) => {
+                            let _ = send(&mut console, &CommissioningReply::Refused(4));
+                            return Err(Error::Storage);
+                        }
+                    }
+                }
                 CommissioningRequest::Restart => {
                     send(&mut console, &CommissioningReply::Restarting)?;
                     console.restart()?;
