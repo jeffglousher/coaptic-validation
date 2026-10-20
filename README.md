@@ -55,16 +55,25 @@ and no deferred jobs. Its async-only UDP adapter reuses 1,473-byte receive scrat
 Native App futures wait for socket readiness and protocol deadlines on one
 current-thread runtime; no task is spawned per Call and no polling sleep is used.
 
-A five-second bound covers 16 complete 2,000-byte replies, four concurrent NON
-Calls, local capacity refusal before sending, and consumption/cancellation
-recovery. Protected mode uses fresh in-process OSCORE credentials. The JSON receipt
-reports budgets and allocation requests observed during App future construction,
+A five-second bound covers 17 complete 2,000-byte replies, a small reply, four
+concurrent NON Calls, local refusal before sending, and cancellation/reuse.
+Holding 31 existing server TX slots forces a real 5.03/Max-Age 1 response. The
+client checks its cooldown before I/O, receives a full reply after capacity is
+released despite 16 malformed ingress datagrams, then retries the refused resource
+after its deadline. Protected mode uses fresh in-process OSCORE credentials.
+
+The JSON receipt reports allocation requests during App future construction,
 polling and explicit synchronous App operations, with zero request warmups.
-Startup allocations, executor work between polls, pending-future Drop, OS/socket
-memory, allocator overhead and process RSS are outside that observation. The
-fixture's explicit 4 MiB thread stack reservation supports debug construction;
-it is not a library stack requirement. This check establishes finite integration,
-not throughput, durable security recovery or sustained cloud capacity.
+Separate startup, traffic-complete and App/socket Drop snapshots track successful
+Rust allocation requests, requested live/peak heap, and available Windows/Linux
+process memory counters. Process totals overlap App heap, stack and runtime;
+they must not be added to component sizes. The App owners and measured future are
+nested in the fixture's explicit 4 MiB thread stack reservation, which is not a
+library stack requirement. Allocator overhead, native allocations, executor work
+between App polls and pending-future Drop are outside the App allocation assertion.
+Individual stack high-water and kernel socket memory remain unmeasured. Finite
+process peaks establish neither deployment maxima, throughput, durable security
+recovery nor sustained cloud capacity.
 
 ## Qualification
 
