@@ -22,7 +22,7 @@ def network_configuration(root, runtime="bundled", chip="esp32s3"):
     del config["coaptic_probe"]
     config["coaptic_network"] = {"run_id": "a" * 32, "qualification_only": True,
                                   "rust_runtime": runtime, "allow_plaintext": True}
-    config["wifi"] = {"ssid": "qualification-test", "reboot_timeout": "0s"}
+    config["wifi"] = {"ssid": "qualification-test", "reboot_timeout": "0s", "power_save_mode": "NONE"}
     return config
 
 
@@ -64,6 +64,25 @@ def telemetry_config(config, provision=False):
 
 
 class ConfigurationRefusalTests(unittest.TestCase):
+    def test_network_requires_started_rf_without_power_save_for_entropy(self):
+        for change in ["default", "light", "disabled", "ready"]:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                config = network_configuration(root, "source")
+                if change == "default":
+                    del config["wifi"]["power_save_mode"]
+                elif change == "light":
+                    config["wifi"]["power_save_mode"] = "LIGHT"
+                elif change == "disabled":
+                    config["wifi"]["enable_on_boot"] = False
+                path = root / "network.yaml"
+                path.write_text(json.dumps(config), encoding="utf-8")
+                result = subprocess.run([sys.executable, "-m", "esphome", "config", str(path)],
+                                        capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode == 0, change == "ready", result.stdout + result.stderr)
+                if change != "ready":
+                    self.assertIn("hardware entropy requires wifi", result.stdout + result.stderr)
+
     def test_legacy_custody_permit_requires_privileged_pairing(self):
         for pairing in [False, True]:
             with self.subTest(pairing=pairing), tempfile.TemporaryDirectory() as directory:

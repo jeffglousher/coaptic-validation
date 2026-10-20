@@ -277,6 +277,13 @@ setup failures and limits. ESP32-S3 is a qualification platform for the portable
 constrained adapter. Flash power-loss recovery, hostile snapshot rollback,
 production key custody and enrollment remain unqualified in #333/#365.
 
+The network adapter requires `wifi.power_save_mode: NONE` and
+`wifi.enable_on_boot: true` for its hardware entropy source. Association and
+internet access are unnecessary for local USB commissioning. Random requests
+refuse if the SDK reports stopped RF or power saving before or after filling;
+the application must coordinate RF teardown. This is a readiness check, not an
+entropy health test. Fully RF-off commissioning needs a separately seeded DRBG.
+
 `coaptic_network.resource_qualification: true` additionally enables the SDK's
 task trace metadata and a bounded 32-task snapshot. Its at-most-2-KiB scratch
 lives on the existing loop stack; it does not enlarge App pools. A refused SDK

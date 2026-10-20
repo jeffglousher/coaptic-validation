@@ -1,5 +1,6 @@
 # Custom qualification package. The consuming configuration owns esp32, wifi,
 # logger, API/OTA and all unrelated components. Use a fresh secret run ID.
+# Wi-Fi must start on boot with power_save_mode: NONE for hardware entropy.
 external_components:
   - source:
       type: local

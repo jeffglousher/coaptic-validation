@@ -163,7 +163,10 @@ CONFIG_SCHEMA = cv.All(
 )
 
 
-def validate_pairing_console(config):
+def validate_runtime_environment(config):
+    wifi = fv.full_config.get()["wifi"]
+    if wifi["power_save_mode"] != "NONE" or not wifi["enable_on_boot"]:
+        raise cv.Invalid("Coaptic hardware entropy requires wifi power_save_mode: NONE and enable_on_boot: true; association is not required")
     if "pairing" in config:
         logger = fv.full_config.get()["logger"]
         if logger.get("hardware_uart") == "USB_SERIAL_JTAG" and logger["baud_rate"] != 0:
@@ -171,7 +174,7 @@ def validate_pairing_console(config):
     return config
 
 
-FINAL_VALIDATE_SCHEMA = validate_pairing_console
+FINAL_VALIDATE_SCHEMA = validate_runtime_environment
 
 
 async def to_code(config):

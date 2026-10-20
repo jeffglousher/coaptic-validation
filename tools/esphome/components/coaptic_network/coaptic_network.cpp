@@ -7,6 +7,7 @@
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "esp_vfs_eventfd.h"
+#include "esp_wifi.h"
 #ifdef COAPTIC_PAIRING
 #include "driver/usb_serial_jtag.h"
 #include "driver/usb_serial_jtag_select.h"
@@ -638,7 +639,24 @@ extern "C" uint64_t coaptic_socket_clock(void *context) {
   return static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->clock();
 }
 extern "C" bool coaptic_socket_random(uint8_t *bytes, uint32_t length) {
+  if (length == 0) return true;
+  if (bytes == nullptr) return false;
+  std::memset(bytes, 0, length);
+  // Guaranteed hardware entropy requires active RF. Require started Wi-Fi with
+  // modem sleep disabled; these checks do not serialize platform RF teardown.
+  const auto rf_ready = []() {
+    uint8_t primary = 0;
+    wifi_second_chan_t secondary = WIFI_SECOND_CHAN_NONE;
+    wifi_ps_type_t power_save = WIFI_PS_MAX_MODEM;
+    return esp_wifi_get_home_channel(&primary, &secondary) == ESP_OK &&
+           esp_wifi_get_ps(&power_save) == ESP_OK && power_save == WIFI_PS_NONE;
+  };
+  if (!rf_ready()) return false;
   esp_fill_random(bytes, length);
+  if (!rf_ready()) {
+    std::memset(bytes, 0, length);
+    return false;
+  }
   return true;
 }
 
