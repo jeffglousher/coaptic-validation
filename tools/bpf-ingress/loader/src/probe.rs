@@ -13,9 +13,9 @@ use std::{
 };
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 #[path = "../../vectors.rs"]
-mod vectors;
+pub(super) mod vectors;
 
-fn counters(bpf: &Ebpf) -> Result<[u64; COUNTERS as usize]> {
+pub(super) fn counters(bpf: &Ebpf) -> Result<[u64; COUNTERS as usize]> {
     let counts: PerCpuArray<_, u64> =
         PerCpuArray::try_from(bpf.map("COUNTS").ok_or("missing COUNTS")?)?;
     let mut out = [0; COUNTERS as usize];
@@ -344,7 +344,7 @@ pub(super) fn metadata(bpf: &mut Ebpf, cycle: u32) -> Result<()> {
     Ok(())
 }
 
-struct Affinity(libc::cpu_set_t);
+pub(super) struct Affinity(libc::cpu_set_t);
 impl Affinity {
     fn capture() -> Result<Self> {
         let mut set = unsafe { std::mem::zeroed() };
@@ -353,7 +353,7 @@ impl Affinity {
         }
         Ok(Self(set))
     }
-    fn pin(cpu: usize) -> Result<Self> {
+    pub(super) fn pin(cpu: usize) -> Result<Self> {
         let original = Self::capture()?;
         let mut set = unsafe { std::mem::zeroed() };
         unsafe {

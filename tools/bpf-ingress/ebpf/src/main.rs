@@ -20,6 +20,11 @@ fn count(index: u32) {
         }
     }
 }
+/// Detached test-run control; the loader never attaches this entrypoint.
+#[xdp]
+pub fn coaptic_pass(_: XdpContext) -> u32 {
+    xdp_action::XDP_PASS
+}
 #[xdp]
 pub fn coaptic_observe(ctx: XdpContext) -> u32 {
     let start = ctx.data();

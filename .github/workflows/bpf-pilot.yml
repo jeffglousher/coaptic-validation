@@ -10,6 +10,10 @@ on:
         description: Run the full corpus, verifier metrics, lifecycle and refusal checks
         type: boolean
         default: false
+      cost_probe:
+        description: Run only the finite detached kernel cost sample (exclusive with full qualification)
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -39,8 +43,14 @@ jobs:
       - name: Establish exact source and observed runner identity
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
+          COST_PROBE: ${{ inputs.cost_probe }}
+          FULL_QUALIFICATION: ${{ inputs.full_qualification }}
         run: |
           set -euo pipefail
+          if test "$COST_PROBE" = true && test "$FULL_QUALIFICATION" = true; then
+            echo 'Select cost_probe or full_qualification, not both' >&2
+            exit 1
+          fi
           mkdir "$RUNNER_TEMP/bpf-evidence"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/bpf-evidence/source.json"
@@ -56,11 +66,15 @@ jobs:
         with:
           toolchain: nightly-2026-10-13
           components: rust-src, llvm-tools
-      - name: Install runner-only network tool and pinned linker
+      - name: Install pinned linker and attachment-only network tool
+        env:
+          COST_PROBE: ${{ inputs.cost_probe }}
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y iproute2
+          if test "$COST_PROBE" != true; then
+            sudo apt-get update
+            sudo apt-get install --no-install-recommends -y iproute2
+          fi
           mkdir "$RUNNER_TEMP/bpf-linker"
           curl --fail --location --retry 2 https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-x86_64-unknown-linux-musl.tar.zst -o "$RUNNER_TEMP/bpf-linker/archive.tar.zst"
           echo "6789717c8cb6a2a5d920f3b6bfac2bd7efc00f6228ecd149108a99699a75c679  $RUNNER_TEMP/bpf-linker/archive.tar.zst" | sha256sum --check
@@ -74,9 +88,11 @@ jobs:
             cargo -V
             "$RUNNER_TEMP/bpf-linker/bpf-linker" --version
             sha256sum "$RUNNER_TEMP/bpf-linker/archive.tar.zst" "$RUNNER_TEMP/bpf-linker/bpf-linker"
-            ip -Version
-            dpkg-query -W iproute2
-            sha256sum "$(command -v ip)"
+            if test "$COST_PROBE" != true; then
+              ip -Version
+              dpkg-query -W iproute2
+              sha256sum "$(command -v ip)"
+            fi
           } > "$RUNNER_TEMP/bpf-evidence/tools.txt"
       - name: Install full qualification inspection tools
         if: inputs.full_qualification
@@ -115,6 +131,7 @@ jobs:
           "$LLVM/llvm-objdump" --section-headers --syms "$RUNNER_TEMP/bpf-evidence/ingress.elf" > "$RUNNER_TEMP/bpf-evidence/object-layout.txt"
           "$LLVM/llvm-objdump" -d "$RUNNER_TEMP/bpf-evidence/ingress.elf" > "$RUNNER_TEMP/bpf-evidence/object-disassembly.txt"
       - name: Load and attach once with unmodified Aya
+        if: ${{ !inputs.cost_probe }}
         run: |
           set -euo pipefail
           ip -j link show > "$RUNNER_TEMP/bpf-evidence/smoke-before.json"
@@ -122,6 +139,13 @@ jobs:
           sudo "$RUNNER_TEMP/bpf-target/release/coaptic-ingress-loader" "$RUNNER_TEMP/bpf-evidence/ingress.elf" 1 1 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/kernel-smoke.log"
           ip -j link show > "$RUNNER_TEMP/bpf-evidence/smoke-after.json"
           cmp "$RUNNER_TEMP/bpf-evidence/smoke-before.json" "$RUNNER_TEMP/bpf-evidence/smoke-after.json"
+      - name: Measure detached kernel execution with unmodified Aya
+        if: inputs.cost_probe
+        run: |
+          set -euo pipefail
+          lscpu > "$RUNNER_TEMP/bpf-evidence/cost-cpu.txt"
+          # No veth is created and neither entrypoint is attached in cost mode.
+          timeout 120s sudo "$RUNNER_TEMP/bpf-target/release/coaptic-ingress-loader" "$RUNNER_TEMP/bpf-evidence/ingress.elf" cost 1 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/kernel-cost.log"
       - name: Build qualification-only Aya verifier logger from verified original crate
         if: inputs.full_qualification
         run: |
