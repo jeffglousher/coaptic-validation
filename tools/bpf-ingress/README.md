@@ -41,6 +41,37 @@ instructions (2,752 bytes), 1,816 JIT bytes and 4,096 bytes program memlock.
 These are verifier/object measurements, not per-packet execution costs.
 No native NIC, throughput or production-load benefit has been measured.
 
+## Finite execution cost sample
+
+`coaptic-ingress-loader OBJECT cost 1` loads the existing classifier and a minimal
+`XDP_PASS` control from the same ELF, then runs both through Aya's ordinary
+`BPF_PROG_TEST_RUN` API without attachment or network delivery. It creates no
+veth, needs no network-administration operation, and uses unmodified Aya. The
+control never touches maps and is never attached by the loader. The classifier's
+packet path, stack buffer and counters are unchanged.
+
+The loader pins its thread to one available CPU and restores its affinity on
+exit. Four fixed frames cover an unrelated IPv4 UDP port, a 32-byte unprotected
+IPv4 body, an opaque OSCORE IPv6 request and 126 Uri-Path options in a 256-byte
+IPv6 CoAP message. Each program/frame gets 100 warmup invocations and five batches
+of 10,000 measured invocations, with alternating program order. Every call checks
+`XDP_PASS` and exact returned bytes; counter deltas must include all warmup and
+measured classifier invocations, and the control must leave them unchanged.
+
+The JSON output preserves all five raw integer-average nanosecond values per
+program/frame. Linux already divides its accumulated test-run time by repetitions;
+do not divide the returned Aya duration again. These are averages of repeated
+kernel test execution, including its execution-loop overhead, rather than
+individual-packet latency distributions. The control provides context for that
+overhead; it does not make this a NIC, throughput, CPU saturation or end-to-end
+cloud benefit measurement. No result threshold or acceleration claim is implied.
+
+Set `cost_probe=true` on the manual workflow for this sample instead of normal
+load/attach smoke; it is mutually exclusive with `full_qualification=true`.
+The workflow retains exact source, object/toolchain hashes, observed kernel and
+CPU identity and the raw sample, and bounds the loader process to 120 seconds.
+This mode is optional and does not add qualification work to routine edits.
+
 ## Routine smoke and full qualification
 
 The manual **Advisory BPF kernel pilot** workflow requires an exact core SHA and
@@ -58,8 +89,7 @@ Set `full_qualification=true` to additionally run the retained finite corpus,
 verifier metrics, multi-CPU counters, exact live bytes, process/lifecycle recovery
 and capability refusal. Full qualification still exercises the ordinary loader.
 Its inspection tools, temporary Aya instrumentation and repeated cycles are
-explicit opt-in work, not the normal edit loop. The workflow split does not
-change the existing loader, classifier, kernel object or retained receipts.
+explicit opt-in work, not the normal edit loop.
 
 Aya 0.14.0 exposes verifier log-level selection but discards successful load logs.
 The full qualification copy applies a two-line patch to the checksum-verified
@@ -108,8 +138,11 @@ incremental disabled. Do not create a per-branch target or silently install tool
 4. Kernel smoke: `coaptic-ingress-loader OBJECT 1 1`.
 5. Full finite proof: `coaptic-ingress-loader OBJECT qualify CYCLES` (1..3 cycles),
    plus the workflow's instrumentation and capability controls.
+6. Detached finite cost sample: `coaptic-ingress-loader OBJECT cost 1`.
 
-Linux needs BPF/XDP/veth support, sufficient BPF/network privileges and iproute2.
+Attachment modes need Linux BPF/XDP/veth support, sufficient BPF/network
+privileges and iproute2. Detached cost mode needs BPF/test-run support and BPF
+privileges; it skips installation of attachment and qualification tools.
 The Windows loader explicitly refuses execution with exit code 2. Installing
 WSL alone does not establish kernel features or a passing verifier result.
 

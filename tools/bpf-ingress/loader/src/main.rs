@@ -1,4 +1,6 @@
 #[cfg(target_os = "linux")]
+mod cost;
+#[cfg(target_os = "linux")]
 mod probe;
 #[cfg(target_os = "linux")]
 mod linux {
@@ -233,7 +235,13 @@ mod linux {
     pub fn run() -> Result<()> {
         let args: Vec<_> = std::env::args().collect();
         if args.len() != 4 {
-            return Err("usage: coaptic-ingress-loader OBJECT SECONDS|qualify CYCLES; creates its own disposable veth; requires Linux BPF/network privileges".into());
+            return Err("usage: coaptic-ingress-loader OBJECT SECONDS|qualify CYCLES or OBJECT cost 1; cost runs detached, other modes create an owned veth; requires Linux BPF privileges".into());
+        }
+        if args[2] == "cost" {
+            if args[3] != "1" {
+                return Err("cost mode runs exactly one finite sample; use OBJECT cost 1".into());
+            }
+            return crate::cost::run(&args[1]);
         }
         let qualify = args[2] == "qualify";
         let seconds: u64 = if qualify { 1 } else { args[2].parse()? };
