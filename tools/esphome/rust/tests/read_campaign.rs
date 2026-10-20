@@ -5,6 +5,7 @@ use coaptic::storage::{DatagramIo, UdpSocketIo};
 use coaptic_esphome_probe::{
     network,
     read_campaign::{self, Observation},
+    read_campaign_device::{self, Selection},
     security_state::{self, Credentials, Error, RECORD_BYTES, Store},
 };
 use std::{
@@ -167,20 +168,110 @@ fn matched_complete_reads_refuse_failures_then_recover() {
         Err("campaign representation/identity")
     );
     assert_eq!(completed, 0);
-    // The durable sender ranges are retained across failed/successful runs.
+    // Streaming refuses an unavailable output sink after a verified response;
+    // the terminal row never turns that partial campaign into a success.
+    let mut refused_operations = 0;
+    let mut refused_terminal = 0;
     let clock = Instant::now();
-    read_campaign::run(
+    assert_eq!(
+        read_campaign_device::run(
+            client_io(),
+            random,
+            &client_credentials,
+            client_state.clone(),
+            Selection {
+                peer,
+                expected_identity: &identity,
+                async_network: false,
+            },
+            || Some(clock.elapsed().as_nanos() as u64),
+            || std::thread::sleep(Duration::from_millis(1)),
+            |record| {
+                match record.words[0] {
+                    2 => {
+                        refused_operations += 1;
+                        return false;
+                    }
+                    3 => {
+                        refused_terminal += 1;
+                        assert_eq!(&record.words[1..3], &[0, 0]);
+                    }
+                    _ => {}
+                }
+                true
+            }
+        ),
+        Err(read_campaign_device::Error::Output)
+    );
+    assert_eq!((refused_operations, refused_terminal), (1, 1));
+
+    // A fresh campaign reuses the same authenticated state after refusal. Every
+    // record borrows one reused 128-byte owner, and all 24 bodies are verified.
+    let mut prepared = 0;
+    let mut reservations = 0;
+    let mut completed = 0;
+    let mut terminal = 0;
+    let mut accepted = 0;
+    let mut record_address: *const read_campaign_device::Record = core::ptr::null();
+    let clock = Instant::now();
+    read_campaign_device::run(
         client_io(),
         random,
-        || Some(clock.elapsed().as_nanos() as u64),
-        || std::thread::sleep(Duration::from_millis(1)),
         &client_credentials,
         client_state.clone(),
-        peer,
-        &identity,
-        |_| Ok(()),
+        Selection {
+            peer,
+            expected_identity: &identity,
+            async_network: false,
+        },
+        || Some(clock.elapsed().as_nanos() as u64),
+        || std::thread::sleep(Duration::from_millis(1)),
+        |record| {
+            let address = core::ptr::from_ref(record);
+            if record_address.is_null() {
+                record_address = address;
+            }
+            assert_eq!(address, record_address);
+            match record.words[0] {
+                0 => {
+                    assert_eq!(accepted, 0);
+                    prepared += 1;
+                    assert!(record.words[2] <= read_campaign_device::APP_BYTE_CEILING as u64);
+                    assert_eq!(record.words[3], 4096);
+                    assert_eq!(record.words[4], 128);
+                    assert!(record.words[5] <= read_campaign_device::STATE_BYTE_CEILING as u64);
+                    assert!(record.words[10..].iter().all(|&word| word == 0));
+                }
+                1 => {
+                    reservations += 1;
+                    assert!(record.words[2..].iter().all(|&word| word == 0));
+                }
+                2 => {
+                    assert_eq!(prepared, 1);
+                    assert_eq!(terminal, 0);
+                    assert_eq!(record.words[1], completed / 3);
+                    assert_eq!(record.words[2], completed % 3);
+                    assert_eq!(record.words[3], [32, 7, 2000][completed as usize % 3]);
+                    assert!(record.words[5] > 0);
+                    assert!(record.words[12] > 0);
+                    assert!(record.words[13..].iter().all(|&word| word == 0));
+                    completed += 1;
+                }
+                3 => {
+                    terminal += 1;
+                    assert_eq!(&record.words[1..4], &[1, 24, accepted]);
+                    assert!(record.words[4..].iter().all(|&word| word == 0));
+                }
+                _ => panic!("unknown stream record"),
+            }
+            accepted += 1;
+            true
+        },
     )
     .unwrap();
+    assert_eq!((prepared, completed, terminal), (1, 24, 1));
+    assert_eq!(accepted, 26 + reservations);
+    assert!(accepted <= read_campaign_device::MAX_RECORDS as u64);
     stop.store(true, Ordering::Release);
     assert_eq!(worker.join().unwrap(), Ok(()));
 

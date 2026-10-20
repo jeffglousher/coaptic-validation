@@ -21,6 +21,13 @@ class CoapticNetwork : public Component {
   }
   uint32_t security_mode() const { return security_mode_; }
   void set_pairing() { security_mode_ = 5; }
+  void set_read_campaign(uint32_t address, uint16_t port, uint32_t start_delay_ms) {
+    peer_address_ = address; peer_port_ = port;
+    telemetry_timeout_ = start_delay_ms; security_mode_ = 6;
+  }
+  bool read_campaign_config(uint8_t *bytes, uint32_t length) const;
+  uint64_t read_campaign_clock_ns() const;
+  void read_campaign_record(const uint64_t *words, uint32_t count) const;
   int32_t legacy_custody_permit(uint8_t *bytes, uint32_t capacity) const;
   bool claim_legacy_custody(const uint8_t *claim, uint32_t length);
 #ifdef COAPTIC_LEGACY_CUSTODY

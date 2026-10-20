@@ -44,11 +44,11 @@ the same authenticated durable security-state requirements. Host execution of
 the constrained algorithm is a role control, not ESP32 emulation. The ESP32-S3
 is the qualification platform; it does not restrict the library to that MCU.
 Do not label the last configuration measured until the initiator is integrated
-into verified firmware and its complete trace is correlated with the host.
+into verified firmware and every operation and terminal record is retained.
 The retained reverse telemetry POST/receipt test has additional application
 journaling semantics and is a separate workload, not a matched GET result.
 
-Keep plaintext/protected and volatile/durable profiles separate. Request and
+Keep unprotected/protected and volatile/durable profiles separate. Request and
 response packets within one operation do not establish both initiator roles.
 For LAN role reversal, use an explicitly scoped authenticated host service and
 temporary inbound firewall access restricted to the reserved device and exact
@@ -66,6 +66,44 @@ finite 30-second lifetime, trace bound and exclusively owned authenticated
 durable state also apply to this mode. Do not copy device credentials/state into
 a loopback control, or replace the configured firewall executable with an
 unverified build. No firewall rule is installed by the driver.
+
+## Selected ESP32 initiator
+
+`rust/src/read_campaign_device.rs` binds the shared protected workload to the
+synchronous ESPHome socket and existing authenticated NVS state. The selected
+read-campaign mode requires OSCORE, an explicit private IPv4 host and port, and
+the same 32-byte hexadecimal run ID as `timing-server-lan`. It refuses
+`async_network`, provisioning, pairing and telemetry combinations. This mode
+does not provision, reset or copy durable state. The host needs the matching
+counterpart credentials and its own exclusively locked state.
+
+Select `coaptic_network.read_campaign.peer_address` and `peer_port` (default
+5683). `start_delay_ms` defaults to 30000 and accepts 0 through 120000, allowing
+the host and recorder to be ready before this single boot campaign starts.
+
+This is `profiles::Constrained` with blockwise transfers: eight route slots
+(none installed on the initiator), four Calls, no deferred slots, one security
+association, four request bindings, RX2/TX2 datagrams of 1152 bytes, one
+4096-byte body per direction, four dedup entries and two Observe entries. One
+Call runs at a time. It is a distinct configuration from the SmallDevice
+32-byte comparison and the Service cloud fixture.
+
+The adapter requests a bounded 1 ms scheduler wait and reads a nonblocking
+monotonic clock; component shutdown stops the campaign. It streams one reused
+128-byte metadata record after each complete operation, plus preparation,
+sender-range reservations if needed, and a terminal row. The bound is 50 rows;
+all 24 verified operation rows, successful terminal counts and worker completion
+are required. Missing or failed output leaves the campaign incomplete. These
+records contain lengths, phases and counters, never payloads or credentials.
+Logging happens outside operation intervals and can affect later operations.
+
+Preparation reports the actual whole App and security-owner layouts, existing
+4096-byte collection output, record size, and independent 48 KiB App / 1 KiB
+security-owner ceilings. These overlapping object categories are not an
+additive stack peak: retain the worker stack watermark and system heap readings,
+including initialization, transport, Wi-Fi, runtime and logging costs. There is
+no retained device trace, task, packet pool or sample array added by this
+binding. Whole-operation timing does not require the optional hop trace below.
 
 For device-side diagnostics only, compile the ESPHome C++ adapter with
 `COAPTIC_TIMING_TRACE`. This retains at most 512 events in caller-owned adapter

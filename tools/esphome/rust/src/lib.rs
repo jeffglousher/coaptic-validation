@@ -65,6 +65,9 @@ pub mod security_state;
 #[cfg(all(feature = "network", feature = "oscore"))]
 pub mod read_campaign;
 
+#[cfg(all(feature = "network", feature = "oscore"))]
+pub mod read_campaign_device;
+
 #[cfg(all(
     feature = "host",
     feature = "network",
