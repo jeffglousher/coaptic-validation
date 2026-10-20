@@ -1,0 +1,62 @@
+{
+  "schema": "coaptic-finite-task-snapshots/1",
+  "raw_file": "normal-runtime-public.jsonl",
+  "record_counts": {
+    "COAPTIC_RESOURCES": 48,
+    "COAPTIC_TASKS": 24,
+    "COAPTIC_TASK_STACK": 288,
+    "COAPTIC_NETWORK": 24,
+    "COAPTIC_ADMISSION": 4
+  },
+  "segments": [
+    {
+      "capture_connection": 1,
+      "connected_at": "2026-10-20T12:38:40.144894+00:00",
+      "task_snapshots": 20,
+      "task_counts": [
+        12
+      ],
+      "task_minimum_free_stack_bytes": {
+        "1": 556,
+        "2": 548,
+        "3": 3164,
+        "5": 836,
+        "6": 844,
+        "7": 1396,
+        "8": 4482,
+        "10": 1876,
+        "11": 3008,
+        "12": 4540,
+        "13": 2424,
+        "14": 20908
+      },
+      "worker_used_highwater_max": 175700,
+      "network_samples": 20
+    },
+    {
+      "capture_connection": 2,
+      "connected_at": "2026-10-20T12:40:41.269250+00:00",
+      "task_snapshots": 4,
+      "task_counts": [
+        12
+      ],
+      "task_minimum_free_stack_bytes": {
+        "1": 556,
+        "2": 548,
+        "3": 3116,
+        "5": 836,
+        "6": 844,
+        "7": 1396,
+        "8": 4578,
+        "10": 1988,
+        "11": 3008,
+        "12": 4524,
+        "13": 2416,
+        "14": 20920
+      },
+      "worker_used_highwater_max": 67716,
+      "network_samples": 4
+    }
+  ],
+  "interpretation": "Twenty complete 12-task snapshots precede the known read-only NVS capture/normal reset; four follow it. Capture connection boundaries are retained. Task IDs can reset/refer to another task lifetime across boot; never merge them into persistent identities. Each watermark is that task lifetime's minimum-free margin, not measured used bytes without its reserved size, not a simultaneous all-task peak. Deleted tasks and boot/ISR stacks are not supplied by this inventory. Snapshot scratch is 1152 bytes on the existing loop stack. The original aggregate normal-runtime-metrics task minima are capture-only minima and must be read with these boot-scoped segments."
+}

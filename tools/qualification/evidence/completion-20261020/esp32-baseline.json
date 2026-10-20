@@ -1,0 +1,97 @@
+{
+  "schema": "coaptic-installed-baseline/1",
+  "core": "75548536d6ea417dc3f4a74c7fc9fc4e03ab5953",
+  "core_tree": "44601f84eacb4498d4ae7db9205f5625269c1690",
+  "suite": "ccb41104a138876f59527cfb2414f7bfa102e663",
+  "suite_tree": "e151fb9aa1ce986b2b5afed02d419074beab6602",
+  "suite_same_tree_merge": "971f4d7612d7c727f17bb64d62936be195565a43",
+  "migration_pr": "https://github.com/jeffglousher/coaptic-validation/pull/123",
+  "public_provenance": "https://github.com/jeffglousher/coaptic-validation/blob/971f4d7612d7c727f17bb64d62936be195565a43/tools/qualification/evidence/legacy-custody/reviewed-provenance.json",
+  "public_custody_chain": "https://github.com/jeffglousher/coaptic-validation/blob/971f4d7612d7c727f17bb64d62936be195565a43/tools/qualification/evidence/legacy-custody/public-custody-chain.json",
+  "archive_sha256": "0f382eac6a7d2158c5416edc22719125dbdb1d6846e21c5f1ac7e59221eb6c56",
+  "migration": {
+    "run_id": "ca1ce3422cf4baaa128f897b4ae3f537",
+    "permit": true,
+    "ota_sha256": "1b726dc5a7e19a1cb6d923daa8f98ea226347816ed79e4d8dadabf20d9baddfc",
+    "elf_sha256": "64362ca750aaefa202204d4c2467a6b3ea4278732355bb4cd44010ede3bae695",
+    "ota_total_seconds": 21.87
+  },
+  "normal": {
+    "run_id": "012e92f1a2aa3724e65a7f4aa41b1c1b",
+    "permit": false,
+    "ota_sha256": "9c00106238eff8c5a240256c9cb22f23bfb7bdbf9a50fdd1e60699e1d0210ac7",
+    "elf_sha256": "6e624c4c81b87a8b93d582e10bfb1ae988b9bca10a5dd25e8590653eff8393df",
+    "ota_bytes": 2314976,
+    "ota_total_seconds": 22.08,
+    "resource_qualification": true,
+    "psram_configured": false
+  },
+  "profile": {
+    "pool": "private Constrained-derived",
+    "rx_datagrams": 3,
+    "tx_datagrams": 2,
+    "datagram_bytes": 1152,
+    "blockwise": false,
+    "body_slots": 0,
+    "routes": 8,
+    "calls": 4,
+    "deferred": 0,
+    "security_bindings": 4,
+    "associations": 1,
+    "managed_completion_caches": 2,
+    "dedup": 4,
+    "observe": 2,
+    "security": "managed EDHOC/OSCORE; durable ordinary NVS; echo-only grant"
+  },
+  "verified": [
+    "Three public Inspect projections preserve identical identity/key/owner/echo permissions/revision 8",
+    "Exact active custody blob unchanged, create-only reviewed claim matches and only one Written enrolled Pending is present",
+    "Explicit first-use waveshare-host receipt journal created; no effect in this new installed workflow",
+    "Authenticated normal OTA and protected 45-byte echo, same-session authenticated 5.03/Max-Age 1 to 2.05"
+  ],
+  "memory_scope": {
+    "managed_owner_bytes": 29184,
+    "worker_future_bytes": 49464,
+    "runtime_metadata_bytes": 104,
+    "worker_stack_reserved_bytes": 196608,
+    "worker_used_highwater_observed_bytes": 175700,
+    "shared_diram_linker_bytes": 100519,
+    "dedicated_iram_linker_bytes": 16384,
+    "rtc_slow_static_bytes": 32,
+    "rtc_fast_reserved_bytes": 24,
+    "mapped_flash_bytes": 2226064,
+    "linker_image_estimate_bytes": 2314823,
+    "overlap": "Managed owner is within worker future, both within the reserved worker stack; Runtime metadata also lies on that stack. Dynamic task stacks/TCBs and transport/runtime metadata are already represented by SDK heap views. Do not add nested categories or overlapping capability views. No grand total is asserted."
+  },
+  "limits": [
+    "Baseline only; no result is attributed to newer receipt-reconciliation or read-campaign firmware",
+    "Ordinary flash provenance/initialization, not hostile snapshot rollback or production custody certification",
+    "RF-on entropy readiness guard has an explicit RF-lifecycle precondition, not comprehensive entropy qualification",
+    "No physical power cut, current queued-effect revocation/recovery, initialization/rekey peak or terminal worker watermark was captured",
+    "Heap payload allocation excludes allocator block/region overhead; total-minus-free nonfree view includes it",
+    "SDK total-minus-summed-region-minima is a conservative historical nonfree envelope, not a simultaneous peak",
+    "All-8-bit and internal-8-bit samples overlap and are collected sequentially; PSRAM is not configured"
+  ],
+  "projections": [
+    {
+      "file": "inspect-after-migration.log",
+      "source_sha256": "41d761ad89549d8472a1205f0c2331f0cffd85c810c97b0ad1f00747e581831f",
+      "selection": "Exact five selected-device public Inspect lines; credential inventory and host paths omitted"
+    },
+    {
+      "file": "inspect-normal.log",
+      "source_sha256": "41d761ad89549d8472a1205f0c2331f0cffd85c810c97b0ad1f00747e581831f",
+      "selection": "Exact five selected-device public Inspect lines; credential inventory and host paths omitted"
+    },
+    {
+      "file": "inspect-after-normal-reset.log",
+      "source_sha256": "41d761ad89549d8472a1205f0c2331f0cffd85c810c97b0ad1f00747e581831f",
+      "selection": "Exact five selected-device public Inspect lines; credential inventory and host paths omitted"
+    },
+    {
+      "file": "normal-runtime-public.jsonl",
+      "source_sha256": "f34e23217a40b48add0e9e6c77a4bc59e6d05777e8f9be625c1c205396b15696",
+      "selection": "Verbatim capture records: all connection/refusal/completion markers plus only numeric COAPTIC_RESOURCES/TASKS/TASK_STACK/NETWORK/ADMISSION/STACK_FINAL logs; other logs omitted"
+    }
+  ]
+}

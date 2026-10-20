@@ -1,0 +1,77 @@
+{
+  "schema": "coaptic-public-baseline-manifest/1",
+  "baseline_core": "75548536d6ea417dc3f4a74c7fc9fc4e03ab5953",
+  "device_windows_suite": "ccb41104a138876f59527cfb2414f7bfa102e663",
+  "linux_fixture_suite": "ea242dc5bdf430c779ec7c2086d336fba93955e2",
+  "self_hash_excluded": true,
+  "files": {
+    "esp32-baseline.json": {
+      "sha256": "a49929e383e4978cc378f537c00a3a91e7884ff987cda6b06e61ed0f7753de79",
+      "bytes": 5352
+    },
+    "inspect-after-migration.log": {
+      "sha256": "ecb3f90734abfe926969eb394a49e0a45c50fe200497a101276fe2e0e4cb1bb8",
+      "bytes": 515
+    },
+    "inspect-after-normal-reset.log": {
+      "sha256": "ecb3f90734abfe926969eb394a49e0a45c50fe200497a101276fe2e0e4cb1bb8",
+      "bytes": 515
+    },
+    "inspect-normal.log": {
+      "sha256": "ecb3f90734abfe926969eb394a49e0a45c50fe200497a101276fe2e0e4cb1bb8",
+      "bytes": 515
+    },
+    "installed-legacy-nvs-review.json": {
+      "sha256": "6804a4c403472ac9232af0e8531bc10fa82d7e0195872c86bddcae51300f0600",
+      "bytes": 2666
+    },
+    "linux-cloud-755485.json": {
+      "sha256": "0f22f96f844568b637808a4cc5862dcdbe201d8fba1d0c1aa46986275470b960",
+      "bytes": 86331
+    },
+    "normal-echo.log": {
+      "sha256": "d9d41e29ef0abb88a37a5c4eb9b7bbc0cdd617ceacf8b6d219d6a85e9dd3e159",
+      "bytes": 746
+    },
+    "normal-heap-domains.json": {
+      "sha256": "21300f786c347b7d2d2936b40b84ebd678afef59314b16cb82e86976cfb8f49b",
+      "bytes": 2585
+    },
+    "normal-owner-layout.disassembly.txt": {
+      "sha256": "3171d7bc5953ae6c1da488a5debe193468472e41c75c12c183e056a22cef0960",
+      "bytes": 4363
+    },
+    "normal-owner-layout.receipt.json": {
+      "sha256": "be896164bc9e04cb44c4c0fdcfa6e530099b35eda2937e1876dc5c1907d057dd",
+      "bytes": 2174
+    },
+    "normal-runtime-metrics.json": {
+      "sha256": "76c948d0ad4fc5d2d479666db68f4a7e2435f0746110b3f338f946146fd2de56",
+      "bytes": 2291
+    },
+    "normal-runtime-public.jsonl": {
+      "sha256": "5e07122d7b197002e0ece51fcdcf4c8b0398564136cb2b7b532beb155508d2b9",
+      "bytes": 108793
+    },
+    "normal-static-summary.json": {
+      "sha256": "fe1617a376710b903741144de20c8d492ff9b663cefe19ca401d9110da056c44",
+      "bytes": 789
+    },
+    "normal-task-snapshots.json": {
+      "sha256": "24d12663fb99d8ba6b1d0a4759e2904051b523ec429099f746c2f777943ffc0b",
+      "bytes": 2070
+    },
+    "README.txt": {
+      "sha256": "478dbd7152fae2643e359a5f4a0a20adc28a5c996af872392e7b8aab34ea7fb2",
+      "bytes": 5099
+    },
+    "receipts-first-use.log": {
+      "sha256": "9688418cc9aa2bdf18e745277ab4e88864a845cdc9ee09a3c07df1adb8476bc0",
+      "bytes": 190
+    },
+    "smalldevice-windows-755485.json": {
+      "sha256": "1a9e40afe0f32996f5ba7c7d36f40ffa1459fd961ce1c56a6477a10311d5bd1b",
+      "bytes": 118429
+    }
+  }
+}
