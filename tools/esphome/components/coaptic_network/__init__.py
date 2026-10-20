@@ -55,6 +55,8 @@ def validate_security(config):
     if "telemetry" in config:
         if "oscore" not in config or config["oscore"]["provision_only"]:
             raise cv.Invalid("telemetry requires existing protected OSCORE state")
+    if "legacy_custody_permit" in config and "pairing" not in config:
+        raise cv.Invalid("legacy custody migration requires privileged pairing and reviewed provenance")
     return config
 
 
@@ -120,6 +122,8 @@ CONFIG_SCHEMA = cv.All(
         cv.Required("qualification_only"): cv.All(cv.boolean, cv.one_of(True)),
         cv.Optional("rust_runtime", default="source"): cv.one_of("source", "bundled", "external"),
         cv.Optional("async_network", default=False): cv.boolean,
+        cv.Optional("resource_qualification", default=False): cv.boolean,
+        cv.Optional("legacy_custody_permit"): fixed_hex(136),
         cv.Optional("expected_library_revision"): source_revision,
         cv.Optional("expected_suite_revision"): source_revision,
         cv.Optional("allow_plaintext", default=False): cv.boolean,
@@ -175,6 +179,12 @@ async def to_code(config):
     await cg.register_component(component, config)
     cg.add(component.set_run_id(config["run_id"]))
     cg.add(component.set_port(config["port"]))
+    if config["resource_qualification"]:
+        esp32.add_idf_sdkconfig_option("CONFIG_FREERTOS_USE_TRACE_FACILITY", True)
+        cg.add_define("COAPTIC_RESOURCE_QUALIFICATION")
+    if "legacy_custody_permit" in config:
+        cg.add_define("COAPTIC_LEGACY_CUSTODY")
+        cg.add(component.set_legacy_custody_permit(config["legacy_custody_permit"]))
     if config["async_network"]:
         esp32.add_idf_sdkconfig_option("CONFIG_VFS_SUPPORT_SELECT", True)
         if "pairing" in config:

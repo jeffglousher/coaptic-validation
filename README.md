@@ -277,6 +277,26 @@ setup failures and limits. ESP32-S3 is a qualification platform for the portable
 constrained adapter. Flash power-loss recovery, hostile snapshot rollback,
 production key custody and enrollment remain unqualified in #333/#365.
 
+`coaptic_network.resource_qualification: true` additionally enables the SDK's
+task trace metadata and a bounded 32-task snapshot. Its at-most-2-KiB scratch
+lives on the existing loop stack; it does not enlarge App pools. A refused SDK
+snapshot is explicitly incomplete. Heap capability views overlap, and task
+watermarks describe each task's lifetime spare stack rather than a simultaneous
+whole-device peak. Ordinary builds leave this instrumentation disabled.
+
+An unused legacy enrolled namespace can be initialized only with an explicitly
+reviewed `coaptic_network.legacy_custody_permit` in privileged pairing mode.
+The 136-byte hexadecimal permit binds device principal, store, big-endian
+revision, record commitment and the SHA-256 digest of reviewed provenance.
+Missing history or an echo-only grant alone is insufficient. The adapter consumes
+a create-only 32-byte `legacy_init_v1` NVS claim before creating Pending; flash
+entry/page overhead is additional. Existing history or claims, checkpoint drift
+and ambiguous persistence refuse before protocol ownership. Identity and policy
+are preserved. Remove the permit image after the attempt; failures need explicit
+repair, and later loss of Pending never revives the consumed authority. This
+qualification migration is not recovery of a lost operation or protection from
+hostile whole-flash rollback. Normal firmware never selects it.
+
 Build tooling requires clean library and suite checkouts after preparation:
 
 ```sh
