@@ -24,6 +24,7 @@ and suite revisions, dirty state, prepared lock hashes, and fixture hashes.
 
 - [App plugtests and dogfood](crates/coaptic-plugtest/README.md)
 - [Independent process interoperability](tools/interop/README.md)
+- [Native async host check](#native-async-host-check)
 - [Benchmark method and limitations](tools/benchmark/README.md)
 - [Qualification commands](#qualification)
 - [Durable host effect/receipt reference](tools/durable-host/README.md)
@@ -34,6 +35,36 @@ suite commit. This repository's CI checks the full library revision pinned in
 SHA. `library.json` supplies the checkout baseline for local setup. Changing either
 reference is an explicit source selection. Moving the tooling does not establish
 production readiness.
+
+## Native async host check
+
+After preparation, run the finite [Tokio UDP fixture](crates/peer-coaptic/src/bin/cloud.rs)
+in either mode. The `cloud` feature explicitly enables heap-backed Coaptic storage
+for this binary; ordinary peer fixtures keep their existing feature selection.
+
+```sh
+cargo run --locked -p peer-coaptic --features cloud --bin peer-coaptic-cloud -- --unprotected
+cargo run --locked -p peer-coaptic --features cloud --bin peer-coaptic-cloud -- --protected
+```
+
+Each App allocates its exact requested pool budget once at binding, with no
+automatic expansion. The named `Service` pools provide 32 RX and 32 TX datagrams
+of 1,472 bytes, plus four 16,384-byte body slots in each direction. This fixture
+selects two routes, four Calls, four security request bindings, one association
+and no deferred jobs. Its async-only UDP adapter reuses 1,473-byte receive scratch.
+Native App futures wait for socket readiness and protocol deadlines on one
+current-thread runtime; no task is spawned per Call and no polling sleep is used.
+
+A five-second bound covers 16 complete 2,000-byte replies, four concurrent NON
+Calls, local capacity refusal before sending, and consumption/cancellation
+recovery. Protected mode uses fresh in-process OSCORE credentials. The JSON receipt
+reports budgets and allocation requests observed during App future construction,
+polling and explicit synchronous App operations, with zero request warmups.
+Startup allocations, executor work between polls, pending-future Drop, OS/socket
+memory, allocator overhead and process RSS are outside that observation. The
+fixture's explicit 4 MiB thread stack reservation supports debug construction;
+it is not a library stack requirement. This check establishes finite integration,
+not throughput, durable security recovery or sustained cloud capacity.
 
 ## Qualification
 

@@ -3,6 +3,15 @@ name = "peer-coaptic"
 version = "0.1.0"
 edition = "2024"
 publish = false
+
+[features]
+cloud = ["coaptic/alloc"]
+
+[[bin]]
+name = "peer-coaptic-cloud"
+path = "src/bin/cloud.rs"
+required-features = ["cloud"]
+
 [dependencies]
 getrandom = "=0.3.4"
 coaptic = { path = "../../coaptic", features = ["std", "oscore"] }
