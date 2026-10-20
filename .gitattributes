@@ -12,3 +12,6 @@ tools/qualification/evidence/independent-observe/** -text whitespace=cr-at-eol
 tools/qualification/evidence/bpf-ingress/*.json -text whitespace=cr-at-eol
 # Existing bootstrap receipt was committed with LF; keep its index hash portable.
 tools/qualification/evidence/independent-edhoc/options-ce7e817-8f88d76.json text eol=lf
+
+# Preserve original qualification logs, JSON and embedded receipt hashes.
+tools/qualification/evidence/completion-20261020/** -text whitespace=-blank-at-eol

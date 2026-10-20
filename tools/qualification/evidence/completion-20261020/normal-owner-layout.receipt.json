@@ -1,0 +1,33 @@
+{
+    "schema":  "coaptic-installed-owner-layout/1",
+    "captured_utc":  "2026-10-20T13:09:49.4175175Z",
+    "core":  "75548536d6ea417dc3f4a74c7fc9fc4e03ab5953",
+    "suite":  "ccb41104a138876f59527cfb2414f7bfa102e663",
+    "normal_run_id":  "012e92f1a2aa3724e65a7f4aa41b1c1b",
+    "elf_sha256":  "6e624c4c81b87a8b93d582e10bfb1ae988b9bca10a5dd25e8590653eff8393df",
+    "elf_verified_after_capture":  true,
+    "selected_mode":  "privileged pairing native async",
+    "managed_owner_bytes":  29184,
+    "worker_future_bytes":  49464,
+    "async_runtime_metadata_bytes":  104,
+    "worker_stack_reserved_bytes":  196608,
+    "proof":  {
+                  "runtime_callsite":  "42026aeb a10=movi 104; 42026aee a11=l32r 0xc138; 42026af1 loads coaptic_async_storage; 42026af4 callx8",
+                  "owner_callsite":  "4214a6a3 a11=l32r 0x7200; 4214a6a6 a12=l32r 0xc138; 4214a6a9 loads coaptic_pairing_owner_sizes; 4214a6ae callx8",
+                  "abi":  "Xtensa windowed callx8 maps caller a10/a11/a12 to callee a2/a3/a4; owner callback args are context/managed/worker, runtime callback args metadata/future"
+              },
+    "disassembly":  {
+                        "sha256":  "3171d7bc5953ae6c1da488a5debe193468472e41c75c12c183e056a22cef0960",
+                        "file":  "normal-owner-layout.disassembly.txt",
+                        "bytes":  4363
+                    },
+    "static_summary":  {
+                           "dedicated_iram_bytes":  16384,
+                           "sha256":  "fe1617a376710b903741144de20c8d492ff9b663cefe19ca401d9110da056c44",
+                           "mapped_flash_bytes":  2226064,
+                           "image_estimate_bytes":  2314823,
+                           "shared_diram_bytes":  100519,
+                           "file":  "normal-static-summary.json"
+                       },
+    "accounting":  "Managed owner is nested inside worker future; future and separate runtime metadata are inside the reserved worker stack. Do not add these object layouts to stack or heap totals. This proves exact compiled layouts, not total transient frame usage or whole-system peaks."
+}

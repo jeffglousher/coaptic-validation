@@ -1,0 +1,77 @@
+{
+  "schema": "coaptic-installed-legacy-initialization-nvs/1",
+  "raw_nvs_sha256": "268b794801a5de0c76912e08fd40a3a4f3dcf84842a4ea996aba5e7df2954026",
+  "records": {
+    "custody_v1": [
+      {
+        "state": "Erased",
+        "bytes": 217,
+        "sha256": "84e3483c28b4d66aab4663359069ec506c6398effeed03eeaffc9312acaffc29",
+        "public_claim_hex": null
+      },
+      {
+        "state": "Erased",
+        "bytes": 289,
+        "sha256": "b5a85096bd86245be7025684897c5aa1e766a1887ea74e8329c20137351aef2c",
+        "public_claim_hex": null
+      },
+      {
+        "state": "Erased",
+        "bytes": 289,
+        "sha256": "00dab592e55dcbbab64f02fcde48e6b4d30b09f41e4dbc7d8dbec20a4e50331c",
+        "public_claim_hex": null
+      },
+      {
+        "state": "Erased",
+        "bytes": 289,
+        "sha256": "e6c0abab3a84dacc34be695458c3d237529a69243ba19a139db9cecd7c456868",
+        "public_claim_hex": null
+      },
+      {
+        "state": "Erased",
+        "bytes": 289,
+        "sha256": "97e48b4cc1893d6a944ba27dc844b4cedd0a191a6272a05521c650e9b7735fe6",
+        "public_claim_hex": null
+      },
+      {
+        "state": "Erased",
+        "bytes": 290,
+        "sha256": "80bb3132368a328d0c9236cf4d5f9bcdc4dbabd8fecf38032460a29cc769eef4",
+        "public_claim_hex": null
+      },
+      {
+        "state": "Erased",
+        "bytes": 290,
+        "sha256": "4b09d1e3188a5b0f8268c177f3bd56a5f761c50c309ab3f07257abc9b89e9a2e",
+        "public_claim_hex": null
+      },
+      {
+        "state": "Written",
+        "bytes": 289,
+        "sha256": "843feb3a8f7b50733c0663ddf5e2b4494a7ce86e95ee6434c9176078685dee6f",
+        "public_claim_hex": null
+      }
+    ],
+    "legacy_init_v1": [
+      {
+        "state": "Written",
+        "bytes": 32,
+        "sha256": "cdccc4b13acb855d6f15f557f869f5addb6c24e94b8a166a4d02a1d30504e50e",
+        "public_claim_hex": "83519ad075382352ff67a4e25e391162c29c324f63314bd11396918e0358a9dc"
+      }
+    ],
+    "pending_v1": [
+      {
+        "state": "Written",
+        "bytes": 1214,
+        "sha256": "691a063b559123e968a5e1aa38358f71d19e3ef0f2ae1173711d407960d06a8d",
+        "public_claim_hex": null
+      }
+    ]
+  },
+  "current_custody_blob_byte_identical": true,
+  "durable_one_time_claim_matches_exact_reviewed_permit": true,
+  "enrolled_pending_created_once": true,
+  "pending_authentication": "Actual device Inspect after migration and after permit-disabled OTA reports authenticated empty or completed",
+  "limits": "Read-only NVS capture and normal reset; not a physical power-interruption test. Private contents never published."
+}

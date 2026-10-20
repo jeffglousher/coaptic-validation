@@ -1,0 +1,101 @@
+{
+  "heap": {
+    "all_8bit": {
+      "samples": 24,
+      "total_bytes": [
+        361828
+      ],
+      "allocated_max": 293312,
+      "nonfree_max": 298372,
+      "free_min": 63456,
+      "conservative_lifetime_nonfree_envelope": 319056,
+      "largest_free_min": 31744
+    },
+    "internal_8bit": {
+      "samples": 24,
+      "total_bytes": [
+        361828
+      ],
+      "allocated_max": 289064,
+      "nonfree_max": 294100,
+      "free_min": 67728,
+      "conservative_lifetime_nonfree_envelope": 319056,
+      "largest_free_min": 31744
+    }
+  },
+  "network_samples": 24,
+  "worker_used_highwater_max": 175700,
+  "task_minimum_free_margins": {
+    "1": 556,
+    "2": 548,
+    "3": 3116,
+    "5": 836,
+    "6": 844,
+    "7": 1396,
+    "8": 4482,
+    "10": 1876,
+    "11": 3008,
+    "12": 4524,
+    "13": 2416,
+    "14": 20908
+  },
+  "tasks_snapshots": 24,
+  "admission": [
+    {
+      "run_id": "012e92f1a2aa3724e65a7f4aa41b1c1b",
+      "at_ms": 25542,
+      "scope": "retained_app",
+      "token_refused": 0,
+      "rx_refused": 0,
+      "tx_refused": 0,
+      "refusal_sent": 0,
+      "refusal_unsent": 0,
+      "hard_rx": 0,
+      "hard_tx": 0,
+      "rx_accepted": 0,
+      "progress": 1
+    },
+    {
+      "run_id": "012e92f1a2aa3724e65a7f4aa41b1c1b",
+      "at_ms": 26547,
+      "scope": "retained_app",
+      "token_refused": 0,
+      "rx_refused": 0,
+      "tx_refused": 2,
+      "refusal_sent": 1,
+      "refusal_unsent": 0,
+      "hard_rx": 0,
+      "hard_tx": 0,
+      "rx_accepted": 2,
+      "progress": 4
+    },
+    {
+      "run_id": "012e92f1a2aa3724e65a7f4aa41b1c1b",
+      "at_ms": 31574,
+      "scope": "retained_app",
+      "token_refused": 0,
+      "rx_refused": 0,
+      "tx_refused": 2,
+      "refusal_sent": 1,
+      "refusal_unsent": 0,
+      "hard_rx": 0,
+      "hard_tx": 0,
+      "rx_accepted": 4,
+      "progress": 7
+    },
+    {
+      "run_id": "012e92f1a2aa3724e65a7f4aa41b1c1b",
+      "at_ms": 46584,
+      "scope": "retained_app",
+      "token_refused": 0,
+      "rx_refused": 0,
+      "tx_refused": 2,
+      "refusal_sent": 1,
+      "refusal_unsent": 0,
+      "hard_rx": 0,
+      "hard_tx": 0,
+      "rx_accepted": 4,
+      "progress": 11
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+
+C:/Users/jeffg/AppData/Local/CoapticQualification/waveshare-20261009/build/build/firmware.elf:     file format elf32-xtensa-le
+
+
+Disassembly of section .flash.text:
+
+42026ae4 <_RINvMs0_NtCsjYCVucddVS5_21coaptic_esphome_probe13async_networkNtB6_6Driver3runNCINvNtNtB8_7pairing13async_service9run_asyncNtB6_6SocketNtNtNtB8_11network_ffi11pairing_ffi3NvsNtB2b_3UsbNCNvB2b_3runs1_0NtB6_5TimerB3c_NtB6_12ConsoleReadyE0EB8_>:
+42026ae4:	4f8136        	entry	a1, 0x27c0
+42026ae7:	037d      	mov.n	a7, a3
+42026ae9:	024d      	mov.n	a4, a2
+42026aeb:	68a0a2        	movi	a10, 104
+42026aee:	6f14b1        	l32r	a11, 42002740 <_stext+0x2720> (c138 <UserFrameTotalSize+0xc038>)
+42026af1:	6bd681        	l32r	a8, 42001a4c <_stext+0x1a2c> (4200f118 <coaptic_async_storage>)
+42026af4:	0008e0        	callx8	a8
+42026af7:	080c      	movi.n	a8, 0
+42026af9:	82          	.byte	0x82
+42026afa:	61          	.byte	0x61
+
+C:/Users/jeffg/AppData/Local/CoapticQualification/waveshare-20261009/build/build/firmware.elf:     file format elf32-xtensa-le
+
+
+Disassembly of section .flash.text:
+
+4214a69d <_RNvNtNtCsjYCVucddVS5_21coaptic_esphome_probe11network_ffi11pairing_ffi3run+0x111>:
+4214a69d:	78c182        	addi	a8, a1, 120
+4214a6a0:	226182        	s32i	a8, a1, 136
+4214a6a3:	c52db1        	l32r	a11, 4213bb58 <_RNvMsd_NtNtCs8ZIivbTKj6B_7coaptic12provisioning7managedINtB5_17ManagedConnectionINtNtNtCsjYCVucddVS5_21coaptic_esphome_probe7pairing13async_service8BorrowedNtNtB1n_13async_network6SocketENtB1l_14EnrolledDeviceE6cancelB1n_+0x700> (7200 <UserFrameTotalSize+0x7100>)
+4214a6a6:	c52dc1        	l32r	a12, 4213bb5c <_RNvMsd_NtNtCs8ZIivbTKj6B_7coaptic12provisioning7managedINtB5_17ManagedConnectionINtNtNtCsjYCVucddVS5_21coaptic_esphome_probe7pairing13async_service8BorrowedNtNtB1n_13async_network6SocketENtB1l_14EnrolledDeviceE6cancelB1n_+0x704> (c138 <UserFrameTotalSize+0xc038>)
+4214a6a9:	c52d81        	l32r	a8, 4213bb60 <_RNvMsd_NtNtCs8ZIivbTKj6B_7coaptic12provisioning7managedINtB5_17ManagedConnectionINtNtNtCsjYCVucddVS5_21coaptic_esphome_probe7pairing13async_service8BorrowedNtNtB1n_13async_network6SocketENtB1l_14EnrolledDeviceE6cancelB1n_+0x708> (4200f2f0 <coaptic_pairing_owner_sizes>)
+4214a6ac:	07ad      	mov.n	a10, a7
+4214a6ae:	0008e0        	callx8	a8
+4214a6b1:	c52c81        	l32r	a8, 4213bb64 <_RNvMsd_NtNtCs8ZIivbTKj6B_7coaptic12provisioning7managedINtB5_17ManagedConnectionINtNtNtCsjYCVucddVS5_21coaptic_esphome_probe7pairing13async_service8BorrowedNtNtB1n_13async_network6SocketENtB1l_14EnrolledDeviceE6cancelB1n_+0x70c> (42026ae4 <_RINvMs0_NtCsjYCVucddVS5_21coaptic_esphome_probe13async_networkNtB6_6Driver3runNCINvNtNtB8_7pairing13async_service9run_asyncNtB6_6SocketNtNtNtB8_11network_ffi11pairing_ffi3NvsNtB2b_3UsbNCNvB2b_3runs1_0NtB6_5TimerB3c_NtB6_12ConsoleReadyE0EB8_>)
+4214a6b4:	06ad      	mov.n	a10, a6
+4214a6b6:	05bd      	mov.n	a11, a5
+4214a6b8:	0008e0        	callx8	a8
+
+C:/Users/jeffg/AppData/Local/CoapticQualification/waveshare-20261009/build/build/firmware.elf:     file format elf32-xtensa-le
+
+
+Disassembly of section .flash.text:
+
+4200f118 <coaptic_async_storage>:
+4200f118:	004136        	entry	a1, 32
+4200f11b:	c7d8d1        	l32r	a13, 4200107c <_stext+0x105c> (3c205423 <_flash_rodata_start+0x5303>)
+4200f11e:	c79fb1        	l32r	a11, 42000f9c <_stext+0xf7c> (3c204ebf <_flash_rodata_start+0x4d9f>)
+4200f121:	20e220        	or	a14, a2, a2
+4200f124:	20f330        	or	a15, a3, a3
+4200f127:	6aa2c2        	movi	a12, 0x26a
+4200f12a:	03a0a2        	movi	a10, 3
+4200f12d:	fd8025        	call8	4200c930 <_ZN7esphome15esp_log_printf_EiPKciS1_z>
+4200f130:	f01d      	retw.n
+
+C:/Users/jeffg/AppData/Local/CoapticQualification/waveshare-20261009/build/build/firmware.elf:     file format elf32-xtensa-le
+
+
+Disassembly of section .flash.text:
+
+4200f2f0 <coaptic_pairing_owner_sizes>:
+4200f2f0:	004136        	entry	a1, 32
+4200f2f3:	c765d1        	l32r	a13, 42001088 <_stext+0x1068> (3c205476 <_flash_rodata_start+0x5356>)
+4200f2f6:	c729b1        	l32r	a11, 42000f9c <_stext+0xf7c> (3c204ebf <_flash_rodata_start+0x4d9f>)
+4200f2f9:	20e330        	or	a14, a3, a3
+4200f2fc:	20f440        	or	a15, a4, a4
+4200f2ff:	d5a2c2        	movi	a12, 0x2d5
+4200f302:	03a0a2        	movi	a10, 3
+4200f305:	fd62a5        	call8	4200c930 <_ZN7esphome15esp_log_printf_EiPKciS1_z>
+4200f308:	f01d      	retw.n

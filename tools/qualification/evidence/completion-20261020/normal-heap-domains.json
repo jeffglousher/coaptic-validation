@@ -1,0 +1,41 @@
+{
+  "schema": "coaptic-normal-heap-domain-audit/1",
+  "normal_elf_sha256": "6e624c4c81b87a8b93d582e10bfb1ae988b9bca10a5dd25e8590653eff8393df",
+  "primary_sdk": "ESP-IDF 5.5.5",
+  "sdk_sources": {
+    "heap/port/esp32s3/memory_layout.c": "68e12bc93fb4040987bffb2c334fb9af4b911ceb52b51f1e7914e55e3dc1aa77",
+    "heap/heap_caps_init.c": "2330a477fa0647314d58e5ed22e86e353641c9524c58998af6ed7fcd8a6d1c54",
+    "heap/heap_caps.c": "a1ddc96cda0df2758552c611e409bde6358b8b18145470f928a33cb59628f2a1",
+    "esp_system/ld/esp32s3/sections.ld.in": "e4954cdabd0d0eaee0a68f6d323a446bcaa15722f45166589fbb781c9d053f70"
+  },
+  "normal_section_report_sha256": "18e2f13fa570bbe4d30b93ec93590f25b6f40c04377fb755d46965cdb0167da2",
+  "normal_sections": {
+    ".iram0.vectors": {
+      "address": "0x40374000",
+      "bytes": 1028,
+      "end_exclusive": "0x40374404"
+    },
+    ".iram0.text": {
+      "address": "0x40374404",
+      "bytes": 69099,
+      "end_exclusive": "0x403851ef"
+    }
+  },
+  "linker_contract": "sections.ld.in defines _iram_start at the vector section start and _iram_end after IRAM sections; memory_layout.c reserves that complete interval before heap registration",
+  "standard_sdk_types": {
+    "DIRAM": "8BIT including when executable",
+    "DRAM": "8BIT",
+    "RTCRAM": "8BIT, including optional RTC-fast heap",
+    "SPIRAM": "8BIT; not configured",
+    "IRAM": "Only non-8BIT type; EXEC/32BIT/internal"
+  },
+  "only_standard_non8bit_region": {
+    "address": "0x40374000",
+    "end_exclusive": "0x40378000",
+    "bytes": 16384,
+    "condition": "instruction cache16KiB AND memory protection disabled",
+    "normal_static_coverage": "The contiguous normal vectors/text cover the entire candidate region. SDK reserved-memory subtraction removes it from allocatable heap even if enabled."
+  },
+  "conclusion": "No additional standard SDK 32bit-only/EXEC allocatable heap is omitted by the normal baseline 8BIT views. This is a source/linker-domain conclusion, not a captured caps0 runtime sample. RTC-fast allocatable RAM is included in 8BIT; physical/cache/ROM/boot/reserved domains still require separate accounting. No grand total is asserted.",
+  "provenance_limit": "The generated SDK header/ELF were replaced during the next build; this audit deliberately uses retained normal sections and SDK region/reservation logic, not relabeling the new header as normal-firmware evidence. Custom application region registration is absent from the selected adapter; SDK explicit custom-cap additions found are PSRAM-only, not selected here."
+}
