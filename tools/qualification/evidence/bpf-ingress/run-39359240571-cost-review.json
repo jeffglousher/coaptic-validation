@@ -1,0 +1,163 @@
+{
+  "run_url": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39359240571",
+  "artifact_url": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39359240571/artifacts/12236353090",
+  "conclusion": "passed",
+  "scope": "One finite detached BPF_PROG_TEST_RUN sample; both programs loaded with unmodified Aya, neither attached; no network delivery.",
+  "source": {
+    "library": "cdabea60b43db0a9ec110276b9122d45c85eab73",
+    "companion": "f09f168eb4897f483cbd3345d41b070bf75f6d6c",
+    "library_dirty": false,
+    "companion_dirty": false
+  },
+  "observed_host": {
+    "kernel": "6.17.0-1022-azure",
+    "architecture": "x86_64",
+    "os": "Ubuntu 24.04.5 LTS",
+    "runner_image": "20261012.334.1",
+    "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+    "vm_logical_cpus": 4,
+    "pinned_sample_cpu": 0,
+    "kernel_btf_sha256": "95782433dc426daf8ebeb0acc1b04aed8f87168f67c1266f4d267aba7c22a8bf"
+  },
+  "tools": {
+    "rust_toolchain": "nightly-2026-10-13",
+    "rustc_commit": "e9bbadf6824e65b3583c2dda3a0926ec76df9143",
+    "llvm_version": "23.1.3",
+    "bpf_linker_version": "0.12.0",
+    "aya_version": "0.14.0",
+    "aya_ebpf_version": "0.2.1",
+    "aya_patched": false
+  },
+  "evidence_sha256": {
+    "artifact_archive": "08656eeb33c9125603f69d2794f0996cea73c60719ce8eb210de02a96b3de879",
+    "source.json": "c0bf51f11aa3313a2ade3743841074514d3c9e3ee398d3b47b1267ecaa798e41",
+    "cost.json": "29fb0c2d96e392e2ffa94516da384fc6d51aa326e63c1b73a14aee740e24e839",
+    "observed-host.txt": "8270b20fd278ebc9648aa4260051caf280b608a9ff63d4701231d4af37fe32a3",
+    "cost-cpu.txt": "1dc34b38b1d2c1f1ecb0a0c44332ec02d33b4f0902581ca00eac33c9e11d4910",
+    "executables.sha256": "64d38085c2ebc4040c92f8b4606d2d1c8eb87aefce8741335faa28e197c6bcc9"
+  },
+  "cost_json_provenance": "cost.json is a byte-identical local name for original artifact member kernel-cost.log; the raw samples are embedded below.",
+  "object": {
+    "artifact_member": "ingress.elf",
+    "artifact_bytes": 3824,
+    "reported_sha256": "d99395001e422ea4dca5ad82554890f65bee94d579b353ee07f2e1091cfbef69",
+    "hash_source": "Original artifact executables.sha256; ELF retained in that artifact, not copied into this review."
+  },
+  "method": {
+    "batches_per_program_workload": 5,
+    "invocations_per_measured_batch": 10000,
+    "warmup_invocations_per_program_workload": 100,
+    "order": "Alternating control/classifier order across batches and workloads",
+    "unit": "Kernel-reported integer-average nanoseconds per invocation; Linux has already divided by repetitions.",
+    "control": "coaptic_pass: minimal XDP_PASS, no map accesses",
+    "classifier": "coaptic_observe: existing bounded frame copy, syntax parser and counters"
+  },
+  "measurements": [
+    {
+      "workload": "other-port-ipv4",
+      "frame_bytes": 79,
+      "class_counter": 0,
+      "control_kernel_average_ns": [
+        28,
+        28,
+        28,
+        28,
+        28
+      ],
+      "classifier_kernel_average_ns": [
+        157,
+        158,
+        158,
+        158,
+        158
+      ],
+      "median_control_batch_average_ns": 28,
+      "median_classifier_batch_average_ns": 158
+    },
+    {
+      "workload": "plain-32b-ipv4",
+      "frame_bytes": 79,
+      "class_counter": 3,
+      "control_kernel_average_ns": [
+        28,
+        28,
+        34,
+        28,
+        28
+      ],
+      "classifier_kernel_average_ns": [
+        161,
+        160,
+        160,
+        164,
+        160
+      ],
+      "median_control_batch_average_ns": 28,
+      "median_classifier_batch_average_ns": 160
+    },
+    {
+      "workload": "opaque-oscore-ipv6",
+      "frame_bytes": 97,
+      "class_counter": 3,
+      "control_kernel_average_ns": [
+        28,
+        28,
+        28,
+        28,
+        28
+      ],
+      "classifier_kernel_average_ns": [
+        170,
+        170,
+        170,
+        170,
+        169
+      ],
+      "median_control_batch_average_ns": 28,
+      "median_classifier_batch_average_ns": 170
+    },
+    {
+      "workload": "126-options-ipv6",
+      "frame_bytes": 318,
+      "class_counter": 3,
+      "control_kernel_average_ns": [
+        28,
+        28,
+        28,
+        28,
+        28
+      ],
+      "classifier_kernel_average_ns": [
+        429,
+        429,
+        429,
+        428,
+        429
+      ],
+      "median_control_batch_average_ns": 28,
+      "median_classifier_batch_average_ns": 429
+    }
+  ],
+  "checks": {
+    "action": "XDP_PASS",
+    "returned_bytes": "unchanged",
+    "counter_delta_including_warmup": [
+      50100,
+      0,
+      0,
+      150300,
+      200400
+    ],
+    "classifier_invocations": 200400,
+    "control_invocations": 200400,
+    "portable_classifier_tests_passed": 3
+  },
+  "interpretation": "The hook has a measured syntax-observation cost. It still passes every packet; this run establishes no cloud acceleration or reduction in end-to-end CPU work.",
+  "limits": [
+    "Medians are medians of five kernel-reported batch averages, not individual-packet percentiles.",
+    "Single VM, one pinned CPU, four fixed frames and hot repeated data; no NIC throughput, request latency, saturation or production benefit measurement.",
+    "The difference from the empty control includes counters, helper copies, parsing and kernel test execution overhead; it does not isolate copy cost.",
+    "OSCORE bytes remain opaque; no authentication, admission, checksum or durable-state validation is performed in BPF.",
+    "Full qualification, attachment, lifecycle and new stack/JIT measurements were not rerun."
+  ]
+}
