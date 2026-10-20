@@ -1,0 +1,906 @@
+{
+  "schema": "coaptic-fixed-admin-reset-runtime/1",
+  "core": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+  "suite_archive": "27b0e6438eff112f17646f4023abb44a41da40cc",
+  "suite_same_tree_merge": "421f666bf7bf6cafcbbdb0ff5ea026389e85c05f",
+  "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+  "host_proof_source": "6375c4908c5faf90ccb5a37109eb4ec5e6367941",
+  "host_binary_sha256": "d0fed202b1491189146d48f158af3e3449b1f9e9a1c6d80b24f162b5540e9d70",
+  "source": {
+    "file": "fixed-admin-reset-runtime-api.jsonl",
+    "encoding": "utf-8",
+    "bytes": 130626,
+    "sha256": "15ac43c44b7adb90fb6c013c32f0e42e450b9295d338cae63e3eeeb5dc56c9ec",
+    "records": 472,
+    "logical_lf_bytes": 130154,
+    "crlf_lines": 472,
+    "note": "The capture script counts encoded LF payload bytes; Windows text-mode output adds one CR byte per line. Actual raw byte count/hash are authoritative, and the final file is below 256 KiB."
+  },
+  "method": {
+    "reference_logic": {
+      "file": "fixed-api-accounting.py",
+      "bytes": 6696,
+      "sha256": "fdce369ec75d85fdfb00175d8236bbe5c999d442383134e879fefbb5e70ea961"
+    },
+    "adaptation": "Read-only in-memory aggregation follows existing fixed-api-accounting.py logic. It adds command-bound conservative boot periods, raw Windows newline accounting, every-snapshot validation records, and same-source earlier-receipt references. The old script and receipts were not run or overwritten.",
+    "snapshot_validation": "Every declared complete snapshot has exactly its declared number of task rows and unique numeric IDs, matching phase/connection/period; no duplicate, orphaned or incomplete task rows. Worker capacity is checked as 196608 bytes in every network row."
+  },
+  "capture_complete": {
+    "at": "2026-10-20T15:39:55.522582+00:00",
+    "kind": "capture_complete",
+    "overflow": false,
+    "connections": 2
+  },
+  "api_transport_events": [
+    {
+      "at": "2026-10-20T15:36:56.261956+00:00",
+      "kind": "connected",
+      "connection": 1
+    },
+    {
+      "at": "2026-10-20T15:37:36.298026+00:00",
+      "kind": "disconnected",
+      "expected": false
+    },
+    {
+      "at": "2026-10-20T15:37:37.356161+00:00",
+      "kind": "connected",
+      "connection": 2
+    },
+    {
+      "at": "2026-10-20T15:39:55.522514+00:00",
+      "kind": "disconnected",
+      "expected": true
+    },
+    {
+      "at": "2026-10-20T15:39:55.522582+00:00",
+      "kind": "capture_complete",
+      "overflow": false,
+      "connections": 2
+    }
+  ],
+  "known_software_action_proof": {
+    "file": "lost-admin-reply-result.json",
+    "bytes": 9178,
+    "sha256": "77ab3b9be706ed68bca4413ab45001fa7228993551c0a220f40ca783ca3103ec",
+    "passed": true,
+    "software_restart_command": {
+      "started": "2026-10-20T15:37:10.475431+00:00",
+      "finished": "2026-10-20T15:37:10.531917+00:00",
+      "acknowledged": true
+    },
+    "readonly_inspect_after_restart": {
+      "label": "readonly-after-restart",
+      "started": "2026-10-20T15:37:13.538642+00:00",
+      "finished": "2026-10-20T15:37:13.599387+00:00",
+      "exit": 0,
+      "log": {
+        "file": "lost-admin-readonly-after-restart.log",
+        "bytes": 463,
+        "sha256": "48ee082f8dec04f2243b9fdcccc7540a0b738d9ae398d3125166aa7c44a47515"
+      }
+    },
+    "authenticated_readonly_denial": {
+      "label": "readonly-denial-after-restart",
+      "started": "2026-10-20T15:37:13.600886+00:00",
+      "finished": "2026-10-20T15:37:17.755332+00:00",
+      "exit": 0,
+      "log": {
+        "file": "lost-admin-readonly-denial-after-restart.log",
+        "bytes": 318,
+        "sha256": "33930c260de8073c64a613aaceff1a957c4ac9bfc14b56e6a4cadd3c1fa8d636"
+      }
+    },
+    "authenticated_echo": {
+      "label": "final-echo",
+      "started": "2026-10-20T15:37:18.255010+00:00",
+      "finished": "2026-10-20T15:37:19.731789+00:00",
+      "exit": 0,
+      "log": {
+        "file": "lost-admin-final-echo.log",
+        "bytes": 372,
+        "sha256": "b4ec906f990a281e567d307a4a6ea33e9a4fd3047f3deb8b9cdedaae826e5ef6"
+      }
+    },
+    "all_command_log_integrity": {
+      "verified": 17,
+      "commands": [
+        {
+          "label": "before-inspect",
+          "file": "lost-admin-before-inspect.log",
+          "bytes": 463,
+          "sha256": "389541de084f1065ac329974b07c2d0a16e3c0349fc9590538292772dd27d03b"
+        },
+        {
+          "label": "before-host",
+          "file": "lost-admin-before-host.log",
+          "bytes": 266,
+          "sha256": "0173a3687ae8c6c94fd57ad85f998b5b2d21b179499b792ac912ff8c51db7f4b"
+        },
+        {
+          "label": "drop-readonly-reply",
+          "file": "lost-admin-drop-readonly-reply.log",
+          "bytes": 961,
+          "sha256": "d565d1002c9bb6d4ac1de48ca338fea79c33c3a23aa8c6135327cfc350e60580"
+        },
+        {
+          "label": "split-inspect",
+          "file": "lost-admin-split-inspect.log",
+          "bytes": 463,
+          "sha256": "48ee082f8dec04f2243b9fdcccc7540a0b738d9ae398d3125166aa7c44a47515"
+        },
+        {
+          "label": "split-host",
+          "file": "lost-admin-split-host.log",
+          "bytes": 266,
+          "sha256": "0173a3687ae8c6c94fd57ad85f998b5b2d21b179499b792ac912ff8c51db7f4b"
+        },
+        {
+          "label": "recover",
+          "file": "lost-admin-recover.log",
+          "bytes": 466,
+          "sha256": "e7b135fec548a85ea94215d84e9f61b5c19f51dd5230d620c4b500fbc5d03cef"
+        },
+        {
+          "label": "recovered-inspect",
+          "file": "lost-admin-recovered-inspect.log",
+          "bytes": 463,
+          "sha256": "48ee082f8dec04f2243b9fdcccc7540a0b738d9ae398d3125166aa7c44a47515"
+        },
+        {
+          "label": "recovered-host",
+          "file": "lost-admin-recovered-host.log",
+          "bytes": 266,
+          "sha256": "a43ca64074dc06f3fed4bcf066b6d3776d004bbb2a048c53027aa0674905ea4c"
+        },
+        {
+          "label": "duplicate-recovery-refused",
+          "file": "lost-admin-duplicate-recovery-refused.log",
+          "bytes": 50,
+          "sha256": "1dbb32a34bc91875f15cc3fbe0b485bd9ff76ba1d1d650eef13505cbc4d7a815"
+        },
+        {
+          "label": "readonly-denial",
+          "file": "lost-admin-readonly-denial.log",
+          "bytes": 318,
+          "sha256": "33930c260de8073c64a613aaceff1a957c4ac9bfc14b56e6a4cadd3c1fa8d636"
+        },
+        {
+          "label": "readonly-device-restart",
+          "file": "lost-admin-readonly-device-restart.log",
+          "bytes": 89,
+          "sha256": "a28b07073f7d73f8ab2dfedb00e0e91c9560432a6bedbf79b29b6d934051e3d4"
+        },
+        {
+          "label": "readonly-after-restart",
+          "file": "lost-admin-readonly-after-restart.log",
+          "bytes": 463,
+          "sha256": "48ee082f8dec04f2243b9fdcccc7540a0b738d9ae398d3125166aa7c44a47515"
+        },
+        {
+          "label": "readonly-denial-after-restart",
+          "file": "lost-admin-readonly-denial-after-restart.log",
+          "bytes": 318,
+          "sha256": "33930c260de8073c64a613aaceff1a957c4ac9bfc14b56e6a4cadd3c1fa8d636"
+        },
+        {
+          "label": "restore-echo",
+          "file": "lost-admin-restore-echo.log",
+          "bytes": 515,
+          "sha256": "6bace2a8147b8fa59310757132687a2af269443c6258c92b1f0be8ef2c02e161"
+        },
+        {
+          "label": "final-inspect",
+          "file": "lost-admin-final-inspect.log",
+          "bytes": 463,
+          "sha256": "869ba5c1b484958da544d545ee2259c7a359b13f0b2dc490807815d4b0b54380"
+        },
+        {
+          "label": "final-host",
+          "file": "lost-admin-final-host.log",
+          "bytes": 266,
+          "sha256": "58f70b0057010523e2d79cd3364bde4fa61bbeed5d762455365bb648e3e254cb"
+        },
+        {
+          "label": "final-echo",
+          "file": "lost-admin-final-echo.log",
+          "bytes": 372,
+          "sha256": "b4ec906f990a281e567d307a4a6ea33e9a4fd3047f3deb8b9cdedaae826e5ef6"
+        }
+      ]
+    },
+    "limits": "CLI software actions/authenticated results establish the selected exercised sequence. API transport notifications are observed later; no device boot ID is exported. Software restart is not cold power or interrupted NVS commit."
+  },
+  "period_definition": {
+    "before_confirmed_restart": "Arrival UTC strictly before the acknowledged serial-restart command starts at 2026-10-20T15:37:10.475431+00:00. The two complete resource snapshots also precede the admin command sequence start 2026-10-20T15:37:07.770193+00:00.",
+    "uncertain_reset_and_api_detection_interval": {
+      "start_inclusive": "2026-10-20T15:37:10.475431+00:00",
+      "end_exclusive": "2026-10-20T15:37:37.356161+00:00",
+      "selected_records": 0,
+      "policy": "Do not infer boot membership from arrival UTC or delayed disconnect in this interval; conservatively exclude it from the before/after summaries."
+    },
+    "after_confirmed_restart_post_reconnect": "Arrival after the first successful API reconnect at 2026-10-20T15:37:37.356161+00:00, following independently acknowledged esp_restart, responsive serial Inspect, fresh authenticated read-only denial and restored authenticated echo. This is an evidence-based selected post-restart period, not a persistent boot identifier."
+  },
+  "first_selected_record_at": "2026-10-20T15:37:00.704961+00:00",
+  "last_selected_record_at": "2026-10-20T15:39:51.349620+00:00",
+  "record_counts": {
+    "COAPTIC_RESOURCES": 58,
+    "COAPTIC_TASKS": 29,
+    "COAPTIC_TASK_STACK": 348,
+    "COAPTIC_NETWORK": 29,
+    "COAPTIC_ADMISSION": 3
+  },
+  "other_run_ids_excluded": [],
+  "heap": {
+    "internal_8bit": {
+      "samples": 29,
+      "total_bytes": [
+        361796
+      ],
+      "allocated_payload_max": 288400,
+      "nonfree_max": 293400,
+      "free_min": 68396,
+      "conservative_region_minimum_nonfree_envelope": 306968,
+      "region_minimum_free_sum_min": 54828,
+      "largest_free_min": 31744
+    },
+    "all_8bit": {
+      "samples": 29,
+      "total_bytes": [
+        361796
+      ],
+      "allocated_payload_max": 290512,
+      "nonfree_max": 295524,
+      "free_min": 66272,
+      "conservative_region_minimum_nonfree_envelope": 306968,
+      "region_minimum_free_sum_min": 54828,
+      "largest_free_min": 31744
+    }
+  },
+  "known_restart_periods": [
+    {
+      "period": "before_confirmed_restart",
+      "first_selected_record_at": "2026-10-20T15:37:00.704961+00:00",
+      "last_selected_record_at": "2026-10-20T15:37:10.437716+00:00",
+      "capture_connections": [
+        1
+      ],
+      "record_counts": {
+        "COAPTIC_RESOURCES": 4,
+        "COAPTIC_TASKS": 2,
+        "COAPTIC_TASK_STACK": 24,
+        "COAPTIC_NETWORK": 2,
+        "COAPTIC_ADMISSION": 2
+      },
+      "heap": {
+        "internal_8bit": {
+          "samples": 2,
+          "total_bytes": [
+            361796
+          ],
+          "allocated_payload_max": 288400,
+          "nonfree_max": 293400,
+          "free_min": 68396,
+          "conservative_region_minimum_nonfree_envelope": 299876,
+          "region_minimum_free_sum_min": 61920,
+          "largest_free_min": 31744
+        },
+        "all_8bit": {
+          "samples": 2,
+          "total_bytes": [
+            361796
+          ],
+          "allocated_payload_max": 290512,
+          "nonfree_max": 295524,
+          "free_min": 66272,
+          "conservative_region_minimum_nonfree_envelope": 299876,
+          "region_minimum_free_sum_min": 61920,
+          "largest_free_min": 31744
+        }
+      },
+      "task_snapshots": 2,
+      "task_counts": [
+        12
+      ],
+      "task_minimum_free_stack_bytes": {
+        "1": 540,
+        "2": 532,
+        "3": 3084,
+        "5": 820,
+        "6": 828,
+        "7": 1380,
+        "8": 4562,
+        "10": 1920,
+        "11": 2992,
+        "12": 4524,
+        "13": 2208,
+        "14": 19524
+      },
+      "worker_reserved_bytes": 196608,
+      "worker_used_highwater_max": 177084,
+      "worker_minimum_free_stack_bytes": 19524,
+      "network_last": {
+        "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+        "rx": 22,
+        "tx": 37,
+        "dropped": 0,
+        "stack_high_water_bytes": 177084,
+        "stack_capacity_bytes": 196608,
+        "polls": 202,
+        "idle_waits": 60,
+        "scheduler_yields": 0,
+        "wait_errors": 0
+      },
+      "resource_phases": [
+        "running"
+      ],
+      "entropy_startup_rows": [],
+      "terminal_stack_rows": []
+    },
+    {
+      "period": "after_confirmed_restart_post_reconnect",
+      "first_selected_record_at": "2026-10-20T15:37:39.732600+00:00",
+      "last_selected_record_at": "2026-10-20T15:39:51.349620+00:00",
+      "capture_connections": [
+        2
+      ],
+      "record_counts": {
+        "COAPTIC_ADMISSION": 1,
+        "COAPTIC_RESOURCES": 54,
+        "COAPTIC_TASKS": 27,
+        "COAPTIC_TASK_STACK": 324,
+        "COAPTIC_NETWORK": 27
+      },
+      "heap": {
+        "internal_8bit": {
+          "samples": 27,
+          "total_bytes": [
+            361796
+          ],
+          "allocated_payload_max": 288336,
+          "nonfree_max": 293332,
+          "free_min": 68464,
+          "conservative_region_minimum_nonfree_envelope": 306968,
+          "region_minimum_free_sum_min": 54828,
+          "largest_free_min": 31744
+        },
+        "all_8bit": {
+          "samples": 27,
+          "total_bytes": [
+            361796
+          ],
+          "allocated_payload_max": 290448,
+          "nonfree_max": 295456,
+          "free_min": 66340,
+          "conservative_region_minimum_nonfree_envelope": 306968,
+          "region_minimum_free_sum_min": 54828,
+          "largest_free_min": 31744
+        }
+      },
+      "task_snapshots": 27,
+      "task_counts": [
+        12
+      ],
+      "task_minimum_free_stack_bytes": {
+        "1": 540,
+        "2": 532,
+        "3": 3148,
+        "5": 676,
+        "6": 828,
+        "7": 1380,
+        "8": 4386,
+        "10": 1856,
+        "11": 2992,
+        "12": 4524,
+        "13": 2336,
+        "14": 19524
+      },
+      "worker_reserved_bytes": 196608,
+      "worker_used_highwater_max": 177084,
+      "worker_minimum_free_stack_bytes": 19524,
+      "network_last": {
+        "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+        "rx": 11,
+        "tx": 17,
+        "dropped": 0,
+        "stack_high_water_bytes": 177084,
+        "stack_capacity_bytes": 196608,
+        "polls": 62,
+        "idle_waits": 12,
+        "scheduler_yields": 0,
+        "wait_errors": 0
+      },
+      "resource_phases": [
+        "running"
+      ],
+      "entropy_startup_rows": [],
+      "terminal_stack_rows": []
+    }
+  ],
+  "task_snapshot_validation": {
+    "snapshots": [
+      {
+        "row": 4,
+        "at": "2026-10-20T15:37:00.705376+00:00",
+        "final_task_row_at": "2026-10-20T15:37:00.725397+00:00",
+        "period": "before_confirmed_restart",
+        "capture_connection": 1,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 20,
+        "at": "2026-10-20T15:37:05.710363+00:00",
+        "final_task_row_at": "2026-10-20T15:37:05.722493+00:00",
+        "period": "before_confirmed_restart",
+        "capture_connection": 1,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 41,
+        "at": "2026-10-20T15:37:41.130170+00:00",
+        "final_task_row_at": "2026-10-20T15:37:41.152465+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 57,
+        "at": "2026-10-20T15:37:46.135719+00:00",
+        "final_task_row_at": "2026-10-20T15:37:46.155758+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 73,
+        "at": "2026-10-20T15:37:51.145040+00:00",
+        "final_task_row_at": "2026-10-20T15:37:51.162675+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 89,
+        "at": "2026-10-20T15:37:56.144802+00:00",
+        "final_task_row_at": "2026-10-20T15:37:56.163425+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 105,
+        "at": "2026-10-20T15:38:01.149285+00:00",
+        "final_task_row_at": "2026-10-20T15:38:01.169179+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 121,
+        "at": "2026-10-20T15:38:06.153267+00:00",
+        "final_task_row_at": "2026-10-20T15:38:06.172122+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 137,
+        "at": "2026-10-20T15:38:11.164495+00:00",
+        "final_task_row_at": "2026-10-20T15:38:11.178098+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 153,
+        "at": "2026-10-20T15:38:16.177794+00:00",
+        "final_task_row_at": "2026-10-20T15:38:16.197500+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 169,
+        "at": "2026-10-20T15:38:21.197857+00:00",
+        "final_task_row_at": "2026-10-20T15:38:21.208856+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 185,
+        "at": "2026-10-20T15:38:26.191245+00:00",
+        "final_task_row_at": "2026-10-20T15:38:26.251249+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 201,
+        "at": "2026-10-20T15:38:31.194672+00:00",
+        "final_task_row_at": "2026-10-20T15:38:31.210739+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 217,
+        "at": "2026-10-20T15:38:36.197576+00:00",
+        "final_task_row_at": "2026-10-20T15:38:36.218425+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 233,
+        "at": "2026-10-20T15:38:41.209537+00:00",
+        "final_task_row_at": "2026-10-20T15:38:41.222357+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 249,
+        "at": "2026-10-20T15:38:46.226184+00:00",
+        "final_task_row_at": "2026-10-20T15:38:46.238710+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 265,
+        "at": "2026-10-20T15:38:51.224616+00:00",
+        "final_task_row_at": "2026-10-20T15:38:51.243791+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 281,
+        "at": "2026-10-20T15:38:56.237510+00:00",
+        "final_task_row_at": "2026-10-20T15:38:56.252299+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 297,
+        "at": "2026-10-20T15:39:01.249606+00:00",
+        "final_task_row_at": "2026-10-20T15:39:01.267989+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 313,
+        "at": "2026-10-20T15:39:06.255806+00:00",
+        "final_task_row_at": "2026-10-20T15:39:06.267276+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 329,
+        "at": "2026-10-20T15:39:11.269432+00:00",
+        "final_task_row_at": "2026-10-20T15:39:11.281198+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 345,
+        "at": "2026-10-20T15:39:16.271618+00:00",
+        "final_task_row_at": "2026-10-20T15:39:16.284299+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 361,
+        "at": "2026-10-20T15:39:21.282063+00:00",
+        "final_task_row_at": "2026-10-20T15:39:21.301791+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 377,
+        "at": "2026-10-20T15:39:26.286751+00:00",
+        "final_task_row_at": "2026-10-20T15:39:26.299867+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 393,
+        "at": "2026-10-20T15:39:31.314153+00:00",
+        "final_task_row_at": "2026-10-20T15:39:31.314540+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 409,
+        "at": "2026-10-20T15:39:36.314197+00:00",
+        "final_task_row_at": "2026-10-20T15:39:36.331023+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 425,
+        "at": "2026-10-20T15:39:41.568150+00:00",
+        "final_task_row_at": "2026-10-20T15:39:41.568622+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 441,
+        "at": "2026-10-20T15:39:46.335493+00:00",
+        "final_task_row_at": "2026-10-20T15:39:46.348384+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      },
+      {
+        "row": 457,
+        "at": "2026-10-20T15:39:51.334326+00:00",
+        "final_task_row_at": "2026-10-20T15:39:51.349586+00:00",
+        "period": "after_confirmed_restart_post_reconnect",
+        "capture_connection": 2,
+        "declared_count": 12,
+        "unique_count": 12,
+        "scratch_bytes": 1152,
+        "validated": true
+      }
+    ],
+    "declared_rows": 348,
+    "actual_unique_rows": 348,
+    "snapshots_by_period": {
+      "before_confirmed_restart": 2,
+      "after_confirmed_restart_post_reconnect": 27
+    },
+    "task_id_sets_by_period": {
+      "before_confirmed_restart": [
+        1,
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "after_confirmed_restart_post_reconnect": [
+        1,
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        10,
+        11,
+        12,
+        13,
+        14
+      ]
+    }
+  },
+  "earliest_post_restart_observations": {
+    "api_connected_at": "2026-10-20T15:37:37.356161+00:00",
+    "first_selected_log_at": "2026-10-20T15:37:39.732600+00:00",
+    "first_selected_log_kind": "COAPTIC_ADMISSION",
+    "first_admission_device_at_ms": 28652,
+    "first_heap_at": "2026-10-20T15:37:41.126166+00:00",
+    "first_task_snapshot_at": "2026-10-20T15:37:41.130170+00:00",
+    "first_network_at": "2026-10-20T15:37:41.156324+00:00",
+    "earlier_pre_restart_admission_device_at_ms": 3883098,
+    "startup_entropy_rows": 0,
+    "before_platform_setup_rows": 0,
+    "task_started_rows": 0,
+    "worker_stopped_rows": 0,
+    "terminal_stack_rows": 0,
+    "resource_phases": [
+      "running"
+    ],
+    "note": "Both authenticated denial and echo finished before the API reconnected. The post-restart snapshots measure later state and lifetime watermarks/envelopes retaining earlier exercised paths; they do not sample or timestamp an instantaneous initialization/rekey peak."
+  },
+  "admission": [
+    {
+      "at": "2026-10-20T15:37:09.435007+00:00",
+      "period": "before_confirmed_restart",
+      "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+      "at_ms": 3882094,
+      "scope": "retained_app",
+      "token_refused": 0,
+      "rx_refused": 0,
+      "tx_refused": 0,
+      "refusal_sent": 0,
+      "refusal_unsent": 0,
+      "hard_rx": 0,
+      "hard_tx": 0,
+      "rx_accepted": 0,
+      "progress": 1
+    },
+    {
+      "at": "2026-10-20T15:37:10.437716+00:00",
+      "period": "before_confirmed_restart",
+      "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+      "at_ms": 3883098,
+      "scope": "retained_app",
+      "token_refused": 0,
+      "rx_refused": 0,
+      "tx_refused": 2,
+      "refusal_sent": 1,
+      "refusal_unsent": 0,
+      "hard_rx": 0,
+      "hard_tx": 0,
+      "rx_accepted": 2,
+      "progress": 4
+    },
+    {
+      "at": "2026-10-20T15:37:39.732600+00:00",
+      "period": "after_confirmed_restart_post_reconnect",
+      "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+      "at_ms": 28652,
+      "scope": "retained_app",
+      "token_refused": 0,
+      "rx_refused": 0,
+      "tx_refused": 2,
+      "refusal_sent": 1,
+      "refusal_unsent": 0,
+      "hard_rx": 0,
+      "hard_tx": 0,
+      "rx_accepted": 4,
+      "progress": 12
+    }
+  ],
+  "owner_layout": {
+    "file": "fixed-owner-layout.receipt.json",
+    "bytes": 3357,
+    "sha256": "4adb00026560a28dbe8b72a4544dd841d64fffdc90bd7954444dd2821742a8c1"
+  },
+  "same_source_earlier_receipt": {
+    "file": "fixed-runtime-metrics.json",
+    "bytes": 8256,
+    "sha256": "128b023665866eb079a3032339a0e7f7392a16306175b1a681d452172b5f9de7",
+    "purpose": "Additional finite resource coverage only; different observation windows and exercised sequences, no performance improvement or controlled before/after comparison is claimed.",
+    "record_counts": {
+      "COAPTIC_RESOURCES": 42,
+      "COAPTIC_TASKS": 21,
+      "COAPTIC_TASK_STACK": 252,
+      "COAPTIC_NETWORK": 21,
+      "COAPTIC_ADMISSION": 6
+    },
+    "earlier_heap": {
+      "internal_8bit": {
+        "samples": 21,
+        "total_bytes": [
+          361796
+        ],
+        "allocated_payload_max": 288600,
+        "nonfree_max": 293604,
+        "free_min": 68192,
+        "conservative_region_minimum_nonfree_envelope": 306976,
+        "largest_free_min": 31744
+      },
+      "all_8bit": {
+        "samples": 21,
+        "total_bytes": [
+          361796
+        ],
+        "allocated_payload_max": 290712,
+        "nonfree_max": 295728,
+        "free_min": 66068,
+        "conservative_region_minimum_nonfree_envelope": 306976,
+        "largest_free_min": 31744
+      }
+    },
+    "earlier_worker_used_highwater_max": 177088,
+    "this_post_restart_worker_used_highwater_max": 177084,
+    "this_post_restart_worker_free_margin": 19524,
+    "note": "Do not correlate numeric task IDs across the earlier capture, current pre-restart period or current post-restart period.",
+    "this_post_restart_heap_location": "known_restart_periods entry after_confirmed_restart_post_reconnect"
+  },
+  "limits": [
+    "Only the source-matched installed802aed run is aggregated; the host proof source6375c49 is distinct from installed corec08de234 and suite27b0e64.",
+    "Two baseline snapshots were before the admin changes; no resource snapshot was captured after the old-boot admin/recovery actions and before esp_restart. Old-boot memory use during that short interval is not measured by this capture.",
+    "API disconnect was reported at15:37:36.298026, over25 seconds after acknowledged software restart. It is delayed transport failure detection, not the restart time or an independent boot marker.",
+    "No startup entropy, before_platform_setup, task_started, worker_stopped or terminal stack record was captured. Do not reconstruct missing logs from ELF constants.",
+    "Task margins are lifetime minimum free stack since task creation, not measured simultaneous used stack or complete compiler SP-depth peaks; IDs are not persistent boot identities.",
+    "Per-region minimum-free envelopes combine potentially different times, retain exercised post-registration initialization/rekey history without phase attribution, and are not simultaneous whole-system peaks.",
+    "Capability heap views are overlapping and sampled sequentially; payload allocation excludes overhead while total-minus-free includes allocator/control overhead. Dynamic stacks/TCBs/USB/socket/runtime allocation already belongs to these heaps; App/future/RNG/TLS owners are nested and not additive.",
+    "Admission counters belong to the retained App and can reset at owner/session transitions; do not sum across periods as one monotonic boot counter.",
+    "This is finite selected software-restart/admin/session-reset proof, not cold power, interrupted NVS commit, sustained load, absolute worst-case initialization/rekey/ISR use or comparative performance qualification."
+  ]
+}

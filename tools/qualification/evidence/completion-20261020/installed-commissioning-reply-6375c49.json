@@ -1,0 +1,591 @@
+{
+  "schema": "coaptic-installed-commissioning-reply-proof/1",
+  "source": "6375c4908c5faf90ccb5a37109eb4ec5e6367941",
+  "source_tree": "ec9bac0044b2a333e1dbed5b952be61aa5bb1f49",
+  "binary_sha256": "d0fed202b1491189146d48f158af3e3449b1f9e9a1c6d80b24f162b5540e9d70",
+  "compiler": "1.99.0 b940084d7",
+  "installed": {
+    "core": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+    "suite_archive": "27b0e6438eff112f17646f4023abb44a41da40cc",
+    "run_id": "802aed318cb34cdebc3830079d0f1d5c"
+  },
+  "result": {
+    "original_file": "lost-admin-reply-result.json",
+    "bytes": 9178,
+    "sha256": "77ab3b9be706ed68bca4413ab45001fa7228993551c0a220f40ca783ca3103ec",
+    "values": {
+      "schema": "coaptic-installed-lost-admin-reply/1",
+      "host_source": "6375c4908c5faf90ccb5a37109eb4ec5e6367941",
+      "rustc": "1.99.0 b940084d7",
+      "installed_core": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+      "installed_suite_archive": "27b0e6438eff112f17646f4023abb44a41da40cc",
+      "installed_run": "802aed318cb34cdebc3830079d0f1d5c",
+      "commands": [
+        {
+          "label": "before-inspect",
+          "args": [
+            "serial-info",
+            "COM6"
+          ],
+          "started": "2026-10-20T15:37:07.775719+00:00",
+          "finished": "2026-10-20T15:37:07.914934+00:00",
+          "exit": 0,
+          "log": "lost-admin-before-inspect.log",
+          "bytes": 463,
+          "sha256": "389541de084f1065ac329974b07c2d0a16e3c0349fc9590538292772dd27d03b"
+        },
+        {
+          "label": "before-host",
+          "args": [
+            "pairing-info",
+            "waveshare-host"
+          ],
+          "started": "2026-10-20T15:37:07.921071+00:00",
+          "finished": "2026-10-20T15:37:07.954227+00:00",
+          "exit": 0,
+          "log": "lost-admin-before-host.log",
+          "bytes": 266,
+          "sha256": "0173a3687ae8c6c94fd57ad85f998b5b2d21b179499b792ac912ff8c51db7f4b"
+        },
+        {
+          "label": "drop-readonly-reply",
+          "args": [
+            "serial-pair",
+            "COM6",
+            "waveshare-host",
+            "192.168.1.134:5683",
+            "--read-only",
+            "--development-no-touch",
+            "--qualify-lost-commissioning-reply"
+          ],
+          "started": "2026-10-20T15:37:07.959725+00:00",
+          "finished": "2026-10-20T15:37:08.409026+00:00",
+          "exit": 1,
+          "log": "lost-admin-drop-readonly-reply.log",
+          "bytes": 961,
+          "sha256": "d565d1002c9bb6d4ac1de48ca338fea79c33c3a23aa8c6135327cfc350e60580"
+        },
+        {
+          "label": "split-inspect",
+          "args": [
+            "serial-info",
+            "COM6"
+          ],
+          "started": "2026-10-20T15:37:08.416759+00:00",
+          "finished": "2026-10-20T15:37:08.474804+00:00",
+          "exit": 0,
+          "log": "lost-admin-split-inspect.log",
+          "bytes": 463,
+          "sha256": "48ee082f8dec04f2243b9fdcccc7540a0b738d9ae398d3125166aa7c44a47515"
+        },
+        {
+          "label": "split-host",
+          "args": [
+            "pairing-info",
+            "waveshare-host"
+          ],
+          "started": "2026-10-20T15:37:08.481870+00:00",
+          "finished": "2026-10-20T15:37:08.510785+00:00",
+          "exit": 0,
+          "log": "lost-admin-split-host.log",
+          "bytes": 266,
+          "sha256": "0173a3687ae8c6c94fd57ad85f998b5b2d21b179499b792ac912ff8c51db7f4b"
+        },
+        {
+          "label": "recover",
+          "args": [
+            "serial-recover",
+            "COM6",
+            "waveshare-host",
+            "--development-no-touch"
+          ],
+          "started": "2026-10-20T15:37:08.512500+00:00",
+          "finished": "2026-10-20T15:37:08.859699+00:00",
+          "exit": 0,
+          "log": "lost-admin-recover.log",
+          "bytes": 466,
+          "sha256": "e7b135fec548a85ea94215d84e9f61b5c19f51dd5230d620c4b500fbc5d03cef"
+        },
+        {
+          "label": "recovered-inspect",
+          "args": [
+            "serial-info",
+            "COM6"
+          ],
+          "started": "2026-10-20T15:37:08.865770+00:00",
+          "finished": "2026-10-20T15:37:08.921621+00:00",
+          "exit": 0,
+          "log": "lost-admin-recovered-inspect.log",
+          "bytes": 463,
+          "sha256": "48ee082f8dec04f2243b9fdcccc7540a0b738d9ae398d3125166aa7c44a47515"
+        },
+        {
+          "label": "recovered-host",
+          "args": [
+            "pairing-info",
+            "waveshare-host"
+          ],
+          "started": "2026-10-20T15:37:08.922722+00:00",
+          "finished": "2026-10-20T15:37:08.949122+00:00",
+          "exit": 0,
+          "log": "lost-admin-recovered-host.log",
+          "bytes": 266,
+          "sha256": "a43ca64074dc06f3fed4bcf066b6d3776d004bbb2a048c53027aa0674905ea4c"
+        },
+        {
+          "label": "duplicate-recovery-refused",
+          "args": [
+            "serial-recover",
+            "COM6",
+            "waveshare-host",
+            "--development-no-touch"
+          ],
+          "started": "2026-10-20T15:37:08.954139+00:00",
+          "finished": "2026-10-20T15:37:09.011299+00:00",
+          "exit": 1,
+          "log": "lost-admin-duplicate-recovery-refused.log",
+          "bytes": 50,
+          "sha256": "1dbb32a34bc91875f15cc3fbe0b485bd9ff76ba1d1d650eef13505cbc4d7a815"
+        },
+        {
+          "label": "readonly-denial",
+          "args": [
+            "peer",
+            "waveshare-host",
+            "192.168.1.134:5683",
+            "192.168.1.144:5683",
+            "--probe-denied"
+          ],
+          "started": "2026-10-20T15:37:09.016529+00:00",
+          "finished": "2026-10-20T15:37:10.469743+00:00",
+          "exit": 0,
+          "log": "lost-admin-readonly-denial.log",
+          "bytes": 318,
+          "sha256": "33930c260de8073c64a613aaceff1a957c4ac9bfc14b56e6a4cadd3c1fa8d636"
+        },
+        {
+          "label": "readonly-device-restart",
+          "args": [
+            "serial-restart",
+            "COM6"
+          ],
+          "started": "2026-10-20T15:37:10.475431+00:00",
+          "finished": "2026-10-20T15:37:10.531917+00:00",
+          "exit": 0,
+          "log": "lost-admin-readonly-device-restart.log",
+          "bytes": 89,
+          "sha256": "a28b07073f7d73f8ab2dfedb00e0e91c9560432a6bedbf79b29b6d934051e3d4"
+        },
+        {
+          "label": "readonly-after-restart",
+          "args": [
+            "serial-info",
+            "COM6"
+          ],
+          "started": "2026-10-20T15:37:13.538642+00:00",
+          "finished": "2026-10-20T15:37:13.599387+00:00",
+          "exit": 0,
+          "log": "lost-admin-readonly-after-restart.log",
+          "bytes": 463,
+          "sha256": "48ee082f8dec04f2243b9fdcccc7540a0b738d9ae398d3125166aa7c44a47515"
+        },
+        {
+          "label": "readonly-denial-after-restart",
+          "args": [
+            "peer",
+            "waveshare-host",
+            "192.168.1.134:5683",
+            "192.168.1.144:5683",
+            "--probe-denied"
+          ],
+          "started": "2026-10-20T15:37:13.600886+00:00",
+          "finished": "2026-10-20T15:37:17.755332+00:00",
+          "exit": 0,
+          "log": "lost-admin-readonly-denial-after-restart.log",
+          "bytes": 318,
+          "sha256": "33930c260de8073c64a613aaceff1a957c4ac9bfc14b56e6a4cadd3c1fa8d636"
+        },
+        {
+          "label": "restore-echo",
+          "args": [
+            "serial-pair",
+            "COM6",
+            "waveshare-host",
+            "192.168.1.134:5683",
+            "--echo-only",
+            "--development-no-touch"
+          ],
+          "started": "2026-10-20T15:37:17.756694+00:00",
+          "finished": "2026-10-20T15:37:18.147387+00:00",
+          "exit": 0,
+          "log": "lost-admin-restore-echo.log",
+          "bytes": 515,
+          "sha256": "6bace2a8147b8fa59310757132687a2af269443c6258c92b1f0be8ef2c02e161"
+        },
+        {
+          "label": "final-inspect",
+          "args": [
+            "serial-info",
+            "COM6"
+          ],
+          "started": "2026-10-20T15:37:18.154706+00:00",
+          "finished": "2026-10-20T15:37:18.212162+00:00",
+          "exit": 0,
+          "log": "lost-admin-final-inspect.log",
+          "bytes": 463,
+          "sha256": "869ba5c1b484958da544d545ee2259c7a359b13f0b2dc490807815d4b0b54380"
+        },
+        {
+          "label": "final-host",
+          "args": [
+            "pairing-info",
+            "waveshare-host"
+          ],
+          "started": "2026-10-20T15:37:18.217233+00:00",
+          "finished": "2026-10-20T15:37:18.249670+00:00",
+          "exit": 0,
+          "log": "lost-admin-final-host.log",
+          "bytes": 266,
+          "sha256": "58f70b0057010523e2d79cd3364bde4fa61bbeed5d762455365bb648e3e254cb"
+        },
+        {
+          "label": "final-echo",
+          "args": [
+            "peer",
+            "waveshare-host",
+            "192.168.1.134:5683",
+            "192.168.1.144:5683",
+            "--probe-echo"
+          ],
+          "started": "2026-10-20T15:37:18.255010+00:00",
+          "finished": "2026-10-20T15:37:19.731789+00:00",
+          "exit": 0,
+          "log": "lost-admin-final-echo.log",
+          "bytes": 372,
+          "sha256": "b4ec906f990a281e567d307a4a6ea33e9a4fd3047f3deb8b9cdedaae826e5ef6"
+        }
+      ],
+      "limits": [
+        "Deliberate loss of decoded USB commit delivery inside the host adapter, not a physical cable fault",
+        "Confirmed esp_restart is a software device restart, not cold power or interrupted NVS commit",
+        "Device state equality is the public serial-info projection; serial-recover source separately checks full checkpoint commitment twice",
+        "No telemetry effect is requested; existing receipt journal must remain byte-identical"
+      ],
+      "started": "2026-10-20T15:37:07.770193+00:00",
+      "binary_sha256": "d0fed202b1491189146d48f158af3e3449b1f9e9a1c6d80b24f162b5540e9d70",
+      "pairing_before": "9f9a8fbd7c047d8701d7a064e1a249040d44f4004c3027acaf032300dda9275d",
+      "journal_before": "5222d42f511c0d8eae14067bc1d745f226a658a218c86007a89acc619281be2f",
+      "journal_bytes_before": 4768,
+      "pairing_after_drop": "9f9a8fbd7c047d8701d7a064e1a249040d44f4004c3027acaf032300dda9275d",
+      "pairing_after_recovery": "8ff89452cc39728caf45c4a6a1084fd22f3465ff88ecc9a3ea785eb42eb3ed45",
+      "passed": true,
+      "finished": "2026-10-20T15:37:19.738180+00:00",
+      "pairing_final": "c7a958267ab685d35deea0abbd7f06faa845e328b0d17e413164ef4448fb17e1",
+      "journal_final": "5222d42f511c0d8eae14067bc1d745f226a658a218c86007a89acc619281be2f",
+      "journal_bytes_final": 4768,
+      "journal_unchanged": true
+    }
+  },
+  "orchestrator": {
+    "original_file": "qualify-lost-admin-reply.py",
+    "bytes": 6514,
+    "sha256": "0d8ea821c01ad3b2f272f5ee9c616f90e9aca532db27aef8a33fb7cb9244f0de"
+  },
+  "validation": {
+    "enrollment_tests_passed": 57,
+    "existing_native_store_test_ignored": 1,
+    "format_check_passed": true,
+    "strict_all_target_clippy_passed": true,
+    "release_build_passed": true,
+    "review": "General independent source and evidence review, no specialist/Bugbot claim"
+  },
+  "receipts": [
+    {
+      "label": "before-inspect",
+      "args": [
+        "serial-info",
+        "COM6"
+      ],
+      "started": "2026-10-20T15:37:07.775719+00:00",
+      "finished": "2026-10-20T15:37:07.914934+00:00",
+      "exit": 0,
+      "log": "lost-admin-before-inspect.log",
+      "bytes": 463,
+      "sha256": "389541de084f1065ac329974b07c2d0a16e3c0349fc9590538292772dd27d03b",
+      "encoding": "utf-8",
+      "original_text": "Device be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 public key 044ad6aa2e39998989b0f619259f9867433334f3448ee59d42d7766948753e9cf14df79743623deca7c2177084eb9a51f50f590ce867f49cb408844f976c1695db credential ID 31\r\nDurable work: authenticated empty or completed\r\nPairing revision 20 enabled true\r\nOwner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions 7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56\r\n"
+    },
+    {
+      "label": "before-host",
+      "args": [
+        "pairing-info",
+        "waveshare-host"
+      ],
+      "started": "2026-10-20T15:37:07.921071+00:00",
+      "finished": "2026-10-20T15:37:07.954227+00:00",
+      "exit": 0,
+      "log": "lost-admin-before-host.log",
+      "bytes": 266,
+      "sha256": "0173a3687ae8c6c94fd57ad85f998b5b2d21b179499b792ac912ff8c51db7f4b",
+      "encoding": "utf-8",
+      "original_text": "Device waveshare-host revision 15 paired true\r\nPeer be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 owner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions 7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56\r\n"
+    },
+    {
+      "label": "drop-readonly-reply",
+      "args": [
+        "serial-pair",
+        "COM6",
+        "waveshare-host",
+        "192.168.1.134:5683",
+        "--read-only",
+        "--development-no-touch",
+        "--qualify-lost-commissioning-reply"
+      ],
+      "started": "2026-10-20T15:37:07.959725+00:00",
+      "finished": "2026-10-20T15:37:08.409026+00:00",
+      "exit": 1,
+      "log": "lost-admin-drop-readonly-reply.log",
+      "bytes": 961,
+      "sha256": "d565d1002c9bb6d4ac1de48ca338fea79c33c3a23aa8c6135327cfc350e60580",
+      "encoding": "utf-8",
+      "original_text": "Approve Pair: device be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 peer e2dc8e2da51207c353c192278a549eb8c1c8e88dcacd42ddc412a7a3f85373ca owner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions c658710c988ad6a754ba2fca2713fcf008c9c774bda4a8f25fd3b51332869bed\r\nTransaction aa76b2c951cabd37896f2a43775548d9bebf41c143185bd159f20037a526ca95development PIV touchless\r\nQualification checkpoint: discarded USB Committed reply at revision 21; host pairing was not persisted.\r\nDevice update may have committed. Inspect device and host policy before any retry; do not repeat the device update blindly. Use serial-recover only when its exact current-owner/destination checks accept the inspected state.\r\ncoaptic-enroll: commissioning exchange failed: qualification discarded the committed USB reply; inspect device and host state, then use serial-recover; do not repeat the device update; inspect device state before retrying\r\n"
+    },
+    {
+      "label": "split-inspect",
+      "args": [
+        "serial-info",
+        "COM6"
+      ],
+      "started": "2026-10-20T15:37:08.416759+00:00",
+      "finished": "2026-10-20T15:37:08.474804+00:00",
+      "exit": 0,
+      "log": "lost-admin-split-inspect.log",
+      "bytes": 463,
+      "sha256": "48ee082f8dec04f2243b9fdcccc7540a0b738d9ae398d3125166aa7c44a47515",
+      "encoding": "utf-8",
+      "original_text": "Device be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 public key 044ad6aa2e39998989b0f619259f9867433334f3448ee59d42d7766948753e9cf14df79743623deca7c2177084eb9a51f50f590ce867f49cb408844f976c1695db credential ID 31\r\nDurable work: authenticated empty or completed\r\nPairing revision 21 enabled true\r\nOwner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions c658710c988ad6a754ba2fca2713fcf008c9c774bda4a8f25fd3b51332869bed\r\n"
+    },
+    {
+      "label": "split-host",
+      "args": [
+        "pairing-info",
+        "waveshare-host"
+      ],
+      "started": "2026-10-20T15:37:08.481870+00:00",
+      "finished": "2026-10-20T15:37:08.510785+00:00",
+      "exit": 0,
+      "log": "lost-admin-split-host.log",
+      "bytes": 266,
+      "sha256": "0173a3687ae8c6c94fd57ad85f998b5b2d21b179499b792ac912ff8c51db7f4b",
+      "encoding": "utf-8",
+      "original_text": "Device waveshare-host revision 15 paired true\r\nPeer be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 owner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions 7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56\r\n"
+    },
+    {
+      "label": "recover",
+      "args": [
+        "serial-recover",
+        "COM6",
+        "waveshare-host",
+        "--development-no-touch"
+      ],
+      "started": "2026-10-20T15:37:08.512500+00:00",
+      "finished": "2026-10-20T15:37:08.859699+00:00",
+      "exit": 0,
+      "log": "lost-admin-recover.log",
+      "bytes": 466,
+      "sha256": "e7b135fec548a85ea94215d84e9f61b5c19f51dd5230d620c4b500fbc5d03cef",
+      "encoding": "utf-8",
+      "original_text": "Approve Pair: device e2dc8e2da51207c353c192278a549eb8c1c8e88dcacd42ddc412a7a3f85373ca peer be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 owner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions c658710c988ad6a754ba2fca2713fcf008c9c774bda4a8f25fd3b51332869bed\r\nTransaction 698ccdc9f1ab01739ddc4888717595002da990e8218b4cf6f21697c84fed135edevelopment PIV touchless\r\nHost pairing recovered from the device's current policy.\r\n"
+    },
+    {
+      "label": "recovered-inspect",
+      "args": [
+        "serial-info",
+        "COM6"
+      ],
+      "started": "2026-10-20T15:37:08.865770+00:00",
+      "finished": "2026-10-20T15:37:08.921621+00:00",
+      "exit": 0,
+      "log": "lost-admin-recovered-inspect.log",
+      "bytes": 463,
+      "sha256": "48ee082f8dec04f2243b9fdcccc7540a0b738d9ae398d3125166aa7c44a47515",
+      "encoding": "utf-8",
+      "original_text": "Device be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 public key 044ad6aa2e39998989b0f619259f9867433334f3448ee59d42d7766948753e9cf14df79743623deca7c2177084eb9a51f50f590ce867f49cb408844f976c1695db credential ID 31\r\nDurable work: authenticated empty or completed\r\nPairing revision 21 enabled true\r\nOwner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions c658710c988ad6a754ba2fca2713fcf008c9c774bda4a8f25fd3b51332869bed\r\n"
+    },
+    {
+      "label": "recovered-host",
+      "args": [
+        "pairing-info",
+        "waveshare-host"
+      ],
+      "started": "2026-10-20T15:37:08.922722+00:00",
+      "finished": "2026-10-20T15:37:08.949122+00:00",
+      "exit": 0,
+      "log": "lost-admin-recovered-host.log",
+      "bytes": 266,
+      "sha256": "a43ca64074dc06f3fed4bcf066b6d3776d004bbb2a048c53027aa0674905ea4c",
+      "encoding": "utf-8",
+      "original_text": "Device waveshare-host revision 16 paired true\r\nPeer be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 owner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions c658710c988ad6a754ba2fca2713fcf008c9c774bda4a8f25fd3b51332869bed\r\n"
+    },
+    {
+      "label": "duplicate-recovery-refused",
+      "args": [
+        "serial-recover",
+        "COM6",
+        "waveshare-host",
+        "--development-no-touch"
+      ],
+      "started": "2026-10-20T15:37:08.954139+00:00",
+      "finished": "2026-10-20T15:37:09.011299+00:00",
+      "exit": 1,
+      "log": "lost-admin-duplicate-recovery-refused.log",
+      "bytes": 50,
+      "sha256": "1dbb32a34bc91875f15cc3fbe0b485bd9ff76ba1d1d650eef13505cbc4d7a815",
+      "encoding": "utf-8",
+      "original_text": "coaptic-enroll: operator approval refused: Input\r\n"
+    },
+    {
+      "label": "readonly-denial",
+      "args": [
+        "peer",
+        "waveshare-host",
+        "192.168.1.134:5683",
+        "192.168.1.144:5683",
+        "--probe-denied"
+      ],
+      "started": "2026-10-20T15:37:09.016529+00:00",
+      "finished": "2026-10-20T15:37:10.469743+00:00",
+      "exit": 0,
+      "log": "lost-admin-readonly-denial.log",
+      "bytes": 318,
+      "sha256": "33930c260de8073c64a613aaceff1a957c4ac9bfc14b56e6a4cadd3c1fa8d636",
+      "encoding": "utf-8",
+      "original_text": "Pairing restored; waiting for peer at 192.168.1.144:5683.\r\nFresh EDHOC/OSCORE session generation 1 connected to be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8.\r\nProtected probe received code 5.03 (Max-Age 1s); retrying this idempotent probe in the same session.\r\nProtected probe passed (code 4.03).\r\n"
+    },
+    {
+      "label": "readonly-device-restart",
+      "args": [
+        "serial-restart",
+        "COM6"
+      ],
+      "started": "2026-10-20T15:37:10.475431+00:00",
+      "finished": "2026-10-20T15:37:10.531917+00:00",
+      "exit": 0,
+      "log": "lost-admin-readonly-device-restart.log",
+      "bytes": 89,
+      "sha256": "a28b07073f7d73f8ab2dfedb00e0e91c9560432a6bedbf79b29b6d934051e3d4",
+      "encoding": "utf-8",
+      "original_text": "Device restarting; it will restore pairing and establish a fresh session automatically.\r\n"
+    },
+    {
+      "label": "readonly-after-restart",
+      "args": [
+        "serial-info",
+        "COM6"
+      ],
+      "started": "2026-10-20T15:37:13.538642+00:00",
+      "finished": "2026-10-20T15:37:13.599387+00:00",
+      "exit": 0,
+      "log": "lost-admin-readonly-after-restart.log",
+      "bytes": 463,
+      "sha256": "48ee082f8dec04f2243b9fdcccc7540a0b738d9ae398d3125166aa7c44a47515",
+      "encoding": "utf-8",
+      "original_text": "Device be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 public key 044ad6aa2e39998989b0f619259f9867433334f3448ee59d42d7766948753e9cf14df79743623deca7c2177084eb9a51f50f590ce867f49cb408844f976c1695db credential ID 31\r\nDurable work: authenticated empty or completed\r\nPairing revision 21 enabled true\r\nOwner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions c658710c988ad6a754ba2fca2713fcf008c9c774bda4a8f25fd3b51332869bed\r\n"
+    },
+    {
+      "label": "readonly-denial-after-restart",
+      "args": [
+        "peer",
+        "waveshare-host",
+        "192.168.1.134:5683",
+        "192.168.1.144:5683",
+        "--probe-denied"
+      ],
+      "started": "2026-10-20T15:37:13.600886+00:00",
+      "finished": "2026-10-20T15:37:17.755332+00:00",
+      "exit": 0,
+      "log": "lost-admin-readonly-denial-after-restart.log",
+      "bytes": 318,
+      "sha256": "33930c260de8073c64a613aaceff1a957c4ac9bfc14b56e6a4cadd3c1fa8d636",
+      "encoding": "utf-8",
+      "original_text": "Pairing restored; waiting for peer at 192.168.1.144:5683.\r\nFresh EDHOC/OSCORE session generation 1 connected to be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8.\r\nProtected probe received code 5.03 (Max-Age 1s); retrying this idempotent probe in the same session.\r\nProtected probe passed (code 4.03).\r\n"
+    },
+    {
+      "label": "restore-echo",
+      "args": [
+        "serial-pair",
+        "COM6",
+        "waveshare-host",
+        "192.168.1.134:5683",
+        "--echo-only",
+        "--development-no-touch"
+      ],
+      "started": "2026-10-20T15:37:17.756694+00:00",
+      "finished": "2026-10-20T15:37:18.147387+00:00",
+      "exit": 0,
+      "log": "lost-admin-restore-echo.log",
+      "bytes": 515,
+      "sha256": "6bace2a8147b8fa59310757132687a2af269443c6258c92b1f0be8ef2c02e161",
+      "encoding": "utf-8",
+      "original_text": "Approve Pair: device be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 peer e2dc8e2da51207c353c192278a549eb8c1c8e88dcacd42ddc412a7a3f85373ca owner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions 7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56\r\nTransaction 792453762e2a903aa7e5335b17e91f5289bf6c88d0cb67ff0f15fd633bd508abdevelopment PIV touchless\r\nDevice and host pairing committed. Peer be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8.\r\n"
+    },
+    {
+      "label": "final-inspect",
+      "args": [
+        "serial-info",
+        "COM6"
+      ],
+      "started": "2026-10-20T15:37:18.154706+00:00",
+      "finished": "2026-10-20T15:37:18.212162+00:00",
+      "exit": 0,
+      "log": "lost-admin-final-inspect.log",
+      "bytes": 463,
+      "sha256": "869ba5c1b484958da544d545ee2259c7a359b13f0b2dc490807815d4b0b54380",
+      "encoding": "utf-8",
+      "original_text": "Device be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 public key 044ad6aa2e39998989b0f619259f9867433334f3448ee59d42d7766948753e9cf14df79743623deca7c2177084eb9a51f50f590ce867f49cb408844f976c1695db credential ID 31\r\nDurable work: authenticated empty or completed\r\nPairing revision 22 enabled true\r\nOwner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions 7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56\r\n"
+    },
+    {
+      "label": "final-host",
+      "args": [
+        "pairing-info",
+        "waveshare-host"
+      ],
+      "started": "2026-10-20T15:37:18.217233+00:00",
+      "finished": "2026-10-20T15:37:18.249670+00:00",
+      "exit": 0,
+      "log": "lost-admin-final-host.log",
+      "bytes": 266,
+      "sha256": "58f70b0057010523e2d79cd3364bde4fa61bbeed5d762455365bb648e3e254cb",
+      "encoding": "utf-8",
+      "original_text": "Device waveshare-host revision 17 paired true\r\nPeer be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 owner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions 7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56\r\n"
+    },
+    {
+      "label": "final-echo",
+      "args": [
+        "peer",
+        "waveshare-host",
+        "192.168.1.134:5683",
+        "192.168.1.144:5683",
+        "--probe-echo"
+      ],
+      "started": "2026-10-20T15:37:18.255010+00:00",
+      "finished": "2026-10-20T15:37:19.731789+00:00",
+      "exit": 0,
+      "log": "lost-admin-final-echo.log",
+      "bytes": 372,
+      "sha256": "b4ec906f990a281e567d307a4a6ea33e9a4fd3047f3deb8b9cdedaae826e5ef6",
+      "encoding": "utf-8",
+      "original_text": "Pairing restored; waiting for peer at 192.168.1.144:5683.\r\nFresh EDHOC/OSCORE session generation 1 connected to be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8.\r\nProtected probe received code 5.03 (Max-Age 1s); retrying this idempotent probe in the same session.\r\nProtected echo received and acknowledged (45 bytes).\r\nProtected probe passed (code 2.05).\r\n"
+    }
+  ],
+  "limits": [
+    "Deliberate loss of decoded USB commit delivery inside the host adapter, not a physical cable fault",
+    "Confirmed esp_restart is a software device restart, not cold power or interrupted NVS commit",
+    "Device state equality is the public serial-info projection; serial-recover source separately checks full checkpoint commitment twice",
+    "No telemetry effect is requested; existing receipt journal must remain byte-identical",
+    "The same original device key/store/owner were retained; this is not hostile snapshot rollback proof",
+    "The sealed host checkpoint hash proves no durable host pairing write before recovery, not that no ephemeral hardware challenge was consumed",
+    "Actual wire queued cancellation, cold-power/interrupted commit and three-credential backup recovery remain separate requirements"
+  ],
+  "same_tree_merge": "f6bbb191664128270e9baf1b4e7e4c9de71dc9b7"
+}
