@@ -1,0 +1,139 @@
+{
+    "schema":  "coaptic-native-async-startup-check",
+    "source":  {
+                   "fixture_sha256":  "b02f64c038e3c9a2c770a3e9727e6c7e652aafcfa8e069b44911d27efbec9b93",
+                   "core_lock_sha256":  "de3a53fd8c00ebb3ecb514cd354ee2e560c0c28a13d0dfcd6b1580756c7ab498",
+                   "companion":  "ea440271a007d3b64f0c849e410e837165d1f979",
+                   "core":  "cdabea60b43db0a9ec110276b9122d45c85eab73",
+                   "source_note":  "Executed files unchanged when committed; this receipt is added afterward.",
+                   "companion_tree":  "c7ca679597194fe07f9b9f520e088a599be70e4c",
+                   "companion_lock_sha256":  "f711ce82fa0c978951b004095f37ad2cc4b05c1ceabbff406646ba6c87ed934b",
+                   "fixture_path":  "crates/peer-coaptic/src/bin/cloud.rs"
+               },
+    "build":  {
+                  "binary_sha256":  "380850ec083097a601eba98e2a710d334b2ba3659553a7d6dc2190aa9f16befa",
+                  "profile":  "dev",
+                  "incremental":  false,
+                  "host":  "x86_64-pc-windows-msvc",
+                  "debug_info":  0,
+                  "rustc":  "1.99.0 (b940084d7 2026-09-28)",
+                  "features":  [
+                                   "peer-coaptic/cloud",
+                                   "coaptic/std",
+                                   "coaptic/alloc",
+                                   "coaptic/oscore"
+                               ],
+                  "jobs":  1
+              },
+    "checks":  [
+                   {
+                       "exit":  0,
+                       "command":  "cargo +1.99.0 run --locked --offline -p peer-coaptic --features cloud --bin peer-coaptic-cloud -- --unprotected"
+                   },
+                   {
+                       "exit":  0,
+                       "command":  "cargo +1.99.0 run --locked --offline -p peer-coaptic --features cloud --bin peer-coaptic-cloud -- --protected"
+                   },
+                   {
+                       "exit":  0,
+                       "command":  "cargo +1.99.0 clippy --locked --offline -p peer-coaptic --features cloud --bin peer-coaptic-cloud -- -D warnings"
+                   }
+               ],
+    "results":  [
+                    {
+                        "adapter_scratch_bytes":  1473,
+                        "allocation_requests":  0,
+                        "allocation_scope":  "same-thread App future construction and polls plus explicit synchronous App operations; executor work between polls, startup and pending-future Drop excluded",
+                        "app_future_polls":  226,
+                        "associations":  1,
+                        "body_bytes":  16384,
+                        "bytes_per_response":  2000,
+                        "calls":  4,
+                        "cancellation_recovery":  true,
+                        "client_received_datagrams":  33,
+                        "complete_responses":  16,
+                        "datagram_bytes":  1472,
+                        "deferred":  0,
+                        "execution":  "tokio-current-thread-native-async",
+                        "fixture_thread_stack_bytes":  4194304,
+                        "inline_adapter_bytes":  1544,
+                        "inline_app_bytes_including_adapter":  15712,
+                        "local_admission_refusals":  3,
+                        "measured_scopes":  450,
+                        "memory_scope":  "requested Coaptic pool layouts and inline owner sizes; allocator/OS/runtime/socket registration memory unmeasured",
+                        "mode":  "unprotected",
+                        "pending_app_future_polls":  58,
+                        "profile":  "Service",
+                        "reallocation_requests":  0,
+                        "request_warmups":  0,
+                        "requested_heap_bytes_per_app":  282640,
+                        "routes":  2,
+                        "rx_body_slots":  4,
+                        "rx_slots":  32,
+                        "security_request_bindings":  4,
+                        "server_received_datagrams":  33,
+                        "success":  true,
+                        "tx_body_slots":  4,
+                        "tx_slots":  32
+                    },
+                    {
+                        "adapter_scratch_bytes":  1473,
+                        "allocation_requests":  0,
+                        "allocation_scope":  "same-thread App future construction and polls plus explicit synchronous App operations; executor work between polls, startup and pending-future Drop excluded",
+                        "app_future_polls":  226,
+                        "associations":  1,
+                        "body_bytes":  16384,
+                        "bytes_per_response":  2000,
+                        "calls":  4,
+                        "cancellation_recovery":  true,
+                        "client_received_datagrams":  33,
+                        "complete_responses":  16,
+                        "datagram_bytes":  1472,
+                        "deferred":  0,
+                        "execution":  "tokio-current-thread-native-async",
+                        "fixture_thread_stack_bytes":  4194304,
+                        "inline_adapter_bytes":  1544,
+                        "inline_app_bytes_including_adapter":  15712,
+                        "local_admission_refusals":  3,
+                        "measured_scopes":  450,
+                        "memory_scope":  "requested Coaptic pool layouts and inline owner sizes; allocator/OS/runtime/socket registration memory unmeasured",
+                        "mode":  "oscore-ephemeral",
+                        "pending_app_future_polls":  58,
+                        "profile":  "Service",
+                        "reallocation_requests":  0,
+                        "request_warmups":  0,
+                        "requested_heap_bytes_per_app":  282640,
+                        "routes":  2,
+                        "rx_body_slots":  4,
+                        "rx_slots":  32,
+                        "security_request_bindings":  4,
+                        "server_received_datagrams":  33,
+                        "success":  true,
+                        "tx_body_slots":  4,
+                        "tx_slots":  32
+                    }
+                ],
+    "logs":  [
+                 {
+                     "sha256":  "688061a1f56719c162aee96957756c9f4c9ec302b1ecf601cd3e905243e36fba",
+                     "name":  "native-cloud-unprotected.log"
+                 },
+                 {
+                     "sha256":  "1b0707cf9c7eae10ca8b5a167308d5e03157a3a9f458cbe7584333ae3ed5b746",
+                     "name":  "native-cloud-protected.log"
+                 },
+                 {
+                     "sha256":  "32f436ec287de7f1f30ed6fc882e744d8c5d53a0a2a1354f96be4326f29d60f1",
+                     "name":  "native-cloud-clippy.log"
+                 }
+             ],
+    "limits":  [
+                   "Finite loopback proof, not throughput or sustained capacity qualification.",
+                   "Local Call refusal before sending does not establish a server wire-level overload response.",
+                   "OSCORE keys are ephemeral; durable restart is outside this run.",
+                   "Future construction and polling plus named synchronous App operations are observed; startup, executor work between polls and pending-future Drop are excluded.",
+                   "Requested pool layouts and inline owner sizes exclude allocator overhead, OS/runtime/socket memory and deployment peaks.",
+                   "The 4 MiB fixture thread reservation is not a minimum library stack requirement.",
+                   "Both modes use one binary compiled with OSCORE; unprotected mode therefore retains security layout allowances."
+               ]
+}
