@@ -7,8 +7,9 @@
 //!
 //! Allocation observations cover App-future construction/polls and explicit
 //! synchronous App operations on the current runtime thread. Runtime creation,
-//! socket registration, executor work between those polls, OS network memory,
-//! allocator bookkeeping and whole-process memory are outside that measurement.
+//! socket registration and executor work between those polls are outside that
+//! zero-allocation assertion. Separate startup/steady/Drop snapshots retain
+//! requested Rust heap and OS process counters, with overlapping scope explicit.
 //! There is no unmeasured request warmup. This is not a throughput benchmark or
 //! durable OSCORE restart qualification.
 
@@ -29,11 +30,16 @@ use tokio::net::UdpSocket;
 use tokio::sync::Notify;
 use tokio::time::Instant;
 
+#[path = "cloud/memory.rs"]
+mod memory;
+
 const SCRATCH_BYTES: usize = 1473;
 const BODY: [u8; 2000] = [0x5a; 2000];
 const TINY: &[u8] = b"complete";
 const RUN_LIMIT: Duration = Duration::from_secs(5);
 const FIXTURE_STACK_BYTES: usize = 4 * 1024 * 1024;
+const PRESSURE_TX_SLOTS: usize = 31;
+const CHURN_DATAGRAMS: usize = 16;
 
 #[derive(Clone, Copy, Default)]
 struct AllocationRequests {
@@ -74,20 +80,33 @@ struct TrackingAllocator;
 unsafe impl GlobalAlloc for TrackingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         allocation_request(false);
-        unsafe { System.alloc(layout) }
+        let pointer = unsafe { System.alloc(layout) };
+        if !pointer.is_null() {
+            memory::allocated(layout.size());
+        }
+        pointer
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         allocation_request(false);
-        unsafe { System.alloc_zeroed(layout) }
+        let pointer = unsafe { System.alloc_zeroed(layout) };
+        if !pointer.is_null() {
+            memory::allocated(layout.size());
+        }
+        pointer
     }
 
     unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
         allocation_request(true);
-        unsafe { System.realloc(pointer, layout, size) }
+        let resized = unsafe { System.realloc(pointer, layout, size) };
+        if !resized.is_null() {
+            memory::reallocated(layout.size(), size);
+        }
+        resized
     }
 
     unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+        memory::deallocated(layout.size());
         unsafe { System.dealloc(pointer, layout) };
     }
 }
@@ -237,15 +256,25 @@ async fn serve(
     epoch: Instant,
     finished: &Notify,
     totals: &Cell<Observations>,
+    pressure_release: &Notify,
+    held_tx: &mut [Option<coaptic::storage::SlotId>; PRESSURE_TX_SLOTS],
 ) {
     let mut timer = Timer { epoch };
     let mut clock = clock(epoch);
     loop {
         tokio::select! {
+            biased;
+            () = finished.notified() => return,
+            () = pressure_release.notified() => {
+                observed(totals, || {
+                    for slot in held_tx.iter_mut().filter_map(Option::take) {
+                        server.engine_mut().release_tx(slot).unwrap();
+                    }
+                });
+            }
             result = observed_async(totals, || server.wait_async(now(epoch), &mut timer, pending())) => {
                 result.expect("server native async readiness");
             }
-            () = finished.notified() => return,
         }
         observed_async(totals, || {
             server.progress_async(now(epoch), &mut clock, &mut timer, now(epoch) + 1000)
@@ -255,7 +284,14 @@ async fn serve(
     }
 }
 
-async fn response(client: &mut Service, call: Call, epoch: Instant, totals: &Cell<Observations>) {
+async fn expected_response(
+    client: &mut Service,
+    call: Call,
+    epoch: Instant,
+    totals: &Cell<Observations>,
+    expected_code: Code,
+    expected_body: &[u8],
+) {
     let mut timer = Timer { epoch };
     let mut clock = clock(epoch);
     let mut output = [0; BODY.len()];
@@ -271,8 +307,11 @@ async fn response(client: &mut Service, call: Call, epoch: Instant, totals: &Cel
                 .unwrap()
                 .map(|result| {
                     let result = result.unwrap();
-                    assert_eq!(result.code(), Code::CONTENT);
-                    assert_eq!(result.payload(), BODY);
+                    assert_eq!(result.code(), expected_code);
+                    assert_eq!(result.payload(), expected_body);
+                    if expected_code == Code::SERVICE_UNAVAILABLE {
+                        assert_eq!(result.max_age_secs(), Some(1));
+                    }
                 })
         });
         if ready.is_some() {
@@ -284,6 +323,100 @@ async fn response(client: &mut Service, call: Call, epoch: Instant, totals: &Cel
         .await
         .expect("client native async readiness");
     }
+}
+
+async fn response(client: &mut Service, call: Call, epoch: Instant, totals: &Cell<Observations>) {
+    expected_response(client, call, epoch, totals, Code::CONTENT, &BODY).await;
+}
+
+async fn server_pressure(
+    client: &mut Service,
+    peer: Endpoint,
+    epoch: Instant,
+    totals: &Cell<Observations>,
+    pressure_release: &Notify,
+    chatter: &UdpSocket,
+) {
+    let mut timer = Timer { epoch };
+    let refused = observed_async(totals, || {
+        client
+            .get("tiny")
+            .non()
+            .to(peer)
+            .send_async(now(epoch), clock(epoch), &mut timer)
+    })
+    .await
+    .expect("valid request reaches the pressured server");
+    expected_response(
+        client,
+        refused,
+        epoch,
+        totals,
+        Code::SERVICE_UNAVAILABLE,
+        &[],
+    )
+    .await;
+    let sends = client.transport().send_attempts;
+    let retry = observed_async(totals, || {
+        client
+            .get("tiny")
+            .non()
+            .to(peer)
+            .send_async(now(epoch), clock(epoch), &mut timer)
+    })
+    .await;
+    let until_ms = match retry {
+        Err(AsyncCallError::Request(Error::Backoff { until_ms })) => until_ms,
+        other => panic!("server Max-Age must retain its bounded cooldown: {other:?}"),
+    };
+    assert_eq!(client.transport().send_attempts, sends);
+    pressure_release.notify_one();
+    // The failed tiny request retains its one-second cooldown. A different
+    // resource can progress without bypassing that request's backoff contract.
+    // This is finite malformed-ingress churn, not a sustained flood claim.
+    for _ in 0..CHURN_DATAGRAMS {
+        assert_eq!(
+            chatter
+                .send_to(&[0xff], SocketAddr::from(peer))
+                .await
+                .unwrap(),
+            1
+        );
+    }
+    let recovered = observed_async(totals, || {
+        client
+            .get("body")
+            .non()
+            .to(peer)
+            .send_async(now(epoch), clock(epoch), &mut timer)
+    })
+    .await
+    .expect("valid work can be admitted after pressure clears");
+    response(client, recovered, epoch, totals).await;
+    // Honor the actual protocol cooldown before reusing all four Call rows.
+    // This is one deadline wait, not a periodic progress-polling sleep.
+    timer.wait_until(until_ms).await;
+    let mut deadline_clock = clock(epoch);
+    observed_async(totals, || {
+        client.progress_async(
+            now(epoch),
+            &mut deadline_clock,
+            &mut timer,
+            now(epoch) + 1000,
+        )
+    })
+    .await
+    .expect("drive the due cooldown deadline before sending fresh work");
+    let recovered_tiny = observed_async(totals, || {
+        client
+            .get("tiny")
+            .non()
+            .to(peer)
+            .send_async(now(epoch), clock(epoch), &mut timer)
+    })
+    .await
+    .expect("same refused resource recovers after Max-Age");
+    expected_response(client, recovered_tiny, epoch, totals, Code::CONTENT, TINY).await;
 }
 
 async fn client_work(
@@ -377,26 +510,67 @@ async fn client_work(
     });
 }
 
-async fn exercise(protected: bool) {
+async fn exercise(
+    protected: bool,
+    process_start: memory::Snapshot,
+    runtime_ready: memory::Snapshot,
+    future_bytes: &Cell<usize>,
+) {
     let socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
     let peer = Endpoint::from(socket.local_addr().unwrap());
     let client_socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+    let chatter = UdpSocket::bind("127.0.0.1:0").await.unwrap();
     let mut secret = [0; 32];
     getrandom::fill(&mut secret).unwrap();
     let security = protected.then_some(&secret);
     let required = configuration(usize::MAX).required_heap_bytes().unwrap();
+    let before_bind = memory::Snapshot::capture();
     let mut server = bind(socket, required, security, true);
     let mut client = bind(client_socket, required, security, false);
     secret.fill(0);
+    let after_bind = memory::Snapshot::capture();
+    assert_eq!(
+        after_bind.requested_live() - before_bind.requested_live(),
+        required * 2
+    );
     let capacities = configuration(required).pool_capacities();
     let totals = Cell::new(Observations::default());
     let finished = Notify::new();
+    let pressure_release = Notify::new();
+    // Explicit fault injection occupies existing storage to test wire refusal;
+    // these are not extra buffers or a different capacity configuration.
+    let mut held_tx = observed(&totals, || {
+        std::array::from_fn(|_| Some(server.engine_mut().acquire_tx().unwrap()))
+    });
+    assert_eq!(
+        server.storage_usage().tx_datagram.occupied,
+        PRESSURE_TX_SLOTS
+    );
     let epoch = Instant::now();
     tokio::time::timeout(RUN_LIMIT, async {
-        tokio::join!(serve(&mut server, epoch, &finished, &totals), async {
-            client_work(&mut client, peer, epoch, &totals).await;
-            finished.notify_one();
-        });
+        tokio::join!(
+            serve(
+                &mut server,
+                epoch,
+                &finished,
+                &totals,
+                &pressure_release,
+                &mut held_tx
+            ),
+            async {
+                server_pressure(
+                    &mut client,
+                    peer,
+                    epoch,
+                    &totals,
+                    &pressure_release,
+                    &chatter,
+                )
+                .await;
+                client_work(&mut client, peer, epoch, &totals).await;
+                finished.notify_one();
+            }
+        );
     })
     .await
     .expect("finite native async cloud run deadline");
@@ -408,6 +582,13 @@ async fn exercise(protected: bool) {
         // Shutdown cancels the outstanding receive and releases its RX owner.
         assert_eq!(server.storage_usage().rx_datagram.occupied, 0);
         assert_eq!(server.storage_usage().tx_body.unwrap().occupied, 0);
+        assert_eq!(server.storage_usage().tx_datagram.occupied, 0);
+        assert!(held_tx.iter().all(Option::is_none));
+        assert_eq!(server.metrics().admission_tx_refused, 1);
+        assert_eq!(server.metrics().admission_refusal_sent, 1);
+        assert_eq!(server.metrics().admission_refusal_unsent, 0);
+        assert_eq!(server.metrics().hard_tx_exhausted, 0);
+        assert_eq!(server.metrics().rx_error, CHURN_DATAGRAMS as u32);
     });
     let counts = totals.get();
     assert_eq!(counts.alloc, 0, "observed App/adapter allocation requests");
@@ -419,6 +600,36 @@ async fn exercise(protected: bool) {
         counts.pending_polls > 0,
         "native futures actually suspended"
     );
+    let after_traffic = memory::Snapshot::capture();
+    let client_received = client.transport().received;
+    let server_received = server.transport().received;
+    drop(client);
+    drop(server);
+    drop(chatter);
+    let after_drop = memory::Snapshot::capture();
+    assert!(after_traffic.requested_live() - after_drop.requested_live() >= required * 2);
+    let server_pressure = serde_json::json!({
+        "wire_refusals": 1,
+        "wire_refusal_code": "5.03",
+        "wire_refusal_max_age_seconds": 1,
+        "held_tx_slots": PRESSURE_TX_SLOTS,
+        "finite_malformed_churn_datagrams": CHURN_DATAGRAMS,
+        "recovery_complete_bytes": BODY.len(),
+        "refused_resource_recovered_after_max_age": true,
+        "local_max_age_backoff_refusals": 1,
+        "additional_complete_tiny_responses": 1,
+    });
+    let memory = serde_json::json!({
+        "exercise_future_bytes_nested_in_stack": future_bytes.get(),
+        "snapshots": [
+            process_start.json("main-before-arguments-and-worker"),
+            runtime_ready.json("worker-runtime-ready"),
+            before_bind.json("sockets-registered-before-app-bind"),
+            after_bind.json("two-apps-bound-before-traffic"),
+            after_traffic.json("finite-traffic-complete-before-drop"),
+            after_drop.json("apps-and-sockets-dropped-runtime-still-live"),
+        ],
+    });
     println!(
         "{}",
         serde_json::json!({
@@ -441,26 +652,29 @@ async fn exercise(protected: bool) {
             "inline_app_bytes_including_adapter": std::mem::size_of::<Service>(),
             "inline_adapter_bytes": std::mem::size_of::<TokioUdp>(),
             "adapter_scratch_bytes": SCRATCH_BYTES,
-            "complete_responses": 16,
+            "complete_responses": 17,
             "bytes_per_response": BODY.len(),
             "local_admission_refusals": 3,
+            "server_pressure": server_pressure,
             "cancellation_recovery": true,
             "app_future_polls": counts.future_polls,
             "pending_app_future_polls": counts.pending_polls,
             "measured_scopes": counts.scopes,
             "allocation_requests": counts.alloc,
             "reallocation_requests": counts.realloc,
-            "client_received_datagrams": client.transport().received,
-            "server_received_datagrams": server.transport().received,
+            "client_received_datagrams": client_received,
+            "server_received_datagrams": server_received,
             "request_warmups": 0,
             "fixture_thread_stack_bytes": FIXTURE_STACK_BYTES,
-            "memory_scope": "requested Coaptic pool layouts and inline owner sizes; allocator/OS/runtime/socket registration memory unmeasured",
+            "memory": memory,
+            "memory_scope": "Rust requested live/layout peak covers global allocator across process lifetime, including runtime/fixture; excludes allocator metadata and direct native allocation. OS process counters include overlapping heap/stack/runtime/code domains and are never added to component sizes. App owners and exercise future are nested in reserved fixture stack. No individual stack high-water or kernel socket-buffer allocation measurement; process lifetime peaks cover this finite run, not deployment maxima. JSON output is constructed after snapshots.",
             "allocation_scope": "same-thread App future construction and polls plus explicit synchronous App operations; executor work between polls, startup and pending-future Drop excluded",
         })
     );
 }
 
 fn main() -> ExitCode {
+    let process_start = memory::Snapshot::capture();
     let mut arguments = std::env::args_os().skip(1);
     let protected = match (arguments.next(), arguments.next()) {
         (Some(flag), None) if flag == "--protected" => true,
@@ -480,7 +694,11 @@ fn main() -> ExitCode {
                 .enable_all()
                 .build()
                 .unwrap();
-            runtime.block_on(exercise(protected));
+            let runtime_ready = memory::Snapshot::capture();
+            let future_bytes = Cell::new(0);
+            let run = exercise(protected, process_start, runtime_ready, &future_bytes);
+            future_bytes.set(std::mem::size_of_val(&run));
+            runtime.block_on(run);
         });
     if execution.is_ok_and(|worker| worker.join().is_ok()) {
         ExitCode::SUCCESS

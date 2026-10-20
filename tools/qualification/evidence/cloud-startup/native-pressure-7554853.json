@@ -1,0 +1,327 @@
+{
+    "schema":  "coaptic-native-cloud-pressure/1",
+    "source":  {
+                   "binary_sha256":  "cfc09a09722e5f8b37f69d9bf71f5960a766e8314fa0275af99916d821e05014",
+                   "executed_file_note":  "Source files unchanged when committed. Unrelated device qualification edits were present but not consumed by this target.",
+                   "core":  "75548536d6ea417dc3f4a74c7fc9fc4e03ab5953",
+                   "profile":  "dev debug=0 incremental=false jobs=1",
+                   "target":  "x86_64-pc-windows-msvc",
+                   "rustc":  "1.99.0 (b940084d7 2026-09-28)",
+                   "cargo_lock_sha256":  "f711ce82fa0c978951b004095f37ad2cc4b05c1ceabbff406646ba6c87ed934b",
+                   "companion_implementation":  "4a426bec054d78955e34e4bc57045a4576f8f3c3"
+               },
+    "checks":  [
+                   {
+                       "exit":  0,
+                       "command":  "cargo +1.99.0 run --locked --offline -p peer-coaptic --features cloud --bin peer-coaptic-cloud -- --unprotected"
+                   },
+                   {
+                       "exit":  0,
+                       "command":  "cargo +1.99.0 run --locked --offline -p peer-coaptic --features cloud --bin peer-coaptic-cloud -- --protected"
+                   },
+                   {
+                       "exit":  0,
+                       "command":  "cargo +1.99.0 clippy --locked --offline -p peer-coaptic --features cloud --bin peer-coaptic-cloud -- -D warnings"
+                   }
+               ],
+    "results":  [
+                    {
+                        "adapter_scratch_bytes":  1473,
+                        "allocation_requests":  0,
+                        "allocation_scope":  "same-thread App future construction and polls plus explicit synchronous App operations; executor work between polls, startup and pending-future Drop excluded",
+                        "app_future_polls":  301,
+                        "associations":  1,
+                        "body_bytes":  16384,
+                        "bytes_per_response":  2000,
+                        "calls":  4,
+                        "cancellation_recovery":  true,
+                        "client_received_datagrams":  37,
+                        "complete_responses":  17,
+                        "datagram_bytes":  1472,
+                        "deferred":  0,
+                        "execution":  "tokio-current-thread-native-async",
+                        "fixture_thread_stack_bytes":  4194304,
+                        "inline_adapter_bytes":  1544,
+                        "inline_app_bytes_including_adapter":  15712,
+                        "local_admission_refusals":  3,
+                        "measured_scopes":  592,
+                        "memory":  {
+                                       "exercise_future_bytes_nested_in_stack":  74888,
+                                       "snapshots":  [
+                                                         {
+                                                             "os_counter_source":  "Windows PROCESS_MEMORY_COUNTERS_EX; commit and resident overlap Rust heap/stack/runtime",
+                                                             "phase":  "main-before-arguments-and-worker",
+                                                             "process_lifetime_peak_private_commit_bytes":  749568,
+                                                             "process_lifetime_peak_resident_bytes":  4321280,
+                                                             "process_lifetime_peak_virtual_bytes":  null,
+                                                             "process_private_commit_bytes":  737280,
+                                                             "process_resident_bytes":  4321280,
+                                                             "process_virtual_bytes":  null,
+                                                             "rust_requested_lifetime_peak_bytes":  0,
+                                                             "rust_requested_live_bytes":  0,
+                                                             "successful_rust_allocations":  0,
+                                                             "successful_rust_reallocations":  0
+                                                         },
+                                                         {
+                                                             "os_counter_source":  "Windows PROCESS_MEMORY_COUNTERS_EX; commit and resident overlap Rust heap/stack/runtime",
+                                                             "phase":  "worker-runtime-ready",
+                                                             "process_lifetime_peak_private_commit_bytes":  1028096,
+                                                             "process_lifetime_peak_resident_bytes":  5148672,
+                                                             "process_lifetime_peak_virtual_bytes":  null,
+                                                             "process_private_commit_bytes":  1007616,
+                                                             "process_resident_bytes":  5148672,
+                                                             "process_virtual_bytes":  null,
+                                                             "rust_requested_lifetime_peak_bytes":  58110,
+                                                             "rust_requested_live_bytes":  58110,
+                                                             "successful_rust_allocations":  25,
+                                                             "successful_rust_reallocations":  7
+                                                         },
+                                                         {
+                                                             "os_counter_source":  "Windows PROCESS_MEMORY_COUNTERS_EX; commit and resident overlap Rust heap/stack/runtime",
+                                                             "phase":  "sockets-registered-before-app-bind",
+                                                             "process_lifetime_peak_private_commit_bytes":  1441792,
+                                                             "process_lifetime_peak_resident_bytes":  6172672,
+                                                             "process_lifetime_peak_virtual_bytes":  null,
+                                                             "process_private_commit_bytes":  1441792,
+                                                             "process_resident_bytes":  6172672,
+                                                             "process_virtual_bytes":  null,
+                                                             "rust_requested_lifetime_peak_bytes":  134310,
+                                                             "rust_requested_live_bytes":  134310,
+                                                             "successful_rust_allocations":  39,
+                                                             "successful_rust_reallocations":  7
+                                                         },
+                                                         {
+                                                             "os_counter_source":  "Windows PROCESS_MEMORY_COUNTERS_EX; commit and resident overlap Rust heap/stack/runtime",
+                                                             "phase":  "two-apps-bound-before-traffic",
+                                                             "process_lifetime_peak_private_commit_bytes":  2109440,
+                                                             "process_lifetime_peak_resident_bytes":  7061504,
+                                                             "process_lifetime_peak_virtual_bytes":  null,
+                                                             "process_private_commit_bytes":  2109440,
+                                                             "process_resident_bytes":  7061504,
+                                                             "process_virtual_bytes":  null,
+                                                             "rust_requested_lifetime_peak_bytes":  699590,
+                                                             "rust_requested_live_bytes":  699590,
+                                                             "successful_rust_allocations":  225,
+                                                             "successful_rust_reallocations":  7
+                                                         },
+                                                         {
+                                                             "os_counter_source":  "Windows PROCESS_MEMORY_COUNTERS_EX; commit and resident overlap Rust heap/stack/runtime",
+                                                             "phase":  "finite-traffic-complete-before-drop",
+                                                             "process_lifetime_peak_private_commit_bytes":  3198976,
+                                                             "process_lifetime_peak_resident_bytes":  8957952,
+                                                             "process_lifetime_peak_virtual_bytes":  null,
+                                                             "process_private_commit_bytes":  3178496,
+                                                             "process_resident_bytes":  8957952,
+                                                             "process_virtual_bytes":  null,
+                                                             "rust_requested_lifetime_peak_bytes":  699590,
+                                                             "rust_requested_live_bytes":  699590,
+                                                             "successful_rust_allocations":  225,
+                                                             "successful_rust_reallocations":  7
+                                                         },
+                                                         {
+                                                             "os_counter_source":  "Windows PROCESS_MEMORY_COUNTERS_EX; commit and resident overlap Rust heap/stack/runtime",
+                                                             "phase":  "apps-and-sockets-dropped-runtime-still-live",
+                                                             "process_lifetime_peak_private_commit_bytes":  3198976,
+                                                             "process_lifetime_peak_resident_bytes":  8962048,
+                                                             "process_lifetime_peak_virtual_bytes":  null,
+                                                             "process_private_commit_bytes":  2818048,
+                                                             "process_resident_bytes":  8450048,
+                                                             "process_virtual_bytes":  null,
+                                                             "rust_requested_lifetime_peak_bytes":  699590,
+                                                             "rust_requested_live_bytes":  134214,
+                                                             "successful_rust_allocations":  225,
+                                                             "successful_rust_reallocations":  7
+                                                         }
+                                                     ]
+                                   },
+                        "memory_scope":  "Rust requested live/layout peak covers global allocator across process lifetime, including runtime/fixture; excludes allocator metadata and direct native allocation. OS process counters include overlapping heap/stack/runtime/code domains and are never added to component sizes. App owners and exercise future are nested in reserved fixture stack. No individual stack high-water or kernel socket-buffer allocation measurement; process lifetime peaks cover this finite run, not deployment maxima. JSON output is constructed after snapshots.",
+                        "mode":  "unprotected",
+                        "pending_app_future_polls":  76,
+                        "profile":  "Service",
+                        "reallocation_requests":  0,
+                        "request_warmups":  0,
+                        "requested_heap_bytes_per_app":  282640,
+                        "routes":  2,
+                        "rx_body_slots":  4,
+                        "rx_slots":  32,
+                        "security_request_bindings":  4,
+                        "server_pressure":  {
+                                                "additional_complete_tiny_responses":  1,
+                                                "finite_malformed_churn_datagrams":  16,
+                                                "held_tx_slots":  31,
+                                                "local_max_age_backoff_refusals":  1,
+                                                "recovery_complete_bytes":  2000,
+                                                "refused_resource_recovered_after_max_age":  true,
+                                                "wire_refusal_code":  "5.03",
+                                                "wire_refusal_max_age_seconds":  1,
+                                                "wire_refusals":  1
+                                            },
+                        "server_received_datagrams":  53,
+                        "success":  true,
+                        "tx_body_slots":  4,
+                        "tx_slots":  32
+                    },
+                    {
+                        "adapter_scratch_bytes":  1473,
+                        "allocation_requests":  0,
+                        "allocation_scope":  "same-thread App future construction and polls plus explicit synchronous App operations; executor work between polls, startup and pending-future Drop excluded",
+                        "app_future_polls":  301,
+                        "associations":  1,
+                        "body_bytes":  16384,
+                        "bytes_per_response":  2000,
+                        "calls":  4,
+                        "cancellation_recovery":  true,
+                        "client_received_datagrams":  37,
+                        "complete_responses":  17,
+                        "datagram_bytes":  1472,
+                        "deferred":  0,
+                        "execution":  "tokio-current-thread-native-async",
+                        "fixture_thread_stack_bytes":  4194304,
+                        "inline_adapter_bytes":  1544,
+                        "inline_app_bytes_including_adapter":  15712,
+                        "local_admission_refusals":  3,
+                        "measured_scopes":  592,
+                        "memory":  {
+                                       "exercise_future_bytes_nested_in_stack":  74888,
+                                       "snapshots":  [
+                                                         {
+                                                             "os_counter_source":  "Windows PROCESS_MEMORY_COUNTERS_EX; commit and resident overlap Rust heap/stack/runtime",
+                                                             "phase":  "main-before-arguments-and-worker",
+                                                             "process_lifetime_peak_private_commit_bytes":  753664,
+                                                             "process_lifetime_peak_resident_bytes":  4325376,
+                                                             "process_lifetime_peak_virtual_bytes":  null,
+                                                             "process_private_commit_bytes":  741376,
+                                                             "process_resident_bytes":  4325376,
+                                                             "process_virtual_bytes":  null,
+                                                             "rust_requested_lifetime_peak_bytes":  0,
+                                                             "rust_requested_live_bytes":  0,
+                                                             "successful_rust_allocations":  0,
+                                                             "successful_rust_reallocations":  0
+                                                         },
+                                                         {
+                                                             "os_counter_source":  "Windows PROCESS_MEMORY_COUNTERS_EX; commit and resident overlap Rust heap/stack/runtime",
+                                                             "phase":  "worker-runtime-ready",
+                                                             "process_lifetime_peak_private_commit_bytes":  1028096,
+                                                             "process_lifetime_peak_resident_bytes":  5148672,
+                                                             "process_lifetime_peak_virtual_bytes":  null,
+                                                             "process_private_commit_bytes":  1007616,
+                                                             "process_resident_bytes":  5148672,
+                                                             "process_virtual_bytes":  null,
+                                                             "rust_requested_lifetime_peak_bytes":  58110,
+                                                             "rust_requested_live_bytes":  58110,
+                                                             "successful_rust_allocations":  25,
+                                                             "successful_rust_reallocations":  7
+                                                         },
+                                                         {
+                                                             "os_counter_source":  "Windows PROCESS_MEMORY_COUNTERS_EX; commit and resident overlap Rust heap/stack/runtime",
+                                                             "phase":  "sockets-registered-before-app-bind",
+                                                             "process_lifetime_peak_private_commit_bytes":  1441792,
+                                                             "process_lifetime_peak_resident_bytes":  6172672,
+                                                             "process_lifetime_peak_virtual_bytes":  null,
+                                                             "process_private_commit_bytes":  1441792,
+                                                             "process_resident_bytes":  6172672,
+                                                             "process_virtual_bytes":  null,
+                                                             "rust_requested_lifetime_peak_bytes":  134310,
+                                                             "rust_requested_live_bytes":  134310,
+                                                             "successful_rust_allocations":  39,
+                                                             "successful_rust_reallocations":  7
+                                                         },
+                                                         {
+                                                             "os_counter_source":  "Windows PROCESS_MEMORY_COUNTERS_EX; commit and resident overlap Rust heap/stack/runtime",
+                                                             "phase":  "two-apps-bound-before-traffic",
+                                                             "process_lifetime_peak_private_commit_bytes":  2101248,
+                                                             "process_lifetime_peak_resident_bytes":  7155712,
+                                                             "process_lifetime_peak_virtual_bytes":  null,
+                                                             "process_private_commit_bytes":  2101248,
+                                                             "process_resident_bytes":  7155712,
+                                                             "process_virtual_bytes":  null,
+                                                             "rust_requested_lifetime_peak_bytes":  699590,
+                                                             "rust_requested_live_bytes":  699590,
+                                                             "successful_rust_allocations":  225,
+                                                             "successful_rust_reallocations":  7
+                                                         },
+                                                         {
+                                                             "os_counter_source":  "Windows PROCESS_MEMORY_COUNTERS_EX; commit and resident overlap Rust heap/stack/runtime",
+                                                             "phase":  "finite-traffic-complete-before-drop",
+                                                             "process_lifetime_peak_private_commit_bytes":  3182592,
+                                                             "process_lifetime_peak_resident_bytes":  9039872,
+                                                             "process_lifetime_peak_virtual_bytes":  null,
+                                                             "process_private_commit_bytes":  3162112,
+                                                             "process_resident_bytes":  9039872,
+                                                             "process_virtual_bytes":  null,
+                                                             "rust_requested_lifetime_peak_bytes":  699590,
+                                                             "rust_requested_live_bytes":  699590,
+                                                             "successful_rust_allocations":  225,
+                                                             "successful_rust_reallocations":  7
+                                                         },
+                                                         {
+                                                             "os_counter_source":  "Windows PROCESS_MEMORY_COUNTERS_EX; commit and resident overlap Rust heap/stack/runtime",
+                                                             "phase":  "apps-and-sockets-dropped-runtime-still-live",
+                                                             "process_lifetime_peak_private_commit_bytes":  3182592,
+                                                             "process_lifetime_peak_resident_bytes":  9039872,
+                                                             "process_lifetime_peak_virtual_bytes":  null,
+                                                             "process_private_commit_bytes":  2809856,
+                                                             "process_resident_bytes":  8531968,
+                                                             "process_virtual_bytes":  null,
+                                                             "rust_requested_lifetime_peak_bytes":  699590,
+                                                             "rust_requested_live_bytes":  134214,
+                                                             "successful_rust_allocations":  225,
+                                                             "successful_rust_reallocations":  7
+                                                         }
+                                                     ]
+                                   },
+                        "memory_scope":  "Rust requested live/layout peak covers global allocator across process lifetime, including runtime/fixture; excludes allocator metadata and direct native allocation. OS process counters include overlapping heap/stack/runtime/code domains and are never added to component sizes. App owners and exercise future are nested in reserved fixture stack. No individual stack high-water or kernel socket-buffer allocation measurement; process lifetime peaks cover this finite run, not deployment maxima. JSON output is constructed after snapshots.",
+                        "mode":  "oscore-ephemeral",
+                        "pending_app_future_polls":  76,
+                        "profile":  "Service",
+                        "reallocation_requests":  0,
+                        "request_warmups":  0,
+                        "requested_heap_bytes_per_app":  282640,
+                        "routes":  2,
+                        "rx_body_slots":  4,
+                        "rx_slots":  32,
+                        "security_request_bindings":  4,
+                        "server_pressure":  {
+                                                "additional_complete_tiny_responses":  1,
+                                                "finite_malformed_churn_datagrams":  16,
+                                                "held_tx_slots":  31,
+                                                "local_max_age_backoff_refusals":  1,
+                                                "recovery_complete_bytes":  2000,
+                                                "refused_resource_recovered_after_max_age":  true,
+                                                "wire_refusal_code":  "5.03",
+                                                "wire_refusal_max_age_seconds":  1,
+                                                "wire_refusals":  1
+                                            },
+                        "server_received_datagrams":  53,
+                        "success":  true,
+                        "tx_body_slots":  4,
+                        "tx_slots":  32
+                    }
+                ],
+    "retained_log_hashes":  [
+                                {
+                                    "sha256":  "6a672a59f5d603001c608dc687ecbf81c225496589959bf914c3f524e860c8f5",
+                                    "name":  "cloud-unprotected.log"
+                                },
+                                {
+                                    "sha256":  "55e842f19d1874703a561201c0af2cf4fcaaf08a4a2a4bd8104b408ec2037bd8",
+                                    "name":  "cloud-protected.log"
+                                },
+                                {
+                                    "sha256":  "01c413a8f2ad9ecb77004be9e27af8e3fcef23af5f5c39c9dfe7a66f2fb55d90",
+                                    "name":  "cloud-clippy.log"
+                                }
+                            ],
+    "initial_failures":  [
+                             "Initial macro expansion exceeded default recursion depth; fixture grouped new report fields before passing compilation.",
+                             "Initial cooldown retry required a due progress pass; corrected fixture drives progress_async after the actual deadline. Original compiler/runtime tool outputs remain in the T3 thread activity."
+                         ],
+    "limits":  [
+                   "Finite fault-injected server control-credit pressure and malformed-ingress churn, not a sustained network denial-of-service or deployment capacity ceiling.",
+                   "Requested Rust heap counters exclude allocator metadata and direct native allocation; OS private commit and resident totals overlap runtime/stack/heap/code.",
+                   "The future and App owners are nested in the reserved fixture thread stack; do not add these sizes.",
+                   "Process lifetime peaks cover this finite process through the last recorded pre-JSON snapshot; no individual stack watermark or kernel socket-buffer allocation is measured.",
+                   "Both modes use the same OSCORE-enabled binary; protected credentials are ephemeral.",
+                   "Live pool growth remains absent; automatic expansion is disabled."
+               ]
+}
