@@ -1,0 +1,123 @@
+name: Advisory native async Linux cloud probe
+on:
+  workflow_dispatch:
+    inputs:
+      library_revision:
+        description: Exact 40-character Coaptic commit
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: advisory-cloud-probe-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  CARGO_BUILD_JOBS: 2
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_TERM_COLOR: never
+  RUSTUP_TOOLCHAIN: 1.99.0
+jobs:
+  native-async:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: jeffglousher/coaptic
+          ref: ${{ inputs.library_revision }}
+          path: coaptic
+          persist-credentials: false
+      - name: Verify exact source and record the observed host
+        env:
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/cloud-evidence"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/cloud-evidence/source.json"
+          {
+            uname -a
+            cat /etc/os-release
+            lscpu
+            printf 'ImageOS=%s ImageVersion=%s run=%s attempt=%s\n' "$ImageOS" "$ImageVersion" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+          } > "$RUNNER_TEMP/cloud-evidence/observed-host.txt"
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: 1.99.0
+          components: clippy
+      - name: Build and lint only the native cloud fixture
+        run: |
+          set -euo pipefail
+          {
+            rustc -Vv
+            cargo -V
+            cargo clippy --version
+          } > "$RUNNER_TEMP/cloud-evidence/toolchain.txt"
+          cargo build --locked -p peer-coaptic --features cloud --bin peer-coaptic-cloud 2>&1 | tee "$RUNNER_TEMP/cloud-evidence/build.log"
+          cargo clippy --locked -p peer-coaptic --features cloud --bin peer-coaptic-cloud -- -D warnings 2>&1 | tee "$RUNNER_TEMP/cloud-evidence/clippy.log"
+          PYTHONPATH=tools python - <<'PY'
+          import hashlib, json, os, pathlib
+          from source_identity import LOCKS, source_identity
+          evidence = pathlib.Path(os.environ['RUNNER_TEMP'], 'cloud-evidence')
+          binary = pathlib.Path('target/debug/peer-coaptic-cloud')
+          report = source_identity()
+          report.update({
+              'run_id': os.environ['GITHUB_RUN_ID'],
+              'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'workflow_sha': os.environ['GITHUB_SHA'],
+              'binary': {'path': str(binary), 'sha256': hashlib.sha256(binary.read_bytes()).hexdigest()},
+              'library_lock_sha256': hashlib.sha256(pathlib.Path('coaptic/Cargo.lock').read_bytes()).hexdigest(),
+              'suite_lock_sha256': {name: hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() for name in LOCKS},
+              'build': {'profile': 'dev', 'debug': 0, 'incremental': False, 'jobs': 2, 'features': ['cloud'], 'bin': 'peer-coaptic-cloud'},
+          })
+          assert report['suite_source'] == os.environ['GITHUB_SHA'] and not report['dirty']
+          (evidence / 'build.json').write_text(json.dumps(report, indent=2) + '\n')
+          PY
+      - name: Execute both finite modes and retain actual JSON results
+        run: |
+          set -euo pipefail
+          status=0
+          for mode in unprotected protected; do
+            set +e
+            timeout 120s target/debug/peer-coaptic-cloud "--$mode" > "$RUNNER_TEMP/cloud-evidence/$mode.json" 2> "$RUNNER_TEMP/cloud-evidence/$mode.stderr.log"
+            result=$?
+            set -e
+            printf '%s exit=%s\n' "$mode" "$result" | tee -a "$RUNNER_TEMP/cloud-evidence/execution.log"
+            if test "$result" -ne 0; then status=1; fi
+          done
+          test "$status" -eq 0
+          python - <<'PY'
+          import json, os, pathlib
+          evidence = pathlib.Path(os.environ['RUNNER_TEMP'], 'cloud-evidence')
+          for flag, mode in [('unprotected', 'unprotected'), ('protected', 'oscore-ephemeral')]:
+              record = json.loads((evidence / (flag + '.json')).read_text())
+              assert record['success'] and record['mode'] == mode
+              assert record['allocation_requests'] == record['reallocation_requests'] == 0
+              assert record['pending_app_future_polls'] > 0
+              assert record['complete_responses'] == 17 and record['bytes_per_response'] == 2000
+              assert record['local_admission_refusals'] == 3 and record['cancellation_recovery']
+              pressure = record['server_pressure']
+              assert pressure['wire_refusals'] == 1 and pressure['wire_refusal_code'] == '5.03'
+              assert pressure['wire_refusal_max_age_seconds'] == 1 and pressure['refused_resource_recovered_after_max_age']
+              assert pressure['finite_malformed_churn_datagrams'] == 16
+              for sample in record['memory']['snapshots']:
+                  assert sample['os_counter_source'].startswith('Linux /proc/self/status;')
+                  assert sample['process_resident_bytes'] and sample['process_lifetime_peak_resident_bytes']
+          PY
+      - name: Hash compact retained evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/cloud-evidence"
+          find . -maxdepth 1 -type f ! -name checksums.sha256 -print0 | sort -z | xargs -0 sha256sum > checksums.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: cloud-probe-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cloud-evidence/
+          if-no-files-found: error
+          retention-days: 14
