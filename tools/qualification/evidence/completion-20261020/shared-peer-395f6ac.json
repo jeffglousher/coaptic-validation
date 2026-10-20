@@ -1,0 +1,134 @@
+{
+  "schema": "coaptic-shared-peer-current-proof/1",
+  "source": "395f6acade0552b83b004a05b103ae0cd79ea9d5",
+  "same_tree_merge": "e525060401d9e3704cb5772512eb49bb45a23ca6",
+  "source_tree": "443c1a93d44923173a53e7b721255b5733f2375b",
+  "compiler": "rustc1.99.0 b940084d7",
+  "binary_sha256": "3dd3f6e6c711aff0b4f59b5b7e2eee7ac61fd205a89bcf3bc6dd5b2341211125",
+  "device": {
+    "core": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+    "suite_archive": "27b0e6438eff112f17646f4023abb44a41da40cc",
+    "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+    "pairing_revision": 20,
+    "identity_preserved": true,
+    "custody_complete": true
+  },
+  "configuration": {
+    "profile": "Constrained-derived SharedConstrained",
+    "storage": "fixed",
+    "rx_datagrams": 3,
+    "tx_datagrams": 3,
+    "datagram_bytes": 1152,
+    "body_pools": false,
+    "dedup": 4,
+    "observe": 2,
+    "routes": 4,
+    "calls": 2,
+    "associations": 2,
+    "security_bindings_per_context": 4,
+    "whole_app_including_adapter_bytes": 18368,
+    "whole_app_compile_time_ceiling_bytes": 20480,
+    "previous_fixture_app_bytes": 15800,
+    "additional_complete_owner_bytes": 2568,
+    "growth": false
+  },
+  "behavior": {
+    "two_con_calls_admitted_before_poll": true,
+    "real_esp32_and_software_peer": true,
+    "same_session_authenticated_503_max_age_1_retried": true,
+    "removed_software_association_handle_refused": true,
+    "hardware_work_after_removal_passed": true,
+    "ordinary_probe_attempt_bound": 3,
+    "per_round_deadline_ms": 15000,
+    "diagnostic_rtt_us": [
+      1040880,
+      15302
+    ],
+    "total_ms": 1444,
+    "journal_before_sha256": "5222d42f511c0d8eae14067bc1d745f226a658a218c86007a89acc619281be2f",
+    "journal_after_sha256": "5222d42f511c0d8eae14067bc1d745f226a658a218c86007a89acc619281be2f",
+    "journal_unchanged": true
+  },
+  "validation": {
+    "enrollment_tests_passed": 54,
+    "existing_native_store_test_ignored": 1,
+    "strict_all_target_clippy_passed": true,
+    "format_check_passed": true,
+    "release_build_passed": true,
+    "independent_review": "general source review; not a specialist/Bugbot result"
+  },
+  "receipts": [
+    {
+      "original_file": "fixed-shared-esp32-software-probe.log",
+      "bytes": 984,
+      "sha256": "313e51bf2f6cc311dbea724bef0ed891c3371d6c31f2fb92e6b052f9209fe234",
+      "encoding": "utf-16",
+      "selected_lines": [
+        "Shared App bytes 15800; associations 2; routes 4; Calls 2; bindings/context 4; no body pools.",
+        "coaptic-enroll.exe : coaptic-enroll: a bounded table is saturated"
+      ]
+    },
+    {
+      "original_file": "fixed-shared-esp32-software-probe-final.log",
+      "bytes": 854,
+      "sha256": "a48d5594204386de4aacb79f970a26dbf7f550e44f5ec08c3baa18e2d5f66e7b",
+      "encoding": "utf-16",
+      "selected_lines": [
+        "Shared App bytes 18368; Constrained two-CON override; RX 3x1152; TX 3x1152; associations 2; routes 4; Calls 2; bindings/context 4; body pools RX 0 TX 0.",
+        "Shared ESP32 identity received code 5.03 (Max-Age 1s); retrying in the same session.",
+        "Shared probe passed: concurrent ESP32 and software peer; revoked software handle refused; ESP32 survived. ESP32 round trips 1040880 / 15302 us; total 1444 ms; local 192.168.1.134:5683."
+      ]
+    },
+    {
+      "original_file": "fixed-shared-final-inspect.log",
+      "bytes": 928,
+      "sha256": "5370103ffad28f461037061d815bfe589fd3e92ec54a0db229308935514309a0",
+      "encoding": "utf-16",
+      "selected_lines": [
+        "Durable work: authenticated empty or completed",
+        "Pairing revision 20 enabled true",
+        "Owner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions 7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56"
+      ]
+    },
+    {
+      "original_file": "shared-probe-final-tests-1.99.0.log",
+      "bytes": 13166,
+      "sha256": "f959483f51af6cccf91e4a2daebbf5b5363b5439282997450f99331987520b17",
+      "encoding": "utf-16",
+      "selected_lines": [
+        "test result: ok. 26 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.09s",
+        "test pairing_cli::shared_probe::tests::shared_probe_handshake_roles_are_complementary ... ok",
+        "test pairing_cli::shared_probe::tests::shared_probe_overload_retry_respects_round_deadline_and_attempt_bound ... ok",
+        "test pairing_cli::shared_probe::tests::shared_probe_two_protected_con_calls_preserve_headroom_and_recover_capacity ... ok",
+        "test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "original_file": "shared-probe-final-clippy-1.99.0.log",
+      "bytes": 1056,
+      "sha256": "9dafbbe1f34fa6b934329822dd7c07b606888d4e6419ff635fb7171da323fffd",
+      "encoding": "utf-16",
+      "selected_lines": [
+        "    Finished `dev` profile [unoptimized] target(s) in 1.16s"
+      ]
+    },
+    {
+      "original_file": "shared-probe-final-release-1.99.0.log",
+      "bytes": 1062,
+      "sha256": "1bfa37c7e5b3373740724bf7b3258b13920024712e2b94fcec2aa340cd816226",
+      "encoding": "utf-16",
+      "selected_lines": [
+        "    Finished `release` profile [optimized] target(s) in 19.10s"
+      ]
+    }
+  ],
+  "limits": [
+    "The two diagnostic round trips include admission cooldown, host scheduling and Wi-Fi; they are not a latency distribution or a matched unprotected/protected benchmark.",
+    "Local software association removal is not physical ownership-recovery/consumed-backup proof.",
+    "No second-owner Windows responder, cold-power, interrupted persistence, sustained pressure or new memory peak is inferred.",
+    "Actual device image is unchanged; this is a later host CLI cohort. Whole-App bytes include its UDP scratch and inline state, not process RAM or a measured stack peak.",
+    "Earlier failed compiler1.99.1 checks stopped before tests with OS112 and provide no passing behavior evidence; exact failed outputs were independently reviewed and retired, then explicit1.99.0 reused the valid graph."
+  ]
+}
