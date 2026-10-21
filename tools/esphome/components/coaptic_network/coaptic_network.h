@@ -20,7 +20,9 @@ class CoapticNetwork : public Component {
     sender_ = sender; recipient_ = recipient; security_mode_ = provision ? 2 : 1;
   }
   uint32_t security_mode() const { return security_mode_; }
-  void set_pairing() { security_mode_ = 5; }
+  void set_pairing(uint32_t resource_start_delay_ms = 0) {
+    telemetry_timeout_ = resource_start_delay_ms; security_mode_ = 5;
+  }
   void set_read_campaign(uint32_t address, uint16_t port, uint32_t start_delay_ms) {
     peer_address_ = address; peer_port_ = port;
     telemetry_timeout_ = start_delay_ms; security_mode_ = 6;
@@ -61,11 +63,13 @@ class CoapticNetwork : public Component {
                              uint32_t refusal_sent, uint32_t refusal_unsent,
                              uint32_t hard_rx, uint32_t hard_tx,
                              uint32_t rx_accepted, uint32_t progress) const;
+  void resource_phase(uint32_t phase, uint64_t session_generation);
   int32_t async_wait(uint32_t interests, uint64_t deadline);
 
  protected:
   static void run_(void *argument);
   bool seed_entropy_();
+  void log_worker_stopped_();
   // Main owner writes once before task creation; only the worker then consumes
   // and zeroizes this handoff. No live RNG state is shared with the main loop.
   uint8_t entropy_seed_[32]{};

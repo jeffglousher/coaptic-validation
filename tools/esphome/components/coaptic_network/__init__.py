@@ -59,6 +59,8 @@ def validate_security(config):
         if ("oscore" not in config or config["oscore"]["provision_only"] or
                 "telemetry" in config or config["async_network"]):
             raise cv.Invalid("read_campaign requires existing protected OSCORE state, synchronous driving and no telemetry")
+    if config["resource_start_delay_ms"] and (not config["resource_qualification"] or "pairing" not in config):
+        raise cv.Invalid("resource_start_delay_ms requires resource_qualification and privileged pairing")
     if "legacy_custody_permit" in config and "pairing" not in config:
         raise cv.Invalid("legacy custody migration requires privileged pairing and reviewed provenance")
     return config
@@ -136,6 +138,7 @@ CONFIG_SCHEMA = cv.All(
         cv.Optional("rust_runtime", default="source"): cv.one_of("source", "bundled", "external"),
         cv.Optional("async_network", default=False): cv.boolean,
         cv.Optional("resource_qualification", default=False): cv.boolean,
+        cv.Optional("resource_start_delay_ms", default=0): cv.int_range(min=0, max=120000),
         cv.Optional("legacy_custody_permit"): fixed_hex(136),
         cv.Optional("expected_library_revision"): source_revision,
         cv.Optional("expected_suite_revision"): source_revision,
@@ -212,7 +215,7 @@ async def to_code(config):
             esp32.add_idf_sdkconfig_option("CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG", True)
         cg.add_define("COAPTIC_ASYNC_NETWORK")
     if "pairing" in config:
-        cg.add(component.set_pairing())
+        cg.add(component.set_pairing(config["resource_start_delay_ms"]))
         cg.add_define("COAPTIC_PAIRING")
     if "oscore" in config:
         security = config["oscore"]

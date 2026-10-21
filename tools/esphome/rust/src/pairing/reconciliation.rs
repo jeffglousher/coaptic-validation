@@ -214,23 +214,24 @@ mod tests {
         device.endpoint = Some(Endpoint::v4([192, 0, 2, 1], 5683));
         persist(&mut device, &mut store);
         let prior = device.pairing.checkpoint().clone();
-        let mut pending = Pending::recover_bound(
-            PendingStore(&mut store),
-            pending_binding(&device.private, &prior),
-            device.identity.peer().principal(),
-        )
-        .unwrap();
-        pending
-            .begin(
-                OperationId::new([3; 16]),
-                telemetry_resource(),
-                Some(60),
-                b"original retained effect",
+        let receipt = {
+            let mut pending = Pending::recover_bound(
+                PendingStore(&mut store),
+                pending_binding(&device.private, &prior),
+                device.identity.peer().principal(),
             )
             .unwrap();
-        let operation = pending.pending().unwrap().unwrap();
-        let receipt = Receipt::from_parts(operation.id(), *operation.digest(), 42).unwrap();
-        drop(pending);
+            pending
+                .begin(
+                    OperationId::new([3; 16]),
+                    telemetry_resource(),
+                    Some(60),
+                    b"original retained effect",
+                )
+                .unwrap();
+            let operation = pending.pending().unwrap().unwrap();
+            Receipt::from_parts(operation.id(), *operation.digest(), 42).unwrap()
+        };
         let challenge = device.pairing.begin(&device.identity, 2, random).unwrap();
         device
             .pairing

@@ -409,7 +409,9 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
     let Some(start) = next_time(clock)? else {
         return Ok(None);
     };
+    console.resource_phase(ResourcePhase::BeforeOwnerConstruction, None);
     let mut connection = connection(device, socket, random, endpoint, start)?;
+    console.resource_phase(ResourcePhase::OwnerConstructed, None);
     let mut subscription = ManagedSubscription::new("identity");
     if initiates {
         match connection.connect(start) {
@@ -503,7 +505,10 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
         let Some(now) = next_time(clock)? else {
             return Ok(None);
         };
-        liveness.generation(connection.session_generation(), now);
+        if liveness.generation(connection.session_generation(), now) {
+            connected_reported = false;
+            console.resource_phase(ResourcePhase::SessionEstablished, liveness.generation);
+        }
         if was_quiet && !liveness.quiet {
             subscription = ManagedSubscription::new("identity");
             next_probe = now;
@@ -585,6 +590,10 @@ async fn session_async<T: AsyncDatagramIo, F: FnMut() -> Result<u64, ()>>(
                     if !connected_reported {
                         console.event(3);
                         connected_reported = true;
+                        console.resource_phase(
+                            ResourcePhase::AuthenticatedCompletion,
+                            liveness.generation,
+                        );
                     }
                     liveness.authenticated(now);
                     console.event(4);

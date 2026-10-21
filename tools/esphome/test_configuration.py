@@ -151,6 +151,34 @@ class ConfigurationRefusalTests(unittest.TestCase):
                 defines = (root / "build/src/esphome/core/defines.h").read_text()
                 self.assertEqual("#define COAPTIC_RESOURCE_QUALIFICATION" in defines, selected)
 
+    def test_pairing_resource_delay_is_explicit_bounded_and_mode_exclusive(self):
+        cases = [("default", None, False, True, True),
+                 ("selected", 30000, True, True, True),
+                 ("unqualified", 30000, False, True, False),
+                 ("wrong_mode", 30000, True, False, False),
+                 ("over_limit", 120001, True, True, False),
+                 ("negative", -1, True, True, False)]
+        for name, delay, resources, pairing, accepted in cases:
+            with self.subTest(case=name), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                config = network_configuration(root, "source")
+                network = config["coaptic_network"]
+                network["resource_qualification"] = resources
+                if delay is not None:
+                    network["resource_start_delay_ms"] = delay
+                if pairing:
+                    del network["allow_plaintext"]
+                    network["pairing"] = {"privileged_usb": True}
+                    config["logger"]["baud_rate"] = 0
+                path = root / "network.yaml"
+                path.write_text(json.dumps(config), encoding="utf-8")
+                result = subprocess.run([sys.executable, "-m", "esphome", "compile", str(path), "--only-generate"],
+                                        capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode == 0, accepted, result.stdout + result.stderr)
+                if accepted:
+                    generated = (root / "build/src/main.cpp").read_text()
+                    self.assertIn("set_pairing(%d)" % (delay or 0), generated)
+
     def test_async_network_enables_mixed_select_and_exact_archive_feature(self):
         for runtime in ["source", "bundled"]:
             with self.subTest(runtime=runtime), tempfile.TemporaryDirectory() as directory:
@@ -194,7 +222,7 @@ class ConfigurationRefusalTests(unittest.TestCase):
                 self.assertEqual(result.returncode == 0, change in {"source", "bundled"}, result.stdout + result.stderr)
                 if result.returncode == 0:
                     generated = (root / "build/src/main.cpp").read_text()
-                    self.assertIn("set_pairing()", generated)
+                    self.assertIn("set_pairing(0)", generated)
                     self.assertNotIn("set_oscore(", generated)
 
     def test_telemetry_source_bundled_and_external_modes_generate(self):
