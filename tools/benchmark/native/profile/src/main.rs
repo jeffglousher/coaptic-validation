@@ -141,7 +141,9 @@ impl DatagramIo for ProbeIo {
 }
 
 fn representation(_: Request<'_>) -> Response<'static> {
-    Response::content(BODY.get().expect("initialized body")).etag(b"fixture")
+    Response::content(BODY.get().expect("initialized body"))
+        .content_format(coaptic::ContentFormat::OCTET_STREAM)
+        .etag(b"fixture")
 }
 
 fn capacities(bytes: usize) -> Capacities {
