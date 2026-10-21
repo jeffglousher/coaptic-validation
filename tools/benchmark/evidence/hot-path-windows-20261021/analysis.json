@@ -225,5 +225,76 @@
       "samples": 30000,
       "measurement": "server App::poll only; request preparation and complete response verification outside clock; OSCORE responses authenticated"
     }
+  },
+  "crossed_clients": {
+    "scope": "same64B GET/CON reusable/static fixture,concurrency1; two unchanged clients against both servers; five alternating adjacent windows; no earlier-estimate lookup",
+    "cells": 40,
+    "completed": 40000,
+    "rows": [
+      {
+        "server": "coaptic",
+        "security": "unprotected",
+        "client": "native-coaptic",
+        "median_p50_ns": 11700,
+        "median_ops_s": 85118.69802439502,
+        "windows": 5
+      },
+      {
+        "server": "coaptic",
+        "security": "unprotected",
+        "client": "python-independent",
+        "median_p50_ns": 46800,
+        "median_ops_s": 20080.48257415722,
+        "windows": 5
+      },
+      {
+        "server": "coaptic",
+        "security": "oscore",
+        "client": "native-coaptic",
+        "median_p50_ns": 14100,
+        "median_ops_s": 70090.8377256925,
+        "windows": 5
+      },
+      {
+        "server": "coaptic",
+        "security": "oscore",
+        "client": "python-independent",
+        "median_p50_ns": 137900,
+        "median_ops_s": 6720.235907161285,
+        "windows": 5
+      },
+      {
+        "server": "aiocoap",
+        "security": "unprotected",
+        "client": "native-coaptic",
+        "median_p50_ns": 161200,
+        "median_ops_s": 6102.1561968921715,
+        "windows": 5
+      },
+      {
+        "server": "aiocoap",
+        "security": "unprotected",
+        "client": "python-independent",
+        "median_p50_ns": 207400,
+        "median_ops_s": 4693.024569860833,
+        "windows": 5
+      },
+      {
+        "server": "aiocoap",
+        "security": "oscore",
+        "client": "native-coaptic",
+        "median_p50_ns": 312400,
+        "median_ops_s": 3175.2866172465056,
+        "windows": 5
+      },
+      {
+        "server": "aiocoap",
+        "security": "oscore",
+        "client": "python-independent",
+        "median_p50_ns": 462300,
+        "median_ops_s": 2110.8473490079227,
+        "windows": 5
+      }
+    ]
   }
 }
