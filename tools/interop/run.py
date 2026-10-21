@@ -2166,12 +2166,23 @@ def qblock2_con_loss(client, server, family="ipv4"):
     return {"family": family, "probe": probe, "schedules": proofs}
 
 
-def qblock2_window(client, server):
-    """RFC 9177 section 4.4: a full window of 10 is confirmed with Q-Block2 NUM 10, M=1."""
+def qblock2_window(client, server, *, non=False):
+    """RFC 9177 sections 4.4/7.2: NON payload sets use NUM 10/M1 Continue.
+
+    CON payload trains advance through individual ACKs instead. Coaptic clients
+    select NON explicitly; libcoap's initial CON negotiates the Coaptic server's
+    NON payload stream.
+    """
     with Server(server, "udp") as service:
         with Proxy(service.number, "dtls-reconnect", qblock2_szx=3) as relay:
-            result = request(client, "udp", relay.number, path="large", timeout=20000, qblock2=True)
+            result = request(client, "udp", relay.number, path="large", timeout=20000,
+                             qblock2=not non, qblock2_non=non)
         trace = relay.trace
+    return grade_qblock2_window(trace, result, require_non=non,
+                               require_ack="peer-coaptic" in Path(server).name)
+
+
+def grade_qblock2_window(trace, result, *, require_non=False, require_ack=False):
     expect(result, 69, LARGE)
     downloads = []
     for row in trace:
@@ -2184,6 +2195,8 @@ def qblock2_window(client, server):
         raise AssertionError("the download did not use Q-Block2 on every /large GET")
     if any(23 in decoded_options(packet) for _, packet in downloads):
         raise AssertionError("the download fell back to Block2")
+    if require_non and any((packet[0] >> 4) & 3 != 1 for _, packet in downloads):
+        raise AssertionError("the window request did not use explicit NON")
     continues = []
     continue_at = None
     for index, row in enumerate(trace):
@@ -2221,6 +2234,8 @@ def qblock2_window(client, server):
         packet = bytes.fromhex(row["hex"])
         if packet_token(packet) not in large_tokens or len(packet) < 2 or packet[1] != 69:
             continue
+        if (packet[0] >> 4) & 3 != 1:
+            raise AssertionError("Q-Block2 window payloads must be NON")
         values = decoded_options(packet).get(31, [])
         if len(values) != 1:
             continue
@@ -2245,9 +2260,10 @@ def qblock2_window(client, server):
         raise AssertionError(f"Q-Block2 numbers are not contiguous: {sorted(parts)}")
     if b"".join(parts[i] for i in range(max(parts) + 1)) != LARGE:
         raise AssertionError("forwarded Q-Block2 payloads are not the 2000-byte pattern")
-    if "peer-coaptic" in Path(server).name:
+    initial = downloads[0][1]
+    if require_ack and (initial[0] >> 4) & 3 == 0:
         acks = [bytes.fromhex(row["hex"]) for row in trace if row["direction"] == "response"]
-        if not any(len(p) == 4 and p[1] == 0 and (p[0] >> 4) & 3 == 2 for p in acks):
+        if b"\x60\x00" + initial[2:4] not in acks:
             raise AssertionError("confirmable Q-Block2 did not get an empty ACK")
     return {"continue_num": 10, "blocks": len(parts), "length": len(LARGE)}
 
@@ -2704,7 +2720,7 @@ def main():
          lambda: qblock2_reorder(peers["coaptic"], peers["coaptic"]))
     for client, server in [("coaptic", "coaptic"), ("coaptic", "libcoap"), ("libcoap", "coaptic")]:
         case(f"qblock2-window:{client}->{server}",
-             lambda client=client, server=server: qblock2_window(peers[client], peers[server]))
+             lambda client=client, server=server: qblock2_window(peers[client], peers[server], non=client == "coaptic"))
     for server_name in ("coaptic", "libcoap"):
         case(f"observe-client:coaptic->{server_name}",
              lambda server_name=server_name: observe_client(peers["coaptic"], peers[server_name], peers["coaptic"]))
