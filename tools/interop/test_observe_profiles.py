@@ -1,4 +1,5 @@
 """Offline counterexamples for the added independent evidence oracles."""
+from contextlib import contextmanager
 import unittest
 
 import aiocoap
@@ -82,6 +83,27 @@ class SelectedFollowupOracle(unittest.TestCase):
 
 
 class ObserveFixtureDiagnostics(unittest.TestCase):
+    @contextmanager
+    def child_server(self, body):
+        from pathlib import Path
+        import sys
+        import tempfile
+        from unittest.mock import patch
+        from profiles import EvidenceServer
+        with tempfile.TemporaryDirectory() as directory:
+            release = Path(directory) / "release"
+            script = ('import os, sys, time\n'
+                      'os.write(1, b\'{"schema":"coaptic-peer/2","event":"ready",'
+                      '"port":1234,"transport":"udp"}\\n\')\n'
+                      'deadline = time.monotonic() + 10\n'
+                      'while not os.path.exists(sys.argv[1]):\n'
+                      '    if time.monotonic() > deadline: raise SystemExit(2)\n'
+                      '    time.sleep(0.001)\n' + body)
+            with patch("run.command", return_value=[sys.executable, "-c", script, str(release)]):
+                with EvidenceServer("unused", "udp", number=1234) as service:
+                    release.touch()
+                    yield service
+
     def test_fetch_continuation_requires_original_selection(self):
         from profiles import grade_fetch_continuation
         from run import coap_message
@@ -94,25 +116,46 @@ class ObserveFixtureDiagnostics(unittest.TestCase):
                 grade_fetch_continuation(coap_message(5, 2, b"new", opts, body))
 
     def test_failed_server_diagnostic_survives_cleanup(self):
-        import tempfile
-        from types import SimpleNamespace
-        from profiles import EvidenceServer, ACTIVE_COMMANDS
-        service = object.__new__(EvidenceServer)
-        service.stderr = tempfile.TemporaryFile()
-        service.stderr.write(b"Q notification: bounded failure")
-        service.proc = SimpleNamespace(args=["peer", "server"], poll=lambda: 1)
-        closed = []
-        service.close = lambda: (closed.append(True), service.stderr.close())
+        from profiles import ACTIVE_COMMANDS
+        fatal = b'{"schema":"coaptic-peer/2","event":"error","message":"UDP failure"}\n\xff'
+        body = (f'os.write(1, {fatal!r})\n'
+                'os.write(2, b"Q notification: bounded failure")\n'
+                'raise SystemExit(1)\n')
         before = len(ACTIVE_COMMANDS)
         try:
             with self.assertRaisesRegex(RuntimeError, "original"):
-                with service:
+                with self.child_server(body) as service:
+                    self.assertEqual(service.proc.wait(timeout=5), 1)
                     raise RuntimeError("original")
-            self.assertEqual(closed, [True])
-            self.assertEqual(ACTIVE_COMMANDS[-1]["exit_code_before_cleanup"], 1)
-            self.assertIn("bounded failure", ACTIVE_COMMANDS[-1]["stderr"])
+            self.assertTrue(service.proc.stdout.closed)
+            self.assertTrue(service.stderr.closed)
+            self.assertFalse(service.reader.is_alive())
+            failure = ACTIVE_COMMANDS[-1]
+            self.assertEqual(failure["exit_code_before_cleanup"], 1)
+            self.assertIn("bounded failure", failure["stderr"])
+            self.assertIn("UDP failure", failure["stdout_after_ready"])
+            self.assertEqual(bytes.fromhex(failure["stdout_after_ready_hex"]), fatal)
+            self.assertFalse(failure["stdout_after_ready_truncated"])
+            self.assertTrue(failure["stdout_after_ready_complete"])
+            self.assertIsNone(failure["stdout_after_ready_error"])
         finally:
             del ACTIVE_COMMANDS[before:]
+
+    def test_verbose_server_drains_beyond_bound_without_changing_success(self):
+        from profiles import ACTIVE_COMMANDS
+        before = len(ACTIVE_COMMANDS)
+        body = ('sys.stdout.buffer.write(b"x" * 262144)\n'
+                'sys.stdout.buffer.flush()\n')
+        with self.child_server(body) as service:
+            self.assertEqual(service.proc.wait(timeout=5), 0)
+        self.assertEqual(len(ACTIVE_COMMANDS), before)
+        self.assertEqual(service.stdout_after_ready, b"x" * 65536)
+        self.assertTrue(service.stdout_after_ready_truncated)
+        self.assertTrue(service.stdout_after_ready_complete)
+        self.assertIsNone(service.stdout_after_ready_error)
+        self.assertTrue(service.proc.stdout.closed)
+        self.assertTrue(service.stderr.closed)
+        self.assertFalse(service.reader.is_alive())
 
 
 class QInitialControl(unittest.TestCase):
