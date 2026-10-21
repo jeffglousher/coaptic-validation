@@ -358,4 +358,82 @@ fn matched_complete_reads_refuse_failures_then_recover() {
         ),
         Err("campaign deadline/poll bound")
     );
+
+    unprotected_reads_use_the_same_workload_and_deadline();
+}
+
+fn unprotected_reads_use_the_same_workload_and_deadline() {
+    let identity = *b"0123456789abcdef0123456789abcdef";
+    let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let peer: Endpoint = socket.local_addr().unwrap().into();
+    socket.set_nonblocking(true).unwrap();
+    let stop = Arc::new(AtomicBool::new(false));
+    let stopped = stop.clone();
+    let worker = std::thread::spawn(move || {
+        let clock = Instant::now();
+        network::run(
+            UdpSocketIo::new(socket, [0; 1153]).unwrap(),
+            random,
+            || {
+                if stopped.load(Ordering::Acquire) || clock.elapsed() >= Duration::from_secs(15) {
+                    None
+                } else {
+                    std::thread::yield_now();
+                    Some(clock.elapsed().as_millis() as u64)
+                }
+            },
+            &identity,
+        )
+    });
+    let mut completed = 0;
+    let clock = Instant::now();
+    let result = read_campaign::run_unprotected(
+        client_io(),
+        random,
+        || Some(clock.elapsed().as_nanos() as u64),
+        || std::thread::sleep(Duration::from_millis(1)),
+        peer,
+        &identity,
+        |observation| {
+            match observation {
+                Observation::Preparation { recovery_ns, .. } => assert_eq!(recovery_ns, 0),
+                Observation::Reservation { .. } => panic!("unprotected sender reservation"),
+                Observation::Operation(op) => {
+                    assert_eq!(op.iteration, completed / 3);
+                    assert_eq!(
+                        (op.path, op.bytes),
+                        [("identity", 32), ("test", 7), ("large", 2000)][completed as usize % 3]
+                    );
+                    assert!(op.elapsed_ns > 0 && op.polls > 0);
+                    completed += 1;
+                }
+            }
+            Ok(())
+        },
+    );
+    stop.store(true, Ordering::Release);
+    assert_eq!(worker.join().unwrap(), Ok(()));
+    assert_eq!(result, Ok(()));
+    assert_eq!(completed, read_campaign::OPERATIONS);
+
+    let blackhole = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let mut now = 0;
+    assert_eq!(
+        read_campaign::run_unprotected(
+            client_io(),
+            random,
+            || {
+                now += 1_000_000_000;
+                Some(now)
+            },
+            || {},
+            blackhole.local_addr().unwrap().into(),
+            &identity,
+            |observation| {
+                assert!(!matches!(observation, Observation::Operation(_)));
+                Ok(())
+            },
+        ),
+        Err("campaign deadline/poll bound")
+    );
 }

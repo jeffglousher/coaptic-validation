@@ -1,4 +1,4 @@
-//! Finite source-bound protected Waveshare checks; not a production host service.
+//! Finite source-bound Waveshare checks; protection is selected explicitly.
 //! Credentials/state live in an operator-private directory. State is exclusively
 //! locked; every update uses sync_all and authenticated readback. This qualifies
 //! normal process/device restart separately from flash/power-loss/rollback.
@@ -165,6 +165,17 @@ fn run() -> Result<()> {
         return Err(
             "usage: waveshare-peer MODE ADDRESS CREDENTIALS STATE SAVED_WIRE_OR_REPORT RUN_ID [REMOTE_IPV4 for timing-server-lan]",
         );
+    }
+    if args[1] == "timing-unprotected" {
+        if args[3] != "-" || args[4] != "-" {
+            return Err("unprotected timing requires - credentials and - state");
+        }
+        let peer: SocketAddr = args[2].parse().map_err(|_| "peer address")?;
+        if !peer.is_ipv4() || args[6].len() != 32 || !args[6].bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            return Err("network mode/run identity");
+        }
+        return timing::campaign_unprotected(peer, &args[6], Path::new(&args[5]));
     }
     let c = credentials(Path::new(&args[3]))?;
     if args[1] == "provision" {

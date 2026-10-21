@@ -7,6 +7,25 @@ exclusively locked authenticated host security state; do not copy, reset or
 provision that state for a timing run. Identity must match the expected firmware
 run before other bodies are accepted.
 
+For the matched unprotected host-initiated workload, select:
+
+```text
+waveshare-peer timing-unprotected ADDRESS - - REPORT RUN_ID
+```
+
+This performs the same 24 reads, complete-byte checks, deadlines and requested
+1 ms wait, using the same Constrained pools and blockwise/full-response options.
+The two `-` arguments are required: this selection never opens credentials or
+security state. Its run identity is verified for attribution, without peer
+authentication. The existing `timing` command remains durable OSCORE and never
+falls back. Reports identify `unprotected` or `durable-oscore` explicitly;
+unprotected preparation has zero security-recovery time and no reservations.
+The host executable still uses the `network,oscore,host` feature set for both
+selections; enabling compiled OSCORE support does not enable protection for an
+unprotected App. Firmware mode 0 and mode 1 are separate named service images,
+not a runtime fallback. Host-initiated timing needs no host service or inbound
+listener; it does not install or modify firewall rules.
+
 The core uses fixed storage and `std` without `alloc`. The host diagnostic
 reserves a bounded 128-entry trace vector before timing. Output is created
 exclusively; a refused campaign retains partial observations. The JSONL report

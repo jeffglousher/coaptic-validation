@@ -1,0 +1,447 @@
+{
+  "schema": "coaptic-installed-paired-identity-timing/1",
+  "passed": true,
+  "host": {
+    "candidate": "bd8430e71fc1a267f0e0f527807f0a5f3a50bb27",
+    "merge": "3ca0be6fe8b13e23d0f834d7340f8e06ee9547a1",
+    "tree": "55fc0532ba4f9665ac85ea2c4ab1652311596252",
+    "binary_sha256": "323d805a4d426cc41d107bdaa06bc53611514beefff2049a459cc0d9c3692da3",
+    "compiler": "Rust1.99.0 Windowsx86_64 release, debug0/incrementaloff, onecachedbuildjob",
+    "command": "coaptic-enroll peer <existing-host> <local-ip>:5683 <reserved-device-ip>:5683 --qualify-timing"
+  },
+  "device": {
+    "core": "d036647698dc38c7b351621cbcbcc61301376f91",
+    "suite_archive": "6f450f6d35418609a2f3eede66150156123e9b38",
+    "run_id": "31e69a1bce804eedb783c7ff9f218afb",
+    "profile": "EnrolledDevice Constrained-derived RX3/TX2x1152; routes8/Calls4/deferred0, bindings4/association1/recoveryCaches2, dedup4/Observe2, no blockwise bodies",
+    "ota_sha256": "a5c6fa3b50740a980b20bfa4971022ed744918f1afcb429489d4079b0782ddcf",
+    "image_provenance": "Retained app-only OTA receipt plus fresh encrypted API run-ID observation; not a network firmware attestation",
+    "changed": false,
+    "revision": 24,
+    "original_identity_owner_and_completed_custody_preserved": true
+  },
+  "started": "2026-10-21T11:44:55.226942+00:00",
+  "finished": "2026-10-21T11:44:58.288182+00:00",
+  "records": {
+    "COAPTIC_PAIRED_TIMING_LAYOUT": [
+      {
+        "timing_metadata_owner_bytes": 3848,
+        "timing_metadata_ceiling_bytes": 6144,
+        "sample_limit": 28,
+        "event_limit": 64,
+        "response_buffer_bytes": 32,
+        "managed_owner_constructed": true,
+        "managed_owner_bytes_including_adapter": 31168,
+        "udp_adapter_bytes": 1488,
+        "adapter_scratch_bytes": 1473,
+        "scope": "Timing metadata and response output are separate; adapter is nested in Managed owner; no additive stack or whole-process RAM claim"
+      }
+    ],
+    "COAPTIC_PAIRED_TIMING_META": [
+      {
+        "schema": "coaptic-paired-timing/1",
+        "passed": true,
+        "method": "GET",
+        "resource": "identity",
+        "response_bytes": 32,
+        "warmups": 4,
+        "measured": 24,
+        "concurrency": 1,
+        "generation": 1,
+        "session_established": true,
+        "setup_ns": 378247800,
+        "setup_scope": "ManagedConnection construction and EDHOC establishment; prior CLI restore/socket binding excluded",
+        "elapsed_ns": 2826259200,
+        "poll_wait_ms": 2,
+        "host_profile": "Constrained",
+        "host_rx_slots": 2,
+        "host_tx_slots": 2,
+        "datagram_bytes": 1152,
+        "blockwise": false,
+        "routes": 8,
+        "calls": 4,
+        "deferred": 0,
+        "security_bindings": 4,
+        "associations": 1,
+        "recovery_caches": 2,
+        "security": "fresh EDHOC/OSCORE session; durable pairing reused",
+        "scope": "complete host-observed logical operation including admission, authentication, retries, cooldown and polling wait; no per-request durable storage or library-only latency claim"
+      }
+    ],
+    "COAPTIC_PAIRED_TIMING_SAMPLE": [
+      {
+        "index": 0,
+        "warmup": true,
+        "start_ns": 378261700,
+        "elapsed_ns": 2055457700,
+        "request_attempts": 3,
+        "accepted_requests": 3,
+        "authenticated_refusals": 2,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 1,
+        "warmup": true,
+        "start_ns": 2433719500,
+        "elapsed_ns": 12518500,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 2,
+        "warmup": true,
+        "start_ns": 2446238000,
+        "elapsed_ns": 13422800,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 3,
+        "warmup": true,
+        "start_ns": 2459660900,
+        "elapsed_ns": 12750300,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 4,
+        "warmup": false,
+        "start_ns": 2472411300,
+        "elapsed_ns": 11342200,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 5,
+        "warmup": false,
+        "start_ns": 2483753500,
+        "elapsed_ns": 13862000,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 6,
+        "warmup": false,
+        "start_ns": 2497615500,
+        "elapsed_ns": 14114800,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 7,
+        "warmup": false,
+        "start_ns": 2511730400,
+        "elapsed_ns": 16739300,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 8,
+        "warmup": false,
+        "start_ns": 2528469800,
+        "elapsed_ns": 11745600,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 9,
+        "warmup": false,
+        "start_ns": 2540215400,
+        "elapsed_ns": 13792900,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 10,
+        "warmup": false,
+        "start_ns": 2554008400,
+        "elapsed_ns": 11706600,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 11,
+        "warmup": false,
+        "start_ns": 2565715100,
+        "elapsed_ns": 14161700,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 12,
+        "warmup": false,
+        "start_ns": 2579876800,
+        "elapsed_ns": 15815000,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 13,
+        "warmup": false,
+        "start_ns": 2595691800,
+        "elapsed_ns": 19839000,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 14,
+        "warmup": false,
+        "start_ns": 2615530900,
+        "elapsed_ns": 18722400,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 15,
+        "warmup": false,
+        "start_ns": 2634253400,
+        "elapsed_ns": 13247400,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 16,
+        "warmup": false,
+        "start_ns": 2647500900,
+        "elapsed_ns": 13293500,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 17,
+        "warmup": false,
+        "start_ns": 2660794400,
+        "elapsed_ns": 13952200,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 18,
+        "warmup": false,
+        "start_ns": 2674746700,
+        "elapsed_ns": 12800100,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 19,
+        "warmup": false,
+        "start_ns": 2687546800,
+        "elapsed_ns": 14017900,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 20,
+        "warmup": false,
+        "start_ns": 2701564800,
+        "elapsed_ns": 15196900,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 21,
+        "warmup": false,
+        "start_ns": 2716761700,
+        "elapsed_ns": 17953400,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 22,
+        "warmup": false,
+        "start_ns": 2734715200,
+        "elapsed_ns": 14188200,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 23,
+        "warmup": false,
+        "start_ns": 2748903400,
+        "elapsed_ns": 11172400,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 24,
+        "warmup": false,
+        "start_ns": 2760075800,
+        "elapsed_ns": 13085500,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 25,
+        "warmup": false,
+        "start_ns": 2773161400,
+        "elapsed_ns": 16989700,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 26,
+        "warmup": false,
+        "start_ns": 2790151200,
+        "elapsed_ns": 12701800,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      },
+      {
+        "index": 27,
+        "warmup": false,
+        "start_ns": 2802853000,
+        "elapsed_ns": 23362900,
+        "request_attempts": 1,
+        "accepted_requests": 1,
+        "authenticated_refusals": 0,
+        "local_cooldowns": 0
+      }
+    ],
+    "COAPTIC_PAIRED_TIMING_EVENT": [
+      {
+        "operation": 0,
+        "kind": "authenticated-refusal",
+        "at_ns": 402844000,
+        "retry_at_ms": 1402,
+        "code": 163,
+        "max_age_secs": 1
+      },
+      {
+        "operation": 0,
+        "kind": "authenticated-refusal",
+        "at_ns": 1421975800,
+        "retry_at_ms": 2421,
+        "code": 163,
+        "max_age_secs": 1
+      }
+    ],
+    "COAPTIC_PAIRED_TIMING_RESULT": [
+      {
+        "passed": true,
+        "completed": 28,
+        "measured": 24,
+        "min_ns": 11172400,
+        "mean_ns": 14741808,
+        "p50_nearest_rank_ns": 13952200,
+        "p95_nearest_rank_ns": 19839000,
+        "max_ns": 23362900
+      }
+    ]
+  },
+  "guards": {
+    "sealed_pairing": {
+      "bytes": 458,
+      "sha256": "e87889cd21affb9ebe07be2b07f4e0e45031fd04b0dc84440166f8107f4f0e20"
+    },
+    "four_effect_journal": {
+      "bytes": 4768,
+      "sha256": "5222d42f511c0d8eae14067bc1d745f226a658a218c86007a89acc619281be2f"
+    },
+    "byte_identical_after": true,
+    "serial_info_after": {
+      "exit": 0,
+      "log_sha256": "2912ac66701ab7d98c776c315195039bd675835a9686fe091245004b73d20779",
+      "original_identity": true,
+      "original_owner": true,
+      "revision24": true,
+      "custody_complete": true
+    }
+  },
+  "evidence": {
+    "runner_sha256": "5038e87d987fb846e33a21c53682a0671a8654e75aaa84e6ed1a37fb78326f2a",
+    "raw_stdout_sha256": "8481e65cb2ffa8a09a01e26855624cfe434a4982fc27e365f46b2cf17e3f014d",
+    "raw_bytes": 7088,
+    "preflight_encrypted_api_sha256": "64af7225501f737ce5990b40f79c0b34a5355a880577c45208d65ac28a51848c",
+    "local_checks": {
+      "paired-timing-tests.log": {
+        "bytes": 17542,
+        "sha256": "48e17b3d0950efd893f8df3bbb9201a94358359861855407b9fb131a4cdfe7bd"
+      },
+      "paired-timing-clippy.log": {
+        "bytes": 1054,
+        "sha256": "d4a9acd41fa1ec6cc74bdb7505a22849227e5f46e8d743101152f380284c99d5"
+      },
+      "paired-timing-release.log": {
+        "bytes": 1060,
+        "sha256": "248133c42476b3c5b826cb97c61971b30d07464a42806e8cc69c230f289fa652"
+      }
+    }
+  },
+  "validation": {
+    "passed": 74,
+    "failed": 0,
+    "ignored": 1,
+    "ignored_reason": "existing isolated native credential store test",
+    "clippy": "strict alltargets passed",
+    "format": "passed",
+    "release": "passed",
+    "independent_review": "General source reviewer clear; no specialist claim"
+  },
+  "earlier_touch_proof": {
+    "date": "2026-10-18",
+    "retained_result_sha256": "c7ed1e2269133d8a4d2a2d4788186308a962c302e28cb1887a6bcf46b2e9031c",
+    "binary_sha256": "1397eb3f38237ff2dbdc893b114fbb786c914c3f31eb14f11f2e892bad824b64",
+    "observed": "Existing slot84 registration and TouchAlways proof passed; a fresh independent signature passed after one explicit read-only retry. First Authentication refusal remains unexplained.",
+    "limits": "Not an installed three-credential backup/consumed-backup schedule or a new-source rerun. Operator deferred further touch-dependent qualification on2026-10-21."
+  },
+  "limits": [
+    "One quick Wi-Fi run; no quiet-host/statistical/best-throughput or comparative-library ranking.",
+    "All samples include requested2ms polling waits and complete verified32B replies. Initialrefusals are retained in warmup0, not measured steady-sample quantiles.",
+    "Fresh EDHOC/OSCORE session with durable pairing; no per-request durable security/telemetry storage measurement.",
+    "Paired endpoint offers no unprotected application mode; matched legacy24GET workload is a separate configuration.",
+    "No firmware/NVS/key/grant/journal/firewall mutation requested; no physical power, backup or absolute-memory-peak qualification."
+  ]
+}
