@@ -466,7 +466,7 @@ jobs:
       - name: Isolated pinned protected-trace decoder
         run: |
           python3 -m venv "$RUNNER_TEMP/oscore-qblock1"
-          "$RUNNER_TEMP/oscore-qblock1/bin/python" -m pip install -r tools/security-interop/requirements.txt
+          "$RUNNER_TEMP/oscore-qblock1/bin/python" -m pip install -r tools/security-interop/requirements.txt -r tools/interop/libedhoc/requirements.txt
           echo "$RUNNER_TEMP/oscore-qblock1/bin" >> "$GITHUB_PATH"
       - name: Authenticated Q-Block1 oracle tests
         run: python3 -m unittest discover -s tools/interop -p 'oscore_qblock1_tests.py'

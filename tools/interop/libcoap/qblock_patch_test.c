@@ -41,13 +41,14 @@ static coap_session_t *session, *other;
 static coap_bin_const_t token={1,(const uint8_t *)"t"};
 static coap_bin_const_t rid={0,(const uint8_t *)""};
 static unsigned callback_count;
-static void save_sequence(uint64_t seq, void *arg) {
+static int save_sequence(uint64_t seq, void *arg) {
   coap_session_t *s=arg;
   (void)seq;
   callback_count++;
   CHECK(s->oscore_q_encrypting > 0);
   CHECK(!coap_delete_oscore_recipient_lkd(s->context,&rid));
   CHECK(s->context->p_osc_ctx->recipient_chain != NULL);
+  return 1;
 }
 static void setup(void) {
   static const char conf[]="master_secret,hex,\"0102030405060708090a0b0c0d0e0f10\"\n"
