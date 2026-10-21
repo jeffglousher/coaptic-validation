@@ -1,8 +1,8 @@
-//! Matched finite protected GET workload for host and constrained initiators.
+//! Matched finite GET workload with explicit unprotected or durable OSCORE selection.
 //!
-//! The caller owns transport, authenticated durable security storage, entropy,
-//! scheduling and a monotonic nanosecond clock. This module needs neither std
-//! nor allocation. It records complete operations, including response assembly,
+//! The caller owns transport, entropy, scheduling and a monotonic nanosecond
+//! clock; protected runs also own authenticated durable security storage. Neither std
+//! nor allocation is required. It records complete operations, including response assembly,
 //! verification, checkpoints and waits. Recovery/reservation is reported apart.
 //! Host execution does not establish MCU execution or flash power-loss safety.
 #![forbid(unsafe_code)]
@@ -53,6 +53,110 @@ impl<F: FnMut() -> Option<u64>> Clock<F> {
     }
 }
 
+type CampaignApp<T> = App<profiles::Constrained, T, { coaptic::app::DEFAULT_ROUTES }, true>;
+
+trait SecurityPolicy {
+    fn needs_refill(
+        &self,
+        context: Option<&coaptic::oscore::SecurityContext>,
+    ) -> Result<bool, &'static str>;
+    fn refill(
+        &mut self,
+        context: Option<&mut coaptic::oscore::SecurityContext>,
+    ) -> Result<(), &'static str>;
+    fn checkpoint(
+        &mut self,
+        context: Option<&coaptic::oscore::SecurityContext>,
+    ) -> Result<(), &'static str>;
+}
+
+impl<S: Store> SecurityPolicy for State<'_, S> {
+    fn needs_refill(
+        &self,
+        context: Option<&coaptic::oscore::SecurityContext>,
+    ) -> Result<bool, &'static str> {
+        let context = context.ok_or("campaign context")?;
+        Ok(context
+            .sender_reservation_end()
+            .ok_or("campaign reservation")?
+            .saturating_sub(context.sender_seq())
+            < 8)
+    }
+    fn refill(
+        &mut self,
+        context: Option<&mut coaptic::oscore::SecurityContext>,
+    ) -> Result<(), &'static str> {
+        State::refill(self, context.ok_or("campaign context")?).map_err(|_| "campaign refill")
+    }
+    fn checkpoint(
+        &mut self,
+        context: Option<&coaptic::oscore::SecurityContext>,
+    ) -> Result<(), &'static str> {
+        State::checkpoint(self, context.ok_or("campaign context")?.replay_checkpoint())
+            .map_err(|_| "campaign checkpoint")
+    }
+}
+
+impl SecurityPolicy for () {
+    fn needs_refill(
+        &self,
+        _: Option<&coaptic::oscore::SecurityContext>,
+    ) -> Result<bool, &'static str> {
+        Ok(false)
+    }
+    fn refill(
+        &mut self,
+        _: Option<&mut coaptic::oscore::SecurityContext>,
+    ) -> Result<(), &'static str> {
+        Ok(())
+    }
+    fn checkpoint(
+        &mut self,
+        _: Option<&coaptic::oscore::SecurityContext>,
+    ) -> Result<(), &'static str> {
+        Ok(())
+    }
+}
+
+fn validate_identity(identity: &[u8; 32]) -> Result<(), &'static str> {
+    if !identity.iter().all(u8::is_ascii_hexdigit) {
+        return Err("campaign identity");
+    }
+    Ok(())
+}
+
+/// Run the same fixed-storage reads without credentials or durable security state.
+/// Identity is checked for source attribution, but is not authenticated in this mode.
+#[allow(clippy::too_many_arguments)]
+pub fn run_unprotected<T: DatagramIo>(
+    io: T,
+    random: fn(&mut [u8]) -> bool,
+    now_ns: impl FnMut() -> Option<u64>,
+    wait: impl FnMut(),
+    peer: Endpoint,
+    identity: &[u8; 32],
+    mut observe: impl FnMut(Observation) -> Result<(), &'static str>,
+) -> Result<(), &'static str> {
+    validate_identity(identity)?;
+    let mut clock = Clock {
+        source: now_ns,
+        previous: 0,
+    };
+    clock.now()?;
+    let mut app = App::profile::<profiles::Constrained>()
+        .block_wise::<true>()
+        .full_responses()
+        .randomness(random)
+        .allow_unprotected()
+        .bind(io)
+        .map_err(|_| "campaign bind")?;
+    observe(Observation::Preparation {
+        recovery_ns: 0,
+        app_bytes: core::mem::size_of_val(&app),
+    })?;
+    run_operations(&mut app, &mut (), &mut clock, wait, peer, identity, observe)
+}
+
 /// Execute eight identity/test/2000-byte reads, in that order, with one live App.
 ///
 /// `wait` must return in bounded time; its elapsed cost is included. `observe`
@@ -67,16 +171,14 @@ pub fn run<T: DatagramIo, S: Store>(
     io: T,
     random: fn(&mut [u8]) -> bool,
     now_ns: impl FnMut() -> Option<u64>,
-    mut wait: impl FnMut(),
+    wait: impl FnMut(),
     credentials: &Credentials,
     store: S,
     peer: Endpoint,
     identity: &[u8; 32],
     mut observe: impl FnMut(Observation) -> Result<(), &'static str>,
 ) -> Result<(), &'static str> {
-    if !identity.iter().all(u8::is_ascii_hexdigit) {
-        return Err("campaign identity");
-    }
+    validate_identity(identity)?;
     let mut clock = Clock {
         source: now_ns,
         previous: 0,
@@ -92,26 +194,35 @@ pub fn run<T: DatagramIo, S: Store>(
         .oscore(context)
         .bind(io)
         .map_err(|_| "campaign bind")?;
-    let mut output = [0; 4096];
     observe(Observation::Preparation {
         recovery_ns,
         app_bytes: core::mem::size_of_val(&app),
     })?;
+    run_operations(
+        &mut app, &mut state, &mut clock, wait, peer, identity, observe,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_operations<T: DatagramIo>(
+    app: &mut CampaignApp<T>,
+    security: &mut impl SecurityPolicy,
+    clock: &mut Clock<impl FnMut() -> Option<u64>>,
+    mut wait: impl FnMut(),
+    peer: Endpoint,
+    identity: &[u8; 32],
+    mut observe: impl FnMut(Observation) -> Result<(), &'static str>,
+) -> Result<(), &'static str> {
+    let mut output = [0; 4096];
     for iteration in 0..8 {
         for (path, expected) in [
             ("identity", &identity[..]),
             ("test", &b"coaptic"[..]),
             ("large", &[0x5a; 2000][..]),
         ] {
-            let context = app.oscore_mut().ok_or("campaign context")?;
-            if context
-                .sender_reservation_end()
-                .ok_or("campaign reservation")?
-                .saturating_sub(context.sender_seq())
-                < 8
-            {
+            if security.needs_refill(app.oscore())? {
                 let start = clock.now()?;
-                state.refill(context).map_err(|_| "campaign refill")?;
+                security.refill(app.oscore_mut())?;
                 observe(Observation::Reservation {
                     elapsed_ns: clock.now()? - start,
                 })?;
@@ -145,9 +256,7 @@ pub fn run<T: DatagramIo, S: Store>(
                 let after_poll = clock.now()?;
                 op.poll_ns += after_poll - phase;
                 op.polls += 1;
-                state
-                    .checkpoint(app.oscore().ok_or("campaign context")?.replay_checkpoint())
-                    .map_err(|_| "campaign checkpoint")?;
+                security.checkpoint(app.oscore())?;
                 let after_checkpoint = clock.now()?;
                 op.checkpoint_ns += after_checkpoint - after_poll;
                 let reply = app

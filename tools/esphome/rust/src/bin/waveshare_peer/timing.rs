@@ -1,4 +1,4 @@
-//! Finite protected LAN diagnostic. Trace clocks perturb execution; this is not
+//! Finite explicitly selected LAN diagnostic. Trace clocks perturb execution; this is not
 //! a throughput benchmark. Credentials and durable sequence state are reused
 //! exclusively, never copied/reset. No packet contents are recorded.
 use super::*;
@@ -83,6 +83,23 @@ pub(super) fn campaign(
     run_id: &str,
     report_path: &Path,
 ) -> Result<()> {
+    campaign_selected(Some((c, state_path)), peer, run_id, report_path)
+}
+
+pub(super) fn campaign_unprotected(
+    peer: SocketAddr,
+    run_id: &str,
+    report_path: &Path,
+) -> Result<()> {
+    campaign_selected(None, peer, run_id, report_path)
+}
+
+fn campaign_selected(
+    protection: Option<(&Credentials, &Path)>,
+    peer: SocketAddr,
+    run_id: &str,
+    report_path: &Path,
+) -> Result<()> {
     use coaptic_esphome_probe::read_campaign::{self, Observation};
     let mut report =
         File::create_new(report_path).map_err(|_| "timing report exists/unavailable")?;
@@ -102,29 +119,12 @@ pub(super) fn campaign(
             clock: &clock,
             ledger: &ledger,
         };
-        let store = TimedStore {
-            store: FileStore::open(state_path, false)?,
-            clock: &clock,
-            ledger: &ledger,
-        };
-        read_campaign::run(
-            io,
-            |b| getrandom::fill(b).is_ok(),
-            || u64::try_from(clock.elapsed().as_nanos()).ok(),
-            || std::thread::sleep(Duration::from_millis(1)),
-            c,
-            store,
-            peer.into(),
-            run_id
-                .as_bytes()
-                .try_into()
-                .map_err(|_| "timing identity")?,
-            |observation| {
-                let mut l = ledger.borrow_mut();
-                if l.overflow {
-                    return Err("timing trace bound");
-                }
-                match observation {
+        let observe = |observation| {
+            let mut l = ledger.borrow_mut();
+            if l.overflow {
+                return Err("timing trace bound");
+            }
+            match observation {
                     Observation::Preparation { recovery_ns, app_bytes } =>
                         writeln!(report, "{{\"case\":\"preparation\",\"security_recovery_ns\":{recovery_ns},\"app_inline_bytes\":{app_bytes},\"output_bytes\":4096,\"trace_heap_bytes\":{}}}", l.events.capacity() * std::mem::size_of::<Event>()),
                     Observation::Reservation { elapsed_ns } =>
@@ -135,13 +135,50 @@ pub(super) fn campaign(
                             op.iteration, op.path, op.bytes, op.start_ns, op.elapsed_ns, op.prepare_ns, op.poll_ns, op.checkpoint_ns, op.take_ns, op.verify_ns, op.wait_ns, op.polls, l.recv_ns, l.send_ns, l.read_ns, l.commit_ns, l.recv_calls, l.reads, l.commits, l.events)
                     },
                 }.map_err(|_| "timing report")?;
-                l.reset();
-                Ok(())
-            },
-        )
+            l.reset();
+            Ok(())
+        };
+        let random = |b: &mut [u8]| getrandom::fill(b).is_ok();
+        let now = || u64::try_from(clock.elapsed().as_nanos()).ok();
+        let wait = || std::thread::sleep(Duration::from_millis(1));
+        let identity = run_id
+            .as_bytes()
+            .try_into()
+            .map_err(|_| "timing identity")?;
+        if let Some((c, state_path)) = protection {
+            let store = TimedStore {
+                store: FileStore::open(state_path, false)?,
+                clock: &clock,
+                ledger: &ledger,
+            };
+            read_campaign::run(
+                io,
+                random,
+                now,
+                wait,
+                c,
+                store,
+                peer.into(),
+                identity,
+                observe,
+            )
+        } else {
+            read_campaign::run_unprotected(io, random, now, wait, peer.into(), identity, observe)
+        }
     })();
     let passed = result.is_ok();
-    writeln!(report, "{{\"passed\":{passed},\"case\":\"timing_campaign\",\"completed\":{},\"run_id\":\"{run_id}\",\"event_bound\":{EVENTS},\"method\":\"portable fixed-storage protected initiator; bounded host trace; authenticated durable client state; 1ms requested wait included; partial failures retained\"}}", completed).map_err(|_| "timing report")?;
+    let (security, method) = if protection.is_some() {
+        (
+            "durable-oscore",
+            "portable fixed-storage protected initiator; bounded host trace; authenticated durable client state; 1ms requested wait included; partial failures retained",
+        )
+    } else {
+        (
+            "unprotected",
+            "portable fixed-storage unprotected initiator; bounded host trace; no security state; 1ms requested wait included; partial failures retained",
+        )
+    };
+    writeln!(report, "{{\"passed\":{passed},\"case\":\"timing_campaign\",\"completed\":{},\"run_id\":\"{run_id}\",\"event_bound\":{EVENTS},\"security\":\"{security}\",\"method\":\"{method}\"}}", completed).map_err(|_| "timing report")?;
     report.sync_all().map_err(|_| "timing report sync")?;
     result
 }
