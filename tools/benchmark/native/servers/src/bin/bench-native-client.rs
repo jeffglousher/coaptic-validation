@@ -112,7 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.pop();
     }
     if !(8..=9).contains(&args.len()) {
-        return Err("usage: bench-native-client PORT BYTES OPERATIONS WARMUP TIMEOUT_MS spin|sleep1 plaintext|oscore [CREDENTIALS] [--gated]".into());
+        return Err("usage: bench-native-client PORT BYTES OPERATIONS WARMUP TIMEOUT_MS spin|sleep1 unprotected|oscore [CREDENTIALS] [--gated]".into());
     }
     let port: u16 = args[1].parse()?;
     let size: usize = args[2].parse()?;
@@ -133,7 +133,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => return Err("poll policy".into()),
     };
     let context = match (args[7].as_str(), args.get(8)) {
-        ("plaintext", None) => None,
+        ("unprotected", None) => None,
         ("oscore", Some(path)) => Some(context(path)?),
         _ => return Err("explicit security/credential selection".into()),
     };

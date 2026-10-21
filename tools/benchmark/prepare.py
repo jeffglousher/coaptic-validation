@@ -37,7 +37,7 @@ def main():
     parser.add_argument("--uvloop", action="store_true")
     parser.add_argument("--coaptic-rx-bytes", type=int, choices=(1472, 2048), default=1472)
     parser.add_argument("--matched-oscore", action="store_true",
-                        help="matched Python UDP driver for plaintext and supported OSCORE servers")
+                        help="matched Python UDP driver for unprotected and supported OSCORE servers")
     args = parser.parse_args()
     selected = args.peers.split(",")
     allowed = {"coaptic", "coaptic-reusable", "coap-rs", "coap-lite-codec", "aiocoap", "libcoap", "go-coap", "http3"}
@@ -108,7 +108,7 @@ def main():
                       "identity": {"source": "851533c3cf63d16984d370ce39d586ecb3694971", "binary_source_verified": not bool(args.libcoap_bin),
                                    "build": "Release; UDP; library-managed blockwise; no per-request logging" if not args.libcoap_bin else "externally supplied binary; source/build association asserted by caller"}})
     for peer in peers:
-        peer["security"] = "plaintext" if peer["protocol"] == "coap" else "TLS1.3"
+        peer["security"] = "unprotected" if peer["protocol"] == "coap" else "TLS1.3"
     unsupported = []
     if args.matched_oscore:
         native_security = json.loads(subprocess.check_output([str(rust), "--security-profile"], text=True))

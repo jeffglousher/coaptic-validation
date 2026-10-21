@@ -64,7 +64,7 @@ def validate_report(report, size, operations, policy, security):
 def measure(server, client, size, operations, warmup, timeout_ms, policy, security):
     if not (1 <= size <= 65536 and 1 <= operations <= 20000 and 0 <= warmup <= 1000
             and 1 <= timeout_ms <= 60000 and policy in ("spin", "sleep1")
-            and security in ("plaintext", "oscore")):
+            and security in ("unprotected", "oscore")):
         raise ValueError("diagnostic bounds")
     with tempfile.TemporaryDirectory(prefix="coaptic-native-diagnostic-") as directory:
         credentials = Path(directory) / "credentials"
@@ -154,7 +154,7 @@ def main():
     parser.add_argument("--warmup", type=int, default=5)
     parser.add_argument("--timeout-ms", type=int, default=1000)
     parser.add_argument("--policy", choices=("spin", "sleep1"), required=True)
-    parser.add_argument("--security", choices=("plaintext", "oscore"), required=True)
+    parser.add_argument("--security", choices=("unprotected", "oscore"), required=True)
     args = parser.parse_args()
     if args.output.exists():
         parser.error("output already exists; preserve prior observations")

@@ -42,7 +42,7 @@ def raw_representation(client, corrupt):
         thread = threading.Thread(target=serve)
         thread.start()
         try:
-            result = run_client(client, sock.getsockname()[1], 64, "plaintext")
+            result = run_client(client, sock.getsockname()[1], 64, "unprotected")
         finally:
             thread.join(timeout=3)
         if thread.is_alive() or errors:
@@ -82,7 +82,7 @@ def check(server, client):
                     time.sleep(.01)
                 else:
                     raise RuntimeError("protected server bind deadline")
-                for security, credential in (("plaintext", None), ("oscore", wrong)):
+                for security, credential in (("unprotected", None), ("oscore", wrong)):
                     result = run_client(client, port, 2000, security, credential)
                     if result.returncode == 0:
                         raise RuntimeError("refused security profile counted complete")
@@ -97,7 +97,7 @@ def check(server, client):
                 process.terminate()
                 process.wait(timeout=5)
     print("native client: independent exact body, corrupt refusal/recovery, "
-          "plaintext/wrong-key refusal and fresh protected Block2 PASS")
+          "unprotected/wrong-key refusal and fresh protected Block2 PASS")
 
 
 if __name__ == "__main__":

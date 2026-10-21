@@ -96,7 +96,7 @@ def check(server, aiocoap_server=False):
                             break
                 refuse(packet)
                 worker.exchange(2)
-                print(("aiocoap" if aiocoap_server else "coaptic") + ": protected Block2, plaintext/wrong-key/tamper/replay refusal and fresh recovery PASS")
+                print(("aiocoap" if aiocoap_server else "coaptic") + ": protected Block2, unprotected/wrong-key/tamper/replay refusal and fresh recovery PASS")
             finally:
                 worker.close()
                 process.kill()

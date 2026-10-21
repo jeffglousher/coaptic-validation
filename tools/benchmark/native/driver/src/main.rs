@@ -393,7 +393,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect::<Vec<_>>()
         .join(",");
     println!(
-        "{{\"schema\":\"coaptic-load/1\",\"protocol\":\"coap\",\"security\":\"plaintext\",\"mode\":\"{}\",\"concurrency\":{},\"warmup\":{},\"attempted\":{},\"completed\":{},\"failed\":{},\"warmup_failed\":{},\"driver_failures\":{},\"endpoint_rotations\":{},\"verified_bytes\":{},\"elapsed_ns\":{},\"latencies_ns\":[{}],\"clock\":\"std::time::Instant\",\"measurement\":\"closed-loop; complete byte validation included; endpoint rotation in wall time\"}}",
+        "{{\"schema\":\"coaptic-load/1\",\"protocol\":\"coap\",\"security\":\"unprotected\",\"mode\":\"{}\",\"concurrency\":{},\"warmup\":{},\"attempted\":{},\"completed\":{},\"failed\":{},\"warmup_failed\":{},\"driver_failures\":{},\"endpoint_rotations\":{},\"verified_bytes\":{},\"elapsed_ns\":{},\"latencies_ns\":[{}],\"clock\":\"std::time::Instant\",\"measurement\":\"closed-loop; complete byte validation included; endpoint rotation in wall time\"}}",
         args[8],
         config.concurrency,
         config.warmup,

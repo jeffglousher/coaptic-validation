@@ -78,7 +78,7 @@ def driver(port, credentials, protected):
     before = snapshot(psutil.Process())
     report = run(SimpleNamespace(host='127.0.0.1', port=port, bytes=32, concurrency=1,
         operations=200, warmup=20, timeout_ms=1000, mode='con', sequence=0,
-        credentials=credentials, security=SECURITY if protected else 'plaintext'))
+        credentials=credentials, security=SECURITY if protected else 'unprotected'))
     after = snapshot(psutil.Process())
     report['security'] = 'volatile-oscore' if protected else 'unprotected'
     report['client_cpu_seconds'] = after['cpu_seconds'] - before['cpu_seconds']
