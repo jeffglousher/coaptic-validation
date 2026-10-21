@@ -1,0 +1,399 @@
+{
+  "schema": "coaptic-installed-live-con-revoke-proof/1",
+  "source": "6162217656152ab5abea50a5c8d849dcc0a3f963",
+  "same_tree_merge": "d988c979b6813aa0675ed3fead5a728dc63020fd",
+  "source_tree": "02917f5f74d0d8d82715705571189717503aaad9",
+  "compiler": "rustc1.99.0 b940084d7",
+  "binary_sha256": "ea936b73b196a97477faad663d1765e7ae5a5ff1a5a7a8113c945146ca3e47ed",
+  "installed": {
+    "core": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+    "suite_archive": "27b0e6438eff112f17646f4023abb44a41da40cc",
+    "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+    "async_service_sha256": "0ec66bd4f946fe826c3451c861c6269a9893624c2e9259287aed12022284e930"
+  },
+  "observations_ms": {
+    "control_first": 1401,
+    "control_retry": 4066,
+    "control_before_send_anchor": 4066,
+    "held_first": 9089,
+    "held_retry": 11380,
+    "committed": 11745,
+    "observed_through": 19589,
+    "control_retry_interval": 2665,
+    "held_first_after_control": 5023,
+    "held_retry_interval": 2291,
+    "held_retry_after_control": 7314,
+    "commit_after_held_first": 2656,
+    "latest_nominal_next_retry": 17380,
+    "conservative_earliest_natural_cancellation": 18966,
+    "next_retry_before_natural_cancellation_margin": 1586,
+    "observation_beyond_latest_retry_margin": 2209
+  },
+  "guards": {
+    "held_first_after_anchor_ms": [
+      4900,
+      5500
+    ],
+    "retry_interval_ms": [
+      1500,
+      3500
+    ],
+    "held_retry_after_anchor_max_ms": 8800,
+    "commit_after_held_first_max_ms": 4000,
+    "observation_after_held_first_ms": 10500,
+    "unchanged_session_generation": 1,
+    "dropped_matching_replies": 2,
+    "accepted_protected_control_replies": 1,
+    "metadata_and_borrowed_adapter_ceiling_bytes": 160
+  },
+  "host_ownership": {
+    "profile": "ManagedConnection default Constrained; fixed; blockwise false",
+    "managed_including_borrowing_gate_bytes": 29712,
+    "outer_udp_adapter_including1473_scratch_bytes": 1488,
+    "control_state_bytes": 128,
+    "named_inline_owners_sum_bytes": 31328,
+    "independent_named_owner_ceiling_bytes": 65536,
+    "borrowing_gate_bytes": 32,
+    "control_state_plus_gate_bytes": 160,
+    "note": "Gate32 is already inside Managed29712; do not add160 again to31328. Public peer/serial/approval/runtime and transient stack work are not measured by this owner sum; no host process/stack peak follows."
+  },
+  "result": {
+    "original_file": "queued-revoke-installed-result.json",
+    "bytes": 5323,
+    "sha256": "ede49adf3713f84df5debc2464512316f32ef7af79d09bfbe19e8e8a90e5e88f",
+    "values": {
+      "schema": "coaptic-installed-queued-con-revoke/1",
+      "host_source": "6162217656152ab5abea50a5c8d849dcc0a3f963",
+      "binary_sha256": "ea936b73b196a97477faad663d1765e7ae5a5ff1a5a7a8113c945146ca3e47ed",
+      "compiler": "rustc1.99.0 b940084d7",
+      "device_core": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+      "device_suite_archive": "27b0e6438eff112f17646f4023abb44a41da40cc",
+      "device_run": "802aed318cb34cdebc3830079d0f1d5c",
+      "started": "2026-10-21T01:21:12.090374+00:00",
+      "journal_before": "5222d42f511c0d8eae14067bc1d745f226a658a218c86007a89acc619281be2f",
+      "journal_bytes": 4768,
+      "commands": [
+        {
+          "label": "before",
+          "args": [
+            "serial-info",
+            "COM6"
+          ],
+          "start": "2026-10-21T01:21:12.091131+00:00",
+          "end": "2026-10-21T01:21:12.227198+00:00",
+          "exit": 0,
+          "file": "queued-revoke-before.log",
+          "bytes": 459,
+          "sha256": "c4db77c6235a530b713158879cfc1a3f023eb00601ac58c6d486588b9f065bfb",
+          "encoding": "utf-8"
+        },
+        {
+          "label": "qualification",
+          "args": [
+            "peer",
+            "waveshare-host",
+            "192.168.1.134:5683",
+            "192.168.1.144:5683",
+            "--qualify-queued-revoke",
+            "COM6",
+            "--development-no-touch"
+          ],
+          "start": "2026-10-21T01:21:12.227490+00:00",
+          "end": "2026-10-21T01:21:31.901925+00:00",
+          "exit": 0,
+          "file": "queued-revoke-qualification.log",
+          "bytes": 1725,
+          "sha256": "38255c85e699a7775936c24a277f307a59921964b8f7d54e0e7799b4648fc548",
+          "encoding": "utf-8"
+        },
+        {
+          "label": "disabled",
+          "args": [
+            "serial-info",
+            "COM6"
+          ],
+          "start": "2026-10-21T01:21:31.902254+00:00",
+          "end": "2026-10-21T01:21:31.981432+00:00",
+          "exit": 0,
+          "file": "queued-revoke-disabled.log",
+          "bytes": 460,
+          "sha256": "d4d7d4244ebf717262659de4a4f1d6d993dd99cb623804c0a1d4bdb01ec58810",
+          "encoding": "utf-8"
+        },
+        {
+          "label": "disabled-host",
+          "args": [
+            "pairing-info",
+            "waveshare-host"
+          ],
+          "start": "2026-10-21T01:21:31.981710+00:00",
+          "end": "2026-10-21T01:21:32.014807+00:00",
+          "exit": 0,
+          "file": "queued-revoke-disabled-host.log",
+          "bytes": 265,
+          "sha256": "682fb46884320ca050ee00e6e25bcc936b6cfbd02eb467877cb5140b1bd9721a",
+          "encoding": "utf-8"
+        },
+        {
+          "label": "restart",
+          "args": [
+            "serial-restart",
+            "COM6"
+          ],
+          "start": "2026-10-21T01:21:32.015249+00:00",
+          "end": "2026-10-21T01:21:32.070851+00:00",
+          "exit": 0,
+          "file": "queued-revoke-restart.log",
+          "bytes": 88,
+          "sha256": "7f2511e123910266a202329c5e302c6b19c4a95e07a71ca152d9e3357be01cf3",
+          "encoding": "utf-8"
+        },
+        {
+          "label": "disabled-restarted",
+          "args": [
+            "serial-info",
+            "COM6"
+          ],
+          "start": "2026-10-21T01:21:35.071606+00:00",
+          "end": "2026-10-21T01:21:35.137606+00:00",
+          "exit": 0,
+          "file": "queued-revoke-disabled-restarted.log",
+          "bytes": 460,
+          "sha256": "d4d7d4244ebf717262659de4a4f1d6d993dd99cb623804c0a1d4bdb01ec58810",
+          "encoding": "utf-8"
+        },
+        {
+          "label": "restore-echo",
+          "args": [
+            "serial-pair",
+            "COM6",
+            "waveshare-host",
+            "192.168.1.134:5683",
+            "--echo-only",
+            "--development-no-touch"
+          ],
+          "start": "2026-10-21T01:21:35.137840+00:00",
+          "end": "2026-10-21T01:21:35.545839+00:00",
+          "exit": 0,
+          "file": "queued-revoke-restore-echo.log",
+          "bytes": 512,
+          "sha256": "a2eedf3f2bc4cca97b0be116d8b47012e951e26b3ba2af0dd11144494d2d8231",
+          "encoding": "utf-8"
+        },
+        {
+          "label": "final",
+          "args": [
+            "serial-info",
+            "COM6"
+          ],
+          "start": "2026-10-21T01:21:35.546123+00:00",
+          "end": "2026-10-21T01:21:35.603765+00:00",
+          "exit": 0,
+          "file": "queued-revoke-final.log",
+          "bytes": 459,
+          "sha256": "2912ac66701ab7d98c776c315195039bd675835a9686fe091245004b73d20779",
+          "encoding": "utf-8"
+        },
+        {
+          "label": "fresh-echo",
+          "args": [
+            "peer",
+            "waveshare-host",
+            "192.168.1.134:5683",
+            "192.168.1.144:5683",
+            "--probe-echo"
+          ],
+          "start": "2026-10-21T01:21:35.604030+00:00",
+          "end": "2026-10-21T01:21:39.161667+00:00",
+          "exit": 0,
+          "file": "queued-revoke-fresh-echo.log",
+          "bytes": 367,
+          "sha256": "813dceee6ae9b395e48e414c15788513b6f898bb0bbcc00e9d6fe79943a87f32",
+          "encoding": "utf-8"
+        }
+      ],
+      "limits": [
+        "One selected live-CON management-teardown slice, not every queue family",
+        "Privileged Challenge discards the old target owner before ordinary approved revocation; commit is not claimed as the first discard point",
+        "Source-matched timing uses explicit100ms clock slack, not a hard real-time guarantee",
+        "Software restart is not cold power, interrupted commit or hostile rollback proof"
+      ],
+      "passed": true,
+      "journal_after": "5222d42f511c0d8eae14067bc1d745f226a658a218c86007a89acc619281be2f",
+      "journal_unchanged": true,
+      "finished": "2026-10-21T01:21:39.162079+00:00"
+    }
+  },
+  "harness": {
+    "original_file": "qualify-queued-revoke.py",
+    "bytes": 3885,
+    "sha256": "813550663c78ebb1e52589b5d3207e1e1ba29dea8ac219aae5340e52bc64007d"
+  },
+  "validation": {
+    "enrollment_tests_passed": 61,
+    "existing_native_store_test_ignored": 1,
+    "format_passed": true,
+    "strict_all_target_clippy_passed": true,
+    "release_passed": true,
+    "review": "Independent general source and executed-evidence review; no specialist/Bugbot claim"
+  },
+  "receipts": [
+    {
+      "label": "before",
+      "args": [
+        "serial-info",
+        "COM6"
+      ],
+      "start": "2026-10-21T01:21:12.091131+00:00",
+      "end": "2026-10-21T01:21:12.227198+00:00",
+      "exit": 0,
+      "file": "queued-revoke-before.log",
+      "bytes": 459,
+      "sha256": "c4db77c6235a530b713158879cfc1a3f023eb00601ac58c6d486588b9f065bfb",
+      "encoding": "utf-8",
+      "original_text": "Device be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 public key 044ad6aa2e39998989b0f619259f9867433334f3448ee59d42d7766948753e9cf14df79743623deca7c2177084eb9a51f50f590ce867f49cb408844f976c1695db credential ID 31\nDurable work: authenticated empty or completed\nPairing revision 22 enabled true\nOwner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions 7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56\n"
+    },
+    {
+      "label": "qualification",
+      "args": [
+        "peer",
+        "waveshare-host",
+        "192.168.1.134:5683",
+        "192.168.1.144:5683",
+        "--qualify-queued-revoke",
+        "COM6",
+        "--development-no-touch"
+      ],
+      "start": "2026-10-21T01:21:12.227490+00:00",
+      "end": "2026-10-21T01:21:31.901925+00:00",
+      "exit": 0,
+      "file": "queued-revoke-qualification.log",
+      "bytes": 1725,
+      "sha256": "38255c85e699a7775936c24a277f307a59921964b8f7d54e0e7799b4648fc548",
+      "encoding": "utf-8",
+      "original_text": "Queued-CON qualification expected target async_service SHA256 0ec66bd4f946fe826c3451c861c6269a9893624c2e9259287aed12022284e930; control metadata 160 bytes; original UDP scratch 1473 bytes, counted once.\nQueued-CON owner bytes 29712; adapter/scratch owner bytes 1488; no added packet queues.\nQueued-CON positive control: first 1401 ms; exact retry 4066 ms; protected response before-send anchor 4066 ms.\nQueued-CON armed: exact ciphertext BLAKE3 ae0080a2115232126b2e6410a8f88d92cecf5af0f1444bf7e34c043d872361d0; MID 58277; first 9089 ms; retry 11380 ms; dropped replies 2; control before-send 4066 ms, accepted replies 1; session generation 1.\nApprove Revoke: device be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 peer e2dc8e2da51207c353c192278a549eb8c1c8e88dcacd42ddc412a7a3f85373ca owner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions 7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56\nTransaction 772b97b119c1e23e7274a7ab4f74d72e1564fcf2617fc3e251e4de6a2534649edevelopment PIV touchless\nPrior public device checkpoint retained: C:\\Users\\jeffg\\AppData\\Local\\Coaptic\\Enrollment\\Devices\\waveshare-host\\device-checkpoint-bbe5f511deaf4a9abdcf33a55bf7688f8e3462ff378410a3771db47de985c51f.cbor\nDevice and host pairing committed. Peer be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8.\nQueued-CON qualification passed: positive byte-identical retry/release, held retry stopped across privileged management teardown; ordinary approved revocation committed at 11745 ms, revision 23; no old ciphertext through 19589 ms. Device and host remain revoked; use ordinary approved pairing for fresh work. This is not physical power-loss or all-queue-family proof.\n"
+    },
+    {
+      "label": "disabled",
+      "args": [
+        "serial-info",
+        "COM6"
+      ],
+      "start": "2026-10-21T01:21:31.902254+00:00",
+      "end": "2026-10-21T01:21:31.981432+00:00",
+      "exit": 0,
+      "file": "queued-revoke-disabled.log",
+      "bytes": 460,
+      "sha256": "d4d7d4244ebf717262659de4a4f1d6d993dd99cb623804c0a1d4bdb01ec58810",
+      "encoding": "utf-8",
+      "original_text": "Device be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 public key 044ad6aa2e39998989b0f619259f9867433334f3448ee59d42d7766948753e9cf14df79743623deca7c2177084eb9a51f50f590ce867f49cb408844f976c1695db credential ID 31\nDurable work: authenticated empty or completed\nPairing revision 23 enabled false\nOwner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions 7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56\n"
+    },
+    {
+      "label": "disabled-host",
+      "args": [
+        "pairing-info",
+        "waveshare-host"
+      ],
+      "start": "2026-10-21T01:21:31.981710+00:00",
+      "end": "2026-10-21T01:21:32.014807+00:00",
+      "exit": 0,
+      "file": "queued-revoke-disabled-host.log",
+      "bytes": 265,
+      "sha256": "682fb46884320ca050ee00e6e25bcc936b6cfbd02eb467877cb5140b1bd9721a",
+      "encoding": "utf-8",
+      "original_text": "Device waveshare-host revision 18 paired false\nPeer be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 owner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions 7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56\n"
+    },
+    {
+      "label": "restart",
+      "args": [
+        "serial-restart",
+        "COM6"
+      ],
+      "start": "2026-10-21T01:21:32.015249+00:00",
+      "end": "2026-10-21T01:21:32.070851+00:00",
+      "exit": 0,
+      "file": "queued-revoke-restart.log",
+      "bytes": 88,
+      "sha256": "7f2511e123910266a202329c5e302c6b19c4a95e07a71ca152d9e3357be01cf3",
+      "encoding": "utf-8",
+      "original_text": "Device restarting; it will restore pairing and establish a fresh session automatically.\n"
+    },
+    {
+      "label": "disabled-restarted",
+      "args": [
+        "serial-info",
+        "COM6"
+      ],
+      "start": "2026-10-21T01:21:35.071606+00:00",
+      "end": "2026-10-21T01:21:35.137606+00:00",
+      "exit": 0,
+      "file": "queued-revoke-disabled-restarted.log",
+      "bytes": 460,
+      "sha256": "d4d7d4244ebf717262659de4a4f1d6d993dd99cb623804c0a1d4bdb01ec58810",
+      "encoding": "utf-8",
+      "original_text": "Device be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 public key 044ad6aa2e39998989b0f619259f9867433334f3448ee59d42d7766948753e9cf14df79743623deca7c2177084eb9a51f50f590ce867f49cb408844f976c1695db credential ID 31\nDurable work: authenticated empty or completed\nPairing revision 23 enabled false\nOwner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions 7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56\n"
+    },
+    {
+      "label": "restore-echo",
+      "args": [
+        "serial-pair",
+        "COM6",
+        "waveshare-host",
+        "192.168.1.134:5683",
+        "--echo-only",
+        "--development-no-touch"
+      ],
+      "start": "2026-10-21T01:21:35.137840+00:00",
+      "end": "2026-10-21T01:21:35.545839+00:00",
+      "exit": 0,
+      "file": "queued-revoke-restore-echo.log",
+      "bytes": 512,
+      "sha256": "a2eedf3f2bc4cca97b0be116d8b47012e951e26b3ba2af0dd11144494d2d8231",
+      "encoding": "utf-8",
+      "original_text": "Approve Pair: device be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 peer e2dc8e2da51207c353c192278a549eb8c1c8e88dcacd42ddc412a7a3f85373ca owner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions 7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56\nTransaction d095d3219b6bf495d466efa75a0d76ba037f70c217888d79548fe3d985ab9e55development PIV touchless\nDevice and host pairing committed. Peer be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8.\n"
+    },
+    {
+      "label": "final",
+      "args": [
+        "serial-info",
+        "COM6"
+      ],
+      "start": "2026-10-21T01:21:35.546123+00:00",
+      "end": "2026-10-21T01:21:35.603765+00:00",
+      "exit": 0,
+      "file": "queued-revoke-final.log",
+      "bytes": 459,
+      "sha256": "2912ac66701ab7d98c776c315195039bd675835a9686fe091245004b73d20779",
+      "encoding": "utf-8",
+      "original_text": "Device be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 public key 044ad6aa2e39998989b0f619259f9867433334f3448ee59d42d7766948753e9cf14df79743623deca7c2177084eb9a51f50f590ce867f49cb408844f976c1695db credential ID 31\nDurable work: authenticated empty or completed\nPairing revision 24 enabled true\nOwner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions 7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56\n"
+    },
+    {
+      "label": "fresh-echo",
+      "args": [
+        "peer",
+        "waveshare-host",
+        "192.168.1.134:5683",
+        "192.168.1.144:5683",
+        "--probe-echo"
+      ],
+      "start": "2026-10-21T01:21:35.604030+00:00",
+      "end": "2026-10-21T01:21:39.161667+00:00",
+      "exit": 0,
+      "file": "queued-revoke-fresh-echo.log",
+      "bytes": 367,
+      "sha256": "813dceee6ae9b395e48e414c15788513b6f898bb0bbcc00e9d6fe79943a87f32",
+      "encoding": "utf-8",
+      "original_text": "Pairing restored; waiting for peer at 192.168.1.144:5683.\nFresh EDHOC/OSCORE session generation 1 connected to be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8.\nProtected probe received code 5.03 (Max-Age 1s); retrying this idempotent probe in the same session.\nProtected echo received and acknowledged (45 bytes).\nProtected probe passed (code 2.05).\n"
+    }
+  ],
+  "limits": [
+    "One selected live-CON management-teardown slice, not every queue family",
+    "Privileged Challenge discards the old target owner before ordinary approved revocation; commit is not claimed as the first discard point",
+    "Source-matched timing uses explicit100ms clock slack, not a hard real-time guarantee",
+    "Software restart is not cold power, interrupted commit or hostile rollback proof",
+    "Before-send anchor is persisted only after a full protected control-response send; empty ACK/session change/compressed retry/stale packet age refuse qualification",
+    "Final bounded drains reject old ciphertext queued during scheduling gaps or privileged Inspect",
+    "Disabled public Inspect projection is byte-identical across software restart, not a full NVS-byte equality claim",
+    "No target pressure, throughput improvement, every-queue physical proof, key regeneration, NVS erase or receipt reset is claimed"
+  ]
+}
