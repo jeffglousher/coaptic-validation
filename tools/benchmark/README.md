@@ -11,6 +11,8 @@ endpoint, not a complete competing server stack. HTTP/3 uses quic-go with a
 verified fixture certificate and TLS 1.3. These are pinned candidates, not a
 claim that each is its language's fastest library.
 
+Current results and complete raw sessions: [2026-10-21 Windows loopback comparison](evidence/loopback-windows-20261021/README.md).
+
 ## Current SmallDevice quick check
 
 `coaptic-small` binds `resources::SmallDevice::new()` with fixed
