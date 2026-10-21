@@ -60,10 +60,13 @@ impl SessionLiveness {
         self.last_authenticated = now;
         self.quiet = false;
     }
-    fn generation(&mut self, generation: Option<u64>, now: u64) {
+    fn generation(&mut self, generation: Option<u64>, now: u64) -> bool {
         if generation.is_some() && generation != self.generation {
             self.generation = generation;
             self.authenticated(now);
+            true
+        } else {
+            false
         }
     }
     fn expired(&self, now: u64) -> bool {
@@ -288,6 +291,16 @@ fn recovery_ready(
     Ok(())
 }
 
+/// Optional resource-observation boundaries; no protocol state is exposed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum ResourcePhase {
+    BeforeOwnerConstruction = 1,
+    OwnerConstructed = 2,
+    SessionEstablished = 3,
+    AuthenticatedCompletion = 4,
+}
+
 /// Synchronous borrowed buffers on the sole privileged USB channel.
 pub trait Console {
     fn read(&mut self, bytes: &mut [u8]) -> Result<usize, Error>;
@@ -299,6 +312,9 @@ pub trait Console {
     /// Optional local observation. Never retain the borrow or alter protocol policy.
     /// Counters belong to the retained App and may reset with a fresh session.
     fn diagnostics(&mut self, _snapshot: &coaptic::app::diagnostics::Snapshot) {}
+    /// Optional synchronous observation on the worker; retain no borrows or data.
+    /// A generation is present only after an authenticated session is installed.
+    fn resource_phase(&mut self, _phase: ResourcePhase, _generation: Option<u64>) {}
 }
 
 struct Device {
@@ -867,6 +883,7 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
     let Some(start) = next_time(clock)? else {
         return Ok(None);
     };
+    console.resource_phase(ResourcePhase::BeforeOwnerConstruction, None);
     let mut connection = ManagedConnection::<_, EnrolledDevice>::from_local_pairing(
         &device.identity,
         &device.pairing,
@@ -879,6 +896,7 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
     connection
         .observable_manual("identity")
         .map_err(|_| Error::Network)?;
+    console.resource_phase(ResourcePhase::OwnerConstructed, None);
     let mut subscription = ManagedSubscription::new("identity");
     if initiates {
         match connection.connect(start) {
@@ -964,7 +982,10 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
                 }
             }
         }
-        liveness.generation(connection.session_generation(), now);
+        if liveness.generation(connection.session_generation(), now) {
+            connected_reported = false;
+            console.resource_phase(ResourcePhase::SessionEstablished, liveness.generation);
+        }
         if was_quiet && !liveness.quiet {
             subscription = ManagedSubscription::new("identity");
             next_probe = now;
@@ -1038,6 +1059,10 @@ fn session<T: DatagramIo, F: FnMut() -> Result<u64, ()>>(
                     if !connected_reported {
                         console.event(3);
                         connected_reported = true;
+                        console.resource_phase(
+                            ResourcePhase::AuthenticatedCompletion,
+                            liveness.generation,
+                        );
                     }
                     liveness.authenticated(now);
                     console.event(4);

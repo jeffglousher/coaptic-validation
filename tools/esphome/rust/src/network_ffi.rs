@@ -567,6 +567,7 @@ mod pairing_ffi {
         ) -> bool;
         fn coaptic_pairing_restart(context: *mut c_void);
         fn coaptic_pairing_event(context: *mut c_void, event: u32);
+        fn coaptic_pairing_resource_phase(context: *mut c_void, phase: u32, generation: u64);
         fn coaptic_pairing_owner_sizes(context: *mut c_void, managed: u32, worker: u32);
         fn coaptic_pairing_legacy_custody_permit(
             context: *mut c_void,
@@ -669,6 +670,15 @@ mod pairing_ffi {
         }
         fn event(&mut self, event: u32) {
             unsafe { coaptic_pairing_event(self.0, event) };
+        }
+        fn resource_phase(
+            &mut self,
+            phase: crate::pairing::ResourcePhase,
+            generation: Option<u64>,
+        ) {
+            unsafe {
+                coaptic_pairing_resource_phase(self.0, phase as u32, generation.unwrap_or(0))
+            };
         }
         fn diagnostics(&mut self, snapshot: &coaptic::app::diagnostics::Snapshot) {
             let metrics = &snapshot.metrics;

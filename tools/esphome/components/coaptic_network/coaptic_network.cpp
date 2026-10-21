@@ -109,7 +109,7 @@ static void log_heap_resources(const char *run_id, const char *phase, const char
            static_cast<unsigned long>(task_stack_bytes), static_cast<unsigned>(sizeof(info)));
 }
 
-static void log_resources(const char *run_id, const char *phase, uint32_t task_stack_bytes) {
+static void log_heap_resource_views(const char *run_id, const char *phase, uint32_t task_stack_bytes) {
   log_heap_resources(run_id, phase, "internal_8bit", MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT,
                      task_stack_bytes);
 #ifdef COAPTIC_RESOURCE_QUALIFICATION
@@ -117,7 +117,14 @@ static void log_resources(const char *run_id, const char *phase, uint32_t task_s
   log_heap_resources(run_id, phase, "all_8bit", MALLOC_CAP_8BIT, task_stack_bytes);
   if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) != 0)
     log_heap_resources(run_id, phase, "spiram_8bit", MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT, 0);
+#endif
+}
 
+// Only the main producer emits task headers and rows; worker heap records may
+// interleave without combining task batches from concurrent snapshots.
+static void log_resources(const char *run_id, const char *phase, uint32_t task_stack_bytes) {
+  log_heap_resource_views(run_id, phase, task_stack_bytes);
+#ifdef COAPTIC_RESOURCE_QUALIFICATION
   // SDK enumeration needs caller-owned scratch. It lives on the existing loop
   // stack only during this optional snapshot; neither App pools nor heap grow.
   // A full buffer is refused by the SDK rather than reported as a full inventory.
@@ -187,9 +194,9 @@ void CoapticNetwork::loop() {
     // Application::setup may dispatch loops while another component is still
     // setting up. Wait until it publishes the main owner before seeding.
     if (esphome_main_task_handle == nullptr) return;
-    // Reuse the mutually exclusive telemetry timer field. A selected finite
-    // boot delay lets the external recorder and authenticated host be ready.
-    if (security_mode_ == 6 && millis() < telemetry_timeout_) return;
+    // Pairing qualification and read campaigns reuse the telemetry timer before
+    // their worker exists. Zero preserves ordinary pairing startup.
+    if ((security_mode_ == 5 || security_mode_ == 6) && millis() < telemetry_timeout_) return;
     if (security_mode_ != 5 && !network::is_connected() && !wifi::global_wifi_component->is_ap_active())
       return;
     started_ = true;
@@ -253,10 +260,7 @@ void CoapticNetwork::loop() {
   trace_dump_();
 #endif
   if (result_.load(std::memory_order_acquire) != 0) {
-    log_resources(run_id_.c_str(), "worker_stopped", STACK_BYTES);
-    ESP_LOGI(TAG, "COAPTIC_STACK_FINAL {\"run_id\":\"%s\",\"used_high_water_bytes\":%lu,\"capacity_bytes\":%lu}",
-             run_id_.c_str(), static_cast<unsigned long>(high_water_.load()),
-             static_cast<unsigned long>(STACK_BYTES));
+    log_worker_stopped_();
     vTaskDelete(task_);
     task_ = nullptr;
     if (security_mode_ == 2 && result_.load() == 1) {
@@ -286,6 +290,44 @@ void CoapticNetwork::loop() {
              static_cast<unsigned long>(idle_waits_.load()), static_cast<unsigned long>(scheduler_yields_.load()),
              static_cast<unsigned long>(wait_errors_.load()));
   }
+}
+
+void CoapticNetwork::log_worker_stopped_() {
+  // The result acquire establishes owner teardown, not completion of parking.
+  // This pre-deletion sample leaves any later park-path use unmeasured.
+  const uint32_t free_bytes = uxTaskGetStackHighWaterMark(task_);
+  high_water_.store(free_bytes < STACK_BYTES ? STACK_BYTES - free_bytes : 0,
+                    std::memory_order_relaxed);
+  log_resources(run_id_.c_str(), "worker_stopped", STACK_BYTES);
+  ESP_LOGI(TAG, "COAPTIC_STACK_FINAL {\"run_id\":\"%s\",\"used_high_water_bytes\":%lu,\"capacity_bytes\":%lu}",
+           run_id_.c_str(), static_cast<unsigned long>(high_water_.load()),
+           static_cast<unsigned long>(STACK_BYTES));
+}
+
+void CoapticNetwork::resource_phase(uint32_t phase, uint64_t session_generation) {
+#ifdef COAPTIC_RESOURCE_QUALIFICATION
+  const char *name;
+  switch (phase) {
+    case 1: name = "before_owner_construction"; break;
+    case 2: name = "owner_constructed"; break;
+    case 3: name = "session_established"; break;
+    case 4: name = "authenticated_completion"; break;
+    default: return;
+  }
+  log_heap_resource_views(run_id_.c_str(), name, STACK_BYTES);
+  // Worker records stand alone; task batches remain on the main producer.
+  // Heap-info and logging frame costs remain included in this touched watermark.
+  const uint32_t free_bytes = uxTaskGetStackHighWaterMark(nullptr);
+  high_water_.store(free_bytes < STACK_BYTES ? STACK_BYTES - free_bytes : 0,
+                    std::memory_order_relaxed);
+  ESP_LOGI(TAG, "COAPTIC_RESOURCE_PHASE {\"run_id\":\"%s\",\"phase\":\"%s\",\"session_generation\":%llu,"
+           "\"used_high_water_bytes\":%lu,\"capacity_bytes\":%lu}",
+           run_id_.c_str(), name, static_cast<unsigned long long>(session_generation),
+           static_cast<unsigned long>(high_water_.load()), static_cast<unsigned long>(STACK_BYTES));
+#else
+  (void) phase;
+  (void) session_generation;
+#endif
 }
 
 void CoapticNetwork::run_(void *argument) {
@@ -684,6 +726,7 @@ void CoapticNetwork::on_shutdown() {
   }
   for (uint32_t waited = 0; task_ != nullptr && waited < 1000; waited += 10) {
     if (result_.load(std::memory_order_acquire) != 0) {
+      log_worker_stopped_();
       vTaskDelete(task_);
       task_ = nullptr;
       break;
@@ -852,6 +895,9 @@ extern "C" bool coaptic_pairing_console_write(void *, const uint8_t *bytes, uint
 extern "C" void coaptic_pairing_restart(void *) {
   usb_serial_jtag_wait_tx_done(pdMS_TO_TICKS(250));
   esp_restart();
+}
+extern "C" void coaptic_pairing_resource_phase(void *context, uint32_t phase, uint64_t generation) {
+  static_cast<esphome::coaptic_network::CoapticNetwork *>(context)->resource_phase(phase, generation);
 }
 extern "C" void coaptic_pairing_event(void *, uint32_t event) {
   ESP_LOGI("coaptic_network", "COAPTIC_PAIRING_EVENT %lu", static_cast<unsigned long>(event));

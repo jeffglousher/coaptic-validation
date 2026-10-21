@@ -1,0 +1,367 @@
+{
+  "schema": "coaptic-installed-pressure-evidence/1",
+  "host": {
+    "candidate": "592d33a18c02b5d441d455575ae752da566c3460",
+    "same_tree_merge": "d036647698dc38c7b351621cbcbcc61301376f91",
+    "tree": "23ff456e70a15942463b3efb32daeb51c34a6cc8",
+    "binary_sha256": "cf2841bee8a38f7bda35c15990738d9f8175f4db1518a1efb8b2c7d66c1386b5",
+    "compiler": "rustc1.99.0 b940084d7",
+    "module_sha256": "4c408a2bbe76e51517a445d9832b4e66c32064bc9b08f003d9a19b39fcf6d418",
+    "checks": {
+      "tests_passed": 69,
+      "existing_ignored": 1,
+      "format": true,
+      "strict_all_target_clippy": true,
+      "release": true
+    },
+    "named_inline_owners": {
+      "managed_including_gate": 29712,
+      "outer_adapter_including_existing_scratch": 1488,
+      "metadata": 144,
+      "response": 32,
+      "optional_call": 120,
+      "clock": 16,
+      "endpoint": 28,
+      "sum": 31540,
+      "metadata_and_nested_gate": 176,
+      "metadata_gate_ceiling": 192,
+      "named_owner_ceiling": 65536
+    }
+  },
+  "installed": {
+    "core": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+    "suite_archive": "27b0e6438eff112f17646f4023abb44a41da40cc",
+    "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+    "async_service_sha256": "0ec66bd4f946fe826c3451c861c6269a9893624c2e9259287aed12022284e930",
+    "revision_before_after": 24,
+    "echo_only": true,
+    "complete_custody": true,
+    "firmware_changed": false
+  },
+  "execution": {
+    "result_bytes": 3272,
+    "result_sha256": "145fd6682ae14a069119274b51b5be9b315b8f9dbc5efa6a722b5829a14022d5",
+    "harness_sha256": "4206e9d155384c7c36e9da978f3f22cba3f94128442621b23588601fe6128f9d",
+    "schema": "coaptic-installed-finite-pressure/1",
+    "host_source": "592d33a18c02b5d441d455575ae752da566c3460",
+    "binary_sha256": "cf2841bee8a38f7bda35c15990738d9f8175f4db1518a1efb8b2c7d66c1386b5",
+    "compiler": "rustc1.99.0 b940084d7",
+    "device_core": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+    "device_suite_archive": "27b0e6438eff112f17646f4023abb44a41da40cc",
+    "device_run": "802aed318cb34cdebc3830079d0f1d5c",
+    "started": "2026-10-21T01:59:30.201247+00:00",
+    "journal_before": "5222d42f511c0d8eae14067bc1d745f226a658a218c86007a89acc619281be2f",
+    "journal_bytes": 4768,
+    "sealed_pairing_before": "e87889cd21affb9ebe07be2b07f4e0e45031fd04b0dc84440166f8107f4f0e20",
+    "commands": [
+      {
+        "label": "before",
+        "args": [
+          "serial-info",
+          "COM6"
+        ],
+        "start": "2026-10-21T01:59:30.201926+00:00",
+        "end": "2026-10-21T01:59:30.341509+00:00",
+        "exit": 0,
+        "file": "installed-pressure-before.log",
+        "bytes": 459,
+        "sha256": "2912ac66701ab7d98c776c315195039bd675835a9686fe091245004b73d20779",
+        "encoding": "utf-8"
+      },
+      {
+        "label": "qualification",
+        "args": [
+          "peer",
+          "waveshare-host",
+          "192.168.1.134:5683",
+          "192.168.1.144:5683",
+          "--qualify-pressure"
+        ],
+        "start": "2026-10-21T01:59:30.341819+00:00",
+        "end": "2026-10-21T01:59:58.049140+00:00",
+        "exit": 0,
+        "file": "installed-pressure-qualification.log",
+        "bytes": 2008,
+        "sha256": "e0ec348a262bf673f40a2d5dc9d19eb0152a0d9e62ee3ece3902b14f651442e5",
+        "encoding": "utf-8"
+      },
+      {
+        "label": "after",
+        "args": [
+          "serial-info",
+          "COM6"
+        ],
+        "start": "2026-10-21T01:59:58.049546+00:00",
+        "end": "2026-10-21T01:59:58.109318+00:00",
+        "exit": 0,
+        "file": "installed-pressure-after.log",
+        "bytes": 459,
+        "sha256": "2912ac66701ab7d98c776c315195039bd675835a9686fe091245004b73d20779",
+        "encoding": "utf-8"
+      },
+      {
+        "label": "fresh-echo",
+        "args": [
+          "peer",
+          "waveshare-host",
+          "192.168.1.134:5683",
+          "192.168.1.144:5683",
+          "--probe-echo"
+        ],
+        "start": "2026-10-21T01:59:58.109590+00:00",
+        "end": "2026-10-21T01:59:59.562241+00:00",
+        "exit": 0,
+        "file": "installed-pressure-fresh-echo.log",
+        "bytes": 314,
+        "sha256": "1b6fee07819ccafca933679db27ffb7d9811c6f90b43c2542c539b3741b9b6c7",
+        "encoding": "utf-8"
+      }
+    ],
+    "limits": [
+      "One selected protected TX-pressure/headroom/refusal/recovery slice on the installed profile",
+      "No firmware, NVS, credential, journal or firewall mutation is requested",
+      "Finite schedules and sampled memory do not establish sustained availability or worst-case peaks"
+    ],
+    "passed": true,
+    "journal_after": "5222d42f511c0d8eae14067bc1d745f226a658a218c86007a89acc619281be2f",
+    "journal_unchanged": true,
+    "sealed_pairing_after": "e87889cd21affb9ebe07be2b07f4e0e45031fd04b0dc84440166f8107f4f0e20",
+    "sealed_pairing_unchanged": true,
+    "finished": "2026-10-21T01:59:59.563028+00:00"
+  },
+  "original_utf8_logs": [
+    {
+      "label": "before",
+      "args": [
+        "serial-info",
+        "COM6"
+      ],
+      "start": "2026-10-21T01:59:30.201926+00:00",
+      "end": "2026-10-21T01:59:30.341509+00:00",
+      "exit": 0,
+      "file": "installed-pressure-before.log",
+      "bytes": 459,
+      "sha256": "2912ac66701ab7d98c776c315195039bd675835a9686fe091245004b73d20779",
+      "encoding": "utf-8",
+      "text": "Device be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 public key 044ad6aa2e39998989b0f619259f9867433334f3448ee59d42d7766948753e9cf14df79743623deca7c2177084eb9a51f50f590ce867f49cb408844f976c1695db credential ID 31\nDurable work: authenticated empty or completed\nPairing revision 24 enabled true\nOwner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions 7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56\n"
+    },
+    {
+      "label": "qualification",
+      "args": [
+        "peer",
+        "waveshare-host",
+        "192.168.1.134:5683",
+        "192.168.1.144:5683",
+        "--qualify-pressure"
+      ],
+      "start": "2026-10-21T01:59:30.341819+00:00",
+      "end": "2026-10-21T01:59:58.049140+00:00",
+      "exit": 0,
+      "file": "installed-pressure-qualification.log",
+      "bytes": 2008,
+      "sha256": "e0ec348a262bf673f40a2d5dc9d19eb0152a0d9e62ee3ece3902b14f651442e5",
+      "encoding": "utf-8",
+      "text": "Pressure target async_service SHA256 0ec66bd4f946fe826c3451c861c6269a9893624c2e9259287aed12022284e930; expected EnrolledDevice RX3/TX2x1152, Observe2/dedup4, routes8/Calls4/deferred0/security4/association1, blockwise off. External installation receipt required; no firmware attestation.\nPressure fixed owners: Managed 29712 bytes (Gate nested); adapter/scratch 1488; metadata 144; response 32; Call 120; clock 16; endpoint 28; metadata+Gate ceiling192, named-owner ceiling65536. No new packet queue; not whole-host peak RAM.\nPressure control ACK accepted: first 1404 ms; exact retry 3754 ms; before-send 3754 ms; generation 1.\nPressure cycle 1 refused: authenticated5.03/Max-Age1 at 8810 ms; local Backoff until 9810 ms; first 8780 ms; generation 1.\nPressure held ACK accepted: first 8780 ms; exact retry 11733 ms; before-send 11733 ms; generation 1.\nPressure cycle 1 recovered: exact protected identity2.05 at 12050 ms; first 8780 ms; ACK 11733 ms; cooldown 9810 ms; generation 1.\nPressure cycle 2 refused: authenticated5.03/Max-Age1 at 16784 ms; local Backoff until 17784 ms; first 16759 ms; generation 1.\nPressure held ACK accepted: first 16759 ms; exact retry 19346 ms; before-send 19346 ms; generation 1.\nPressure cycle 2 recovered: exact protected identity2.05 at 19664 ms; first 16759 ms; ACK 19346 ms; cooldown 17784 ms; generation 1.\nPressure cycle 3 refused: authenticated5.03/Max-Age1 at 24395 ms; local Backoff until 25395 ms; first 24371 ms; generation 1.\nPressure held ACK accepted: first 24371 ms; exact retry 27347 ms; before-send 27347 ms; generation 1.\nPressure cycle 3 recovered: exact protected identity2.05 at 27667 ms; first 24371 ms; ACK 27347 ms; cooldown 25395 ms; generation 1.\nInstalled pressure passed: 3 authenticated refusals, cooldown refusals and same-session recoveries; 6 malformed1B datagrams sent; generation 1; no telemetry or management changes. Selected retained-TX admission/reuse only, not every queue, ingress-rate fairness, installed NSTART refusal or memory peak.\n"
+    },
+    {
+      "label": "after",
+      "args": [
+        "serial-info",
+        "COM6"
+      ],
+      "start": "2026-10-21T01:59:58.049546+00:00",
+      "end": "2026-10-21T01:59:58.109318+00:00",
+      "exit": 0,
+      "file": "installed-pressure-after.log",
+      "bytes": 459,
+      "sha256": "2912ac66701ab7d98c776c315195039bd675835a9686fe091245004b73d20779",
+      "encoding": "utf-8",
+      "text": "Device be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8 public key 044ad6aa2e39998989b0f619259f9867433334f3448ee59d42d7766948753e9cf14df79743623deca7c2177084eb9a51f50f590ce867f49cb408844f976c1695db credential ID 31\nDurable work: authenticated empty or completed\nPairing revision 24 enabled true\nOwner 8be5fe9cbc21f6e60dcc35e5a35679d86167673394d0509ebc3213eb1e881b53 permissions 7a83a1a637fd715c9c2806eebe53d2cb5786c5d12e647aba0e7963e36db83a56\n"
+    },
+    {
+      "label": "fresh-echo",
+      "args": [
+        "peer",
+        "waveshare-host",
+        "192.168.1.134:5683",
+        "192.168.1.144:5683",
+        "--probe-echo"
+      ],
+      "start": "2026-10-21T01:59:58.109590+00:00",
+      "end": "2026-10-21T01:59:59.562241+00:00",
+      "exit": 0,
+      "file": "installed-pressure-fresh-echo.log",
+      "bytes": 314,
+      "sha256": "1b6fee07819ccafca933679db27ffb7d9811c6f90b43c2542c539b3741b9b6c7",
+      "encoding": "utf-8",
+      "text": "Pairing restored; waiting for peer at 192.168.1.144:5683.\nFresh EDHOC/OSCORE session generation 1 connected to be0ecab41b4f532d64099ea920697139b3eaac0aaa1b324c267cba447417ccb8.\nProtected probe received code 5.03 (Max-Age 1s); retrying this idempotent probe in the same session.\nProtected probe passed (code 2.05).\n"
+    }
+  ],
+  "finite_api_capture": {
+    "raw_bytes": 56855,
+    "raw_sha256": "b0c9a8c7f03cbea722028bb440b3ed079a5a07613b3f39f5be3e2d84991c084f",
+    "raw_kept_private": true,
+    "rows": 206,
+    "complete_task_snapshots": 12,
+    "tasks_per_snapshot": 12,
+    "task_rows": 144,
+    "heap_rows": 24,
+    "network_rows": 12,
+    "admission_rows": 7,
+    "connections": 1,
+    "overflow": false,
+    "all_8bit": {
+      "capacity": 361796,
+      "max_nonfree": 295496,
+      "min_free": 66300,
+      "min_largest_block": 31744,
+      "region_minimum_nonfree_envelope": 305532
+    },
+    "worker": {
+      "max_observed_touched": 177080,
+      "reservation": 196608
+    },
+    "network_first": {
+      "at": "2026-10-21T01:59:22.471766+00:00",
+      "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+      "rx": 6,
+      "tx": 12,
+      "dropped": 0,
+      "stack_high_water_bytes": 177080,
+      "stack_capacity_bytes": 196608,
+      "polls": 54,
+      "idle_waits": 14,
+      "scheduler_yields": 0,
+      "wait_errors": 0
+    },
+    "network_last": {
+      "at": "2026-10-21T02:00:17.554315+00:00",
+      "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+      "rx": 31,
+      "tx": 38,
+      "dropped": 0,
+      "stack_high_water_bytes": 177080,
+      "stack_capacity_bytes": 196608,
+      "polls": 133,
+      "idle_waits": 30,
+      "scheduler_yields": 0,
+      "wait_errors": 0
+    },
+    "admission_observations": [
+      {
+        "at": "2026-10-21T01:59:30.764916+00:00",
+        "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+        "at_ms": 2278166,
+        "scope": "retained_app",
+        "token_refused": 0,
+        "rx_refused": 0,
+        "tx_refused": 0,
+        "refusal_sent": 0,
+        "refusal_unsent": 0,
+        "hard_rx": 0,
+        "hard_tx": 0,
+        "rx_accepted": 0,
+        "progress": 1
+      },
+      {
+        "at": "2026-10-21T01:59:31.776755+00:00",
+        "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+        "at_ms": 2279172,
+        "scope": "retained_app",
+        "token_refused": 0,
+        "rx_refused": 0,
+        "tx_refused": 1,
+        "refusal_sent": 0,
+        "refusal_unsent": 0,
+        "hard_rx": 0,
+        "hard_tx": 0,
+        "rx_accepted": 1,
+        "progress": 3
+      },
+      {
+        "at": "2026-10-21T01:59:39.152623+00:00",
+        "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+        "at_ms": 2286552,
+        "scope": "retained_app",
+        "token_refused": 0,
+        "rx_refused": 0,
+        "tx_refused": 1,
+        "refusal_sent": 0,
+        "refusal_unsent": 0,
+        "hard_rx": 0,
+        "hard_tx": 0,
+        "rx_accepted": 2,
+        "progress": 6
+      },
+      {
+        "at": "2026-10-21T01:59:47.131093+00:00",
+        "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+        "at_ms": 2294532,
+        "scope": "retained_app",
+        "token_refused": 0,
+        "rx_refused": 0,
+        "tx_refused": 2,
+        "refusal_sent": 1,
+        "refusal_unsent": 0,
+        "hard_rx": 0,
+        "hard_tx": 0,
+        "rx_accepted": 7,
+        "progress": 14
+      },
+      {
+        "at": "2026-10-21T01:59:54.744617+00:00",
+        "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+        "at_ms": 2302144,
+        "scope": "retained_app",
+        "token_refused": 0,
+        "rx_refused": 0,
+        "tx_refused": 5,
+        "refusal_sent": 2,
+        "refusal_unsent": 0,
+        "hard_rx": 0,
+        "hard_tx": 0,
+        "rx_accepted": 13,
+        "progress": 25
+      },
+      {
+        "at": "2026-10-21T02:00:02.741883+00:00",
+        "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+        "at_ms": 2310144,
+        "scope": "retained_app",
+        "token_refused": 0,
+        "rx_refused": 0,
+        "tx_refused": 1,
+        "refusal_sent": 1,
+        "refusal_unsent": 0,
+        "hard_rx": 0,
+        "hard_tx": 0,
+        "rx_accepted": 3,
+        "progress": 6
+      },
+      {
+        "at": "2026-10-21T02:00:17.754995+00:00",
+        "run_id": "802aed318cb34cdebc3830079d0f1d5c",
+        "at_ms": 2325155,
+        "scope": "retained_app",
+        "token_refused": 0,
+        "rx_refused": 0,
+        "tx_refused": 1,
+        "refusal_sent": 1,
+        "refusal_unsent": 0,
+        "hard_rx": 0,
+        "hard_tx": 0,
+        "rx_accepted": 3,
+        "progress": 10
+      }
+    ]
+  },
+  "limits": [
+    "Only selected retained-TX admission/reuse and finite malformed interleaving; no installed NSTART refusal, rate fairness, every-queue or sustained hostile-load claim",
+    "Initial authenticated exact-retry control and source-bound first/retry/release/recovery guards reject old queued calls, natural cancellation, session replacement and empty/unprotected ACK false passes",
+    "Network does not attest firmware source; installation/source hashes come from retained authenticated OTA provenance",
+    "Public serial-info equality covers that projection, not all flash bytes; sealed pairing and journal hashes cover those exact host files",
+    "API capture is a finite running-phase observer across qualification and fresh echo. Capability views overlap and task watermarks are lifetime touched-stack observations; no improvement or initialization/rekey/ISR/terminal peak claim",
+    "Admission rows are periodic per-App observations. Fresh echo creates a new App; counters reset, and no final same-App three-refusal counter total is inferred from the sparse capture",
+    "Named host owner sum is not whole-host process/stack/allocator/runtime peak. Gate is nested in Managed; metadata+Gate ceiling is overlapping and is not added twice"
+  ]
+}
