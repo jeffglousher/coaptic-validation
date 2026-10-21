@@ -89,6 +89,7 @@ impl ServiceState {
     fn network(self) -> bool {
         matches!(self, Self::Running | Self::Draining(_))
     }
+    #[cfg(feature = "async-network")]
     fn deadline(self) -> Option<u64> {
         match self {
             Self::Draining(at) | Self::Held(at) => Some(at),
