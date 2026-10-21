@@ -1,4 +1,4 @@
-//! Socket-free, feature-disabled request-path diagnostic.
+//! Socket-free, diagnostics-disabled request-path diagnostic.
 //!
 //! Identical fixtures can link different Coaptic revisions to isolate core work
 //! from OS socket scheduling. Request preparation and complete reply validation
@@ -13,7 +13,7 @@ const BODY: [u8; 64] = [0x5a; 64];
 const PEER: Endpoint = Endpoint::v4([127, 0, 0, 1], 30000);
 
 struct CoreIo {
-    input: [u8; 64],
+    input: [u8; 1472],
     input_len: Option<usize>,
     output: [u8; 1472],
     output_len: Option<usize>,
@@ -52,40 +52,67 @@ fn representation(_: Request<'_>) -> Response<'static> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 2 {
-        return Err("usage: bench-core OPERATIONS (1..=60000)".into());
+    if !(2..=3).contains(&args.len()) {
+        return Err("usage: bench-core OPERATIONS (1..=60000) [unprotected|oscore]".into());
     }
     let operations: usize = args[1].parse()?;
     if !(1..=60000).contains(&operations) {
         return Err("operation limit".into());
     }
-    let mut app = App::builder()
-        .allow_unprotected()
+    let security = args.get(2).map_or("unprotected", String::as_str);
+    let (client_context, server_context) = match security {
+        "unprotected" => (None, None),
+        "oscore" => {
+            let mut material = [0; 24];
+            getrandom::fill(&mut material)?;
+            let derive = |sender_id, recipient_id| {
+                coaptic::oscore::SecurityContext::derive(coaptic::oscore::DeriveParams {
+                    master_secret: &material[..16],
+                    master_salt: &material[16..],
+                    sender_id,
+                    recipient_id,
+                    id_context: &[],
+                })
+            };
+            let pair = (Some(derive(&[], &[1])?), Some(derive(&[1], &[])?));
+            material.fill(0);
+            pair
+        }
+        _ => return Err("security selection".into()),
+    };
+    let mut client_context = client_context;
+    let builder = App::builder()
         .routes::<1>()
         .block_wise::<true>()
         .randomness(|bytes| getrandom::fill(bytes).is_ok())
-        .route("bench", get(representation))
-        .bind_alloc(
-            CoreIo {
-                input: [0; 64],
-                input_len: None,
-                output: [0; 1472],
-                output_len: None,
-            },
-            Capacities {
-                rx_datagram_slots: 4,
-                rx_datagram_bytes: 1472,
-                tx_datagram_slots: 4,
-                tx_datagram_bytes: 1472,
-                dedup_entries: 8,
-                observe_entries: 4,
-                rx_body_slots: Some(1),
-                rx_body_bytes: Some(1024),
-                tx_body_slots: Some(2),
-                tx_body_bytes: Some(1024),
-            },
-        )?;
+        .route("bench", get(representation));
+    let builder = if let Some(context) = server_context {
+        builder.oscore(context)
+    } else {
+        builder.allow_unprotected()
+    };
+    let mut app = builder.bind_alloc(
+        CoreIo {
+            input: [0; 1472],
+            input_len: None,
+            output: [0; 1472],
+            output_len: None,
+        },
+        Capacities {
+            rx_datagram_slots: 4,
+            rx_datagram_bytes: 1472,
+            tx_datagram_slots: 4,
+            tx_datagram_bytes: 1472,
+            dedup_entries: 8,
+            observe_entries: 4,
+            rx_body_slots: Some(1),
+            rx_body_bytes: Some(1024),
+            tx_body_slots: Some(2),
+            tx_body_bytes: Some(1024),
+        },
+    )?;
     let mut latencies = Vec::with_capacity(operations);
+    let mut opened = [0; 1472];
     let clock = Instant::now();
     for operation in 0..operations + 128 {
         let mid = MessageId::new(operation as u16);
@@ -93,7 +120,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let options = [Opt::uri_path("bench")];
         let request = Message::con(Code::GET, mid, token).with_options(&options);
         let io = app.transport_mut();
-        io.input_len = Some(request.encode(&mut io.input)?);
+        io.input_len = Some(match client_context.as_mut() {
+            Some(context) => context.protect_request(&request, &mut io.input)?,
+            None => request.encode(&mut io.input)?,
+        });
         let now = clock.elapsed().as_millis() as u64;
         let started = Instant::now();
         let outcome = app.poll(now);
@@ -101,7 +131,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         outcome.map_err(|_| "poll failure")?;
         let io = app.transport_mut();
         let n = io.output_len.take().ok_or("missing response")?;
-        let reply = decode(&io.output[..n])?;
+        let wire = decode(&io.output[..n])?;
+        let reply = match client_context.as_mut() {
+            Some(context) => {
+                let binding = context.take(token).ok_or("request binding")?;
+                context.unprotect_response(&wire, binding, &mut opened)?
+            }
+            None => wire,
+        };
         let mut etags = reply.etag();
         if reply.message_id() != mid
             || reply.token() != token
@@ -119,7 +156,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             latencies.push(elapsed);
         }
     }
-    print!("{{\"operations\":{operations},\"warmup\":128,\"latencies_ns\":[");
+    print!(
+        "{{\"operations\":{operations},\"warmup\":128,\"security\":\"{security}\",\"measurement\":\"server App::poll only; request preparation and complete response verification outside clock; OSCORE responses authenticated\",\"latencies_ns\":["
+    );
     for (i, elapsed) in latencies.iter().enumerate() {
         if i > 0 {
             print!(",");
