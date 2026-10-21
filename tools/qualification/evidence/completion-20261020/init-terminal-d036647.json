@@ -1,0 +1,927 @@
+{
+  "schema": "coaptic-finite-init-terminal-evidence/1",
+  "scope": "Finite selected ESP32 startup, owner/session/completion watermarks, normal-start restore and terminal accounting; local source provenance, not remote attestation",
+  "library": "d036647698dc38c7b351621cbcbcc61301376f91",
+  "suite_archive": "6f450f6d35418609a2f3eede66150156123e9b38",
+  "suite_same_tree_merge": "eb6dcfd92d356da0757d31c17ad523cbe87d95e2",
+  "archive": {
+    "sha256": "ffd66512d7ebe1ea602f7005a819b2344beeaccc40ff4e9954a36ba50f2ef46e",
+    "bytes": 4735214,
+    "features": [
+      "network",
+      "standalone",
+      "oscore",
+      "pairing",
+      "async-network"
+    ],
+    "compiler": "rustc 1.97.0-nightly (8ea53bcd7 2026-07-08) (1.97.0.0)\nbinary: rustc\ncommit-hash: 8ea53bcd7257011cbf96f6398551bdc650b04334\ncommit-date: 2026-07-08\nhost: x86_64-pc-windows-msvc\nrelease: 1.97.0-nightly\nLLVM version: 21.1.3\n"
+  },
+  "firmware_cohorts": [
+    {
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "startup_delay_ms": 60000,
+      "private_configuration": {
+        "bytes": 1990,
+        "sha256": "1ca4f3ebb3dbe104534fa9fd855c58440fc4426a55df65dcd8a9095363e61d72"
+      },
+      "artifacts": [
+        {
+          "name": "firmware.ota.bin",
+          "bytes": 2330128,
+          "sha256": "eff053eb1ebe062e751fc1a931a84929600a51be15b97d8a89ed2022aaf3eedf"
+        },
+        {
+          "name": "firmware.elf",
+          "bytes": 14842568,
+          "sha256": "64efda36bc8d99c0df1b61d4b55a5eccd1010470f4d5efb8023be8578ecfae7a"
+        },
+        {
+          "name": "coaptic-waveshare.map",
+          "bytes": 11938063,
+          "sha256": "85278b4febb3774453e9226cecd9d9b382ca5201f521906fca6086e543f0ceaf"
+        }
+      ],
+      "private_elf_map_zip": {
+        "bytes": 6896190,
+        "sha256": "86a7161ca9689bafc51441392ebcee8af082cf338bead213349b5372563a4a3c"
+      },
+      "ota_install": {
+        "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+        "started": "2026-10-21T02:40:46.067354+00:00",
+        "pairing_before": "e87889cd21affb9ebe07be2b07f4e0e45031fd04b0dc84440166f8107f4f0e20",
+        "journal_before": "5222d42f511c0d8eae14067bc1d745f226a658a218c86007a89acc619281be2f",
+        "exit": 0,
+        "elapsed_seconds": 24.019,
+        "finished": "2026-10-21T02:41:10.149320+00:00",
+        "pairing_after_upload": "e87889cd21affb9ebe07be2b07f4e0e45031fd04b0dc84440166f8107f4f0e20",
+        "journal_after_upload": "5222d42f511c0d8eae14067bc1d745f226a658a218c86007a89acc619281be2f",
+        "host_records_unchanged": true
+      }
+    },
+    {
+      "run_id": "31e69a1bce804eedb783c7ff9f218afb",
+      "startup_delay_ms": 0,
+      "private_configuration": {
+        "bytes": 1986,
+        "sha256": "5f660e649eff0777abb9f70ca4178ccec3995346473659c38caaa4d536a71647"
+      },
+      "artifacts": [
+        {
+          "name": "firmware.ota.bin",
+          "bytes": 2330128,
+          "sha256": "a5c6fa3b50740a980b20bfa4971022ed744918f1afcb429489d4079b0782ddcf"
+        },
+        {
+          "name": "firmware.elf",
+          "bytes": 14842560,
+          "sha256": "5e68add06658a621411d238f5fdbd3a94c08521cd9380fddcf18a00f75e02e3e"
+        },
+        {
+          "name": "coaptic-waveshare.map",
+          "bytes": 11938063,
+          "sha256": "5f93800b1825137a73b6c55e61514043a22f4a58ac8861d03dd6c751f7407696"
+        }
+      ],
+      "private_elf_map_zip": {
+        "bytes": 6768976,
+        "sha256": "c1622cd1ff1b34a8b4f8e9aab0f7ed37ea2cd35409297ef3473d9b50b4ffe6fe"
+      },
+      "ota_install": {
+        "run_id": "31e69a1bce804eedb783c7ff9f218afb",
+        "started": "2026-10-21T02:57:17.569228+00:00",
+        "pairing_before": "e87889cd21affb9ebe07be2b07f4e0e45031fd04b0dc84440166f8107f4f0e20",
+        "journal_before": "5222d42f511c0d8eae14067bc1d745f226a658a218c86007a89acc619281be2f",
+        "exit": 0,
+        "elapsed_seconds": 23.524,
+        "finished": "2026-10-21T02:57:41.151605+00:00",
+        "pairing_after_upload": "e87889cd21affb9ebe07be2b07f4e0e45031fd04b0dc84440166f8107f4f0e20",
+        "journal_after_upload": "5222d42f511c0d8eae14067bc1d745f226a658a218c86007a89acc619281be2f",
+        "host_records_unchanged": true
+      }
+    }
+  ],
+  "currently_installed_run_id": "31e69a1bce804eedb783c7ff9f218afb",
+  "captures": [
+    {
+      "file": "resource-phases-api.jsonl",
+      "bytes": 100185,
+      "sha256": "68572c5d010161f4d3ea7288b26c25a5aef6285498c6949787fa09dd61ff2fe6",
+      "outer_records": 363,
+      "connections": 2,
+      "capture_overflow": false,
+      "accepted_selected_run_records": 240,
+      "invalid_inner_json": [
+        {
+          "outer_record": 166,
+          "kind": "COAPTIC_RESOURCES",
+          "payload_bytes": 237,
+          "line_bytes": 294,
+          "line_sha256": "6097b97598af4196ecc641298a2bfb7094b2b76edc9e945a6000a25a8397bfa3"
+        },
+        {
+          "outer_record": 168,
+          "kind": "COAPTIC_RESOURCES",
+          "payload_bytes": 237,
+          "line_bytes": 294,
+          "line_sha256": "cf742dcc4b2b2f31a62342aa1650fee3568650309fbad3c6977c1eebb4a53287"
+        }
+      ]
+    },
+    {
+      "file": "resource-phases-session-api.jsonl",
+      "bytes": 61244,
+      "sha256": "07ac5af8b91b8f793b932bec3b6079dc8859820015bbf88fe4bf66d8fbc09815",
+      "outer_records": 218,
+      "connections": 1,
+      "capture_overflow": false,
+      "accepted_selected_run_records": 194,
+      "invalid_inner_json": [
+        {
+          "outer_record": 34,
+          "kind": "COAPTIC_RESOURCES",
+          "payload_bytes": 237,
+          "line_bytes": 294,
+          "line_sha256": "7818a866e9f3893d35ce43d31e6e1da390af8dcb295a0618c96c712866b0e527"
+        },
+        {
+          "outer_record": 39,
+          "kind": "COAPTIC_RESOURCES",
+          "payload_bytes": 237,
+          "line_bytes": 294,
+          "line_sha256": "02b91bc5b507f1b7a3e72e57b79e2771ad5254392228137eea13dd26e62ef149"
+        }
+      ]
+    },
+    {
+      "file": "resource-phases-terminal-normal-api.jsonl",
+      "bytes": 40469,
+      "sha256": "720d3a30ef19dcbd80eb80be3fbc7e7b082466cc6c41e08625fd2c1da9163730",
+      "outer_records": 149,
+      "connections": 2,
+      "capture_overflow": false,
+      "accepted_selected_run_records": 144,
+      "invalid_inner_json": []
+    }
+  ],
+  "summary_by_boot": [
+    {
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "complete_task_snapshots": 30,
+      "numeric_task_rows": 359,
+      "valid_heap_rows": 60,
+      "heap_phases": [
+        "before_platform_setup",
+        "running",
+        "task_started",
+        "worker_stopped"
+      ],
+      "maximum_sampled_all8_payload_bytes": 292996,
+      "maximum_sampled_all8_nonfree_bytes": 297988,
+      "minimum_sampled_all8_free_bytes": 63808,
+      "minimum_reported_all8_largest_block_bytes": 31744,
+      "lifetime_region_minimum_nonfree_envelope_bytes": 315968,
+      "maximum_network_touched_stack_bytes": 177092
+    },
+    {
+      "run_id": "31e69a1bce804eedb783c7ff9f218afb",
+      "complete_task_snapshots": 6,
+      "numeric_task_rows": 72,
+      "valid_heap_rows": 12,
+      "heap_phases": [
+        "running"
+      ],
+      "maximum_sampled_all8_payload_bytes": 292196,
+      "maximum_sampled_all8_nonfree_bytes": 297212,
+      "minimum_sampled_all8_free_bytes": 64584,
+      "minimum_reported_all8_largest_block_bytes": 31744,
+      "lifetime_region_minimum_nonfree_envelope_bytes": 307464,
+      "maximum_network_touched_stack_bytes": 177092
+    }
+  ],
+  "selected_valid_records": [
+    {
+      "at": "2026-10-21T02:42:09.975181+00:00",
+      "kind": "COAPTIC_RESOURCES",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "before_platform_setup",
+      "caps": "internal_8bit",
+      "total_bytes": 361796,
+      "allocated_bytes": 88016,
+      "free_bytes": 268904,
+      "region_min_free_sum_bytes": 263740,
+      "largest_free_block_bytes": 221184,
+      "coaptic_task_stack_reserved_bytes": 0,
+      "sdk_snapshot_bytes": 28
+    },
+    {
+      "at": "2026-10-21T02:42:09.981589+00:00",
+      "kind": "COAPTIC_RESOURCES",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "before_platform_setup",
+      "caps": "all_8bit",
+      "total_bytes": 361796,
+      "allocated_bytes": 90144,
+      "free_bytes": 266764,
+      "region_min_free_sum_bytes": 263740,
+      "largest_free_block_bytes": 221184,
+      "coaptic_task_stack_reserved_bytes": 0,
+      "sdk_snapshot_bytes": 28
+    },
+    {
+      "at": "2026-10-21T02:42:09.981641+00:00",
+      "kind": "COAPTIC_TASKS",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "before_platform_setup",
+      "count": 11,
+      "capacity": 32,
+      "complete_snapshot": true,
+      "scratch_bytes": 1152
+    },
+    {
+      "at": "2026-10-21T02:42:09.981673+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "before_platform_setup",
+      "task_id": 8,
+      "priority": 1,
+      "minimum_free_stack_bytes": 4530
+    },
+    {
+      "at": "2026-10-21T02:42:09.981985+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "before_platform_setup",
+      "task_id": 5,
+      "priority": 0,
+      "minimum_free_stack_bytes": 820
+    },
+    {
+      "at": "2026-10-21T02:42:09.982035+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "before_platform_setup",
+      "task_id": 6,
+      "priority": 0,
+      "minimum_free_stack_bytes": 828
+    },
+    {
+      "at": "2026-10-21T02:42:09.982072+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "before_platform_setup",
+      "task_id": 10,
+      "priority": 18,
+      "minimum_free_stack_bytes": 1952
+    },
+    {
+      "at": "2026-10-21T02:42:09.982101+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "before_platform_setup",
+      "task_id": 2,
+      "priority": 24,
+      "minimum_free_stack_bytes": 532
+    },
+    {
+      "at": "2026-10-21T02:42:09.991601+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "before_platform_setup",
+      "task_id": 1,
+      "priority": 24,
+      "minimum_free_stack_bytes": 540
+    },
+    {
+      "at": "2026-10-21T02:42:09.991648+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "before_platform_setup",
+      "task_id": 11,
+      "priority": 20,
+      "minimum_free_stack_bytes": 2992
+    },
+    {
+      "at": "2026-10-21T02:42:09.991679+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "before_platform_setup",
+      "task_id": 13,
+      "priority": 1,
+      "minimum_free_stack_bytes": 2288
+    },
+    {
+      "at": "2026-10-21T02:42:09.991706+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "before_platform_setup",
+      "task_id": 3,
+      "priority": 22,
+      "minimum_free_stack_bytes": 3020
+    },
+    {
+      "at": "2026-10-21T02:42:10.000095+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "before_platform_setup",
+      "task_id": 12,
+      "priority": 23,
+      "minimum_free_stack_bytes": 4508
+    },
+    {
+      "at": "2026-10-21T02:42:10.000143+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "before_platform_setup",
+      "task_id": 7,
+      "priority": 1,
+      "minimum_free_stack_bytes": 1380
+    },
+    {
+      "at": "2026-10-21T02:42:10.000176+00:00",
+      "kind": "COAPTIC_ENTROPY",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "worker_owner_bytes": 336,
+      "owner_ceiling_bytes": 512,
+      "seed_handoff_bytes": 32,
+      "seed_scratch_bytes": 32,
+      "max_request_bytes": 256,
+      "generation_limit_bytes": 4294967296,
+      "component_inline_bytes": 336,
+      "component_inline_ceiling_bytes": 1024,
+      "tls_binding_bytes_per_task": 8,
+      "tls_binding_alignment": 4,
+      "linked_tls_reserved_bytes_per_task": 16
+    },
+    {
+      "at": "2026-10-21T02:42:10.014372+00:00",
+      "kind": "COAPTIC_RESOURCES",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "task_started",
+      "caps": "internal_8bit",
+      "total_bytes": 361796,
+      "allocated_bytes": 292680,
+      "free_bytes": 64136,
+      "region_min_free_sum_bytes": 63044,
+      "largest_free_block_bytes": 31744,
+      "coaptic_task_stack_reserved_bytes": 196608,
+      "sdk_snapshot_bytes": 28
+    },
+    {
+      "at": "2026-10-21T02:42:10.021708+00:00",
+      "kind": "COAPTIC_RESOURCES",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "task_started",
+      "caps": "all_8bit",
+      "total_bytes": 361796,
+      "allocated_bytes": 292848,
+      "free_bytes": 63956,
+      "region_min_free_sum_bytes": 62316,
+      "largest_free_block_bytes": 31744,
+      "coaptic_task_stack_reserved_bytes": 196608,
+      "sdk_snapshot_bytes": 28
+    },
+    {
+      "at": "2026-10-21T02:42:10.021757+00:00",
+      "kind": "COAPTIC_TASKS",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "task_started",
+      "count": 12,
+      "capacity": 32,
+      "complete_snapshot": true,
+      "scratch_bytes": 1152
+    },
+    {
+      "at": "2026-10-21T02:42:10.021795+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "task_started",
+      "task_id": 8,
+      "priority": 1,
+      "minimum_free_stack_bytes": 4466
+    },
+    {
+      "at": "2026-10-21T02:42:10.021826+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "task_started",
+      "task_id": 14,
+      "priority": 1,
+      "minimum_free_stack_bytes": 128224
+    },
+    {
+      "at": "2026-10-21T02:42:10.033854+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "task_started",
+      "task_id": 5,
+      "priority": 0,
+      "minimum_free_stack_bytes": 820
+    },
+    {
+      "at": "2026-10-21T02:42:10.033903+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "task_started",
+      "task_id": 6,
+      "priority": 0,
+      "minimum_free_stack_bytes": 828
+    },
+    {
+      "at": "2026-10-21T02:42:10.033934+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "task_started",
+      "task_id": 10,
+      "priority": 18,
+      "minimum_free_stack_bytes": 1952
+    },
+    {
+      "at": "2026-10-21T02:42:10.033960+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "task_started",
+      "task_id": 13,
+      "priority": 1,
+      "minimum_free_stack_bytes": 2288
+    },
+    {
+      "at": "2026-10-21T02:42:10.043347+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "task_started",
+      "task_id": 2,
+      "priority": 24,
+      "minimum_free_stack_bytes": 532
+    },
+    {
+      "at": "2026-10-21T02:42:10.043384+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "task_started",
+      "task_id": 1,
+      "priority": 24,
+      "minimum_free_stack_bytes": 540
+    },
+    {
+      "at": "2026-10-21T02:42:10.043410+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "task_started",
+      "task_id": 3,
+      "priority": 22,
+      "minimum_free_stack_bytes": 3020
+    },
+    {
+      "at": "2026-10-21T02:42:10.043433+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "task_started",
+      "task_id": 12,
+      "priority": 23,
+      "minimum_free_stack_bytes": 4508
+    },
+    {
+      "at": "2026-10-21T02:42:10.058043+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "task_started",
+      "task_id": 7,
+      "priority": 1,
+      "minimum_free_stack_bytes": 1380
+    },
+    {
+      "at": "2026-10-21T02:42:10.058082+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "task_started",
+      "task_id": 11,
+      "priority": 20,
+      "minimum_free_stack_bytes": 2992
+    },
+    {
+      "at": "2026-10-21T02:42:10.266685+00:00",
+      "kind": "COAPTIC_RESOURCE_PHASE",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "before_owner_construction",
+      "session_generation": 0,
+      "used_high_water_bytes": 127936,
+      "capacity_bytes": 196608
+    },
+    {
+      "at": "2026-10-21T02:42:10.273172+00:00",
+      "kind": "COAPTIC_RESOURCE_PHASE",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "owner_constructed",
+      "session_generation": 0,
+      "used_high_water_bytes": 177092,
+      "capacity_bytes": 196608
+    },
+    {
+      "at": "2026-10-21T02:44:52.463904+00:00",
+      "kind": "COAPTIC_RESOURCE_PHASE",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "session_established",
+      "session_generation": 2,
+      "used_high_water_bytes": 177092,
+      "capacity_bytes": 196608
+    },
+    {
+      "at": "2026-10-21T02:44:53.448650+00:00",
+      "kind": "COAPTIC_RESOURCE_PHASE",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "authenticated_completion",
+      "session_generation": 2,
+      "used_high_water_bytes": 177092,
+      "capacity_bytes": 196608
+    },
+    {
+      "at": "2026-10-21T02:57:40.268101+00:00",
+      "kind": "COAPTIC_RESOURCES",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "worker_stopped",
+      "caps": "internal_8bit",
+      "total_bytes": 361796,
+      "allocated_bytes": 291444,
+      "free_bytes": 65368,
+      "region_min_free_sum_bytes": 45828,
+      "largest_free_block_bytes": 31744,
+      "coaptic_task_stack_reserved_bytes": 196608,
+      "sdk_snapshot_bytes": 28
+    },
+    {
+      "at": "2026-10-21T02:57:40.268166+00:00",
+      "kind": "COAPTIC_RESOURCES",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "worker_stopped",
+      "caps": "all_8bit",
+      "total_bytes": 361796,
+      "allocated_bytes": 292996,
+      "free_bytes": 63808,
+      "region_min_free_sum_bytes": 45828,
+      "largest_free_block_bytes": 31744,
+      "coaptic_task_stack_reserved_bytes": 196608,
+      "sdk_snapshot_bytes": 28
+    },
+    {
+      "at": "2026-10-21T02:57:40.268201+00:00",
+      "kind": "COAPTIC_TASKS",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "worker_stopped",
+      "count": 12,
+      "capacity": 32,
+      "complete_snapshot": true,
+      "scratch_bytes": 1152
+    },
+    {
+      "at": "2026-10-21T02:57:40.268229+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "worker_stopped",
+      "task_id": 8,
+      "priority": 1,
+      "minimum_free_stack_bytes": 3650
+    },
+    {
+      "at": "2026-10-21T02:57:40.273405+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "worker_stopped",
+      "task_id": 5,
+      "priority": 0,
+      "minimum_free_stack_bytes": 820
+    },
+    {
+      "at": "2026-10-21T02:57:40.273443+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "worker_stopped",
+      "task_id": 6,
+      "priority": 0,
+      "minimum_free_stack_bytes": 828
+    },
+    {
+      "at": "2026-10-21T02:57:40.273468+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "worker_stopped",
+      "task_id": 10,
+      "priority": 18,
+      "minimum_free_stack_bytes": 1776
+    },
+    {
+      "at": "2026-10-21T02:57:40.273490+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "worker_stopped",
+      "task_id": 14,
+      "priority": 1,
+      "minimum_free_stack_bytes": 19516
+    },
+    {
+      "at": "2026-10-21T02:57:40.280472+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "worker_stopped",
+      "task_id": 11,
+      "priority": 20,
+      "minimum_free_stack_bytes": 2992
+    },
+    {
+      "at": "2026-10-21T02:57:40.280513+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "worker_stopped",
+      "task_id": 7,
+      "priority": 1,
+      "minimum_free_stack_bytes": 1380
+    },
+    {
+      "at": "2026-10-21T02:57:40.280539+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "worker_stopped",
+      "task_id": 13,
+      "priority": 1,
+      "minimum_free_stack_bytes": 2288
+    },
+    {
+      "at": "2026-10-21T02:57:40.280564+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "worker_stopped",
+      "task_id": 3,
+      "priority": 22,
+      "minimum_free_stack_bytes": 3020
+    },
+    {
+      "at": "2026-10-21T02:57:40.287890+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "worker_stopped",
+      "task_id": 12,
+      "priority": 23,
+      "minimum_free_stack_bytes": 4508
+    },
+    {
+      "at": "2026-10-21T02:57:40.287943+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "worker_stopped",
+      "task_id": 1,
+      "priority": 24,
+      "minimum_free_stack_bytes": 540
+    },
+    {
+      "at": "2026-10-21T02:57:40.287983+00:00",
+      "kind": "COAPTIC_TASK_STACK",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "phase": "worker_stopped",
+      "task_id": 2,
+      "priority": 24,
+      "minimum_free_stack_bytes": 532
+    },
+    {
+      "at": "2026-10-21T02:57:40.288021+00:00",
+      "kind": "COAPTIC_STACK_FINAL",
+      "run_id": "ac4d17ad6ed04eada0e5c4fef7121a05",
+      "used_high_water_bytes": 177092,
+      "capacity_bytes": 196608
+    }
+  ],
+  "layout": {
+    "normal_elf_sha256": "5e68add06658a621411d238f5fdbd3a94c08521cd9380fddcf18a00f75e02e3e",
+    "managed_owner_bytes": 29184,
+    "worker_future_bytes": 49560,
+    "async_runtime_metadata_bytes": 104,
+    "entropy_owner_bytes": 336,
+    "cpp_component_inline_bytes": 336,
+    "tls_raw_bytes_per_task": 8,
+    "tls_reserved_bytes_per_task": 16,
+    "selected_nested_frames_bytes": {
+      "cpp_worker_entry": 32,
+      "rust_entropy_owner_entry": 816,
+      "run_seeded": 32,
+      "pairing_owner": 49760,
+      "async_driver": 10464
+    },
+    "code_proof": {
+      "file": "init-terminal-owner-layout.txt",
+      "bytes": 9109,
+      "sha256": "ec5dc1a0148c255a365781c0f62c0d2f3d5b4651cee57401e6e8948dc129e293"
+    },
+    "ram_sections": [
+      {
+        "name": ".rtc.force_slow",
+        "address": 1342177280,
+        "bytes": 32
+      },
+      {
+        "name": ".rtc_reserved",
+        "address": 1611661288,
+        "bytes": 24
+      },
+      {
+        "name": ".iram0.vectors",
+        "address": 1077362688,
+        "bytes": 1028
+      },
+      {
+        "name": ".iram0.text",
+        "address": 1077363716,
+        "bytes": 69099
+      },
+      {
+        "name": ".dram0.dummy",
+        "address": 1070104576,
+        "bytes": 53760
+      },
+      {
+        "name": ".dram0.data",
+        "address": 1070158336,
+        "bytes": 18632
+      },
+      {
+        "name": ".noinit",
+        "address": 1070176968,
+        "bytes": 160
+      },
+      {
+        "name": ".dram0.bss",
+        "address": 1070177128,
+        "bytes": 28016
+      },
+      {
+        "name": ".iram0.text_end",
+        "address": 1077432815,
+        "bytes": 17
+      }
+    ],
+    "physical_partition": {
+      "capacity_bytes": 540672,
+      "main_sram_capacity_bytes": 524288,
+      "rtc_capacity_bytes": 16384,
+      "disjoint_domains": [
+        {
+          "name": "instruction cache",
+          "bytes": 16384,
+          "address_view": "IRAM",
+          "start": 1077346304,
+          "end_exclusive": 1077362688
+        },
+        {
+          "name": "data cache",
+          "bytes": 32768,
+          "address_view": "DRAM",
+          "start": 1070563328,
+          "end_exclusive": 1070596096
+        },
+        {
+          "name": "dedicated static IRAM",
+          "bytes": 16384,
+          "address_view": "IRAM",
+          "start": 1077362688,
+          "end_exclusive": 1077379072
+        },
+        {
+          "name": "shared D/IRAM static reservation including padding",
+          "bytes": 100568,
+          "address_view": "DRAM",
+          "start": 1070104576,
+          "end_exclusive": 1070205144
+        },
+        {
+          "name": "registered 8-bit SDK heap spans, main SRAM plus RTC-fast",
+          "bytes": 361796,
+          "note": "Already includes all dynamic task stacks/TCBs, transport/runtime/USB/security allocations and allocator control blocks; do not add these owners again."
+        },
+        {
+          "name": "derived ROM runtime exclusion",
+          "bytes": 4556,
+          "address_view": "DRAM",
+          "start": 1070526004,
+          "end_exclusive": 1070530560,
+          "status": "Inferred under the exact SDK heap-registry contract, not a direct ROM-table read."
+        },
+        {
+          "name": "RTC-fast persistent reserved data",
+          "bytes": 24,
+          "address_view": "RTC-fast",
+          "start": 1611661288,
+          "end_exclusive": 1611661312
+        },
+        {
+          "name": "RTC-slow static initialized data",
+          "bytes": 32,
+          "address_view": "RTC-slow",
+          "start": 1342177280,
+          "end_exclusive": 1342177312
+        },
+        {
+          "name": "RTC-slow remainder outside standard heaps",
+          "bytes": 8160,
+          "address_view": "RTC-slow",
+          "start": 1342177312,
+          "end_exclusive": 1342185472
+        }
+      ],
+      "equations": [
+        "16384 + 32768 + 16384 + 100568 + 361796 + 4556 + 24 + 32 + 8160 = 540672 physical capacity bytes",
+        "100551 static summary content + 17 IRAM tail-alignment bytes = 100568 shared physical reservation",
+        "425984 shared D/IRAM + 32768 DRAM-only + 8168 RTC-fast available - 100568 static - 4556 ROM = 361796 registered heap-span bytes"
+      ]
+    },
+    "matched_prior_descriptor_values": [
+      "soc_memory_regions",
+      "soc_memory_types prioritized capability words",
+      "all five compiled static exclusions",
+      "ISR reservation3072 inside.data"
+    ],
+    "sdkconfig_sha256": "e43635e8069683893d0fb90391b7eb20fc1ff9552cd3fc71cb5a98ae69dba43b",
+    "sdk_size_summary": {
+      "dram_data": 0,
+      "dram_bss": 0,
+      "dram_rodata": 0,
+      "dram_other": 0,
+      "used_dram": 0,
+      "dram_total": 0,
+      "used_dram_ratio": 0,
+      "dram_remain": 0,
+      "iram_vectors": 1028,
+      "iram_text": 15356,
+      "iram_other": 0,
+      "used_iram": 16384,
+      "iram_total": 16384,
+      "used_iram_ratio": 1,
+      "iram_remain": 0,
+      "diram_data": 18632,
+      "diram_bss": 28016,
+      "diram_text": 53743,
+      "diram_vectors": 0,
+      "diram_rodata": 0,
+      "diram_other": 160,
+      "diram_total": 341760,
+      "used_diram": 100551,
+      "used_diram_ratio": 0.29421523876404493,
+      "diram_remain": 241209,
+      "flash_code": 2087860,
+      "flash_rodata": 153108,
+      "flash_other": 264,
+      "used_flash_non_ram": 2241232,
+      "total_size": 2329991
+    },
+    "discarded_and_not_linked_minimum_reset_or_region_add_functions": [
+      "heap_caps_monitor_local_minimum_free_size_start",
+      "heap_caps_monitor_local_minimum_free_size_stop",
+      "multi_heap_reset_minimum_free_bytes",
+      "heap_caps_add_region",
+      "heap_caps_add_region_with_caps"
+    ]
+  },
+  "normal_post_install": {
+    "serial_public_inspection": "same principal/public key/KID31, revision24 enabled, original A82 owner, echo-only grant, Complete custody",
+    "fresh_probe_lines": [
+      "Fresh EDHOC/OSCORE session generation 1 connected to enrolled device",
+      "Protected probe received code 5.03 (Max-Age 1s); retrying this idempotent probe in the same session.",
+      "Protected echo received and acknowledged (45 bytes).",
+      "Protected probe passed (code 2.05)."
+    ],
+    "host_process_generation_is_not_device_retained_generation": true,
+    "retained_checkpoint": {
+      "observed": "2026-10-21 normal app-only installation and fresh protected echo",
+      "serial_info": "Device identity/public key/KID31 unchanged; authenticated empty or completed; Pairing revision24 enabledtrue; original ownerA82 andecho-only grant unchanged",
+      "fresh_echo": "Initial authenticated5.03/Max-Age1 then45B echo acknowledged and2.05 in host fresh generation1",
+      "journal": {
+        "bytes": 4768,
+        "sha256": "5222d42f511c0d8eae14067bc1d745f226a658a218c86007a89acc619281be2f"
+      },
+      "sealed_pairing": {
+        "bytes": 458,
+        "sha256": "e87889cd21affb9ebe07be2b07f4e0e45031fd04b0dc84440166f8107f4f0e20"
+      },
+      "source": "Tool outputs retained in thread; this checkpoint adds independently read hashes, not a newly fabricated raw CLI log"
+    }
+  },
+  "limits": [
+    "Four worker heap messages truncate and are invalid inner JSON; no full per-worker-phase heap snapshot or missing all8 counterpart is inferred. Host capture overflow:false is separate from firmware log completeness.",
+    "Setup/task-start/running/terminal heap records are complete. Sequential capability views overlap and may change between rows; sampled payload and total-minus-free nonfree are distinct.",
+    "Delayed boot includes rekey generation2 and graceful OTA stop; normal default0 boot has running snapshots and fresh protected work, but its early setup/session scalar logs were outside the capture.",
+    "Regional minima retain exercised lifetime history because reset/add-region entrypoints are discarded in this exact map; sum may combine different times/regions, including OTA, and is not simultaneous peak.",
+    "Managed/future/runtime/RNG/TLS and196608 worker reservation overlap existing stack/heap/static domains. Do not add nested object/frame sizes or OS/heap views again.",
+    "Worker touched-stack watermark is not absolute SP/ISR depth, minimum deployment RAM, every-task simultaneous use or proof of later task-parking maximum.",
+    "Finite OTA is app-only authenticated software reboot, not cold power interruption, interrupted persistent commit or hostile flash rollback protection.",
+    "Raw API captures/configurations/firmware/ELF/maps and credential material remain private; only selected numeric/public-code evidence is published."
+  ],
+  "prior_installed_protocol_source_reuse": {
+    "prior_core": "c08de2347649cb8d3b53020c0289707786cb0e0c",
+    "current_core": "d036647698dc38c7b351621cbcbcc61301376f91",
+    "git_diff_empty_paths": [
+      "src",
+      "Cargo.toml",
+      "Cargo.lock",
+      "build.rs",
+      ".cargo",
+      "crates/coaptic-io"
+    ],
+    "limits": "No fresh re-execution of earlier owner/recovery/pressure schedules follows. Earlier exact-image receipts retain their source, firmware adapters and process identities."
+  }
+}
