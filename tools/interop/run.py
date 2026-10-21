@@ -87,12 +87,28 @@ class Server:
             command(exe, "server", transport, self.number, family=family, echo=echo, sequence=sequence, replay=replay, path=path),
                                      stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                      stderr=self.stderr)
+        self.stdout_after_ready = bytearray()
+        self.stdout_after_ready_truncated = False
+        self.stdout_after_ready_complete = False
+        self.stdout_after_ready_error = None
         events = queue.Queue(maxsize=1)
         def read_ready():
+            ready_sent = False
             try:
                 events.put(self.proc.stdout.readline(65537))
+                ready_sent = True
+                # #115: keep the fatal event after ready; continue draining past
+                # the retained bound so a verbose child cannot fill its pipe.
+                while chunk := self.proc.stdout.read1(4096):
+                    available = 65536 - len(self.stdout_after_ready)
+                    self.stdout_after_ready.extend(chunk[:available])
+                    self.stdout_after_ready_truncated |= len(chunk) > available
+                self.stdout_after_ready_complete = True
             except Exception as error:
-                events.put(error)
+                if ready_sent:
+                    self.stdout_after_ready_error = str(error)[:512]
+                else:
+                    events.put(error)
         self.reader = threading.Thread(target=read_ready, daemon=True)
         self.reader.start()
         try:

@@ -20,16 +20,27 @@ ACTIVE_COMMANDS = []
 class EvidenceServer(Server):
     """Keep bounded failure diagnostics before Server closes its temporary file."""
     def __exit__(self, kind, value, traceback):
+        failure = None
         try:
             if kind is not None:
                 self.stderr.seek(0)
                 diagnostic = self.stderr.read(65537)
-                ACTIVE_COMMANDS.append({"role": "server", "argv": list(map(str, self.proc.args)),
-                                        "exit_code_before_cleanup": self.proc.poll(),
-                                        "stderr": diagnostic[:65536].decode(errors="replace"),
-                                        "stderr_truncated": len(diagnostic) > 65536})
+                failure = {"role": "server", "argv": list(map(str, self.proc.args)),
+                           "exit_code_before_cleanup": self.proc.poll(),
+                           "stderr": diagnostic[:65536].decode(errors="replace"),
+                           "stderr_truncated": len(diagnostic) > 65536}
         finally:
-            super().__exit__(kind, value, traceback)
+            try:
+                super().__exit__(kind, value, traceback)
+            finally:
+                if failure is not None:
+                    diagnostic = bytes(self.stdout_after_ready)
+                    failure.update(stdout_after_ready=diagnostic.decode(errors="replace"),
+                                   stdout_after_ready_hex=diagnostic.hex(),
+                                   stdout_after_ready_truncated=self.stdout_after_ready_truncated,
+                                   stdout_after_ready_complete=self.stdout_after_ready_complete,
+                                   stdout_after_ready_error=self.stdout_after_ready_error)
+                    ACTIVE_COMMANDS.append(failure)
 
 
 def require(value, message):
