@@ -1,12 +1,14 @@
 //! Selected synchronous device binding for the existing matched GET workload.
 //!
-//! The platform owns the socket, durable security store, clock, bounded wait and
+//! The platform owns the socket, clock, bounded wait and protected runs
+//! additionally own durable security storage. The platform also owns the
 //! output sink. Observations stream after each complete operation; no trace,
 //! packet buffer or sample array is retained here. This is the body-enabled
 //! Constrained configuration, not the SmallDevice preset or Service profile.
 #![forbid(unsafe_code)]
 
 use crate::read_campaign::{self, Observation};
+#[cfg(feature = "oscore")]
 use crate::security_state::{Credentials, State, Store};
 use coaptic::app::AppStore;
 use coaptic::storage::DatagramIo;
@@ -23,6 +25,7 @@ pub const MAX_RECORDS: usize = 2 * read_campaign::OPERATIONS as usize + 2;
 type CampaignApp<T> = App<profiles::Constrained, T, 8, true, AppStore<profiles::Constrained, true>>;
 
 /// Explicit qualification selection. Identity borrows the existing run ID.
+#[derive(Clone, Copy)]
 pub struct Selection<'a> {
     pub peer: Endpoint,
     pub expected_identity: &'a [u8; 32],
@@ -81,6 +84,7 @@ pub enum Error {
 /// `clock_ns` reads monotonic time without waiting. `emit` runs outside measured
 /// operation intervals and must accept each record or return false. A false or
 /// missing terminal record leaves qualification incomplete. No state is reset.
+#[cfg(feature = "oscore")]
 #[allow(clippy::too_many_arguments)]
 pub fn run<T: DatagramIo, S: Store>(
     io: T,
@@ -90,6 +94,64 @@ pub fn run<T: DatagramIo, S: Store>(
     selection: Selection<'_>,
     clock_ns: impl FnMut() -> Option<u64>,
     wait: impl FnMut(),
+    emit: impl FnMut(&Record) -> bool,
+) -> Result<(), Error> {
+    stream::<T>(
+        &selection,
+        core::mem::size_of::<State<S>>(),
+        |observe| {
+            read_campaign::run(
+                io,
+                random,
+                clock_ns,
+                wait,
+                credentials,
+                store,
+                selection.peer,
+                selection.expected_identity,
+                observe,
+            )
+        },
+        emit,
+    )
+}
+
+/// Stream the same 24 reads without credentials, a store or security recovery.
+/// The fixed Record is reused; preparation reports zero security-owner bytes.
+/// Identity checking in this mode provides attribution, not authentication.
+#[allow(clippy::too_many_arguments)]
+pub fn run_unprotected<T: DatagramIo>(
+    io: T,
+    random: fn(&mut [u8]) -> bool,
+    selection: Selection<'_>,
+    clock_ns: impl FnMut() -> Option<u64>,
+    wait: impl FnMut(),
+    emit: impl FnMut(&Record) -> bool,
+) -> Result<(), Error> {
+    stream::<T>(
+        &selection,
+        0,
+        |observe| {
+            read_campaign::run_unprotected(
+                io,
+                random,
+                clock_ns,
+                wait,
+                selection.peer,
+                selection.expected_identity,
+                observe,
+            )
+        },
+        emit,
+    )
+}
+
+fn stream<T: DatagramIo>(
+    selection: &Selection<'_>,
+    state_bytes: usize,
+    execute: impl FnOnce(
+        &mut dyn FnMut(Observation) -> Result<(), &'static str>,
+    ) -> Result<(), &'static str>,
     mut emit: impl FnMut(&Record) -> bool,
 ) -> Result<(), Error> {
     if selection.async_network {
@@ -107,80 +169,70 @@ pub fn run<T: DatagramIo, S: Store>(
         return Err(Error::Identity);
     }
     let app_bytes = core::mem::size_of::<CampaignApp<T>>();
-    if app_bytes > APP_BYTE_CEILING || core::mem::size_of::<State<S>>() > STATE_BYTE_CEILING {
+    if app_bytes > APP_BYTE_CEILING || state_bytes > STATE_BYTE_CEILING {
         return Err(Error::Layout);
     }
     let mut record = Record { words: [0; 16] };
     let mut emitted = 0;
     let mut completed = 0;
     let mut output_failed = false;
-    let result = read_campaign::run(
-        io,
-        random,
-        clock_ns,
-        wait,
-        credentials,
-        store,
-        selection.peer,
-        selection.expected_identity,
-        |observation| {
-            if emitted >= MAX_RECORDS - 1 {
-                return Err("campaign device record bound");
-            }
-            record.words.fill(0);
-            match observation {
-                Observation::Preparation {
-                    recovery_ns,
-                    app_bytes: actual,
-                } => {
-                    if actual != app_bytes {
-                        return Err("campaign device profile changed");
-                    }
-                    record.words[1] = recovery_ns;
-                    record.words[2] = actual as u64;
-                    record.words[3] = OUTPUT_BYTES as u64;
-                    record.words[4] = core::mem::size_of::<Record>() as u64;
-                    record.words[5] = core::mem::size_of::<State<S>>() as u64;
-                    record.words[6] = APP_BYTE_CEILING as u64;
-                    record.words[7] = core::mem::size_of::<Selection<'_>>() as u64;
-                    record.words[8] = STATE_BYTE_CEILING as u64;
-                    record.words[9] = core::mem::size_of::<Observation>() as u64;
+    let result = execute(&mut |observation| {
+        if emitted >= MAX_RECORDS - 1 {
+            return Err("campaign device record bound");
+        }
+        record.words.fill(0);
+        match observation {
+            Observation::Preparation {
+                recovery_ns,
+                app_bytes: actual,
+            } => {
+                if actual != app_bytes {
+                    return Err("campaign device profile changed");
                 }
-                Observation::Reservation { elapsed_ns } => {
-                    record.words[0] = 1;
-                    record.words[1] = elapsed_ns;
-                }
-                Observation::Operation(op) => {
-                    let path = match op.path {
-                        "identity" => 0,
-                        "test" => 1,
-                        "large" => 2,
-                        _ => return Err("campaign device profile changed"),
-                    };
-                    record.words[0] = 2;
-                    record.words[1] = u64::from(op.iteration);
-                    record.words[2] = path;
-                    record.words[3] = op.bytes as u64;
-                    record.words[4] = op.start_ns;
-                    record.words[5] = op.elapsed_ns;
-                    record.words[6] = op.prepare_ns;
-                    record.words[7] = op.poll_ns;
-                    record.words[8] = op.checkpoint_ns;
-                    record.words[9] = op.take_ns;
-                    record.words[10] = op.verify_ns;
-                    record.words[11] = op.wait_ns;
-                    record.words[12] = u64::from(op.polls);
-                }
+                record.words[1] = recovery_ns;
+                record.words[2] = actual as u64;
+                record.words[3] = OUTPUT_BYTES as u64;
+                record.words[4] = core::mem::size_of::<Record>() as u64;
+                record.words[5] = state_bytes as u64;
+                record.words[6] = APP_BYTE_CEILING as u64;
+                record.words[7] = core::mem::size_of::<Selection<'_>>() as u64;
+                record.words[8] = STATE_BYTE_CEILING as u64;
+                record.words[9] = core::mem::size_of::<Observation>() as u64;
             }
-            if !emit(&record) {
-                output_failed = true;
-                return Err("campaign device output");
+            Observation::Reservation { elapsed_ns } => {
+                record.words[0] = 1;
+                record.words[1] = elapsed_ns;
             }
-            emitted += 1;
-            completed += usize::from(record.words[0] == 2);
-            Ok(())
-        },
-    )
+            Observation::Operation(op) => {
+                let path = match op.path {
+                    "identity" => 0,
+                    "test" => 1,
+                    "large" => 2,
+                    _ => return Err("campaign device profile changed"),
+                };
+                record.words[0] = 2;
+                record.words[1] = u64::from(op.iteration);
+                record.words[2] = path;
+                record.words[3] = op.bytes as u64;
+                record.words[4] = op.start_ns;
+                record.words[5] = op.elapsed_ns;
+                record.words[6] = op.prepare_ns;
+                record.words[7] = op.poll_ns;
+                record.words[8] = op.checkpoint_ns;
+                record.words[9] = op.take_ns;
+                record.words[10] = op.verify_ns;
+                record.words[11] = op.wait_ns;
+                record.words[12] = u64::from(op.polls);
+            }
+        }
+        if !emit(&record) {
+            output_failed = true;
+            return Err("campaign device output");
+        }
+        emitted += 1;
+        completed += usize::from(record.words[0] == 2);
+        Ok(())
+    })
     .and({
         if completed == read_campaign::OPERATIONS as usize {
             Ok(())
@@ -202,6 +254,7 @@ pub fn run<T: DatagramIo, S: Store>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "oscore")]
     use crate::security_state::{Error as StoreError, RECORD_BYTES};
     use coaptic::storage::DatagramTransport;
 
@@ -217,7 +270,9 @@ mod tests {
             panic!("configuration refusal must precede send")
         }
     }
+    #[cfg(feature = "oscore")]
     struct NoStore;
+    #[cfg(feature = "oscore")]
     impl Store for NoStore {
         fn read(&mut self) -> Result<Option<[u8; RECORD_BYTES]>, StoreError> {
             panic!("configuration refusal must precede durable read")
@@ -229,6 +284,7 @@ mod tests {
     fn no_random(_: &mut [u8]) -> bool {
         panic!("configuration refusal must precede entropy")
     }
+    #[cfg(feature = "oscore")]
     fn refuse(selection: Selection<'_>) -> Result<(), Error> {
         run(
             NoIo,
@@ -248,8 +304,25 @@ mod tests {
         )
     }
 
+    fn refuse_unprotected(selection: Selection<'_>) -> Result<(), Error> {
+        run_unprotected(
+            NoIo,
+            no_random,
+            selection,
+            || panic!("configuration refusal must precede clock"),
+            || panic!("configuration refusal must precede wait"),
+            |_| panic!("configuration refusal must precede output"),
+        )
+    }
+
     #[test]
     fn selection_refuses_async_bad_identity_and_nonunicast_before_any_callback() {
+        selection_refusals(refuse_unprotected);
+        #[cfg(feature = "oscore")]
+        selection_refusals(refuse);
+    }
+
+    fn selection_refusals(refuse: for<'a> fn(Selection<'a>) -> Result<(), Error>) {
         let identity = *b"0123456789abcdef0123456789abcdef";
         let valid = || Selection {
             peer: Endpoint::v4([192, 168, 1, 1], 5683),

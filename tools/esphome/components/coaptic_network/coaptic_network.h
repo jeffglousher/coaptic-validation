@@ -23,9 +23,9 @@ class CoapticNetwork : public Component {
   void set_pairing(uint32_t resource_start_delay_ms = 0) {
     telemetry_timeout_ = resource_start_delay_ms; security_mode_ = 5;
   }
-  void set_read_campaign(uint32_t address, uint16_t port, uint32_t start_delay_ms) {
+  void set_read_campaign(uint32_t address, uint16_t port, uint32_t start_delay_ms, bool protected_mode = true) {
     peer_address_ = address; peer_port_ = port;
-    telemetry_timeout_ = start_delay_ms; security_mode_ = 6;
+    telemetry_timeout_ = start_delay_ms; security_mode_ = protected_mode ? 6 : 7;
   }
   bool read_campaign_config(uint8_t *bytes, uint32_t length) const;
   uint64_t read_campaign_clock_ns() const;

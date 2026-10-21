@@ -196,7 +196,7 @@ void CoapticNetwork::loop() {
     if (esphome_main_task_handle == nullptr) return;
     // Pairing qualification and read campaigns reuse the telemetry timer before
     // their worker exists. Zero preserves ordinary pairing startup.
-    if ((security_mode_ == 5 || security_mode_ == 6) && millis() < telemetry_timeout_) return;
+    if ((security_mode_ == 5 || security_mode_ == 6 || security_mode_ == 7) && millis() < telemetry_timeout_) return;
     if (security_mode_ != 5 && !network::is_connected() && !wifi::global_wifi_component->is_ap_active())
       return;
     started_ = true;
@@ -269,8 +269,9 @@ void CoapticNetwork::loop() {
       ESP_LOGI(TAG, "COAPTIC_PENDING_PROVISIONED run_id=%s; no network service", run_id_.c_str());
     } else if (security_mode_ == 3 && result_.load() == 1) {
       ESP_LOGI(TAG, "COAPTIC_TELEMETRY_COMPLETE run_id=%s", run_id_.c_str());
-    } else if (security_mode_ == 6 && result_.load() == 1) {
-      ESP_LOGI(TAG, "COAPTIC_READ_CAMPAIGN_COMPLETE run_id=%s", run_id_.c_str());
+    } else if ((security_mode_ == 6 || security_mode_ == 7) && result_.load() == 1) {
+      ESP_LOGI(TAG, "COAPTIC_READ_CAMPAIGN_COMPLETE run_id=%s mode=%lu protected=%s", run_id_.c_str(),
+               static_cast<unsigned long>(security_mode_), security_mode_ == 6 ? "true" : "false");
     } else {
       ESP_LOGE(TAG, "COAPTIC_NETWORK_STOPPED result=%lu", static_cast<unsigned long>(result_.load()));
       mark_failed();
@@ -528,7 +529,7 @@ uint64_t CoapticNetwork::clock() {
 }
 
 bool CoapticNetwork::read_campaign_config(uint8_t *bytes, uint32_t length) const {
-  if (security_mode_ != 6 || bytes == nullptr || length != 6 || peer_address_ == 0 || peer_port_ == 0)
+  if ((security_mode_ != 6 && security_mode_ != 7) || bytes == nullptr || length != 6 || peer_address_ == 0 || peer_port_ == 0)
     return false;
   bytes[0] = static_cast<uint8_t>(peer_address_ >> 24);
   bytes[1] = static_cast<uint8_t>(peer_address_ >> 16);
@@ -540,18 +541,19 @@ bool CoapticNetwork::read_campaign_config(uint8_t *bytes, uint32_t length) const
 }
 
 uint64_t CoapticNetwork::read_campaign_clock_ns() const {
-  if (stop_.load(std::memory_order_acquire)) return UINT64_MAX;
+  if ((security_mode_ != 6 && security_mode_ != 7) || stop_.load(std::memory_order_acquire)) return UINT64_MAX;
   const auto now = static_cast<uint64_t>(esp_timer_get_time());
   return now <= UINT64_MAX / 1000 ? now * 1000 : UINT64_MAX;
 }
 
 void CoapticNetwork::read_campaign_record(const uint64_t *words, uint32_t count) const {
-  if (security_mode_ != 6 || words == nullptr || count != 16) return;
+  if ((security_mode_ != 6 && security_mode_ != 7) || words == nullptr || count != 16) return;
   // Stream one fixed metadata record after each measured operation. No trace
   // queue, payload copy or formatting string allocation is retained here.
-  ESP_LOGI(TAG, "COAPTIC_READ_RECORD {\"run_id\":\"%s\",\"words\":["
+  ESP_LOGI(TAG, "COAPTIC_READ_RECORD {\"run_id\":\"%s\",\"mode\":%lu,\"protected\":%s,\"words\":["
            "%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu]}",
-           run_id_.c_str(), static_cast<unsigned long long>(words[0]), static_cast<unsigned long long>(words[1]),
+           run_id_.c_str(), static_cast<unsigned long>(security_mode_), security_mode_ == 6 ? "true" : "false",
+           static_cast<unsigned long long>(words[0]), static_cast<unsigned long long>(words[1]),
            static_cast<unsigned long long>(words[2]), static_cast<unsigned long long>(words[3]),
            static_cast<unsigned long long>(words[4]), static_cast<unsigned long long>(words[5]),
            static_cast<unsigned long long>(words[6]), static_cast<unsigned long long>(words[7]),

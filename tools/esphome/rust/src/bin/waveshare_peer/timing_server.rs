@@ -1,10 +1,18 @@
-//! Same constrained protected fixed-storage service with explicit address scope. Read/commit
+//! Same constrained fixed-storage service with explicit security and address scope. Read/commit
 //! and UDP intervals are nested in ready-poll intervals, as on the device.
 //! This diagnostic spin-polls; it is not a recommended host scheduling policy.
 use super::*;
 use coaptic_esphome_probe::security_state::{Error, RECORD_BYTES, Store};
 use std::cell::{Cell, RefCell};
 use std::net::Ipv4Addr;
+
+pub(super) fn validate_placeholders(credentials: &str, state: &str) -> Result<()> {
+    if credentials == "-" && state == "-" {
+        Ok(())
+    } else {
+        Err("unprotected timing requires - credentials and - state")
+    }
+}
 
 fn validate_scope(address: SocketAddr, remote: Option<Ipv4Addr>) -> Result<()> {
     match (address, remote) {
@@ -128,19 +136,53 @@ pub(super) fn run(
     report: &Path,
     remote: Option<Ipv4Addr>,
 ) -> Result<()> {
+    run_selected(Some((c, state)), address, run_id, report, remote)
+}
+
+pub(super) fn run_unprotected(
+    address: SocketAddr,
+    run_id: &str,
+    report: &Path,
+    remote: Option<Ipv4Addr>,
+) -> Result<()> {
+    run_selected(None, address, run_id, report, remote)
+}
+
+fn run_selected(
+    protection: Option<(&Credentials, &Path)>,
+    address: SocketAddr,
+    run_id: &str,
+    report: &Path,
+    remote: Option<Ipv4Addr>,
+) -> Result<()> {
     validate_scope(address, remote)?;
-    let mut report =
-        File::create_new(report).map_err(|_| "timing server report exists/unavailable")?;
+    if run_id.len() != 32 || !run_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("timing server identity");
+    }
+    let report = File::create_new(report).map_err(|_| "timing server report exists/unavailable")?;
+    let socket = UdpSocket::bind(address).map_err(|_| "timing server socket")?;
+    socket
+        .set_nonblocking(true)
+        .map_err(|_| "timing server socket mode")?;
+    run_bound(protection, socket, run_id, report, remote)
+}
+
+// The single bound-socket path owns the trace and stop policy in both modes.
+// Tests can bind their socket before starting a client, without a readiness
+// probe or exposing any additional listener in the executable.
+fn run_bound(
+    protection: Option<(&Credentials, &Path)>,
+    socket: UdpSocket,
+    run_id: &str,
+    mut report: File,
+    remote: Option<Ipv4Addr>,
+) -> Result<()> {
     let started = Instant::now();
     let trace = RefCell::new(Trace {
         rows: Vec::with_capacity(LIMIT),
         overflow: false,
         rx: 0,
     });
-    let socket = UdpSocket::bind(address).map_err(|_| "timing server socket")?;
-    socket
-        .set_nonblocking(true)
-        .map_err(|_| "timing server socket mode")?;
     let refused_sources = Cell::new(0);
     let io = Io {
         socket: UdpSocketIo::new(socket, [0; 1153]).map_err(|_| "timing server scratch")?,
@@ -149,11 +191,6 @@ pub(super) fn run(
         remote,
         refused_sources: &refused_sources,
     };
-    let store = Durable {
-        store: FileStore::open(state, false)?,
-        clock: &started,
-        trace: &trace,
-    };
     let id: &[u8; 32] = run_id
         .as_bytes()
         .try_into()
@@ -161,33 +198,42 @@ pub(super) fn run(
     let previous_rx = Cell::new(0);
     let poll_start = Cell::new(0u64);
     let last_rx = Cell::new(0u64);
-    let result = coaptic_esphome_probe::network::run_protected(
-        io,
-        |b| getrandom::fill(b).is_ok(),
-        || {
-            let now = started.elapsed().as_nanos() as u64;
-            let received = trace.borrow().rx;
-            if received != previous_rx.get() {
-                trace
-                    .borrow_mut()
-                    .push([6, poll_start.get(), now - poll_start.get(), 0, 65536]);
-                previous_rx.set(received);
-                last_rx.set(now);
-            }
-            poll_start.set(now);
-            if now >= 30_000_000_000 || (received >= 32 && now - last_rx.get() >= 2_000_000_000) {
-                None
-            } else {
-                Some(now / 1_000_000)
-            }
-        },
-        id,
-        c,
-        store,
-    );
+    let clock = || {
+        let now = started.elapsed().as_nanos() as u64;
+        let received = trace.borrow().rx;
+        if received != previous_rx.get() {
+            trace
+                .borrow_mut()
+                .push([6, poll_start.get(), now - poll_start.get(), 0, 65536]);
+            previous_rx.set(received);
+            last_rx.set(now);
+        }
+        poll_start.set(now);
+        if now >= 30_000_000_000 || (received >= 32 && now - last_rx.get() >= 2_000_000_000) {
+            None
+        } else {
+            Some(now / 1_000_000)
+        }
+    };
+    let random = |bytes: &mut [u8]| getrandom::fill(bytes).is_ok();
+    let result = if let Some((credentials, state)) = protection {
+        let store = Durable {
+            store: FileStore::open(state, false)?,
+            clock: &started,
+            trace: &trace,
+        };
+        coaptic_esphome_probe::network::run_protected(io, random, clock, id, credentials, store)
+    } else {
+        coaptic_esphome_probe::network::run(io, random, clock, id)
+    };
     let trace = trace.borrow();
     let passed = result.is_ok() && !trace.overflow && trace.rx >= 32;
-    writeln!(report, "{{\"passed\":{passed},\"case\":\"timing_host_server\",\"run_id\":\"{run_id}\",\"refused_sources\":{},\"event_bound\":{LIMIT},\"trace_heap_bytes\":{},\"received\":{},\"overflow\":{},\"events\":{:?},\"method\":\"same protected constrained service; fixed core storage; authenticated durable host file; spin-poll diagnostic; nested intervals; no throughput or CPU efficiency claim\"}}", refused_sources.get(), trace.rows.capacity() * std::mem::size_of::<Event>(), trace.rx, trace.overflow, trace.rows).map_err(|_| "timing server report")?;
+    let (security, storage) = if protection.is_some() {
+        ("durable-oscore", "authenticated durable host file")
+    } else {
+        ("unprotected", "no credential or security-state file")
+    };
+    writeln!(report, "{{\"passed\":{passed},\"case\":\"timing_host_server\",\"run_id\":\"{run_id}\",\"security\":\"{security}\",\"refused_sources\":{},\"event_bound\":{LIMIT},\"trace_heap_bytes\":{},\"received\":{},\"overflow\":{},\"events\":{:?},\"method\":\"same constrained service; fixed core storage; {storage}; spin-poll diagnostic; nested intervals; no throughput or CPU efficiency claim\"}}", refused_sources.get(), trace.rows.capacity() * std::mem::size_of::<Event>(), trace.rx, trace.overflow, trace.rows).map_err(|_| "timing server report")?;
     report.sync_all().map_err(|_| "timing server report sync")?;
     if passed {
         Ok(())
@@ -199,6 +245,83 @@ pub(super) fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unprotected_selection_requires_both_literal_placeholders() {
+        assert_eq!(validate_placeholders("-", "-"), Ok(()));
+        for (credentials, state) in [
+            ("credentials", "-"),
+            ("-", "state"),
+            ("", ""),
+            ("credentials", "state"),
+        ] {
+            assert!(validate_placeholders(credentials, state).is_err());
+        }
+    }
+
+    #[test]
+    fn unprotected_service_completes_the_matched_udp_campaign_without_state_events() {
+        use coaptic_esphome_probe::read_campaign::{Observation, run_unprotected};
+
+        const ID: &str = "0123456789abcdef0123456789abcdef";
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        socket.set_nonblocking(true).unwrap();
+        let peer = socket.local_addr().unwrap();
+        let mut nonce = [0; 8];
+        getrandom::fill(&mut nonce).unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "coaptic-unprotected-server-{}-{:016x}.json",
+            std::process::id(),
+            u64::from_ne_bytes(nonce)
+        ));
+        let report = File::create_new(&path).unwrap();
+        let server = std::thread::spawn(move || run_bound(None, socket, ID, report, None));
+        let client = UdpSocket::bind("127.0.0.1:0").unwrap();
+        client.set_nonblocking(true).unwrap();
+        let io = UdpSocketIo::new(client, [0; 1153]).unwrap();
+        let started = Instant::now();
+        let mut prepared = false;
+        let mut completed = 0;
+        let result = run_unprotected(
+            io,
+            |bytes| getrandom::fill(bytes).is_ok(),
+            || Some(started.elapsed().as_nanos() as u64),
+            || std::thread::sleep(Duration::from_millis(1)),
+            peer.into(),
+            ID.as_bytes().try_into().unwrap(),
+            |observation| match observation {
+                Observation::Preparation { recovery_ns: 0, .. } if !prepared => {
+                    prepared = true;
+                    Ok(())
+                }
+                Observation::Operation(operation) if prepared => {
+                    let (path, bytes) =
+                        [("identity", 32), ("test", 7), ("large", 2000)][completed % 3];
+                    if operation.iteration != (completed / 3) as u32
+                        || operation.path != path
+                        || operation.bytes != bytes
+                    {
+                        return Err("unexpected matched operation");
+                    }
+                    completed += 1;
+                    Ok(())
+                }
+                _ => Err("unprotected preparation/reservation"),
+            },
+        );
+        let server_result = server.join().unwrap();
+        let report = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(result, Ok(()));
+        assert_eq!(server_result, Ok(()));
+        assert!(prepared);
+        assert_eq!(completed, 24);
+        assert!(report.contains("\"security\":\"unprotected\""));
+        assert!(report.contains("\"passed\":true"));
+        assert!(report.contains("\"received\":32,"));
+        assert!(!report.contains("[3,"));
+        assert!(!report.contains("[4,"));
+    }
+
     #[test]
     fn excluded_udp_source_never_reaches_protocol_or_receives_a_reply() {
         let listener = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -261,6 +384,8 @@ mod tests {
             assert!(validate_scope(address.parse().unwrap(), Some(remote)).is_err());
         }
         assert!(validate_scope("192.168.1.134:5683".parse().unwrap(), None).is_err());
+        assert!(validate_scope("127.0.0.1:0".parse().unwrap(), None).is_err());
+        assert!(validate_scope("192.168.1.144:5683".parse().unwrap(), Some(remote)).is_err());
         assert!(
             validate_scope(
                 "192.168.1.134:5683".parse().unwrap(),

@@ -73,10 +73,10 @@ pub mod async_network;
 #[cfg(all(feature = "network", feature = "oscore"))]
 pub mod security_state;
 
-#[cfg(all(feature = "network", feature = "oscore"))]
+#[cfg(feature = "network")]
 pub mod read_campaign;
 
-#[cfg(all(feature = "network", feature = "oscore"))]
+#[cfg(feature = "network")]
 pub mod read_campaign_device;
 
 #[cfg(all(

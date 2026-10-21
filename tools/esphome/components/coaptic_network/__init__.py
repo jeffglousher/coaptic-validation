@@ -56,9 +56,9 @@ def validate_security(config):
         if "oscore" not in config or config["oscore"]["provision_only"]:
             raise cv.Invalid("telemetry requires existing protected OSCORE state")
     if "read_campaign" in config:
-        if ("oscore" not in config or config["oscore"]["provision_only"] or
-                "telemetry" in config or config["async_network"]):
-            raise cv.Invalid("read_campaign requires existing protected OSCORE state, synchronous driving and no telemetry")
+        if ("pairing" in config or "telemetry" in config or config["async_network"] or
+                ("oscore" in config and config["oscore"]["provision_only"])):
+            raise cv.Invalid("read_campaign requires synchronous driving with existing OSCORE state or explicit allow_plaintext, and no pairing, provisioning or telemetry")
     if config["resource_start_delay_ms"] and (not config["resource_qualification"] or "pairing" not in config):
         raise cv.Invalid("resource_start_delay_ms requires resource_qualification and privileged pairing")
     if "legacy_custody_permit" in config and "pairing" not in config:
@@ -233,7 +233,8 @@ async def to_code(config):
     if "read_campaign" in config:
         campaign = config["read_campaign"]
         cg.add(component.set_read_campaign(int(ipaddress.IPv4Address(campaign["peer_address"])),
-                                          campaign["peer_port"], campaign["start_delay_ms"]))
+                                          campaign["peer_port"], campaign["start_delay_ms"],
+                                          "oscore" in config))
     if config["rust_runtime"] == "external":
         return
     if config["rust_runtime"] == "bundled":

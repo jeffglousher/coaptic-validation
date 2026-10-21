@@ -58,8 +58,10 @@ The comparison matrix has four role configurations:
 - LAN, PC initiator and ESP32-S3 service.
 - LAN, ESP32-S3 initiator and PC service.
 
-Each uses the same identity, small and complete 2000-byte GET workload, with
-the same authenticated durable security-state requirements. Host execution of
+Each uses the same identity, small and complete 2000-byte GET workload. The LAN
+matrix has two directions and two explicit security selections: unprotected and
+durable OSCORE. The two loopback configurations are separate role controls.
+Protected runs require authenticated durable security state. Host execution of
 the constrained algorithm is a role control, not ESP32 emulation. The ESP32-S3
 is the qualification platform; it does not restrict the library to that MCU.
 Do not label the last configuration measured until the initiator is integrated
@@ -69,7 +71,7 @@ journaling semantics and is a separate workload, not a matched GET result.
 
 Keep unprotected/protected and volatile/durable profiles separate. Request and
 response packets within one operation do not establish both initiator roles.
-For LAN role reversal, use an explicitly scoped authenticated host service and
+For LAN role reversal, use an explicitly scoped host service and
 temporary inbound firewall access restricted to the reserved device and exact
 host executable. `timing-server` remains loopback-only. For the LAN role use:
 
@@ -86,14 +88,31 @@ durable state also apply to this mode. Do not copy device credentials/state into
 a loopback control, or replace the configured firewall executable with an
 unverified build. No firewall rule is installed by the driver.
 
+For the unprotected service, select one of these commands explicitly:
+
+```text
+waveshare-peer timing-server-unprotected 127.0.0.1:PORT - - REPORT RUN_ID
+waveshare-peer timing-server-lan-unprotected LOCAL_IPV4:PORT - - REPORT RUN_ID REMOTE_IPV4
+```
+
+Both literal `-` arguments are required, and dispatch occurs before credential
+loading. These selections open no credentials or security-state file and report
+`security: unprotected`; they provide no peer authentication. They reuse the
+same constrained service, transport scratch, bounded trace, lifetime and source
+filter as the protected selections. Scope validation is identical: the loopback
+command cannot bind a LAN address, and the LAN command requires explicit private,
+distinct local and remote IPv4 addresses. No protection fallback is performed.
+
 ## Selected ESP32 initiator
 
-`rust/src/read_campaign_device.rs` binds the shared protected workload to the
-synchronous ESPHome socket and existing authenticated NVS state. The selected
-read-campaign mode requires OSCORE, an explicit private IPv4 host and port, and
-the same 32-byte hexadecimal run ID as `timing-server-lan`. It refuses
+`rust/src/read_campaign_device.rs` binds the shared workload to the synchronous
+ESPHome socket. The protected mode uses existing authenticated NVS state; the
+explicit unprotected selection uses no credentials or security-state store and
+does not require compiled OSCORE support. Both require an explicit private IPv4
+host and port and the same 32-byte hexadecimal run ID as the selected host
+service. They refuse
 `async_network`, provisioning, pairing and telemetry combinations. This mode
-does not provision, reset or copy durable state. The host needs the matching
+does not provision, reset or copy durable state. A protected host needs matching
 counterpart credentials and its own exclusively locked state.
 
 Select `coaptic_network.read_campaign.peer_address` and `peer_port` (default
@@ -102,7 +121,7 @@ the host and recorder to be ready before this single boot campaign starts.
 
 This is `profiles::Constrained` with blockwise transfers: eight route slots
 (none installed on the initiator), four Calls, no deferred slots, one security
-association, four request bindings, RX2/TX2 datagrams of 1152 bytes, one
+association and four request bindings when protected, RX2/TX2 datagrams of 1152 bytes, one
 4096-byte body per direction, four dedup entries and two Observe entries. One
 Call runs at a time. It is a distinct configuration from the SmallDevice
 32-byte comparison and the Service cloud fixture.
@@ -192,7 +211,8 @@ python -m unittest discover -s tools/benchmark -p test_hop_analysis.py -v
 
 `DEVICE.json` contains the complete `COAPTIC_TIMING_END` record as `end` and
 ordered timing records as `events`. A loopback server report is accepted directly.
-The analyzer requires all 24 operations and 32 uniquely correlated request/response
+The analyzer currently grades protected traces. It requires all 24 operations
+and 32 uniquely correlated request/response
 exchanges (64 UDP datagrams),
 matching wire lengths, one durable commit with two reads per request, and matching
 host/device run identities. It rejects missing, failed, overflowed, ambiguous,

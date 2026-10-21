@@ -64,36 +64,51 @@ def telemetry_config(config, provision=False):
 
 
 class ConfigurationRefusalTests(unittest.TestCase):
-    def test_read_campaign_selects_protected_sync_and_refuses_mixed_modes(self):
-        for change in ["source", "bundled", "external", "unprotected", "provision", "telemetry", "async", "peer", "public", "delay"]:
+    def test_read_campaign_selects_explicit_security_and_refuses_mixed_modes(self):
+        for change in ["source", "bundled", "external", "unprotected", "unprotected-bundled", "unprotected-external",
+                       "provision", "telemetry", "async", "unprotected-async", "pairing", "peer", "public", "delay"]:
             with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
-                config = protected_config(network_configuration(root, change if change in {"bundled", "external"} else "source"))
+                runtime = {"bundled": "bundled", "external": "external", "unprotected-bundled": "bundled",
+                           "unprotected-external": "external"}.get(change, "source")
+                config = protected_config(network_configuration(root, runtime))
                 network = config["coaptic_network"]
                 network["read_campaign"] = {"peer_address": "192.168.1.2", "peer_port": 5684}
-                if change == "unprotected":
+                if change.startswith("unprotected"):
                     del network["oscore"]
                     network["allow_plaintext"] = True
+                    if change == "unprotected-async": network["async_network"] = True
                 elif change == "provision": network["oscore"]["provision_only"] = True
                 elif change == "telemetry": telemetry_config(config)
                 elif change == "async": network["async_network"] = True
+                elif change == "pairing":
+                    del network["oscore"]
+                    network["pairing"] = {"privileged_usb": True}
+                    config["logger"]["baud_rate"] = 0
                 elif change == "peer": network["read_campaign"]["peer_address"] = "224.0.0.1"
                 elif change == "public": network["read_campaign"]["peer_address"] = "8.8.8.8"
                 elif change == "delay": network["read_campaign"]["start_delay_ms"] = 120001
-                elif change == "bundled":
+                if runtime == "bundled":
                     _, marker, report = archive_fixture(root, config)
-                    report["features"].append("oscore")
+                    if "oscore" in network: report["features"].append("oscore")
                     marker.write_text(json.dumps(report), encoding="utf-8")
                 path = root / "network.yaml"
                 path.write_text(json.dumps(config), encoding="utf-8")
                 result = subprocess.run([sys.executable, "-m", "esphome", "compile", str(path), "--only-generate"],
                                         capture_output=True, text=True, timeout=60)
-                accepted = change in {"source", "bundled", "external"}
+                accepted = change in {"source", "bundled", "external", "unprotected", "unprotected-bundled", "unprotected-external"}
                 self.assertEqual(result.returncode == 0, accepted, result.stdout + result.stderr)
                 if accepted:
                     generated = (root / "build/src/main.cpp").read_text()
-                    self.assertIn("set_read_campaign(", generated)
+                    protected = "oscore" in network
+                    self.assertRegex(generated, r"set_read_campaign\([^;\n]*, " + ("true" if protected else "false") + r"\);")
                     self.assertIn("30000", generated)
+                    self.assertEqual("set_oscore(" in generated, protected)
+                    if runtime == "source":
+                        cmake = (root / "build/CMakeLists.txt").read_text()
+                        self.assertIn('set(COAPTIC_OSCORE "' + ("ON" if protected else "OFF") + '")', cmake)
+                elif change in {"provision", "telemetry", "async", "unprotected-async", "pairing"}:
+                    self.assertIn("read_campaign requires synchronous driving", result.stdout + result.stderr)
 
     def test_network_requires_started_rf_without_power_save_for_entropy(self):
         for change in ["default", "light", "disabled", "ready"]:
