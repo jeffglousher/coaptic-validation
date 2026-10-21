@@ -35,13 +35,13 @@ unsafe extern "C" {
     fn coaptic_socket_random(bytes: *mut u8, length: u32) -> bool;
     fn coaptic_entropy_bind(owner: *mut c_void) -> bool;
     fn coaptic_entropy_unbind();
-    #[cfg(all(feature = "oscore", not(feature = "async-network")))]
+    #[cfg(not(feature = "async-network"))]
     fn coaptic_read_campaign_config(context: *mut c_void, bytes: *mut u8, length: u32) -> bool;
-    #[cfg(all(feature = "oscore", not(feature = "async-network")))]
+    #[cfg(not(feature = "async-network"))]
     fn coaptic_read_campaign_clock_ns(context: *mut c_void) -> u64;
-    #[cfg(all(feature = "oscore", not(feature = "async-network")))]
+    #[cfg(not(feature = "async-network"))]
     fn coaptic_read_campaign_wait(milliseconds: u32) -> bool;
-    #[cfg(all(feature = "oscore", not(feature = "async-network")))]
+    #[cfg(not(feature = "async-network"))]
     fn coaptic_read_campaign_record(context: *mut c_void, words: *const u64, count: u32);
     fn coaptic_enter_critical();
     fn coaptic_leave_critical();
@@ -295,9 +295,15 @@ pub extern "C" fn coaptic_entropy_requirement(index: u32) -> u64 {
 #[inline(never)]
 unsafe fn run_seeded(context: *mut c_void, id: *const u8) -> i32 {
     let mode = unsafe { coaptic_security_mode(context) };
+    if mode == 7 {
+        #[cfg(not(feature = "async-network"))]
+        return unsafe { run_read_campaign(context, id, mode) };
+        #[cfg(feature = "async-network")]
+        return -12;
+    }
     if mode == 6 {
         #[cfg(all(feature = "oscore", not(feature = "async-network")))]
-        return unsafe { run_read_campaign(context, id) };
+        return unsafe { run_read_campaign(context, id, mode) };
         #[cfg(any(not(feature = "oscore"), feature = "async-network"))]
         return -12;
     }
@@ -314,64 +320,80 @@ unsafe fn run_seeded(context: *mut c_void, id: *const u8) -> i32 {
 
 // This selected synchronous owner has no lifetime overlap with service or
 // pairing App construction. Keep its large frame on a separate call path.
-#[cfg(all(feature = "oscore", not(feature = "async-network")))]
+#[cfg(not(feature = "async-network"))]
 #[inline(never)]
-unsafe fn run_read_campaign(context: *mut c_void, id: *const u8) -> i32 {
+unsafe fn run_read_campaign(context: *mut c_void, id: *const u8, mode: u32) -> i32 {
     use super::read_campaign_device::{self, Selection};
     use core::cell::Cell;
     let mut config = [0; 6];
     if !unsafe { coaptic_read_campaign_config(context, config.as_mut_ptr(), 6) } {
         return -12;
     }
-    let mut bytes = [0; 66];
-    if !unsafe { coaptic_security_config(context, bytes.as_mut_ptr(), 66) } {
-        return -12;
-    }
-    let mut credentials = super::security_state::Credentials {
-        secret: bytes[..32].try_into().unwrap(),
-        salt: bytes[32..48].try_into().unwrap(),
-        context: bytes[48..64].try_into().unwrap(),
-        sender: bytes[64],
-        recipient: bytes[65],
-    };
-    bytes.fill(0);
     let failed_wait = Cell::new(false);
     // The ABI guarantees these run-ID bytes remain valid while this sole task
     // runs. Borrow the existing ID instead of creating another identity buffer.
     let identity = unsafe { &*id.cast::<[u8; 32]>() };
-    let result = read_campaign_device::run(
-        Socket(context),
-        |bytes| unsafe { coaptic_socket_random(bytes.as_mut_ptr(), bytes.len() as u32) },
-        &credentials,
-        Nvs(context),
-        Selection {
-            peer: Endpoint::v4(
-                config[..4].try_into().unwrap(),
-                u16::from_be_bytes(config[4..].try_into().unwrap()),
-            ),
-            expected_identity: identity,
-            async_network: false,
-        },
-        || {
-            if failed_wait.get() {
-                return None;
+    let selection = Selection {
+        peer: Endpoint::v4(
+            config[..4].try_into().unwrap(),
+            u16::from_be_bytes(config[4..].try_into().unwrap()),
+        ),
+        expected_identity: identity,
+        async_network: false,
+    };
+    let random =
+        |bytes: &mut [u8]| unsafe { coaptic_socket_random(bytes.as_mut_ptr(), bytes.len() as u32) };
+    let clock = || {
+        if failed_wait.get() {
+            return None;
+        }
+        let now = unsafe { coaptic_read_campaign_clock_ns(context) };
+        (now != u64::MAX).then_some(now)
+    };
+    let wait = || {
+        if !unsafe { coaptic_read_campaign_wait(1) } {
+            failed_wait.set(true);
+        }
+    };
+    let emit = |record: &read_campaign_device::Record| {
+        unsafe { coaptic_read_campaign_record(context, record.words.as_ptr(), 16) };
+        true
+    };
+    let result = if mode == 7 {
+        read_campaign_device::run_unprotected(Socket(context), random, selection, clock, wait, emit)
+    } else {
+        #[cfg(feature = "oscore")]
+        {
+            let mut bytes = [0; 66];
+            if !unsafe { coaptic_security_config(context, bytes.as_mut_ptr(), 66) } {
+                return -12;
             }
-            let now = unsafe { coaptic_read_campaign_clock_ns(context) };
-            (now != u64::MAX).then_some(now)
-        },
-        || {
-            if !unsafe { coaptic_read_campaign_wait(1) } {
-                failed_wait.set(true);
-            }
-        },
-        |record| {
-            unsafe { coaptic_read_campaign_record(context, record.words.as_ptr(), 16) };
-            true
-        },
-    );
-    credentials.secret.fill(0);
-    credentials.salt.fill(0);
-    credentials.context.fill(0);
+            let mut credentials = super::security_state::Credentials {
+                secret: bytes[..32].try_into().unwrap(),
+                salt: bytes[32..48].try_into().unwrap(),
+                context: bytes[48..64].try_into().unwrap(),
+                sender: bytes[64],
+                recipient: bytes[65],
+            };
+            bytes.fill(0);
+            let result = read_campaign_device::run(
+                Socket(context),
+                random,
+                &credentials,
+                Nvs(context),
+                selection,
+                clock,
+                wait,
+                emit,
+            );
+            credentials.secret.fill(0);
+            credentials.salt.fill(0);
+            credentials.context.fill(0);
+            result
+        }
+        #[cfg(not(feature = "oscore"))]
+        return -12;
+    };
     match result {
         Ok(()) => 0,
         Err(read_campaign_device::Error::Campaign(_)) => -13,

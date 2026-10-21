@@ -7,6 +7,7 @@
 //! Host execution does not establish MCU execution or flash power-loss safety.
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "oscore")]
 use crate::security_state::{Credentials, State, Store};
 use coaptic::storage::DatagramIo;
 use coaptic::{App, Code, Endpoint, profiles};
@@ -55,65 +56,43 @@ impl<F: FnMut() -> Option<u64>> Clock<F> {
 
 type CampaignApp<T> = App<profiles::Constrained, T, { coaptic::app::DEFAULT_ROUTES }, true>;
 
-trait SecurityPolicy {
-    fn needs_refill(
-        &self,
-        context: Option<&coaptic::oscore::SecurityContext>,
-    ) -> Result<bool, &'static str>;
-    fn refill(
-        &mut self,
-        context: Option<&mut coaptic::oscore::SecurityContext>,
-    ) -> Result<(), &'static str>;
-    fn checkpoint(
-        &mut self,
-        context: Option<&coaptic::oscore::SecurityContext>,
-    ) -> Result<(), &'static str>;
+trait SecurityPolicy<T: DatagramIo> {
+    fn needs_refill(&self, app: &CampaignApp<T>) -> Result<bool, &'static str>;
+    fn refill(&mut self, app: &mut CampaignApp<T>) -> Result<(), &'static str>;
+    fn checkpoint(&mut self, app: &CampaignApp<T>) -> Result<(), &'static str>;
 }
 
-impl<S: Store> SecurityPolicy for State<'_, S> {
-    fn needs_refill(
-        &self,
-        context: Option<&coaptic::oscore::SecurityContext>,
-    ) -> Result<bool, &'static str> {
-        let context = context.ok_or("campaign context")?;
+#[cfg(feature = "oscore")]
+impl<T: DatagramIo, S: Store> SecurityPolicy<T> for State<'_, S> {
+    fn needs_refill(&self, app: &CampaignApp<T>) -> Result<bool, &'static str> {
+        let context = app.oscore().ok_or("campaign context")?;
         Ok(context
             .sender_reservation_end()
             .ok_or("campaign reservation")?
             .saturating_sub(context.sender_seq())
             < 8)
     }
-    fn refill(
-        &mut self,
-        context: Option<&mut coaptic::oscore::SecurityContext>,
-    ) -> Result<(), &'static str> {
-        State::refill(self, context.ok_or("campaign context")?).map_err(|_| "campaign refill")
+    fn refill(&mut self, app: &mut CampaignApp<T>) -> Result<(), &'static str> {
+        State::refill(self, app.oscore_mut().ok_or("campaign context")?)
+            .map_err(|_| "campaign refill")
     }
-    fn checkpoint(
-        &mut self,
-        context: Option<&coaptic::oscore::SecurityContext>,
-    ) -> Result<(), &'static str> {
-        State::checkpoint(self, context.ok_or("campaign context")?.replay_checkpoint())
-            .map_err(|_| "campaign checkpoint")
+    fn checkpoint(&mut self, app: &CampaignApp<T>) -> Result<(), &'static str> {
+        State::checkpoint(
+            self,
+            app.oscore().ok_or("campaign context")?.replay_checkpoint(),
+        )
+        .map_err(|_| "campaign checkpoint")
     }
 }
 
-impl SecurityPolicy for () {
-    fn needs_refill(
-        &self,
-        _: Option<&coaptic::oscore::SecurityContext>,
-    ) -> Result<bool, &'static str> {
+impl<T: DatagramIo> SecurityPolicy<T> for () {
+    fn needs_refill(&self, _: &CampaignApp<T>) -> Result<bool, &'static str> {
         Ok(false)
     }
-    fn refill(
-        &mut self,
-        _: Option<&mut coaptic::oscore::SecurityContext>,
-    ) -> Result<(), &'static str> {
+    fn refill(&mut self, _: &mut CampaignApp<T>) -> Result<(), &'static str> {
         Ok(())
     }
-    fn checkpoint(
-        &mut self,
-        _: Option<&coaptic::oscore::SecurityContext>,
-    ) -> Result<(), &'static str> {
+    fn checkpoint(&mut self, _: &CampaignApp<T>) -> Result<(), &'static str> {
         Ok(())
     }
 }
@@ -166,6 +145,7 @@ pub fn run_unprotected<T: DatagramIo>(
 /// Clock stop/regression, failed storage, poll errors, bad responses and either
 /// the five-second or finite-poll bound stop immediately. No storage is reset.
 /// The expected identity must identify the intended, source-verified server.
+#[cfg(feature = "oscore")]
 #[allow(clippy::too_many_arguments)]
 pub fn run<T: DatagramIo, S: Store>(
     io: T,
@@ -206,7 +186,7 @@ pub fn run<T: DatagramIo, S: Store>(
 #[allow(clippy::too_many_arguments)]
 fn run_operations<T: DatagramIo>(
     app: &mut CampaignApp<T>,
-    security: &mut impl SecurityPolicy,
+    security: &mut impl SecurityPolicy<T>,
     clock: &mut Clock<impl FnMut() -> Option<u64>>,
     mut wait: impl FnMut(),
     peer: Endpoint,
@@ -220,9 +200,9 @@ fn run_operations<T: DatagramIo>(
             ("test", &b"coaptic"[..]),
             ("large", &[0x5a; 2000][..]),
         ] {
-            if security.needs_refill(app.oscore())? {
+            if security.needs_refill(app)? {
                 let start = clock.now()?;
-                security.refill(app.oscore_mut())?;
+                security.refill(app)?;
                 observe(Observation::Reservation {
                     elapsed_ns: clock.now()? - start,
                 })?;
@@ -256,7 +236,7 @@ fn run_operations<T: DatagramIo>(
                 let after_poll = clock.now()?;
                 op.poll_ns += after_poll - phase;
                 op.polls += 1;
-                security.checkpoint(app.oscore())?;
+                security.checkpoint(app)?;
                 let after_checkpoint = clock.now()?;
                 op.checkpoint_ns += after_checkpoint - after_poll;
                 let reply = app

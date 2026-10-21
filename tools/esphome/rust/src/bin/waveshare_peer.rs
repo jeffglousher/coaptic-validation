@@ -161,21 +161,41 @@ fn verify_saved_identity(c: &Credentials, bytes: &[u8]) -> Result<()> {
 }
 fn run() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 7 && !(args.len() == 8 && args[1] == "timing-server-lan") {
+    if args.len() != 7
+        && !(args.len() == 8
+            && matches!(
+                args[1].as_str(),
+                "timing-server-lan" | "timing-server-lan-unprotected"
+            ))
+    {
         return Err(
-            "usage: waveshare-peer MODE ADDRESS CREDENTIALS STATE SAVED_WIRE_OR_REPORT RUN_ID [REMOTE_IPV4 for timing-server-lan]",
+            "usage: waveshare-peer MODE ADDRESS CREDENTIALS STATE SAVED_WIRE_OR_REPORT RUN_ID [REMOTE_IPV4 for timing-server-lan[-unprotected]]",
         );
     }
-    if args[1] == "timing-unprotected" {
-        if args[3] != "-" || args[4] != "-" {
-            return Err("unprotected timing requires - credentials and - state");
-        }
+    if matches!(
+        args[1].as_str(),
+        "timing-unprotected" | "timing-server-unprotected" | "timing-server-lan-unprotected"
+    ) {
+        timing_server::validate_placeholders(&args[3], &args[4])?;
         let peer: SocketAddr = args[2].parse().map_err(|_| "peer address")?;
         if !peer.is_ipv4() || args[6].len() != 32 || !args[6].bytes().all(|b| b.is_ascii_hexdigit())
         {
             return Err("network mode/run identity");
         }
-        return timing::campaign_unprotected(peer, &args[6], Path::new(&args[5]));
+        if args[1] == "timing-unprotected" {
+            return timing::campaign_unprotected(peer, &args[6], Path::new(&args[5]));
+        }
+        let remote = if args[1] == "timing-server-lan-unprotected" {
+            Some(
+                args.get(7)
+                    .ok_or("timing remote scope")?
+                    .parse()
+                    .map_err(|_| "timing remote IPv4 scope")?,
+            )
+        } else {
+            None
+        };
+        return timing_server::run_unprotected(peer, &args[6], Path::new(&args[5]), remote);
     }
     let c = credentials(Path::new(&args[3]))?;
     if args[1] == "provision" {

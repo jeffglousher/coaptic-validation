@@ -1,12 +1,15 @@
-#![cfg(all(feature = "network", feature = "oscore", feature = "host"))]
+#![cfg(all(feature = "network", feature = "host"))]
 
 use coaptic::Endpoint;
-use coaptic::storage::{DatagramIo, UdpSocketIo};
+#[cfg(feature = "oscore")]
+use coaptic::storage::DatagramIo;
+use coaptic::storage::UdpSocketIo;
+#[cfg(feature = "oscore")]
+use coaptic_esphome_probe::security_state::{self, Credentials, Error, RECORD_BYTES, Store};
 use coaptic_esphome_probe::{
     network,
     read_campaign::{self, Observation},
     read_campaign_device::{self, Selection},
-    security_state::{self, Credentials, Error, RECORD_BYTES, Store},
 };
 use std::{
     net::UdpSocket,
@@ -17,8 +20,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+#[cfg(feature = "oscore")]
 #[derive(Clone, Default)]
 struct Memory(Arc<Mutex<Option<[u8; RECORD_BYTES]>>>);
+#[cfg(feature = "oscore")]
 impl Store for Memory {
     fn read(&mut self) -> Result<Option<[u8; RECORD_BYTES]>, Error> {
         Ok(*self.0.lock().unwrap())
@@ -28,7 +35,9 @@ impl Store for Memory {
         Ok(())
     }
 }
+#[cfg(feature = "oscore")]
 struct Missing;
+#[cfg(feature = "oscore")]
 impl Store for Missing {
     fn read(&mut self) -> Result<Option<[u8; RECORD_BYTES]>, Error> {
         Err(Error::Unavailable)
@@ -37,10 +46,13 @@ impl Store for Missing {
         panic!("must not initialize failed storage")
     }
 }
+#[cfg(feature = "oscore")]
 struct BrokenIo;
+#[cfg(feature = "oscore")]
 impl coaptic::storage::DatagramTransport for BrokenIo {
     type Error = ();
 }
+#[cfg(feature = "oscore")]
 impl DatagramIo for BrokenIo {
     fn recv(&mut self, _: &mut [u8]) -> Result<Option<(usize, Endpoint)>, ()> {
         Err(())
@@ -49,6 +61,7 @@ impl DatagramIo for BrokenIo {
         Err(())
     }
 }
+#[cfg(feature = "oscore")]
 fn credentials(sender: u8, recipient: u8) -> Credentials {
     Credentials {
         secret: [0x61; 32],
@@ -69,8 +82,10 @@ fn client_io() -> UdpSocketIo<[u8; 1153]> {
 
 // This is a correctness/refusal test, not a durable-filesystem or performance
 // measurement. Only the isolated test stores below use volatile memory.
+#[cfg(feature = "oscore")]
 #[test]
 fn matched_complete_reads_refuse_failures_then_recover() {
+    let _guard = TEST_LOCK.lock().unwrap();
     let server_credentials = credentials(2, 1);
     let client_credentials = credentials(1, 2);
     let mut server_state = Memory::default();
@@ -358,11 +373,11 @@ fn matched_complete_reads_refuse_failures_then_recover() {
         ),
         Err("campaign deadline/poll bound")
     );
-
-    unprotected_reads_use_the_same_workload_and_deadline();
 }
 
+#[test]
 fn unprotected_reads_use_the_same_workload_and_deadline() {
+    let _guard = TEST_LOCK.lock().unwrap();
     let identity = *b"0123456789abcdef0123456789abcdef";
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let peer: Endpoint = socket.local_addr().unwrap().into();
@@ -386,35 +401,58 @@ fn unprotected_reads_use_the_same_workload_and_deadline() {
         )
     });
     let mut completed = 0;
+    let mut records = 0;
+    let mut terminal = 0;
+    let mut record_address: *const read_campaign_device::Record = core::ptr::null();
     let clock = Instant::now();
-    let result = read_campaign::run_unprotected(
+    let result = read_campaign_device::run_unprotected(
         client_io(),
         random,
+        Selection {
+            peer,
+            expected_identity: &identity,
+            async_network: false,
+        },
         || Some(clock.elapsed().as_nanos() as u64),
         || std::thread::sleep(Duration::from_millis(1)),
-        peer,
-        &identity,
-        |observation| {
-            match observation {
-                Observation::Preparation { recovery_ns, .. } => assert_eq!(recovery_ns, 0),
-                Observation::Reservation { .. } => panic!("unprotected sender reservation"),
-                Observation::Operation(op) => {
-                    assert_eq!(op.iteration, completed / 3);
-                    assert_eq!(
-                        (op.path, op.bytes),
-                        [("identity", 32), ("test", 7), ("large", 2000)][completed as usize % 3]
-                    );
-                    assert!(op.elapsed_ns > 0 && op.polls > 0);
+        |record| {
+            let address = core::ptr::from_ref(record);
+            if record_address.is_null() {
+                record_address = address;
+            }
+            assert_eq!(address, record_address);
+            match record.words[0] {
+                0 => {
+                    assert_eq!(records, 0);
+                    assert_eq!(record.words[1], 0);
+                    assert_eq!(record.words[3], 4096);
+                    assert_eq!(record.words[4], 128);
+                    assert_eq!(record.words[5], 0);
+                    assert!(record.words[10..].iter().all(|&v| v == 0));
+                }
+                1 => panic!("unprotected sender reservation"),
+                2 => {
+                    assert_eq!(record.words[1], completed / 3);
+                    assert_eq!(record.words[2], completed % 3);
+                    assert_eq!(record.words[3], [32, 7, 2000][completed as usize % 3]);
+                    assert!(record.words[5] > 0 && record.words[12] > 0);
                     completed += 1;
                 }
+                3 => {
+                    terminal += 1;
+                    assert_eq!(&record.words[1..4], &[1, 24, records]);
+                }
+                _ => panic!("unknown stream record"),
             }
-            Ok(())
+            records += 1;
+            true
         },
     );
     stop.store(true, Ordering::Release);
     assert_eq!(worker.join().unwrap(), Ok(()));
     assert_eq!(result, Ok(()));
-    assert_eq!(completed, read_campaign::OPERATIONS);
+    assert_eq!(completed, u64::from(read_campaign::OPERATIONS));
+    assert_eq!((records, terminal), (26, 1));
 
     let blackhole = UdpSocket::bind("127.0.0.1:0").unwrap();
     let mut now = 0;
