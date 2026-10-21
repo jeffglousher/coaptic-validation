@@ -1,0 +1,34 @@
+{
+  "schema": "coaptic-public-evidence-manifest/1",
+  "self_hash_excluded": true,
+  "files": {
+    "matched-durable-oscore-client.jsonl": {
+      "bytes": 11631,
+      "sha256": "c297bd4203e263e36b5442c63d021afca12775a229ba226fb55746af4d0f2127"
+    },
+    "matched-durable-oscore-device-api.jsonl": {
+      "bytes": 18095,
+      "sha256": "50332d062901566c53ebd111409e31806fa484feb5481fb8bd35981ed98f5829"
+    },
+    "matched-unprotected-client.jsonl": {
+      "bytes": 11429,
+      "sha256": "a95a786d2703546b6b1eb4be9cbac5c97f5477e89a748bd3b05db9e9f8e13f42"
+    },
+    "matched-unprotected-device-api.jsonl": {
+      "bytes": 18095,
+      "sha256": "9fd9c5092b88a6b6601620103f521780d814679c94da70d327c8d46c0561f777"
+    },
+    "normal-restored-api.jsonl": {
+      "bytes": 9546,
+      "sha256": "eefe2136db4f23b3ba0204098a28f745e41d36befc1b53b2fccfb79b90eece77"
+    },
+    "README.md": {
+      "bytes": 3184,
+      "sha256": "4e673e327f890d1f4160c37b23f573309536dba97c737351f96ced2ea6e29b4b"
+    },
+    "result.json": {
+      "bytes": 59072,
+      "sha256": "3410bb7f108ecc349a9d3b7ec9487d1c017f5ff2f36e8b6df5a8658a65e97860"
+    }
+  }
+}
