@@ -1218,6 +1218,7 @@ mod observe_loss_hook_tests {
 #[cfg(test)]
 mod observe_large_tests {
     use super::*;
+    use coaptic::storage::{ObserveKey, SlotId};
     #[test]
     fn large_fixture_refusal_preserves_state_and_full_delivery_recovers() {
         let _guard = crate::runner::harness_lock();
@@ -1258,19 +1259,6 @@ mod observe_large_tests {
             assert_eq!(complete.body.as_deref(), Some(body));
             assert_eq!(complete.etag, [etag.to_vec()]);
         }
-        // An exploratory third rapid round exceeds this default fixture's
-        // retained-TX budget. Keep its actual cause visible instead of reporting
-        // only a client timeout; this is not a sustained-cadence success claim.
-        server.update_large_observed(&["obs-large"], 1).unwrap();
-        let deadline = Instant::now() + Duration::from_secs(1);
-        loop {
-            if let Some(error) = server.notification_error() {
-                assert_eq!(error, "Saturated");
-                break;
-            }
-            assert!(Instant::now() < deadline, "missing saturation diagnostic");
-            thread::sleep(Duration::from_millis(2));
-        }
         drop(client);
         drop(server);
         let mut fresh = CoapticPeer::new();
@@ -1290,6 +1278,93 @@ mod observe_large_tests {
         );
         assert!(unsupported.take_capture().snapshot().is_empty());
     }
+
+    #[test]
+    fn explicit_large_notification_pressure_preserves_owner_and_admission_recovers() {
+        let _guard = crate::runner::harness_lock();
+        site::reset();
+        let (socket, address) = bind_loopback().unwrap();
+        let capture = Capture::new();
+        let mut app = bind_site(CapturingIo::new(socket, address, capture.clone()));
+        let (socket, client_address) = bind_loopback().unwrap();
+        let mut registration = ClientRequest::get(&["obs-large"]);
+        registration.observe = Some(0);
+        let (_client, call) = start_client(
+            CapturingIo::new(socket, client_address, Capture::new()),
+            address,
+            &registration,
+        )
+        .unwrap();
+        let key = ObserveKey::new(call.token(), Endpoint::from(client_address));
+        let began = Instant::now();
+        let actual = loop {
+            app.poll(began.elapsed().as_millis() as u64).unwrap();
+            if let Some(id) = app.engine().lookup_observe(key) {
+                break app.engine().observe_interest(id).unwrap();
+            }
+            assert!(
+                began.elapsed() < Duration::from_secs(1),
+                "registration ingress"
+            );
+            thread::sleep(Duration::from_millis(2));
+        };
+        // Learn route identity and transfer preferences through real registration,
+        // then drop all old caches. Both Apps use this exact bind_site layout;
+        // this is an unprotected admission fixture, not session/custody transfer.
+        let mut app = bind_site(app.into_io());
+        let interest = actual.with_lifetime(None);
+        let owner = app.engine_mut().insert_observe(interest).unwrap();
+        let before = app.engine().observe_interest(owner).unwrap();
+        let baseline = capture.snapshot().len();
+        assert_eq!(app.engine().capacities().tx_datagram_slots, 4);
+        let held: [SlotId; 4] =
+            std::array::from_fn(|_| app.engine_mut().acquire_tx().expect("owned TX hold"));
+        assert_eq!(app.engine_mut().tx_occupied(), 4);
+        assert!(app.engine_mut().acquire_tx().is_none());
+
+        let response = site::observe_large_response();
+        let error = app
+            .notify_confirmable(1, &["obs-large"], response)
+            .unwrap_err();
+        assert!(matches!(error, coaptic::app::Error::Saturated));
+        assert_eq!(format!("{error:?}"), "Saturated");
+        assert_eq!(capture.snapshot().len(), baseline);
+        assert_eq!(app.engine_mut().tx_occupied(), 4);
+        assert_eq!(app.engine().lookup_observe(key), Some(owner));
+        let refused = app.engine().observe_interest(owner).unwrap();
+        assert_eq!(refused.key(), before.key());
+        assert_eq!(refused.resource(), before.resource());
+        assert_eq!(refused.seq(), before.seq());
+        assert!(refused.is_pending());
+
+        for slot in held {
+            app.engine_mut().release_tx(slot).unwrap();
+        }
+        assert_eq!(app.engine_mut().tx_occupied(), 0);
+        assert_eq!(
+            app.notify_confirmable(2, &["obs-large"], response).unwrap(),
+            1
+        );
+        let delivered = capture.snapshot();
+        assert_eq!(delivered.len(), baseline + 1);
+        let packet = decode(&delivered[baseline].bytes).unwrap();
+        let block = packet.block2().unwrap().unwrap();
+        assert_eq!(packet.ty(), Type::Confirmable);
+        assert_eq!(packet.code(), Code::CONTENT);
+        assert_eq!(packet.token(), key.token());
+        assert_eq!(packet.observe().unwrap().unwrap(), before.seq() + 1);
+        assert_eq!(block.num(), 0);
+        assert!(block.more());
+        assert!(!packet.payload().is_empty());
+        assert_eq!(
+            packet.payload(),
+            &response.payload()[..packet.payload().len()]
+        );
+        // Only first-block admission is proved here. The separate wire test
+        // above still checks complete 2,000-byte delivery and both ETags.
+        assert!(packet.payload().len() < response.payload().len());
+    }
+
     #[test]
     fn occupied_large_update_refuses_without_replacing_snapshot() {
         let mut server = CoapticPeer::new();
