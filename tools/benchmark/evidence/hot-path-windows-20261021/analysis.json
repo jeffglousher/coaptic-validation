@@ -1,0 +1,229 @@
+{
+  "aggregate": [
+    {
+      "case": "rust|unprotected|64|1|con",
+      "baseline": {
+        "p50_ns": 15700,
+        "ops_s": 61233.00305782309
+      },
+      "planning": {
+        "p50_ns": 15300,
+        "ops_s": 62996.68952396551
+      },
+      "paired_rate_ratios": [
+        1.028802873908976,
+        1.0401606556099587,
+        1.1513892181680523,
+        1.1037742729437374,
+        0.9841665126343851
+      ]
+    },
+    {
+      "case": "rust|unprotected|64|16|con",
+      "baseline": {
+        "p50_ns": 141900,
+        "ops_s": 111401.06332314941
+      },
+      "planning": {
+        "p50_ns": 134500,
+        "ops_s": 117834.20727037059
+      },
+      "paired_rate_ratios": [
+        1.0355324548119234,
+        1.0739645319036115,
+        1.062494174322039,
+        1.0662600316430777,
+        1.0596430786605613
+      ]
+    },
+    {
+      "case": "rust|unprotected|64|1|non",
+      "baseline": {
+        "p50_ns": 16400,
+        "ops_s": 60756.063645014474
+      },
+      "planning": {
+        "p50_ns": 15300,
+        "ops_s": 63054.98236825055
+      },
+      "paired_rate_ratios": [
+        1.0378385067319074,
+        1.013125062699344,
+        1.0598286564294743,
+        1.0432394847472164,
+        1.0352871731869313
+      ]
+    },
+    {
+      "case": "rust|unprotected|65536|1|con",
+      "baseline": {
+        "p50_ns": 1022900,
+        "ops_s": 949.4217798839777
+      },
+      "planning": {
+        "p50_ns": 991450,
+        "ops_s": 995.9601366955287
+      },
+      "paired_rate_ratios": [
+        1.0511317964115274,
+        1.0441902844088664,
+        1.0422313056463643,
+        1.0123359968882675,
+        1.05016838141497
+      ]
+    },
+    {
+      "case": "rust|unprotected|65536|16|con",
+      "baseline": {
+        "p50_ns": 9855300,
+        "ops_s": 1603.9175686614556
+      },
+      "planning": {
+        "p50_ns": 9382850,
+        "ops_s": 1684.1839339378853
+      },
+      "paired_rate_ratios": [
+        1.0985905485702858,
+        0.9927155300024133,
+        1.0519182337472492,
+        1.0251268214798197,
+        1.0489486255358171
+      ]
+    },
+    {
+      "case": "python|unprotected|64|1|con",
+      "baseline": {
+        "p50_ns": 50300,
+        "ops_s": 19285.84515394926
+      },
+      "planning": {
+        "p50_ns": 46800,
+        "ops_s": 20268.43515519541
+      },
+      "paired_rate_ratios": [
+        1.0509487654496148,
+        1.0831332076076874,
+        1.039551593776758,
+        1.0753328447538781,
+        1.0590796715242319
+      ]
+    },
+    {
+      "case": "python|OSCORE-AES-CCM-16-64-128|64|1|con",
+      "baseline": {
+        "p50_ns": 143200,
+        "ops_s": 6595.644763849535
+      },
+      "planning": {
+        "p50_ns": 136900,
+        "ops_s": 6801.06940015248
+      },
+      "paired_rate_ratios": [
+        1.0368785606134876,
+        1.0124169473044495,
+        1.0276049648134806,
+        1.0714079536736187,
+        0.9973380614367803
+      ]
+    },
+    {
+      "case": "python|OSCORE-AES-CCM-16-64-128|65536|1|con",
+      "baseline": {
+        "p50_ns": 11377200,
+        "ops_s": 87.03679426079378
+      },
+      "planning": {
+        "p50_ns": 11436700,
+        "ops_s": 86.92425583329666
+      },
+      "paired_rate_ratios": [
+        0.9946656074460347,
+        1.0021345337573062,
+        1.0479802341775653,
+        1.0002267263731082,
+        0.8901015534666374
+      ]
+    }
+  ],
+  "core": [
+    {
+      "window": 0,
+      "baseline_p50_ns": 1400,
+      "planning_p50_ns": 1000,
+      "baseline_mean_ns": 1419.2033333333334,
+      "planning_mean_ns": 1054
+    },
+    {
+      "window": 1,
+      "baseline_p50_ns": 1400,
+      "planning_p50_ns": 1000,
+      "baseline_mean_ns": 1435.4466666666667,
+      "planning_mean_ns": 1061.81
+    },
+    {
+      "window": 2,
+      "baseline_p50_ns": 1400,
+      "planning_p50_ns": 1000,
+      "baseline_mean_ns": 1400.4633333333334,
+      "planning_mean_ns": 1041.92
+    },
+    {
+      "window": 3,
+      "baseline_p50_ns": 1400,
+      "planning_p50_ns": 1000,
+      "baseline_mean_ns": 1405.0366666666666,
+      "planning_mean_ns": 1062.2433333333333
+    },
+    {
+      "window": 4,
+      "baseline_p50_ns": 1400,
+      "planning_p50_ns": 1000,
+      "baseline_mean_ns": 1472.99,
+      "planning_mean_ns": 1035.46
+    }
+  ],
+  "cells": 80,
+  "completed": 262080,
+  "failed": 0,
+  "scope": "current-source baseline9243417 versus planning-only candidate7f3c58c; no earlier-estimate search; five alternating adjacent diagnostic windows, not independent long-term qualification",
+  "stage": {
+    "64": {
+      "active_datagrams": 12020,
+      "active_poll_ns_per_datagram": 8954.50915141431,
+      "receive_ns_per_datagram": 849.1181364392679,
+      "send_ns_per_datagram": 6345.515806988353,
+      "residual_inclusive_ns_per_datagram": 1759.8752079866888,
+      "poll_allocations": 0,
+      "body_snapshot_bytes": 0,
+      "body_compare_candidate_bytes": 0,
+      "scope": "nested diagnostic clocks/counters perturb timings;3s process includes idle before/after finite external load; residual is not isolated pure protocol time"
+    },
+    "65536": {
+      "active_datagrams": 17664,
+      "active_poll_ns_per_datagram": 9659.550498188406,
+      "receive_ns_per_datagram": 870.3804347826087,
+      "send_ns_per_datagram": 6471.359827898551,
+      "residual_inclusive_ns_per_datagram": 2317.8102355072465,
+      "poll_allocations": 0,
+      "body_snapshot_bytes": 0,
+      "body_compare_candidate_bytes": 0,
+      "scope": "nested diagnostic clocks/counters perturb timings;3s process includes idle before/after finite external load; residual is not isolated pure protocol time"
+    }
+  },
+  "current_core": {
+    "unprotected": {
+      "p50_ns": 1000,
+      "p99_ns": 1300,
+      "mean_ns": 1007.04,
+      "samples": 30000,
+      "measurement": "server App::poll only; request preparation and complete response verification outside clock; OSCORE responses authenticated"
+    },
+    "oscore": {
+      "p50_ns": 1900,
+      "p99_ns": 2400,
+      "mean_ns": 1957.44,
+      "samples": 30000,
+      "measurement": "server App::poll only; request preparation and complete response verification outside clock; OSCORE responses authenticated"
+    }
+  }
+}
