@@ -1,0 +1,308 @@
+{
+  "schema": "coaptic-reverse-read-software/1",
+  "candidate_suite": "e57cfa29a22ec9fd8004d34ca9c7a604e1b6befa",
+  "candidate_tree": "4a87c8f94cbbe6abbe8359c2252615a06d4fc531",
+  "native": {
+    "schema": "coaptic-reverse-software-checks/1",
+    "passed": true,
+    "commands": [
+      {
+        "label": "fmt",
+        "command": [
+          "cargo",
+          "+1.99.0",
+          "fmt",
+          "--manifest-path",
+          "tools/esphome/rust/Cargo.toml",
+          "--all"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 2.689,
+        "log_bytes": 0,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "log_utf8": ""
+      },
+      {
+        "label": "protected-tests",
+        "command": [
+          "cargo",
+          "+1.99.0",
+          "test",
+          "--locked",
+          "--manifest-path",
+          "tools/esphome/rust/Cargo.toml",
+          "--features",
+          "network,oscore,host",
+          "--all-targets"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 12.965,
+        "log_bytes": 5013,
+        "log_sha256": "d1b9d5be68b9f73e4ffa0bfb564d68a8ffa531f05e225355be2a12ecca47e9d8",
+        "log_utf8": "   Compiling coaptic-esphome-probe v0.0.0 (D:\\codex-work\\coaptic-validation\\tools\\esphome\\rust)\n    Finished `test` profile [unoptimized] target(s) in 9.68s\n     Running unittests src\\lib.rs (D:/coaptic-batch-interop-target\\debug\\deps\\coaptic_esphome_probe-7af21ab9a899eaa2.exe)\n\nrunning 28 tests\ntest entropy::tests::seed_is_consumed_and_output_matches_rustcrypto_reference_vector ... ok\ntest entropy::tests::independent_owners_do_not_share_state ... ok\ntest entropy::tests::request_refusal_preserves_stream_and_total_exhaustion_is_permanent ... ok\ntest read_campaign::tests::complete_representation_refuses_wrong_code_corruption_and_short_body_then_recovers ... ok\ntest read_campaign::tests::monotonic_clock_accepts_equal_ticks_and_refuses_regression_or_stop ... ok\ntest read_campaign_device::tests::selection_refuses_async_bad_identity_and_nonunicast_before_any_callback ... ok\ntest network::tests::checked_network_clock_refuses_regression_before_io_and_releases_owner ... ok\ntest security_state::tests::checkpoint_refusal_preserves_record_and_allows_valid_progress_without_recovery ... ok\ntest security_state::tests::exhausted_state_refuses_before_any_traffic_or_commit ... ok\ntest security_state::tests::offline_verification_authenticates_without_reserving_or_writing ... ok\ntest security_state::tests::failed_or_ambiguous_commit_poison_until_recovery_and_readback_is_required ... ok\ntest security_state::tests::authenticated_record_refuses_every_corrupted_byte_and_wrong_context ... ok\ntest security_state::tests::stale_writer_cannot_grant_another_owners_reserved_range ... ok\ntest security_state::tests::restart_restores_replay_and_skips_the_whole_reserved_range ... ok\ntest host_state::tests::file_store_refuses_concurrent_owner_truncation_and_implicit_creation ... ok\ntest network::tests::offline_observer_is_reclaimed_and_fresh_registrations_resume ... ok\ntest network::tests::online_observer_is_confirmed_every_thirty_seconds ... ok\ntest network::tests::protected::checked_network_clock_preserves_checkpoint_and_authenticated_recovery ... ok\ntest tests::scalar_abi_executes_the_protocol_probe ... ok\ntest network::tests::protected::protected_offline_observer_reclaims_and_new_security_epoch_registers ... ok\ntest network::tests::protected::protected_service_refuses_missing_state_and_ambiguous_commit_before_response ... ok\ntest network::tests::protected::protected_service_success_refusal_and_restart_replay_have_complete_authenticated_responses ... ok\ntest security_state::tests::cached_record_matches_each_durable_barrier_and_refuses_external_corruption ... ok\ntest network::tests::protected::rejection_tests::authenticated_oversize_burst_refuses_complete_bodies_then_recovers ... ok\ntest network::tests::protected::rejection_tests::persistent_transport_stops_at_32_but_idle_and_refusal_reset_at_31 ... ok\ntest network::tests::protected::rejection_tests::rejected_bursts_do_not_dispatch_or_consume_the_transport_failure_budget ... ok\ntest network::tests::protected::rejection_tests::uncertain_initial_sender_reservation_stops_before_receive_and_recovers ... ok\ntest network::tests::stopped_service_releases_ownership_and_entropy_refusal_is_reported ... ok\n\ntest result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s\n\n     Running unittests src\\bin\\checkpoint_cost.rs (D:/coaptic-batch-interop-target\\debug\\deps\\checkpoint_cost-e7e07375c72652dd.exe)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src\\bin\\waveshare_peer.rs (D:/coaptic-batch-interop-target\\debug\\deps\\waveshare_peer-f059f2f53c5fff7b.exe)\n\nrunning 10 tests\ntest raw_udp::tests::complete_authenticated_controls_refuse_short_wrong_and_error_results ... ok\ntest timing::tests::packet_metadata_is_bounded_without_recording_body ... ok\ntest timing::tests::trace_bounds_refuse_overflow_and_reset_preserves_capacity ... ok\ntest timing_server::tests::network_scope_refuses_wildcards_public_addresses_and_other_peers ... ok\ntest timing_server::tests::server_trace_limit_refuses_overflow_without_extending_storage ... ok\ntest timing_server::tests::unprotected_selection_requires_both_literal_placeholders ... ok\ntest tests::saved_identity_requires_authentication_and_exact_path ... ok\ntest tests::replay_response_is_failure_even_before_fresh_liveness ... ok\ntest timing_server::tests::excluded_udp_source_never_reaches_protocol_or_receives_a_reply ... ok\ntest timing_server::tests::unprotected_service_completes_the_matched_udp_campaign_without_state_events ... ok\n\ntest result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.06s\n\n     Running tests\\read_campaign.rs (D:/coaptic-batch-interop-target\\debug\\deps\\read_campaign-17acde32939d06cf.exe)\n\nrunning 2 tests\ntest matched_complete_reads_refuse_failures_then_recover ... ok\ntest unprotected_reads_use_the_same_workload_and_deadline ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s\n\n"
+      },
+      {
+        "label": "unprotected-tests",
+        "command": [
+          "cargo",
+          "+1.99.0",
+          "test",
+          "--locked",
+          "--manifest-path",
+          "tools/esphome/rust/Cargo.toml",
+          "--features",
+          "network,host",
+          "--lib",
+          "--test",
+          "read_campaign"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 4.44,
+        "log_bytes": 1793,
+        "log_sha256": "f8ada560ceec12cb39503b3c132ffb924aed1200e4b701af31b39ab4fcfb5e45",
+        "log_utf8": "   Compiling qualification-no-std v0.0.0 (D:\\codex-work\\coaptic-validation\\crates\\qualification-no-std)\n   Compiling coaptic-esphome-probe v0.0.0 (D:\\codex-work\\coaptic-validation\\tools\\esphome\\rust)\n    Finished `test` profile [unoptimized] target(s) in 3.94s\n     Running unittests src\\lib.rs (D:/coaptic-batch-interop-target\\debug\\deps\\coaptic_esphome_probe-e26b6aea05811ea2.exe)\n\nrunning 11 tests\ntest read_campaign::tests::monotonic_clock_accepts_equal_ticks_and_refuses_regression_or_stop ... ok\ntest read_campaign::tests::complete_representation_refuses_wrong_code_corruption_and_short_body_then_recovers ... ok\ntest entropy::tests::seed_is_consumed_and_output_matches_rustcrypto_reference_vector ... ok\ntest entropy::tests::independent_owners_do_not_share_state ... ok\ntest read_campaign_device::tests::selection_refuses_async_bad_identity_and_nonunicast_before_any_callback ... ok\ntest entropy::tests::request_refusal_preserves_stream_and_total_exhaustion_is_permanent ... ok\ntest network::tests::stopped_service_releases_ownership_and_entropy_refusal_is_reported ... ok\ntest network::tests::offline_observer_is_reclaimed_and_fresh_registrations_resume ... ok\ntest network::tests::online_observer_is_confirmed_every_thirty_seconds ... ok\ntest network::tests::checked_network_clock_refuses_regression_before_io_and_releases_owner ... ok\ntest tests::scalar_abi_executes_the_protocol_probe ... ok\n\ntest result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n\n     Running tests\\read_campaign.rs (D:/coaptic-batch-interop-target\\debug\\deps\\read_campaign-7484f2a99f14ecd6.exe)\n\nrunning 1 test\ntest unprotected_reads_use_the_same_workload_and_deadline ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s\n\n"
+      },
+      {
+        "label": "protected-clippy",
+        "command": [
+          "cargo",
+          "+1.99.0",
+          "clippy",
+          "--locked",
+          "--manifest-path",
+          "tools/esphome/rust/Cargo.toml",
+          "--features",
+          "network,oscore,host",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 1.905,
+        "log_bytes": 156,
+        "log_sha256": "a6b604a68344eeee24a4866650b698649107da5ef0664761f0df657e69134ba3",
+        "log_utf8": "    Checking coaptic-esphome-probe v0.0.0 (D:\\codex-work\\coaptic-validation\\tools\\esphome\\rust)\n    Finished `dev` profile [unoptimized] target(s) in 1.79s\n"
+      },
+      {
+        "label": "unprotected-clippy",
+        "command": [
+          "cargo",
+          "+1.99.0",
+          "clippy",
+          "--locked",
+          "--manifest-path",
+          "tools/esphome/rust/Cargo.toml",
+          "--features",
+          "network,host",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.854,
+        "log_bytes": 260,
+        "log_sha256": "ad19b74e01f8df20f7cc3fe3b9e0b2207dd1ee86f55b5dae84b5852421e56774",
+        "log_utf8": "    Checking qualification-no-std v0.0.0 (D:\\codex-work\\coaptic-validation\\crates\\qualification-no-std)\n    Checking coaptic-esphome-probe v0.0.0 (D:\\codex-work\\coaptic-validation\\tools\\esphome\\rust)\n    Finished `dev` profile [unoptimized] target(s) in 0.72s\n"
+      },
+      {
+        "label": "unprotected-nohost",
+        "command": [
+          "cargo",
+          "+1.99.0",
+          "check",
+          "--locked",
+          "--manifest-path",
+          "tools/esphome/rust/Cargo.toml",
+          "--features",
+          "network,library-only",
+          "--lib"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 3.066,
+        "log_bytes": 332,
+        "log_sha256": "169e6fec5c27776104ad850e70e3a7e6b8d97c47e9900e9bc93e59b2968c651a",
+        "log_utf8": "    Checking coaptic v0.0.10 (D:\\codex-work\\coaptic-validation\\coaptic)\n    Checking qualification-no-std v0.0.0 (D:\\codex-work\\coaptic-validation\\crates\\qualification-no-std)\n    Checking coaptic-esphome-probe v0.0.0 (D:\\codex-work\\coaptic-validation\\tools\\esphome\\rust)\n    Finished `dev` profile [unoptimized] target(s) in 3.01s\n"
+      },
+      {
+        "label": "protected-nohost",
+        "command": [
+          "cargo",
+          "+1.99.0",
+          "check",
+          "--locked",
+          "--manifest-path",
+          "tools/esphome/rust/Cargo.toml",
+          "--features",
+          "network,oscore,library-only",
+          "--lib"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.358,
+        "log_bytes": 156,
+        "log_sha256": "ad19f05d6c5e20d19033951c2c56d989726f69ebdd0a869b6f89e5c3f49f4c6a",
+        "log_utf8": "    Checking coaptic-esphome-probe v0.0.0 (D:\\codex-work\\coaptic-validation\\tools\\esphome\\rust)\n    Finished `dev` profile [unoptimized] target(s) in 0.31s\n"
+      },
+      {
+        "label": "release",
+        "command": [
+          "cargo",
+          "+1.99.0",
+          "build",
+          "--locked",
+          "--release",
+          "--manifest-path",
+          "tools/esphome/rust/Cargo.toml",
+          "--features",
+          "network,oscore,host",
+          "--bin",
+          "waveshare-peer"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 20.951,
+        "log_bytes": 159,
+        "log_sha256": "56090bef1d96a26316b43e0e7139f36298154d489b40a3cc08ff80085569c5b4",
+        "log_utf8": "   Compiling coaptic-esphome-probe v0.0.0 (D:\\codex-work\\coaptic-validation\\tools\\esphome\\rust)\n    Finished `release` profile [optimized] target(s) in 20.90s\n"
+      }
+    ],
+    "library": "3ca0be6fe8b13e23d0f834d7340f8e06ee9547a1",
+    "suite_base": "4aa6c10bb802a643a73d7245901e84f1796df95f",
+    "diff_sha256": "982bddd332dc24fc992de4cff2af566b0fc2c2d487b0812ec36b63dd62fcc5cb",
+    "finished": "2026-10-21T12:48:47.224782+00:00",
+    "tested_diff_matches_candidate": true,
+    "core_changes_to_target_are_architecture_docs_only": true,
+    "protected_executions": 40,
+    "unprotected_executions": 12
+  },
+  "configuration": {
+    "command": [
+      "D:/CoapticCurrent/esphome-venv/Scripts/python.exe",
+      "-m",
+      "unittest",
+      "test_configuration.ConfigurationRefusalTests.test_read_campaign_selects_explicit_security_and_refuses_mixed_modes",
+      "-v"
+    ],
+    "cwd": "D:/codex-work/coaptic-validation/tools/esphome",
+    "exit_code": 0,
+    "configuration_cases": 14,
+    "runtime": "existing ESPHome venv; only-generate, no target compilation",
+    "log_bytes": 295,
+    "log_sha256": "be61c8b64ceeb04fc96a03017398abee6100982528f6ac7860ac82d9c9a662eb"
+  },
+  "target_archives": {
+    "library": "75a86dec0b732cafccaccf2c65418ee603ebb5c1",
+    "suite": "e57cfa29a22ec9fd8004d34ca9c7a604e1b6befa",
+    "passed": true,
+    "commands": [
+      {
+        "label": "protected",
+        "exit": 0,
+        "command": [
+          "C:/Users/jeffg/.cargo/bin/agent-resources.exe",
+          "run",
+          "--id",
+          "coaptic-xtensa-reusable",
+          "--directory",
+          "D:\\codex-work\\coaptic-validation",
+          "--",
+          "D:/CoapticCurrent/esphome-venv/Scripts/python.exe",
+          "tools/esphome/build_archive.py",
+          "--expected-library-revision",
+          "75a86dec0b732cafccaccf2c65418ee603ebb5c1",
+          "--oscore"
+        ],
+        "elapsed_seconds": 15.369,
+        "log_bytes": 361,
+        "log_sha256": "eb9b966cafd8e3202b798ce5012f95da61a2c4777e1770168de0cc3cb27fa5a9",
+        "archive_sha256": "6433256a7be1f21579457e30ef3e28e30f56b849eee28e6352446104132beb95",
+        "features": [
+          "network",
+          "standalone",
+          "oscore"
+        ]
+      },
+      {
+        "label": "unprotected",
+        "exit": 0,
+        "command": [
+          "C:/Users/jeffg/.cargo/bin/agent-resources.exe",
+          "run",
+          "--id",
+          "coaptic-xtensa-reusable",
+          "--directory",
+          "D:\\codex-work\\coaptic-validation",
+          "--",
+          "D:/CoapticCurrent/esphome-venv/Scripts/python.exe",
+          "tools/esphome/build_archive.py",
+          "--expected-library-revision",
+          "75a86dec0b732cafccaccf2c65418ee603ebb5c1"
+        ],
+        "elapsed_seconds": 13.114,
+        "log_bytes": 361,
+        "log_sha256": "e310b1011dba091d8a0377072c2688f23bf0e7297fd712d1c3dc075ba11cfdb3",
+        "archive_sha256": "f04958e599f51ce1618192f5c24c9f43df7c725d939b116683dc5b7020fa2ff8",
+        "features": [
+          "network",
+          "standalone"
+        ]
+      }
+    ],
+    "finished": "2026-10-21T12:52:44.036880+00:00"
+  },
+  "firmware": {
+    "run_id": "e7b9f41aead75bd75dfcf2dea9ac0faa",
+    "source": "75a86dec0b732cafccaccf2c65418ee603ebb5c1",
+    "suite": "e57cfa29a22ec9fd8004d34ca9c7a604e1b6befa",
+    "exit": 0,
+    "elapsed_seconds": 445.426,
+    "log_bytes": 139150,
+    "log_sha256": "b2a61b8194480b674ffd3d2bb6f59cc9f7cdf33fa881ea568a50631155e9020e",
+    "artifacts": [
+      {
+        "name": "firmware.ota.bin",
+        "bytes": 1087344,
+        "sha256": "fee3ad271728a442c74904033dbec078dd6a2648071413321403bba9d0a727a2"
+      },
+      {
+        "name": "firmware.elf",
+        "bytes": 13370460,
+        "sha256": "619c0e7884ce05f901027043c817acb421b696ea6831df2280abad8c533b9b31"
+      },
+      {
+        "name": "coaptic-waveshare.map",
+        "bytes": 10688141,
+        "sha256": "c7c9dd27b953fe7ef1affb7a2bcff642761857e27e95f533c0f5396106743fbc"
+      }
+    ],
+    "installed": false,
+    "linker_summary": {
+      "diram_static_used_bytes": 100535,
+      "diram_bank_capacity_bytes": 341760,
+      "dedicated_iram_used_bytes": 16384,
+      "dedicated_iram_capacity_bytes": 16384,
+      "rtc_slow_used_bytes": 32,
+      "rtc_fast_reserved_bytes": 24,
+      "image_estimate_bytes": 1087223,
+      "source": "ESP-IDF size summary in the hashed firmware build log",
+      "scope": "Static linker bank views; do not add them to overlapping heap or stack views or treat them as minimum deployment RAM. Runtime initialization and whole-system peak are unmeasured for this uninstalled image."
+    }
+  },
+  "selected_frame_sanity": {
+    "archive_sha256": "f04958e599f51ce1618192f5c24c9f43df7c725d939b116683dc5b7020fa2ff8",
+    "worker_reservation_bytes": 98304,
+    "rust_selected_constructor_nesting_bytes": 85168,
+    "unchanged_cpp_worker_frame_bytes": 32,
+    "observer_callback_frame_bytes": 112,
+    "method": "Installed Xtensa objdump; focused prologue and selected constructor nesting, not a full call-graph or runtime peak proof"
+  },
+  "limits": [
+    "Native tests use real UDP plus in-memory test stores; they do not establish MCU execution or flash power-loss safety.",
+    "Mode 7 accepts no Coaptic credentials or Store; it is explicit unprotected selection, never fallback from mode 6. Wi-Fi/API/OTA keep platform credentials.",
+    "One reused 128 B metadata record and scalar counters; no extra packet/body/sample storage or core allocation dependency.",
+    "Target archives compile with and without OSCORE. One full unprotected mode-7 ESPHome image links; protected mode-6 archive compiles, and its earlier full image keeps its own source identity.",
+    "This image is not installed. Reverse LAN execution requires Windows inbound permission; current shell is not elevated. No firewall or device modification occurred in this software batch.",
+    "Exact stack/runtime watermarks for the new reverse image remain unmeasured. Existing normal paired image and original four effects remain preserved.",
+    "Source receipts name the clean candidate before this evidence file was added. Documentation and proof commits do not relabel executed sources."
+  ]
+}
