@@ -1,0 +1,207 @@
+ELF SHA256 5e68add06658a621411d238f5fdbd3a94c08521cd9380fddcf18a00f75e02e3e
+Hash-verified private ZIP; only selected public-code snippets decoded; temporary snippets removed.
+
+_RNvNtNtCs7mU32JYIwOM_21coaptic_esphome_probe11network_ffi11pairing_ffi3run
+Address 0x4214c2a0; function size 1092; selected bytes 512
+
+C:\Users\jeffg\AppData\Local\CoapticQualification\completion-20261020\phase-public-layout-0.code:     file format binary
+
+
+Disassembly of section .data:
+
+4214c2a0 <.data>:
+4214c2a0:	364100        	entry	a1, 32
+4214c2a3:	8164b6        	l32r	a8, 0x42139c34 ; public literal 0xc240 (49728)
+4214c2a6:	8081c0        	sub	a8, a1, a8
+4214c2a9:	101800        	movsp	a1, a8
+4214c2ac:	7d02      	mov.n	a7, a2
+4214c2ae:	7931      	s32i.n	a7, a1, 12
+4214c2b0:	8151b6        	l32r	a8, 0x42139bf4 ; public literal 0x4214c248 (1108656712)
+4214c3b1:	82c178        	addi	a8, a1, 120
+4214c3b4:	826122        	s32i	a8, a1, 136
+4214c3b7:	b117b6        	l32r	a11, 0x42139c14 ; public literal 0x7200 (29184)
+4214c3ba:	c117b6        	l32r	a12, 0x42139c18 ; public literal 0xc198 (49560)
+4214c3bd:	8117b6        	l32r	a8, 0x42139c1c ; public literal 0x4200f5a0 (1107359136) -> coaptic_pairing_owner_sizes
+4214c3c0:	ad07      	mov.n	a10, a7
+4214c3c2:	e00800        	callx8	a8
+4214c3c5:	8116b6        	l32r	a8, 0x42139c20 ; public literal 0x42026fdc (1107455964) -> _RINvMs0_NtCs7mU32JYIwOM_21coaptic_esphome_probe13async_networkNtB6_6Driver3runNCINvNtNtB8_7pairing13async_service9run_asyncNtB6_6SocketNtNtNtB8_11network_ffi11pairing_ffi3NvsNtB2b_3UsbNCNvB2b_3runs1_0NtB6_5TimerB3c_NtB6_12ConsoleReadyE0EB8_
+4214c3c8:	ad06      	mov.n	a10, a6
+4214c3ca:	bd05      	mov.n	a11, a5
+4214c3cc:	e00800        	callx8	a8
+
+_RINvMs0_NtCs7mU32JYIwOM_21coaptic_esphome_probe13async_networkNtB6_6Driver3runNCINvNtNtB8_7pairing13async_service9run_asyncNtB6_6SocketNtNtNtB8_11network_ffi11pairing_ffi3NvsNtB2b_3UsbNCNvB2b_3runs1_0NtB6_5TimerB3c_NtB6_12ConsoleReadyE0EB8_
+Address 0x42026fdc; function size 29804; selected bytes 80
+
+C:\Users\jeffg\AppData\Local\CoapticQualification\completion-20261020\phase-public-layout-1.code:     file format binary
+
+
+Disassembly of section .data:
+
+42026fdc <.data>:
+42026fdc:	36c151        	entry	a1, 0x28e0
+42026fdf:	7d02      	mov.n	a7, a2
+42026fe1:	a2a068        	movi	a10, 104
+42026fe4:	b1f26d        	l32r	a11, 0x420027ac ; public literal 0xc198 (49560)
+42026fe7:	81b36a        	l32r	a8, 0x42001ab4 ; public literal 0x4200f350 (1107358544) -> coaptic_async_storage
+42026fea:	e00800        	callx8	a8
+42026fed:	0c08      	movi.n	a8, 0
+42026fef:	8261be        	s32i	a8, a1, 0x2f8
+
+coaptic_network_run
+Address 0x42151c5c; function size 1783; selected bytes 1783
+
+C:\Users\jeffg\AppData\Local\CoapticQualification\completion-20261020\phase-public-layout-2.code:     file format binary
+
+
+Disassembly of section .data:
+
+42151c5c <.data>:
+42151c5c:	366106        	entry	a1, 0x330
+42151c5f:	7cf7      	movi.n	a7, -1
+42151c61:	16a26e        	beqz	a2, 0x4215234f
+42151c64:	16736e        	beqz	a3, 0x4215234f
+42151c67:	16446e        	beqz	a4, 0x4215234f
+42151c6a:	2951      	s32i.n	a2, a1, 20
+42151c6c:	3961      	s32i.n	a3, a1, 24
+4215230f:	82a11c        	movi	a8, 0x11c
+42152312:	8a87      	add.n	a8, a7, a8
+42152314:	922110        	l32i	a9, a1, 64
+42152317:	924800        	s8i	a9, a8, 0
+4215231a:	81dc9e        	l32r	a8, 0x42139e8c ; public literal 0x4200f40c (1107358732) -> coaptic_entropy_bind
+4215231d:	ad07      	mov.n	a10, a7
+4215231f:	e00800        	callx8	a8
+42152322:	8b67      	addi.n	a6, a7, 8
+42152324:	16da01        	beqz	a10, 0x42152345
+42152327:	81da9e        	l32r	a8, 0x42139e90 ; public literal 0x42148460 (1108640864) -> _RNvNtCs7mU32JYIwOM_21coaptic_esphome_probe11network_ffi10run_seeded
+4215232a:	a851      	l32i.n	a10, a1, 20
+4215232c:	b861      	l32i.n	a11, a1, 24
+4215232e:	e00800        	callx8	a8
+42152331:	7d0a      	mov.n	a7, a10
+42152333:	81d89e        	l32r	a8, 0x42139e94 ; public literal 0x4200f444 (1107358788) -> coaptic_entropy_unbind
+42152336:	e00800        	callx8	a8
+42152339:	81d19e        	l32r	a8, 0x42139e80 ; public literal 0x421eede0 (1109323232)
+4215233c:	ad06      	mov.n	a10, a6
+
+coaptic_entropy_requirement
+Address 0x42151c28; function size 50; selected bytes 50
+
+C:\Users\jeffg\AppData\Local\CoapticQualification\completion-20261020\phase-public-layout-3.code:     file format binary
+
+
+Disassembly of section .data:
+
+42151c28 <.data>:
+42151c28:	364100        	entry	a1, 32
+42151c2b:	0c03      	movi.n	a3, 0
+42151c2d:	0c58      	movi.n	a8, 5
+42151c2f:	27381e        	bltu	a8, a2, 0x42151c51
+42151c32:	8194a0        	l32r	a8, 0x42139e84 ; public literal 0x3c217db4 (1008827828)
+42151c35:	8082a0        	addx4	a8, a2, a8
+42151c38:	8808      	l32i.n	a8, a8, 0
+42151c3a:	a00800        	jx	a8
+42151c3d:	2c02      	movi.n	a2, 32
+42151c3f:	1df0      	retw.n
+42151c41:	22a150        	movi	a2, 0x150
+42151c44:	1df0      	retw.n
+42151c46:	22a200        	movi	a2, 0x200
+42151c49:	1df0      	retw.n
+42151c4b:	0c13      	movi.n	a3, 1
+42151c4d:	0c02      	movi.n	a2, 0
+42151c4f:	1df0      	retw.n
+42151c51:	2d03      	mov.n	a2, a3
+42151c53:	1df0      	retw.n
+42151c55:	22a100        	movi	a2, 0x100
+42151c58:	1df0      	retw.n
+
+_RNvNtCs7mU32JYIwOM_21coaptic_esphome_probe11network_ffi10run_seeded
+Address 0x42148460; function size 54; selected bytes 54
+
+C:\Users\jeffg\AppData\Local\CoapticQualification\completion-20261020\phase-public-layout-4.code:     file format binary
+
+
+Disassembly of section .data:
+
+42148460 <.data>:
+42148460:	364100        	entry	a1, 32
+42148463:	818dc5        	l32r	a8, 0x42139a98 ; public literal 0x421ee08c (1109319820)
+42148466:	ad02      	mov.n	a10, a2
+42148468:	e00800        	callx8	a8
+4214846b:	cd0a      	mov.n	a12, a10
+4214846d:	266c13        	beqi	a12, 6, 0x42148484
+42148470:	665c14        	bnei	a12, 5, 0x42148488
+42148473:	818ac5        	l32r	a8, 0x42139a9c ; public literal 0x4214c2a0 (1108656800) -> _RNvNtNtCs7mU32JYIwOM_21coaptic_esphome_probe11network_ffi11pairing_ffi3run
+42148476:	ad02      	mov.n	a10, a2
+42148478:	e00800        	callx8	a8
+4214847b:	0c02      	movi.n	a2, 0
+4214847d:	271a13        	beq	a10, a2, 0x42148494
+42148480:	7c52      	movi.n	a2, -11
+42148482:	1df0      	retw.n
+42148484:	7c42      	movi.n	a2, -12
+42148486:	1df0      	retw.n
+42148488:	8186c5        	l32r	a8, 0x42139aa0 ; public literal 0x42147578 (1108637048)
+4214848b:	ad02      	mov.n	a10, a2
+4214848d:	bd03      	mov.n	a11, a3
+4214848f:	e00800        	callx8	a8
+42148492:	2d0a      	mov.n	a2, a10
+42148494:	1df0      	retw.n
+
+_ZN7esphome15coaptic_network14CoapticNetwork4run_EPv
+Address 0x4200e1f8; function size 135; selected bytes 135
+
+C:\Users\jeffg\AppData\Local\CoapticQualification\completion-20261020\phase-public-layout-5.code:     file format binary
+
+
+Disassembly of section .data:
+
+4200e1f8 <.data>:
+4200e1f8:	364100        	entry	a1, 32
+4200e1fb:	b2221b        	l32i	a11, a2, 108
+4200e1fe:	8b62      	addi.n	a6, a2, 8
+4200e200:	cd06      	mov.n	a12, a6
+4200e202:	ad02      	mov.n	a10, a2
+4200e204:	8168cb        	l32r	a8, 0x42000fa4 ; public literal 0x42151c5c (1108679772) -> coaptic_network_run
+4200e207:	e00800        	callx8	a8
+4200e20a:	7d0a      	mov.n	a7, a10
+4200e20c:	2c0c      	movi.n	a12, 32
+4200e20e:	b2a000        	movi	a11, 0
+4200e211:	60a620        	or	a10, a6, a6
+4200e214:	81a2c7        	l32r	a8, 0x4200009c ; public literal 0x400011e8 (1073746408)
+4200e217:	e00800        	callx8	a8
+4200e21a:	a8b2      	l32i.n	a10, a2, 44
+4200e21c:	965a00        	bltz	a10, 0x4200e225
+4200e21f:	8120ca        	l32r	a8, 0x42000aa0 ; public literal 0x421e8ee8 (1109298920)
+4200e222:	e00800        	callx8	a8
+4200e225:	7cf8      	movi.n	a8, -1
+4200e227:	a22235        	l32i	a10, a2, 212
+4200e22a:	89b2      	s32i.n	a8, a2, 44
+4200e22c:	8c9a      	beqz.n	a10, 0x4200e239
+4200e22e:	815ecb        	l32r	a8, 0x42000fa8 ; public literal 0x421a76ac (1109030572)
+4200e231:	e00800        	callx8	a8
+4200e234:	0c08      	movi.n	a8, 0
+4200e236:	826235        	s32i	a8, a2, 212
+4200e239:	a22236        	l32i	a10, a2, 216
+4200e23c:	8c9a      	beqz.n	a10, 0x4200e249
+4200e23e:	815acb        	l32r	a8, 0x42000fa8 ; public literal 0x421a76ac (1109030572)
+4200e241:	e00800        	callx8	a8
+4200e244:	0c08      	movi.n	a8, 0
+4200e246:	826236        	s32i	a8, a2, 216
+4200e249:	0c0a      	movi.n	a10, 0
+4200e24b:	8158cb        	l32r	a8, 0x42000fac ; public literal 0x421fc14c (1109377356)
+4200e24e:	e00800        	callx8	a8
+4200e251:	9153cb        	l32r	a9, 0x42000fa0 ; public literal 0x2ffff (196607)
+4200e254:	0c08      	movi.n	a8, 0
+4200e256:	a73907        	bltu	a9, a10, 0x4200e261
+4200e259:	0c38      	movi.n	a8, 3
+4200e25b:	008811        	slli	a8, a8, 16
+4200e25e:	a088c0        	sub	a8, a8, a10
+4200e261:	c02000        	memw
+4200e264:	826211        	s32i	a8, a2, 68
+4200e267:	0ba7      	addi.n	a10, a7, -1
+4200e269:	a0a060        	neg	a10, a10
+4200e26c:	c02000        	memw
+4200e26f:	c02000        	memw
+4200e272:	a9d2      	s32i.n	a10, a2, 52
+4200e274:	7cfa      	movi.n	a10, -1
+4200e276:	818ac7        	l32r	a8, 0x420000a0 ; public literal 0x421fc278 (1109377656)
+4200e279:	e00800        	callx8	a8
+4200e27c:	06fdff        	j	0x4200e274

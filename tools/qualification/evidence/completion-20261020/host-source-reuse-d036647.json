@@ -1,0 +1,87 @@
+{
+  "schema": "coaptic-host-native-compiled-source-reuse/1",
+  "measured_core": "75548536d6ea417dc3f4a74c7fc9fc4e03ab5953",
+  "compared_core": "d036647698dc38c7b351621cbcbcc61301376f91",
+  "measured_suite": "ccb41104a138876f59527cfb2414f7bfa102e663",
+  "compared_suite": "eb6dcfd92d356da0757d31c17ad523cbe87d95e2",
+  "changed_library_files": [
+    "src/provisioning/local_pairing.rs",
+    "src/provisioning/pairing_transport.rs"
+  ],
+  "unchanged_blob_or_tree_ids": {
+    "Cargo.toml": "7e94def61539bde73c39a17a05039e46d8d8b52b",
+    "Cargo.lock": "a0e4b361abae8305a868922849dbccad5a8447c0",
+    "crates/coaptic-io": "57a4aad21fe6b2f0a11ce77119fc8e3738a389a2"
+  },
+  "unchanged_benchmark_tree": "1314fec2d4d2e9fdb621298efe439bff1288b8c3",
+  "benchmark_core_features": [
+    "std",
+    "alloc",
+    "oscore"
+  ],
+  "core_default_features": false,
+  "edhoc_compiled": false,
+  "provisioning_module_cfg_guard": "edhoc",
+  "limits": [
+    "Compiled-source equivalence for named std/alloc/oscore host benchmark and native cloud fixture; no fresh timing, process or environment sample.",
+    "Full source trees differ. Two changed provisioning files are behind excluded edhoc module; no EDHOC/commissioning, durable-mode or MCU qualification follows.",
+    "Native OS process totals, Rust requested heap, inline owners and4MiB reserved thread stack overlap; configured kernel socket limits/actual allocation and absolute stack peaks are not measured."
+  ],
+  "prior_compared_core": "d988c979b6813aa0675ed3fead5a728dc63020fd",
+  "native_cloud": {
+    "measured_core": "75548536d6ea417dc3f4a74c7fc9fc4e03ab5953",
+    "measured_suites": [
+      "4a426bec054d78955e34e4bc57045a4576f8f3c3",
+      "ea242dc5bdf430c779ec7c2086d336fba93955e2"
+    ],
+    "fixture_manifest_root_lock_unchanged_to": "eb6dcfd92d356da0757d31c17ad523cbe87d95e2",
+    "features": [
+      "std",
+      "alloc",
+      "oscore"
+    ],
+    "edhoc_compiled": false,
+    "source_hashes": [
+      {
+        "file": "cloud.rs",
+        "bytes": 25266,
+        "sha256": "5d9534175d9d07cc59f74e82f68af79cfbe87e7713a99f2787df1d0b51894e76",
+        "path": "crates/peer-coaptic/src/bin/cloud.rs"
+      },
+      {
+        "file": "memory.rs",
+        "bytes": 6446,
+        "sha256": "d7ae78fafb40f77e8270481f40f35f9d04e08cc9f13a6bf00a4f8f452932d78c",
+        "path": "crates/peer-coaptic/src/bin/cloud/memory.rs"
+      }
+    ],
+    "allocation_counts_bound_through_traffic": {
+      "Windows": {
+        "alloc": 225,
+        "realloc": 7
+      },
+      "Linux": {
+        "alloc": 212,
+        "realloc": 1
+      }
+    },
+    "requested_live_rust_bytes": {
+      "Windows": {
+        "runtime_ready": 58110,
+        "sockets_before_bind": 134310,
+        "bound_and_traffic": 699590,
+        "after_drop": 134214
+      },
+      "Linux": {
+        "runtime_ready": 21447,
+        "sockets_before_bind": 97071,
+        "bound_and_traffic": 662351,
+        "after_drop": 97071
+      }
+    },
+    "core_default_features": true,
+    "default_feature_set": [
+      "oscore"
+    ]
+  }
+}
