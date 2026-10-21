@@ -1,8 +1,10 @@
 """Selective Q-Block2 recovery evidence must survive independent mutation checks."""
 import copy
 import unittest
+from unittest.mock import patch
 
-from run import LARGE, block1_value, coap_message, command, grade_qblock2_missing, grade_qblock2_timeout, grade_ipv6_relay
+from run import (LARGE, block1_value, coap_message, command, grade_qblock2_missing,
+                 grade_qblock2_timeout, grade_ipv6_relay, grade_qblock2_window, qblock2_window)
 
 
 def row(direction, wire, action="forward"):
@@ -26,6 +28,83 @@ def evidence():
              row("response", content(1), "drop")]
             + [row("response", content(num)) for num in range(2, 8)]
             + [row("request", get(1, False)), row("response", content(1))])
+
+
+def window_evidence(*, non=True, ack=False):
+    initial = coap_message(1, 90, b"w", [(11, b"large"), (31, block1_value(0, True, 6))], non=non)
+    trace = [row("request", initial)]
+    if ack:
+        trace.append(row("response", b"\x60\x00" + initial[2:4]))
+    for num in range(16):
+        if num == 10:
+            trace.append(row("request", coap_message(
+                1, 91, b"w", [(11, b"large"), (31, block1_value(10, True, 3))], non=non)))
+        packet = coap_message(69, 100 + num, b"w",
+                              [(4, b"v"), (28, len(LARGE).to_bytes(2, "big")),
+                               (31, block1_value(num, num < 15, 3))],
+                              LARGE[num * 128:(num + 1) * 128], non=True)
+        trace.append(row("response", packet))
+    return trace
+
+
+class WindowTests(unittest.TestCase):
+    result = dict(event="response", code=69, payload_hex=LARGE.hex(), exit_code=0)
+
+    def test_explicit_non_window_selection_does_not_require_an_empty_ack(self):
+        trace = window_evidence()
+        self.assertEqual(grade_qblock2_window(trace, self.result, require_non=True, require_ack=True),
+                         dict(continue_num=10, blocks=16, length=2000))
+        with patch("run.Server") as server, patch("run.Proxy") as proxy, patch("run.request") as request:
+            server.return_value.__enter__.return_value.number = 1234
+            relay = proxy.return_value.__enter__.return_value
+            relay.number, relay.trace = 5678, trace
+            request.return_value = self.result
+            qblock2_window("peer-coaptic", "peer-coaptic", non=True)
+            request.assert_called_once_with("peer-coaptic", "udp", 5678, path="large", timeout=20000,
+                                            qblock2=False, qblock2_non=True)
+
+    def test_con_negotiation_of_non_payloads_requires_its_own_empty_ack(self):
+        trace = window_evidence(non=False, ack=True)
+        self.assertEqual(grade_qblock2_window(trace, self.result, require_ack=True)["blocks"], 16)
+        for replacement in (None, row("response", b"\x60\x00\x00\x5b")):
+            changed = trace[:1] + ([] if replacement is None else [replacement]) + trace[2:]
+            with self.subTest(replacement=replacement), self.assertRaisesRegex(AssertionError, "empty ACK"):
+                grade_qblock2_window(changed, self.result, require_ack=True)
+
+    def test_confirmable_payload_train_cannot_satisfy_a_non_window(self):
+        trace = window_evidence()
+        wire = bytearray.fromhex(trace[1]["hex"])
+        wire[0] &= ~0x10
+        trace[1]["hex"] = wire.hex()
+        with self.assertRaisesRegex(AssertionError, "payloads must be NON"):
+            grade_qblock2_window(trace, self.result, require_non=True)
+        with self.assertRaisesRegex(AssertionError, "explicit NON"):
+            grade_qblock2_window(window_evidence(non=False, ack=True), self.result, require_non=True)
+
+    def test_window_still_requires_continue_block_identity_and_complete_body(self):
+        original = window_evidence()
+        mutations = []
+        mutations.append(original[:11] + original[12:])  # Missing NUM 10 Continue.
+        changed = copy.deepcopy(original)
+        changed[11] = row("request", get(10, True, token=b"w", szx=4))
+        mutations.append(changed)
+        changed = copy.deepcopy(original)
+        changed[12] = row("response", coap_message(69, 110, b"w",
+                           [(4, b"other"), (31, block1_value(10, True, 3))], LARGE[1280:1408], non=True))
+        mutations.append(changed)
+        changed = copy.deepcopy(original)
+        changed[11] = row("request", coap_message(1, 91, b"w",
+                           [(11, b"large"), (23, block1_value(10, True, 3)),
+                            (31, block1_value(10, True, 3))], non=True))
+        mutations.extend([changed, original[:-1]])
+        changed = copy.deepcopy(original)
+        packet = bytearray.fromhex(changed[-1]["hex"])
+        packet[-1] ^= 1
+        changed[-1]["hex"] = packet.hex()
+        mutations.append(changed)
+        for index, trace in enumerate(mutations):
+            with self.subTest(mutation=index), self.assertRaises(AssertionError):
+                grade_qblock2_window(trace, self.result, require_non=True)
 
 
 class RecoveryTests(unittest.TestCase):

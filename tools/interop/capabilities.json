@@ -4019,7 +4019,7 @@
       "requires": [],
       "features": ["q-block2", "window"],
       "positive_proof": [
-        "after 10 Q-Block2 payloads the client sends one Continue at NUM 10 with M set",
+        "after 10 NON Q-Block2 payloads the explicit NON client sends one Continue at NUM 10 with M set",
         "block 10 follows that request and the wire payloads are the 2000-byte pattern under one ETag"
       ],
       "failure_proof": ["a Continue that names any other block fails"],
@@ -4036,7 +4036,7 @@
       "requires": [],
       "features": ["q-block2", "window"],
       "positive_proof": [
-        "after 10 Q-Block2 payloads the Coaptic client sends one Continue at NUM 10 with M set",
+        "after 10 NON Q-Block2 payloads the explicit NON Coaptic client sends one Continue at NUM 10 with M set",
         "libcoap then sends block 10 and the wire payloads are the 2000-byte pattern under one ETag"
       ],
       "failure_proof": ["a Continue that names any other block fails"],
@@ -4053,7 +4053,7 @@
       "requires": [],
       "features": ["q-block2", "window"],
       "positive_proof": [
-        "after 10 Q-Block2 payloads the libcoap client sends one Continue at NUM 10 with M set",
+        "after initial CON negotiation and 10 NON Q-Block2 payloads the libcoap client sends one Continue at NUM 10 with M set",
         "block 10 follows that request and the wire payloads are the 2000-byte pattern under one ETag"
       ],
       "failure_proof": ["a Continue that names any other block fails"],

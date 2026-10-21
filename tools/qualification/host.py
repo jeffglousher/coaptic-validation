@@ -121,10 +121,12 @@ def run_case(name, flags, execute=None, *, target=None):
         # on the same target sysroot. It does not alter the native host loader.
         environment["QEMU_LD_PREFIX"] = RUNNER[2]
         execution["env"] = environment
+    # The budget includes compilation and every selected test executable.
+    # Emulation must not receive a shorter deadline than native execution.
     timed_out = False
     try:
         result = execute(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                         timeout=600 if target == EMULATED else 900, **execution)
+                         timeout=900, **execution)
         code, stdout, stderr = result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired as error:
         code, stdout, stderr, timed_out = None, text(error.stdout), text(error.stderr), True

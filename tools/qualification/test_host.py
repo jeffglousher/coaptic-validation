@@ -156,6 +156,7 @@ class TargetEvidenceTests(unittest.TestCase):
                 self.assertIn("--lib", command)
                 self.assertIn("--tests", command)
                 self.assertIn("--test-threads=1", command)
+                self.assertEqual(kwargs["timeout"], 900)
                 self.assertEqual(kwargs["env"]["CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_RUNNER"], "qemu-s390x -L /usr/s390x-linux-gnu")
                 self.assertEqual(kwargs["env"]["QEMU_LD_PREFIX"], "/usr/s390x-linux-gnu")
                 output = json.dumps({"reason": "compiler-artifact", "profile": {"test": True}, "executable": str(path)})
