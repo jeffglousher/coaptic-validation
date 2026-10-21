@@ -1,4 +1,4 @@
-"""aiocoap server fixture with explicit plaintext or OSCORE admission."""
+"""aiocoap server fixture with explicit unprotected or OSCORE admission."""
 import argparse
 import asyncio
 import logging

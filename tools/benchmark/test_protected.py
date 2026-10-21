@@ -69,7 +69,7 @@ class ProtectedTests(unittest.TestCase):
 
     def test_failure_accounting_includes_warmup_and_driver_failures(self):
         args = SimpleNamespace(host="127.0.0.1", port=1, bytes=64, concurrency=1, operations=2,
-                               warmup=1, timeout_ms=1000, sequence=0, mode="con", security="plaintext")
+                               warmup=1, timeout_ms=1000, sequence=0, mode="con", security="unprotected")
         with patch.object(Worker, "exchange", side_effect=[ValueError("warmup"), DriverError("rotation"), 100]):
             result = run(args)
         self.assertEqual((result["attempted"], result["completed"], result["failed"], result["warmup_failed"],

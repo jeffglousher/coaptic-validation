@@ -608,7 +608,7 @@ def analyze(root, reference):
                        "session summaries give each recorded session equal weight; request p99 is not an average of session p99s",
                        "session intervals are not guaranteed independent; inspect actual timestamps and host noise",
                        "confidence intervals do not eliminate systematic driver, scheduler or colocated-host bias",
-                       "HTTP3 TLS and plaintext CoAP are separate security/protocol strata",
+                       "HTTP3 TLS and unprotected CoAP are separate security/protocol strata",
                        "correctness smokes and sparse sessions cannot establish throughput leadership"]}
 
 

@@ -12,7 +12,7 @@ class ReportTests(unittest.TestCase):
                      core_heap_limit_bytes=1000, app_inline_bytes=1000,
                      verification_heap_bytes=128, timing_heap_bytes=16, udp_scratch_bytes=1473)
         validate_report(valid, 64, 2, "spin", "oscore")
-        for change in (dict(completed=1), dict(bytes=63), dict(security="plaintext"),
+        for change in (dict(completed=1), dict(bytes=63), dict(security="unprotected"),
                        dict(policy="sleep1"), dict(latencies_ns=[20]),
                        dict(latencies_ns=[20, -1]), dict(latencies_ns=[True, 30]),
                        dict(core_heap_limit_bytes=None), dict(app_inline_bytes=False),

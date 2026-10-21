@@ -85,7 +85,7 @@ goodput; retain setup and allocator/kernel accounting limitations.
 
 Install `tools/benchmark/protected/requirements.txt` in the benchmark environment.
 Pass `--matched-oscore` to preparation to add Coaptic and aiocoap native OSCORE
-servers alongside plaintext controls. This matrix uses one external Python UDP
+servers alongside unprotected controls. This matrix uses one external Python UDP
 driver for both security profiles, with independent aiocoap cryptography:
 
 The driver validates fixture bytes with a bounded immutable periodic window
@@ -98,7 +98,7 @@ python -m pip install -r tools/benchmark/protected/requirements.txt
 python tools/benchmark/prepare.py --matched-oscore --peers coaptic,coap-rs,coap-lite-codec,aiocoap --output target/matched-oscore-manifest.json
 python tools/benchmark/campaign.py plan --manifest target/matched-oscore-manifest.json --output target/matched-oscore --windows 10 --seed 20261013
 python tools/benchmark/campaign.py run --campaign target/matched-oscore --window 0
-python tools/benchmark/campaign.py analyze --campaign target/matched-oscore --reference coaptic --output target/matched-plaintext-report.json
+python tools/benchmark/campaign.py analyze --campaign target/matched-oscore --reference coaptic --output target/matched-unprotected-report.json
 python tools/benchmark/campaign.py analyze --campaign target/matched-oscore --reference coaptic-oscore --output target/matched-oscore-report.json
 ```
 
@@ -150,13 +150,13 @@ Unprotected application responses fail the protected driver. Authentication,
 byte validation, Python scheduling and GIL contention are included in latency
 and wall time. These results describe the matched closed-loop configuration;
 they do not establish server saturation or compare directly with timings from
-the native Rust driver. Keep the native driver for a separate plaintext campaign
+the native Rust driver. Keep the native driver for a separate unprotected campaign
 and for matched historical regression measurements.
 
 The manifest explicitly records selected peers without an OSCORE fixture and
 the absent DTLS benchmark path. coap-rs and coap-lite have no native OSCORE path
 in this harness; libcoap has native OSCORE but its benchmark fixture is currently
-plaintext. HTTP/3 TLS remains a separate protocol. No unsupported combination
+unprotected. HTTP/3 TLS remains a separate protocol. No unsupported combination
 is treated as a successful encrypted result. Preparation records library/suite
 revisions, cleanliness, lockfile, crypto versions and dependency hashes.
 
@@ -229,7 +229,7 @@ and must not spawn descendants; this runner is not a process sandbox.
   is declared. Excluded reference pairs are counted and also prevent eligibility.
   Adjacent sessions and systematic environmental bias can still
   invalidate inference; inspect timestamps and noise metadata.
-- HTTP/3 TLS and plaintext CoAP remain separate strata. Their client drivers and
+- HTTP/3 TLS and unprotected CoAP remain separate strata. Their client drivers and
   security costs differ. Native client-library performance is not measured by a
   common-driver server comparison. Codec-only fixtures are explicitly narrower.
 - Closed-loop concurrency measures delivered goodput and observed RTT, not

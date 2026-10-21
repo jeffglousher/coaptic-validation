@@ -11,18 +11,18 @@ import campaign as bench
 
 
 def case():
-    return {"id": "small", "protocol": "coap", "security": "plaintext", "bytes": 64,
+    return {"id": "small", "protocol": "coap", "security": "unprotected", "bytes": 64,
             "concurrency": 1, "operations": 2, "warmup": 0, "timeout_ms": 50, "mode": "con"}
 
 
 def sample():
-    return {"schema": "coaptic-load/1", "protocol": "coap", "security": "plaintext", "mode": "con", "concurrency": 1,
+    return {"schema": "coaptic-load/1", "protocol": "coap", "security": "unprotected", "mode": "con", "concurrency": 1,
             "warmup": 0, "warmup_failed": 0, "attempted": 2, "completed": 2, "failed": 0,
             "verified_bytes": 128, "elapsed_ns": 1000, "latencies_ns": [100, 200]}
 
 
 def manifest():
-    return {"schema": bench.SCHEMA, "peers": [{"id": name, "protocol": "coap", "security": "plaintext", "identity": name,
+    return {"schema": bench.SCHEMA, "peers": [{"id": name, "protocol": "coap", "security": "unprotected", "identity": name,
             "server": [sys.executable, "{port}"], "driver": [sys.executable, "{operations}"]}
             for name in ("coaptic", "peer-b", "peer-c")], "cases": [case()]}
 
@@ -63,7 +63,7 @@ class CampaignTests(unittest.TestCase):
                           dict(case(), id="protected-large", security="OSCORE", bytes=65536)]
         plan = bench.create_plan(data, 1, 1, smoke=True)
         self.assertEqual({(c["security"], c["bytes"]) for c in plan["cases"]},
-                         {("plaintext", 64), ("plaintext", 65536), ("OSCORE", 64), ("OSCORE", 65536)})
+                         {("unprotected", 64), ("unprotected", 65536), ("OSCORE", 64), ("OSCORE", 65536)})
 
     def test_crypto_extension_mutation_changes_identity(self):
         with tempfile.TemporaryDirectory() as directory:

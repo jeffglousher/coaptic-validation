@@ -1,4 +1,4 @@
-"""Matched plaintext/OSCORE external UDP driver using independent aiocoap crypto.
+"""Matched unprotected/OSCORE external UDP driver using independent aiocoap crypto.
 
 One outstanding datagram per worker; no retransmission, fresh MID per block.
 Python/GIL and authentication/byte validation are included in measured time.
@@ -234,7 +234,7 @@ def main():
     for name in ("port", "bytes", "concurrency", "operations", "warmup", "timeout-ms", "sequence"):
         parser.add_argument("--" + name, type=int, required=True)
     args = parser.parse_args()
-    if args.mode not in ("con", "non") or args.security not in ("plaintext", SECURITY):
+    if args.mode not in ("con", "non") or args.security not in ("unprotected", SECURITY):
         parser.error("unsupported mode/security")
     result = run(args)
     print(json.dumps(result, allow_nan=False))
