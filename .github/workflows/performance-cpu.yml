@@ -37,6 +37,16 @@ on:
         description: Additional bounded perf record and stat passes (permission refusal retained)
         type: boolean
         default: true
+      client_concurrency:
+        description: Outstanding client Calls (2..4 requires explicit non; CON NSTART=1)
+        type: choice
+        default: '1'
+        options: ['1', '2', '3', '4']
+      message_type:
+        description: Explicit CoAP request type; concurrent NON is a separate cohort
+        type: choice
+        default: con
+        options: [con, non]
 
 permissions:
   contents: read
@@ -58,6 +68,8 @@ jobs:
       REPEATS: ${{ inputs.repeats }}
       SERVER_KIND: ${{ inputs.server_kind }}
       PERF_ENABLED: ${{ inputs.perf }}
+      CLIENT_CONCURRENCY: ${{ inputs.client_concurrency }}
+      MESSAGE_TYPE: ${{ inputs.message_type }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -74,7 +86,8 @@ jobs:
           configuration(argparse.Namespace(
               sizes=os.environ['RESPONSE_SIZES'], rates=os.environ['OFFERED_RATES'],
               seconds=int(os.environ['WINDOW_SECONDS']), repeats=int(os.environ['REPEATS']),
-              server_kind=os.environ['SERVER_KIND'], perf=os.environ['PERF_ENABLED'] == 'true'))
+              server_kind=os.environ['SERVER_KIND'], perf=os.environ['PERF_ENABLED'] == 'true',
+              concurrency=int(os.environ['CLIENT_CONCURRENCY']), message_type=os.environ['MESSAGE_TYPE']))
           PY
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -91,6 +104,7 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/cpu-venv"
           "$RUNNER_TEMP/cpu-venv/bin/pip" install 'psutil==7.0.0' >"$RUNNER_TEMP/cpu-setup-logs/python.log" 2>&1
           "$RUNNER_TEMP/cpu-venv/bin/python" -m unittest discover -s tools/benchmark -p 'test_linux*.py'
+          "$RUNNER_TEMP/cpu-venv/bin/python" -m unittest discover -s tools/benchmark -p 'test_native_diagnostic.py'
           # Never change perf_event_paranoid or install a kernel/profiling service.
           # Missing perf/sudo, unsupported events and permission refusal are raw artifacts.
           { command -v perf; perf --version; command -v prlimit; uname -a; } >"$RUNNER_TEMP/cpu-setup-logs/perf-tools.log" 2>&1 || true
@@ -103,6 +117,7 @@ jobs:
             --build-lane "$RUNNER_TEMP/cpu-build-lane" --output "$RUNNER_TEMP/cpu-evidence" \
             --sizes "$RESPONSE_SIZES" --rates "$OFFERED_RATES" \
             --seconds "$WINDOW_SECONDS" --repeats "$REPEATS" --server-kind "$SERVER_KIND" \
+            --concurrency "$CLIENT_CONCURRENCY" --message-type "$MESSAGE_TYPE" \
             "${options[@]}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()

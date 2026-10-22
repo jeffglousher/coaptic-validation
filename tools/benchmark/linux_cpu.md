@@ -92,8 +92,9 @@ it at the candidate; use only an explicitly assigned checkout/lane. Output must
 be fresh and outside source. It fetches only the two specified core commits.
 Do not run concurrently with another lane consumer, compiler or timing campaign.
 
-Each security/body/rate/adapter cell uses sequential complete GETs, one outstanding
-Call, 20 warmups, a 3s per-operation deadline and 60s per-control-phase deadline.
+Each security/body/rate/adapter/concurrency/message-type cell defaults to sequential
+complete CON GETs, one outstanding Call, 20 warmups, a 3s per-operation deadline
+and 60s per-control-phase deadline.
 Supported sizes are 64, 1024 and 65536 bytes; the last exercises complete blockwise
 retrieval. Security strata are unprotected and established volatile OSCORE, each
 with a new random 24-byte test credential file outside artifacts (0600, deleted
@@ -128,6 +129,88 @@ user/system CPU divided by summed verified completions within each stratum.
 Latency median/p99 is descriptive; no confidence interval, 50% acceptance,
 historical regression, cross-library advantage or representative-device claim is
 inferred. Poll wall time, RTT and process CPU remain distinct measurements.
+
+Optional `--concurrency 1..4` and `--message-type con|non` select the client path;
+the manual workflow exposes the same inputs. Defaults remain **C1 CON**. C2..C4
+with CON are refused before credentials, sockets, warmup or builds because the
+single endpoint has NSTART=1. Concurrent requests require explicit
+`--message-type non`; there is no automatic fallback. For example, add
+`--concurrency 2 --message-type non` to a bounded invocation above to select
+**C2 NON**. C1 NON, C2 NON, C3 NON and C4 NON are separate cohorts from C1 CON
+and each other. A new harness is not evidence of a CPU improvement. The runner
+continues to use one frozen baseline client binary for both server revisions.
+Concurrent NON is additional coverage only; it cannot qualify the primary CON
+workload target. A future 2/4-endpoint CON cohort needs one in-flight CON per
+endpoint, independently generated credentials and matching server associations,
+with the same aggregate datagram budget. It is not implemented by these options.
+
+Each window has one App, one OSCORE context and one monotonically advancing sender
+sequence across warmup and measurement. Default Call capacity and request-binding
+capacity remain four. A fixed four-slot pending array holds Call/start/deadline
+metadata; its byte size is reported separately from App inline
+storage. All core pools, expected bytes, one reusable completed-response output
+buffer and timing storage are allocated before warmup/timing. RX body slots are
+selected up front to equal concurrency (C1 retains its original one slot); all
+other client and server capacities are unchanged. Concurrent blockwise transfers
+can refuse at the existing server's two TX bodies or other fixed capacities;
+refusals remain failures. Body-slot counts alone do not establish concurrent
+blockwise success: every complete reply must pass, and a timeout invalidates the
+observation. Capacities are never raised to force success. Report `rx_body_slots`, core heap allowance, App
+inline size, verification/timing heap bytes, fixed pending metadata bytes and peak
+pending Calls together; process/allocator/stack costs remain separate.
+The existing four client RX datagram slots include one mandatory headroom slot
+under `.full_responses()`, so at most three ordinary Calls can be admitted at
+once. A burst C4 attempt (including unpaced warmup) refuses its fourth admission;
+the three live Calls are cancelled and all four attempts count as failed. No
+packet pool is enlarged for the C4 label. Paced configured-C4 traffic can fit
+when its observed peak stays within those credits; it is not four-way execution.
+Configured concurrency is only an admission limit. Raw native reports and each
+window summary retain `peak_pending`; aggregate summaries retain each repeat's
+observed peak separately for baseline and candidate. **C4 with observed peak1
+does not establish concurrency qualification.** CPU comparability still describes
+the observed matched load and must not be read as proof of concurrent execution
+or of reaching the configured limit.
+
+Admission follows the same absolute offered-load schedule with zero drops and
+bounded catchup through the selected concurrency. One poll loop matches replies
+by Call, including reordered responses, and verifies status, format, ETag and all
+body bytes after authenticated response collection. Individual deadlines cover
+send, polling, assembly and verification. The first detected failure stops new
+admission; at most four local cancellations/collections reclaim pending state
+without sending cleanup packets. `attempted = completed + failed` includes failed
+send admissions and every unverified in-flight operation; `unattempted` covers the
+remainder, and `cancelled_inflight` counts successful local cancellations only.
+There are no synthetic success samples. The unchanged 60000 live-send ceiling
+covers the whole window's warmups, blocks, retransmissions and response ACKs;
+`total_sent_datagrams` exposes that total alongside measured-only traffic.
+
+New reports must echo the requested concurrency/message type. With C outstanding
+Calls, each latency must be <= elapsed and the sum must be <= C*elapsed; the
+sequential sum<=elapsed rule still applies to C1. Summaries group by both new
+fields as well as security/body/rate/adapter. Missing legacy metadata and mismatched
+echoes cannot become eligible comparisons. The fixed-window/sample/byte/phase/
+datagram budgets and clean/perf separation do not expand with concurrency.
+
+A finite Windows correctness check at core `97934e67f0fde780d7f12509e1bba6b50199b2ad`
+reproduced an unfinished **C2 NON 2048-byte response timeout**, in both security
+modes: four attempted operations, three verified completions, one failure, zero
+unattempted, one cancelled in-flight Call, peak two, seven sent and seven received
+datagrams. Nominal RX/TX body-slot counts do not explain this failure. Its partial
+reports remain failed observations; no cause or concurrent blockwise qualification
+is inferred. Small-body C2/C3 success does not resolve it. Reproduce with the same
+native client/server sources and existing capacities:
+
+```sh
+python tools/benchmark/native_diagnostic.py --server SERVER --client CLIENT \
+  --output FRESH.json --bytes 2048 --operations 4 --warmup 0 --timeout-ms 1000 \
+  --policy spin --security unprotected --server-kind coaptic-reusable \
+  --concurrency 2 --message-type non --cpu-gated
+```
+
+Use `--security oscore` for the protected case. Failure output preserves the
+exception and partial native report; it must not be regraded as success. Root
+tracks the separate source/packet diagnosis under #650; no core or server
+capacity is enlarged by this diagnostic path.
 
 Optional **separate** five-second `sudo -n perf record` and `perf stat` passes
 attach only to the selected server PID after warmup. Sampling is 99Hz `cpu-clock`

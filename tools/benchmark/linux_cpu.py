@@ -62,6 +62,10 @@ def selection(value, allowed=None):
 
 
 def configuration(args):
+    if (type(args.concurrency) is not int or not 1 <= args.concurrency <= 4
+            or args.message_type not in ("con", "non")
+            or (args.concurrency > 1 and args.message_type != "non")):
+        raise ValueError("concurrency 1..4; concurrent CON refused by per-endpoint NSTART=1; select NON explicitly")
     sizes = [int(p) for p in selection(args.sizes, ("64", "1024", "65536"))]
     rates = [int(p) for p in selection(args.rates)]
     if len(set(rates)) != len(rates):
@@ -547,7 +551,8 @@ def save_window(directory, result):
         # The raw report/log files remain in this directory even if summary
         # fields exceed their allowance. Retain a small explicit failed result.
         identity_fields = {key: result[key] for key in
-                           ("mode", "security", "bytes", "rate", "server_kind", "operations", "cleanup_errors")
+                           ("mode", "security", "bytes", "rate", "server_kind", "operations",
+                            "concurrency", "message_type", "cleanup_errors")
                            if key in result}
         if unresolved_cleanup(result):
             identity_fields["cleanup_unresolved"] = True
@@ -560,13 +565,15 @@ def save_window(directory, result):
         save(directory / "result.json", result, WINDOW_LIMIT)
 
 
-def window(server, client, cell, operations, directory, mode="clean", quota=8 * MIB):
+def window(server, client, cell, operations, directory, mode="clean", quota=8 * MIB,
+           *, concurrency=1, message_type="con"):
     # Import lazily: argument validation/aggregation tests do not require psutil.
     import psutil
     import native_diagnostic as native
     security, size, rate, kind = cell
     result = {"passed": False, "mode": mode, "security": security, "bytes": size,
               "rate": rate, "server_kind": kind, "operations": operations,
+              "concurrency": concurrency, "message_type": message_type,
               "load_before": os.getloadavg()}
     sut = child = None
     directory.mkdir()
@@ -580,7 +587,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
             port = reserve.getsockname()[1]
         server_args = [str(server), kind, "127.0.0.1", str(port), str(size), "1472"]
         client_args = [str(client), str(port), str(size), str(operations), str(WARMUP), "3000", "spin", security,
-                       "--cpu-gated", "--rate", str(rate)]
+                       "--cpu-gated", "--rate", str(rate),
+                       "--concurrency", str(concurrency), "--message-type", message_type]
         if security == "oscore":
             server_args.append(str(credentials))
             client_args.insert(8, str(credentials))
@@ -627,7 +635,10 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                     result["report_file"] = str(directory / "client.json")
                     report = json.loads(raw)
                     result["report"] = report_summary(report)
-                    native.validate_report(report, size, operations, "spin", security, rate)
+                    native.validate_report(report, size, operations, "spin", security, rate,
+                                           concurrency, message_type)
+                    if report["warmup"] != WARMUP:
+                        raise ValueError("mismatched warmup")
                     if sut.poll() is not None:
                         raise RuntimeError("server exited during window")
                     result.update(before=before, after=after, resource_window_ns=resource_ns,
@@ -669,7 +680,13 @@ def accepted(result, tick):
     if not result.get("passed") or result["mode"] != "clean":
         return False
     report = result["report"]
-    return (abs(report["achieved_ops_per_second"] / result["rate"] - 1) <= .05
+    concurrency, message_type = result.get("concurrency"), result.get("message_type")
+    return (type(concurrency) is int and 1 <= concurrency <= 4
+            and message_type in ("con", "non") and (concurrency == 1 or message_type == "non")
+            and type(report.get("concurrency")) is int and report["concurrency"] == concurrency
+            and report.get("message_type") == message_type
+            and type(report.get("peak_pending")) is int and 1 <= report["peak_pending"] <= concurrency
+            and abs(report["achieved_ops_per_second"] / result["rate"] - 1) <= .05
             and report["pacing_missed_period_operations"] <= max(1, report["completed"] // 100)
             and result["cpu_cost"]["server"]["total_seconds"] >= 20 * tick)
 
@@ -681,7 +698,9 @@ def report_latencies(result):
     report = json.loads(raw)
     report_summary(report)
     values = report["latencies_ns"]
-    if len(values) != result["report"]["completed"]:
+    if (len(values) != result["report"]["completed"]
+            or report.get("concurrency") != result.get("concurrency")
+            or report.get("message_type") != result.get("message_type")):
         raise ValueError("retained latency count changed")
     return values
 
@@ -691,14 +710,21 @@ def aggregate(results, repeats, tick, *, campaign_complete=True):
     groups = {}
     for item in results:
         if item["mode"] == "clean":
-            key = (item["security"], item["bytes"], item["rate"], item["server_kind"])
+            key = (item["security"], item["bytes"], item["rate"], item["server_kind"],
+                   item.get("concurrency"), item.get("message_type"))
             groups.setdefault(key, []).append(item)
     output = []
     cleanup_failed = any(unresolved_cleanup(item) for item in results)
     for key, items in groups.items():
-        record = dict(zip(("security", "bytes", "rate", "server_kind"), key))
+        record = dict(zip(("security", "bytes", "rate", "server_kind", "concurrency", "message_type"), key))
         labels = {label: [i for i in items if i["revision_label"] == label]
                   for label in ("baseline", "candidate")}
+        # Keep the observed peak of every bounded repeat visible even when a
+        # window is ineligible. A configured limit does not prove overlap.
+        record["observed_peak_pending"] = {
+            label: [i.get("report", {}).get("peak_pending")
+                    for i in sorted(group, key=lambda i: i["repeat"])]
+            for label, group in labels.items()}
         valid = campaign_complete and not cleanup_failed and all(
                     len(group) == repeats and {i["repeat"] for i in group} == set(range(repeats))
                     and all(accepted(i, tick) for i in group) for group in labels.values())
@@ -753,7 +779,9 @@ def run(args):
         save(out / "request.json", {"baseline_sha": args.baseline_sha,
                                    "candidate_sha": args.candidate_sha, "cells": cells,
                                    "seconds": args.seconds, "repeats": args.repeats,
-                                   "perf": args.perf, "RUSTUP_TOOLCHAIN": FLAGS["RUSTUP_TOOLCHAIN"]})
+                                   "perf": args.perf, "concurrency": args.concurrency,
+                                   "message_type": args.message_type,
+                                   "RUSTUP_TOOLCHAIN": FLAGS["RUSTUP_TOOLCHAIN"]})
         suite_identity = identity(SUITE)
         if suite_identity["status"] or identity(SUITE / "coaptic")["status"]:
             raise ValueError("commit the source first; clean suite/core required")
@@ -768,8 +796,9 @@ def run(args):
                 "perf_files_per_slot": PERF_FILES_PER_SLOT,
                 "artifact_bound_bytes_excluding_binaries": metadata_bytes + PERF_FILES_PER_SLOT * perf_slots * quota,
                 "cells": cells, "seconds": args.seconds, "repeats": args.repeats,
+                "concurrency": args.concurrency, "message_type": args.message_type,
                 "rotation": "AB/BA by repeat and cell; all clean windows precede all profiling passes",
-                "limits": "concurrency1 complete loopback GET; Default/AllocMemory host fixture; OSCORE established only; process CPU includes IPC boundaries/idle; no interrupt attribution, EDHOC, saturation, device or50% target proof"}
+                "limits": "selected bounded concurrency/message type complete loopback GET; Default/AllocMemory host fixture; one App/context/global sender sequence per window; OSCORE established only; process CPU includes IPC boundaries/idle; no interrupt attribution, EDHOC, saturation, device or50% target proof"}
         save(out / "manifest.json", manifest)
         baseline = build(args, "baseline", args.baseline_sha, out)
         candidate = build(args, "candidate", args.candidate_sha, out, expected=baseline)
@@ -784,7 +813,8 @@ def run(args):
             print(f"{index + 1}/{len(plan)} {mode} {label} {cell}", flush=True)
             server = Path(builds[label]["binaries"]["bench-rust-server"]["path"])
             result = window(server, client, cell, cell[2] * (args.seconds if mode == "clean" else PROFILE_SECONDS),
-                            out / f"window-{index:03}", mode, quota)
+                            out / f"window-{index:03}", mode, quota,
+                            concurrency=args.concurrency, message_type=args.message_type)
             result.update(revision_label=label, core_sha=builds[label]["core"]["revision"], repeat=repeat,
                           server_sha256=digest(server), client_sha256=digest(client), index=index)
             results.append(result)
@@ -828,6 +858,8 @@ def argument_parser():
     parser.add_argument("--repeats", type=int, default=4)
     parser.add_argument("--server-kind", choices=(*KINDS, "all"), default="coaptic-reusable")
     parser.add_argument("--perf", action="store_true")
+    parser.add_argument("--concurrency", type=int, choices=range(1, 5), default=1)
+    parser.add_argument("--message-type", choices=("con", "non"), default="con")
     return parser
 
 

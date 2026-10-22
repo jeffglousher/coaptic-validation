@@ -340,9 +340,20 @@ The CPU handshake pauses after warmup and before report formatting. User and
 process-accounted kernel CPU are divided by verified complete operations;
 client costs remain separate. Snapshot/IPC boundary costs and OS quantization
 remain. Machine-wide interrupts and unrelated kernel work are not attributed.
-Pacing uses absolute operation-start deadlines with one outstanding Call;
+Pacing uses absolute operation-start deadlines with one outstanding Call by default;
 late starts catch up without dropping operations. Every latency is retained,
 and lateness, failed/unattempted operations and achieved rate remain visible.
+
+Defaults are **C1 CON**. Optional `--concurrency 2..4 --message-type non` selects
+explicit concurrent NON cohorts; concurrent CON is refused at preflight for the
+endpoint's NSTART=1. One App/context/sender sequence owns all Calls; a fixed
+four-slot pending array and startup-sized RX body pool bound concurrency. Body
+verification still reuses one output buffer. C1 NON and each concurrent NON
+cohort stay separate from C1 CON in the [Linux runner](linux_cpu.md), which
+retains the same baseline client for both core sources. Failures stop admission
+and cancel pending Calls locally; unverified in-flight work counts as failed.
+`peak_pending` reports observed overlap; a configured C4 limit with peak1
+does not qualify concurrent execution.
 
 ```sh
 python tools/benchmark/native_diagnostic.py --server SERVER --client CLIENT --output NEW.json --bytes 64 --operations 10000 --warmup 32 --timeout-ms 1000 --policy spin --security oscore --server-kind coaptic-mio --rate 2000 --cpu-gated
