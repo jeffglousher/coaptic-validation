@@ -1,5 +1,6 @@
 """Portable validation and conservative aggregation checks; no Cargo or perf."""
 import argparse
+from contextlib import contextmanager
 from copy import deepcopy
 import io
 import itertools
@@ -52,6 +53,20 @@ def observation(root, label, repeat, *, security="unprotected", size=64, mode="c
 def pairs(root):
     return [observation(root, label, repeat) for repeat in range(2)
             for label in ("baseline", "candidate")]
+
+
+@contextmanager
+def mock_record_control(timeline=None):
+    """Keep existing report/cleanup tests independent of the real FIFO seam."""
+    def opened(capture, directory):
+        capture._control_paths = (directory / "ctl", directory / "ack")
+    def command(capture, name):
+        if timeline is not None:
+            timeline.append(name + "_ack")
+    with patch.object(cpu.PerfCapture, "_open_control", autospec=True, side_effect=opened), \
+            patch.object(cpu.PerfCapture, "_drain_padding"), \
+            patch.object(cpu.PerfCapture, "_command", autospec=True, side_effect=command):
+        yield
 
 
 class ValidationTests(unittest.TestCase):
@@ -200,18 +215,21 @@ class ValidationTests(unittest.TestCase):
 
     def test_perf_is_pid_scoped_bounded_and_has_no_memory_dump(self):
         for mode in ("record", "stat"):
-            argv = cpu.perf_command(mode, 4321, 5, Path("/tmp/profile"), 12345)
+            argv = cpu.perf_command(mode, 4321, 5, Path("/tmp/profile"), 12345,
+                                    control_paths=("/tmp/ctl", "/tmp/ack"))
             self.assertEqual(argv[:11], ["sudo", "-n", "--", "prlimit", "--fsize=12345:12345", "--",
                                         "timeout", "--signal=TERM", "--kill-after=5", "15", "perf"])
-            self.assertEqual(argv[-5:], ["-p", "4321", "--", "sleep", "5"])
             self.assertNotIn("-a", argv)
             self.assertNotIn("dwarf", argv)
             self.assertNotIn("--sample-regs-user", argv)
             if mode == "record":
-                self.assertEqual(argv[11:-5], ["record", "-e", "cpu-clock", "-F", "997",
+                self.assertEqual(argv[11:], ["record", "-e", "cpu-clock", "-F", "997",
                                               "--call-graph", "fp", "-m", "128", "--no-buildid-cache",
-                                              "-o", str(Path("/tmp/profile"))])
+                                              "-o", str(Path("/tmp/profile")), "-p", "4321",
+                                              "-D", "-1", "--control", "fifo:/tmp/ctl,/tmp/ack"])
+                self.assertNotIn("sleep", argv)
             else:
+                self.assertEqual(argv[-5:], ["-p", "4321", "--", "sleep", "5"])
                 self.assertEqual(argv[11:-5], ["stat", "-x", ";", "-e",
                                               "task-clock,cycles,instructions,context-switches,cpu-migrations,page-faults",
                                               "-o", str(Path("/tmp/profile"))])
@@ -222,7 +240,7 @@ class ValidationTests(unittest.TestCase):
             fake = unittest.mock.Mock()
             fake.wait.return_value = 255
             fake.returncode = 255
-            with patch.object(cpu, "spawn", return_value=fake), patch.object(cpu, "stop"):
+            with mock_record_control(), patch.object(cpu, "spawn", return_value=fake), patch.object(cpu, "stop"):
                 with cpu.perf_pass("record", 123, 5, root, 4096) as state:
                     self.assertEqual(state["mode"], "record")
             saved = json.loads((root / "perf.json").read_text())
@@ -233,6 +251,323 @@ class ValidationTests(unittest.TestCase):
             self.assertTrue((root / "perf-command.log").exists())
             with cpu.perf_pass("clean", 123, 5, root, 4096) as state:
                 self.assertEqual(state["mode"], "clean")
+
+
+class RecordControlTests(unittest.TestCase):
+    def capture(self):
+        capture = cpu.PerfCapture("record", 5, Mock())
+        capture._target.poll.return_value = None
+        capture._recorder = Mock()
+        capture._recorder.poll.return_value = None
+        capture._fds = (101, 102)
+        capture.deadline = 25.0
+        capture.update(control_ack_bytes=0, control_commands_sent=0, control_acks=0)
+        return capture
+
+    def test_split_ack_nul_across_commands_and_finish_is_idempotent(self):
+        capture = self.capture()
+        replies = [BlockingIOError(), b"a", b"ck\n", BlockingIOError(),
+                   BlockingIOError(), b"\0ack\n\0", BlockingIOError(),
+                   BlockingIOError(), b"ack\n\0", BlockingIOError()]
+        with patch.object(cpu.time, "monotonic", return_value=10), \
+                patch.object(cpu.os, "read", side_effect=replies), \
+                patch.object(cpu.os, "write", side_effect=lambda fd, data: len(data)) as write:
+            capture._command("enable")
+            capture._enabled = True
+            capture.finish_recording()
+            capture.finish_recording()
+        self.assertEqual([c.args for c in write.call_args_list],
+                         [(101, b"enable\n"), (101, b"disable\n"), (101, b"stop\n")])
+        self.assertEqual((capture["control_ack_bytes"], capture["control_acks"]), (15, 3))
+        self.assertTrue(capture["record_finished"])
+        self.assertNotIn("_fds", json.loads(json.dumps(capture)))
+        for mode in ("clean", "stat"):
+            other = cpu.PerfCapture(mode, 5)
+            other.finish_recording()
+            self.assertIsNone(other.deadline)
+            self.assertEqual(set(other), {"mode", "window_seconds", "boundary"})
+
+    def test_stale_malformed_extra_eof_and_byte_bound_refuse(self):
+        for replies, message, already in [
+            ([b"ack\n"], "stale", 0),
+            ([BlockingIOError(), b"bad\n"], "malformed", 0),
+            ([BlockingIOError(), b"ack\nack\n"], "extra", 0),
+            ([BlockingIOError(), b"ack\n\0\0"], "extra", 0),
+            ([BlockingIOError(), b""], "ended", 0),
+            ([], "byte allowance", 64),
+        ]:
+            with self.subTest(message=message):
+                capture = self.capture()
+                capture["control_ack_bytes"] = already
+                with patch.object(cpu.time, "monotonic", return_value=10), \
+                        patch.object(cpu.os, "read", side_effect=replies), \
+                        patch.object(cpu.os, "write", side_effect=lambda fd, data: len(data)), \
+                        self.assertRaisesRegex(RuntimeError, message):
+                    capture._command("enable")
+                self.assertEqual(capture["control_refused_command"], "enable")
+                self.assertLessEqual(len(capture.get("control_reply_prefix_hex", "")), 16)
+                self.assertLessEqual(capture["control_ack_bytes"], 64)
+
+    def test_short_write_and_dead_process_never_wait_for_ack(self):
+        for failure in ("short", "target", "recorder"):
+            capture = self.capture()
+            if failure != "short":
+                getattr(capture, "_" + ("target" if failure == "target" else "recorder")).poll.return_value = 1
+            with patch.object(cpu.time, "monotonic", return_value=10), \
+                    patch.object(cpu.os, "read", side_effect=BlockingIOError()), \
+                    patch.object(cpu.os, "write", return_value=3) as write, \
+                    patch.object(cpu.select, "select") as wait, \
+                    self.assertRaisesRegex(RuntimeError, "short|exited"):
+                capture._command("enable")
+            self.assertEqual(write.call_count, int(failure == "short"))
+            wait.assert_not_called()
+
+    def test_ack_deadline_is_two_seconds_clamped_to_capture_and_late_ack_refuses(self):
+        for total_remaining in (.2, 10):
+            capture = self.capture()
+            capture.deadline = 10 + total_remaining
+            now = [10.0]
+            expected_end = 10 + min(total_remaining, 2)
+            def waited(read, write, error, timeout):
+                self.assertLessEqual(timeout, .05)
+                now[0] = expected_end
+                return ([], [], [])
+            with patch.object(cpu.time, "monotonic", side_effect=lambda: now[0]), \
+                    patch.object(cpu.os, "read", side_effect=BlockingIOError()), \
+                    patch.object(cpu.os, "write", side_effect=lambda fd, data: len(data)), \
+                    patch.object(cpu.select, "select", side_effect=waited), \
+                    self.assertRaises(TimeoutError):
+                capture._command("enable")
+            self.assertTrue(capture["deadline_exceeded"])
+        capture = self.capture()
+        now = [10.0]
+        replies = iter([BlockingIOError(), b"ack\n", BlockingIOError()])
+        def read(fd, size):
+            value = next(replies)
+            if isinstance(value, BaseException):
+                raise value
+            now[0] = 12.01
+            return value
+        with patch.object(cpu.time, "monotonic", side_effect=lambda: now[0]), \
+                patch.object(cpu.os, "read", side_effect=read), \
+                patch.object(cpu.os, "write", side_effect=lambda fd, data: len(data)), \
+                self.assertRaises(TimeoutError):
+            capture._command("enable")
+        self.assertEqual(capture["control_acks"], 0)
+
+    def test_stop_ack_can_precede_normal_exit_and_order_is_exact(self):
+        capture = self.capture()
+        capture._phase = 2
+        def written(fd, data):
+            self.assertEqual(data, b"stop\n")
+            capture._recorder.poll.return_value = 0
+            return len(data)
+        with patch.object(cpu.time, "monotonic", return_value=10), \
+                patch.object(cpu.os, "read", side_effect=[BlockingIOError(), b"ack\n\0", BlockingIOError()]), \
+                patch.object(cpu.os, "write", side_effect=written):
+            capture._command("stop")
+        with self.assertRaises(ValueError):
+            capture._command("enable")
+
+    def test_event_allowlist_and_exact_stat_command(self):
+        for event in ("cpu-clock", "task-clock"):
+            argv = cpu.perf_command("record", 123, 5, Path("data"), 99,
+                                    event=event, control_paths=("ctl", "ack"))
+            self.assertEqual(argv[12:14], ["-e", event])
+            self.assertEqual(argv[-4:], ["-D", "-1", "--control", "fifo:ctl,ack"])
+        for event in ("cycles", "cpu-clock:u", "", None):
+            with self.assertRaises(ValueError):
+                cpu.perf_command("record", 123, 5, Path("data"), 99,
+                                 event=event, control_paths=("ctl", "ack"))
+        for paths in (None, ("ctl",), ("bad,ctl", "ack"), ("ctl", "ack\n")):
+            with self.assertRaises(ValueError):
+                cpu.perf_command("record", 123, 5, Path("data"), 99, control_paths=paths)
+        self.assertEqual(cpu.perf_command("stat", 123, 5, Path("data"), 99),
+                         ["sudo", "-n", "--", "prlimit", "--fsize=99:99", "--", "timeout",
+                          "--signal=TERM", "--kill-after=5", "15", "perf", "stat", "-x", ";", "-e",
+                          "task-clock,cycles,instructions,context-switches,cpu-migrations,page-faults",
+                          "-o", "data", "-p", "123", "--", "sleep", "5"])
+
+    def test_startup_refusal_never_yields_and_reaps_before_closing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            recorder = Mock(returncode=0)
+            recorder.poll.return_value = None
+            recorder.wait.return_value = 0
+            order = []
+            def opened(capture, directory):
+                capture._control_paths = (directory / "ctl", directory / "ack")
+                capture._fds = (101, 102)
+            with patch.object(cpu.PerfCapture, "_open_control", autospec=True, side_effect=opened), \
+                    patch.object(cpu.PerfCapture, "_close_control", side_effect=lambda **kw: order.append("close")), \
+                    patch.object(cpu, "spawn", return_value=recorder), \
+                    patch.object(cpu, "stop", side_effect=lambda *a, **kw: order.append("reaped")), \
+                    patch.object(cpu.os, "read", side_effect=[BlockingIOError(), b"bad\n"]), \
+                    patch.object(cpu.os, "write", side_effect=lambda fd, data: len(data)), \
+                    self.assertRaisesRegex(RuntimeError, "malformed"):
+                with cpu.perf_pass("record", 123, 5, root, 4096):
+                    self.fail("startup refusal released the client gate")
+            self.assertEqual(order, ["reaped", "close"])
+            state = json.loads((root / "perf.json").read_text())
+            self.assertFalse(state["available"])
+            self.assertEqual(state["control_refused_command"], "enable")
+            self.assertNotIn("cleanup_unresolved", state)
+
+    def test_primary_exception_survives_finish_and_cleanup_refusal(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            recorder = Mock(returncode=0)
+            recorder.wait.return_value = 0
+            primary = ValueError("client failed")
+            with mock_record_control(), \
+                    patch.object(cpu.PerfCapture, "finish_recording", side_effect=RuntimeError("finish failed")), \
+                    patch.object(cpu, "spawn", return_value=recorder), \
+                    patch.object(cpu, "stop", side_effect=PermissionError("kill refused")), \
+                    self.assertRaises(ValueError) as failure:
+                with cpu.perf_pass("record", 123, 5, root, 4096):
+                    raise primary
+            self.assertIs(failure.exception, primary)
+            self.assertIn("finish failed", primary.__notes__[0])
+            state = json.loads((root / "perf.json").read_text())
+            self.assertEqual(primary.perf_capture, state)
+            self.assertTrue(primary.cleanup_unresolved)
+            self.assertIs(type(primary.perf_capture), dict)
+            self.assertTrue(cpu.unresolved_cleanup(dict(perf=state)))
+            self.assertFalse(state["available"])
+
+    def test_final_padding_is_checked_after_reap_before_descriptor_close(self):
+        drain = cpu.PerfCapture._drain_padding
+        for extra in (False, True):
+            with self.subTest(extra=extra), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                recorder = Mock(returncode=0)
+                recorder.wait.return_value = 0
+                order, replies = [], iter([b"ack\n"] if extra else [b"\0", BlockingIOError()])
+                def read(fd, size):
+                    order.append("read")
+                    reply = next(replies)
+                    if isinstance(reply, BaseException):
+                        raise reply
+                    return reply
+                refused = None
+                with mock_record_control(), \
+                        patch.object(cpu, "spawn", return_value=recorder), \
+                        patch.object(cpu, "stop", side_effect=lambda *a, **kw: order.append("reaped")), \
+                        patch.object(cpu.os, "close", side_effect=lambda fd: order.append("close")), \
+                        patch.object(cpu.os, "read", side_effect=read):
+                    try:
+                        with cpu.perf_pass("record", 123, 5, root, 4096) as capture:
+                            capture._fds = (101, 102)
+                            capture._optional_nul = True
+                            # Exercise the real final drain, separate from the fake commands.
+                            capture._drain_padding = drain.__get__(capture)
+                    except RuntimeError as error:
+                        refused = error
+                self.assertEqual(refused is not None, extra)
+                self.assertEqual(order, ["reaped", "read"] + ([] if extra else ["read"]) + ["close", "close"])
+                state = json.loads((root / "perf.json").read_text())
+                self.assertEqual("control_error" in state, extra)
+                if extra:
+                    self.assertIn("extra", str(refused))
+                    self.assertFalse(state["available"])
+
+    def test_failed_reap_retains_control_paths_and_attempts_every_close(self):
+        capture = self.capture()
+        capture._control_dir = Path("owned-control-retained")
+        with patch.object(cpu.os, "close", side_effect=[OSError("close refused"), None]) as close, \
+                patch.object(Path, "unlink") as unlink, patch.object(Path, "rmdir") as rmdir:
+            capture._close_control(remove=False)
+        self.assertEqual([call.args for call in close.call_args_list], [(101,), (102,)])
+        unlink.assert_not_called()
+        rmdir.assert_not_called()
+        self.assertEqual(capture._fds, ())
+        self.assertEqual(capture["retained_control_directory"], "owned-control-retained")
+        self.assertTrue(cpu.unresolved_cleanup(dict(perf=capture)))
+
+
+@unittest.skipUnless(sys.platform == "linux", "real private FIFO controller requires Linux")
+class RecordFifoTests(unittest.TestCase):
+    def test_fake_recorder_round_trip_permissions_lifetime_and_owned_cleanup(self):
+        script = r'''
+import os, select, sys, time
+ctl, ack, output = sys.argv[1:]
+reader = os.open(ctl, os.O_RDWR | os.O_NONBLOCK)
+writer = os.open(ack, os.O_RDWR)
+with open(output, 'wb') as stream:
+    stream.write(b'fake capture')
+end = time.monotonic() + 5
+for expected in (b'enable\n', b'disable\n', b'stop\n'):
+    if not select.select([reader], [], [], max(0, end-time.monotonic()))[0]:
+        sys.exit(2)
+    assert os.read(reader, 64) == expected
+    print(expected.decode().strip(), flush=True)
+    os.write(writer, b'a')
+    time.sleep(.001)
+    os.write(writer, b'ck\n\0')
+os.close(reader)
+os.close(writer)
+'''
+        original_spawn = cpu.spawn
+        def spawned(argv, **kwargs):
+            paths = argv[argv.index("--control") + 1].removeprefix("fifo:").split(",")
+            output = argv[argv.index("-o") + 1]
+            return original_spawn([sys.executable, "-u", "-c", script, *paths, output], **kwargs)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(cpu, "spawn", side_effect=spawned), \
+                    patch.object(cpu, "run_owned", return_value=0), \
+                    patch.object(cpu, "perf_report", return_value=dict(available=True)):
+                with cpu.perf_pass("record", os.getpid(), 5, root, 4096) as capture:
+                    control = capture._control_dir
+                    self.assertFalse(control.is_relative_to(root))
+                    self.assertEqual(control.stat().st_mode & 0o777, 0o700)
+                    for path in capture._control_paths:
+                        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+                    self.assertEqual(capture["control_acks"], 1)
+                    self.assertGreater(capture.deadline, cpu.time.monotonic())
+                    capture.finish_recording()
+                    capture.finish_recording()
+            self.assertFalse(control.exists())
+            self.assertTrue(capture["available"])
+            self.assertEqual((capture["control_commands_sent"], capture["control_acks"]), (3, 3))
+            self.assertEqual((root / "perf-command.log").read_text().splitlines(), ["enable", "disable", "stop"])
+            self.assertEqual(json.loads((root / "perf.json").read_text()), capture)
+
+    def test_partial_setup_closes_owned_fifo_and_replacement_is_preserved(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            capture = cpu.PerfCapture("record", 5)
+            original = cpu.os.mkfifo
+            def created(path, mode):
+                if path.name == "ack":
+                    raise PermissionError("second FIFO refused")
+                original(path, mode)
+            with patch.object(cpu.os, "mkfifo", side_effect=created), self.assertRaises(PermissionError):
+                capture._open_control(root)
+            fd = capture._fds[0]
+            capture._close_control(remove=True)
+            self.assertFalse(capture._control_dir.exists())
+            with self.assertRaises(OSError):
+                os.fstat(fd)
+            capture = cpu.PerfCapture("record", 5)
+            capture._open_control(root)
+            capture._cleanup_failure(PermissionError("recorder cleanup unresolved"))
+            capture._close_control(remove=False)
+            self.assertFalse(capture._control_dir.is_relative_to(root))
+            self.assertEqual(capture["retained_control_directory"], str(capture._control_dir))
+            self.assertTrue(all(path.is_fifo() for path in capture._control_paths))
+            self.assertEqual(list(root.iterdir()), [])
+            path = capture._control_paths[1]
+            try:
+                path.unlink()
+                path.write_bytes(b"replacement must survive")
+                capture._close_control(remove=True)
+                self.assertEqual(path.read_bytes(), b"replacement must survive")
+                self.assertTrue(cpu.unresolved_cleanup(dict(perf=capture)))
+            finally:
+                # The replacement is this test's regular file, never a live FIFO.
+                path.unlink()
+                capture._control_dir.rmdir()
 
 
 class BuildTests(unittest.TestCase):
@@ -392,7 +727,7 @@ class PerfReportTests(unittest.TestCase):
                     raise error
                 return report_code
 
-            with patch.object(cpu, "spawn", return_value=profiler), patch.object(cpu, "stop"), \
+            with mock_record_control(), patch.object(cpu, "spawn", return_value=profiler), patch.object(cpu, "stop"), \
                     patch.object(cpu, "run_owned", side_effect=run):
                 with cpu.perf_pass(mode, 123, 5, root, 4096) as state:
                     pass
@@ -706,7 +1041,7 @@ class MetadataTests(unittest.TestCase):
 
 class CampaignTests(unittest.TestCase):
     def exercise(self, *, failure_index=None, oversize=False, target_mismatch=False, report_error=None,
-                 report_error_command="report", adapter_comparison=False):
+                 report_error_command="report", adapter_comparison=False, startup_refusal=None):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             suite, lane, out = root / "source", root / "lane", root / "evidence"
@@ -718,6 +1053,7 @@ class CampaignTests(unittest.TestCase):
                 args.server_kind, args.candidate_server_kind = "coaptic-ready", "coaptic-async"
                 args.candidate_sha = args.baseline_sha
             calls = []
+            real_window = cpu.window
 
             def build(args, label, revision, out, *, expected=None):
                 return dict(core=dict(revision=revision), native_lock_sha256="lock", flags=cpu.FLAGS,
@@ -729,6 +1065,51 @@ class CampaignTests(unittest.TestCase):
             def window(server, client, cell, operations, directory, mode, quota, **kwargs):
                 index = len(calls)
                 calls.append((server, client, mode))
+                if index == 8 and startup_refusal is not None:
+                    # Exercise actual window -> perf_pass.__enter__ -> wire
+                    # refusal -> cleanup, rather than fabricating a fatal result.
+                    sut, client_process = MagicMock(pid=101), MagicMock(pid=102)
+                    for process in (sut, client_process):
+                        process.poll.return_value = None
+                        process.wait.return_value = 0
+                    profiler = Mock(returncode=255)
+                    profiler.poll.return_value = None
+                    profiler.wait.return_value = 255
+                    reserve, probe = MagicMock(), MagicMock()
+                    reserve.getsockname.return_value = ("127.0.0.1", 12345)
+                    probe.bind.side_effect = OSError("bound by fixture")
+                    reserve.__enter__.return_value, probe.__enter__.return_value = reserve, probe
+                    native = Mock()
+                    native.control_line.return_value = "ready"
+                    native.server_resources.return_value = None
+                    original_close = cpu.os.close
+                    def opened(capture, directory):
+                        capture._control_paths = (Path("system-temp/ctl"), Path("system-temp/ack"))
+                        capture._fds = (301, 302)
+                    def stopped(process, **kwargs):
+                        if process is profiler and startup_refusal == "unresolved":
+                            raise PermissionError("profiler kill refused")
+                    with patch.dict(sys.modules, {"psutil": Mock(), "native_diagnostic": native}), \
+                            patch.object(cpu.PerfCapture, "_open_control", autospec=True, side_effect=opened), \
+                            patch.object(cpu, "spawn", side_effect=[sut, client_process, profiler]), \
+                            patch.object(cpu, "stop", side_effect=stopped) as stop, \
+                            patch.object(cpu.os, "read", side_effect=[BlockingIOError(), b"bad\n"]), \
+                            patch.object(cpu.os, "write", side_effect=lambda fd, data: len(data)), \
+                            patch.object(cpu.os, "close", side_effect=lambda fd: None if fd in (301, 302)
+                                         else original_close(fd)), \
+                            patch.object(cpu, "stderr_tail", return_value=b""), \
+                            patch.object(cpu.socket, "socket", side_effect=[reserve, probe]), \
+                            patch.object(cpu.os, "getloadavg", return_value=(0, 0, 0), create=True):
+                        result = real_window(server, client, cell, operations, directory, mode, quota, **kwargs)
+                    client_process.stdin.write.assert_not_called()
+                    native.snapshot.assert_not_called()
+                    self.assertEqual(result["reason"], "malformed record ACK")
+                    self.assertEqual(result["perf"], json.loads((directory / "perf.json").read_text()))
+                    self.assertEqual(result["perf"]["control_refused_command"], "enable")
+                    self.assertEqual(cpu.unresolved_cleanup(result), startup_refusal == "unresolved")
+                    self.assertEqual(stop.call_args_list, [unittest.mock.call(profiler, elevated=True),
+                                                          unittest.mock.call(client_process), unittest.mock.call(sut)])
+                    return result
                 directory.mkdir()
                 label = server.parent.name
                 result = observation(directory, label, index, security=cell[0], mode=mode)
@@ -749,7 +1130,7 @@ class CampaignTests(unittest.TestCase):
                             raise report_error
                         return 0
 
-                    with patch.object(cpu, "spawn", return_value=profiler), patch.object(cpu, "stop"), \
+                    with mock_record_control(), patch.object(cpu, "spawn", return_value=profiler), patch.object(cpu, "stop"), \
                             patch.object(cpu, "run_owned", side_effect=read_capture):
                         with cpu.perf_pass(mode, 123, 5, directory, quota) as perf:
                             pass
@@ -777,7 +1158,8 @@ class CampaignTests(unittest.TestCase):
                     patch.object(cpu, "digest", return_value="hash"), \
                     patch.object(cpu, "build", side_effect=build), patch.object(cpu, "window", side_effect=window), \
                     patch("builtins.print"):
-                if failure_index is not None or target_mismatch or getattr(report_error, "cleanup_unresolved", False):
+                if (failure_index is not None or target_mismatch or getattr(report_error, "cleanup_unresolved", False)
+                        or startup_refusal == "unresolved"):
                     with self.assertRaisesRegex((ValueError, RuntimeError), "target|termination unresolved"):
                         cpu.run(args)
                     self.assertTrue((out / "failure.json").exists())
@@ -797,9 +1179,13 @@ class CampaignTests(unittest.TestCase):
                 self.assertEqual(len(entries), len(calls))
                 for index in range(len(calls)):
                     directory = out / f"window-{index:03}"
-                    self.assertEqual(json.loads((directory / "client.json").read_text())["completed"], 1000)
+                    if index == 8 and startup_refusal is not None:
+                        self.assertFalse((directory / "client.json").exists())
+                    else:
+                        self.assertEqual(json.loads((directory / "client.json").read_text())["completed"], 1000)
                     result = json.loads((directory / "result.json").read_text())
-                    if index == failure_index or (index == 8 and getattr(report_error, "cleanup_unresolved", False)):
+                    if (index == failure_index or (index == 8 and getattr(report_error, "cleanup_unresolved", False))
+                            or (index == 8 and startup_refusal == "unresolved")):
                         self.assertTrue(cpu.unresolved_cleanup(result))
                         self.assertTrue(cpu.unresolved_cleanup(entries[index]))
                 self.assertTrue(all(client.parent.name == "baseline" for _, client, _ in calls))
@@ -839,6 +1225,25 @@ class CampaignTests(unittest.TestCase):
         self.assertTrue(summary["campaign_complete"])
         self.assertEqual(summary["unavailable_profiles"], list(range(8, 16)))
         self.assertTrue(all(item["comparable"] for item in summary["comparisons"]))
+
+    def test_actual_startup_refusal_with_unresolved_profiler_aborts_and_suppresses_all_ratios(self):
+        summary, calls = self.exercise(startup_refusal="unresolved")
+        self.assertEqual(len(calls), 9)
+        self.assertFalse(summary["campaign_complete"])
+        self.assertTrue(summary["cleanup_unresolved"])
+        self.assertEqual(summary["failed_windows"], [8])
+        self.assertEqual(len(summary["comparisons"]), 2)
+        self.assertTrue(all(not item["comparable"] and item["server_cpu_ratio"] is None
+                            for item in summary["comparisons"]))
+
+    def test_actual_startup_refusal_with_reaped_profiler_keeps_clean_cohort_comparable(self):
+        summary, calls = self.exercise(startup_refusal="resolved")
+        self.assertEqual(len(calls), 16)
+        self.assertTrue(summary["campaign_complete"])
+        self.assertFalse(summary["cleanup_unresolved"])
+        self.assertEqual(summary["failed_windows"], [8])
+        self.assertTrue(all(item["comparable"] and item["server_cpu_ratio"] is not None
+                            for item in summary["comparisons"]))
 
     def test_report_refusal_or_resolved_timeout_preserves_complete_clean_comparisons(self):
         for error in (FileNotFoundError("perf unavailable"), cpu.subprocess.TimeoutExpired("perf report", 30)):
@@ -969,7 +1374,7 @@ class ProcessTests(unittest.TestCase):
                                           cpu.subprocess.TimeoutExpired("perf", 5), -9]
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(cpu, "spawn", return_value=child), \
+            with mock_record_control(), patch.object(cpu, "spawn", return_value=child), \
                     patch.object(cpu.os, "getpgrp", return_value=999, create=True), \
                     patch.object(cpu.os, "killpg", create=True) as kill:
                 with cpu.perf_pass("record", 123, 5, root, 4096):
@@ -1040,7 +1445,7 @@ class ProcessTests(unittest.TestCase):
                 if timeout:
                     helper.wait.side_effect = cpu.subprocess.TimeoutExpired("chmod", 5)
                 cleanup = TimeoutError("chmod not reaped") if cleanup_failure else None
-                with patch.object(cpu, "spawn", side_effect=[profiler, helper]), \
+                with mock_record_control(), patch.object(cpu, "spawn", side_effect=[profiler, helper]), \
                         patch.object(cpu, "stop", side_effect=[None, cleanup]) as stop:
                     with cpu.perf_pass("record", 123, 5, root, 4096):
                         pass
@@ -1092,19 +1497,29 @@ class LinuxProcessTests(unittest.TestCase):
 
 
 class RetentionTests(unittest.TestCase):
-    def exercise(self, report, *, invalid=True, cleanup_errors=None, tail_error=None, mode="clean"):
+    def exercise(self, report, *, invalid=True, cleanup_errors=None, tail_error=None, mode="clean", timeline=None):
         report = dict(report, warmup=cpu.WARMUP)
+        timeline = [] if timeline is None else timeline
         native = Mock()
         native.server_resources.return_value = None
-        native.control_line.side_effect = ["ready", "measured", json.dumps(report)]
+        replies = iter(["ready", "measured", json.dumps(report)])
+        def line(*args):
+            value = next(replies)
+            timeline.append("read_report" if value.startswith("{") else value)
+            return value
+        native.control_line.side_effect = line
         native.validate_report.side_effect = ValueError("incomplete operations") if invalid else None
-        native.snapshot.return_value = {"cpu_user_seconds": 0, "cpu_system_seconds": 0}
+        def snapshot(*args):
+            timeline.append("snapshot")
+            return {"cpu_user_seconds": 0, "cpu_system_seconds": 0}
+        native.snapshot.side_effect = snapshot
         native.cpu_cost.return_value = {"server": {"total_seconds": 1}, "client": {"total_seconds": 1}}
         server, client = MagicMock(), MagicMock()
         for child in (server, client):
             child.poll.return_value = None
             child.wait.return_value = 0
         client.stderr.read.return_value = "raw native failure\n"
+        client.stdin.write.side_effect = lambda text: timeline.append(text.rstrip())
         profiler = Mock(returncode=255)
         profiler.wait.return_value = 255
         reserve, probe = MagicMock(), MagicMock()
@@ -1114,7 +1529,7 @@ class RetentionTests(unittest.TestCase):
         probe.__enter__.return_value = probe
         with tempfile.TemporaryDirectory() as temporary:
             out = Path(temporary) / "window"
-            with patch.dict(sys.modules, {"psutil": Mock(), "native_diagnostic": native}), \
+            with mock_record_control(timeline), patch.dict(sys.modules, {"psutil": Mock(), "native_diagnostic": native}), \
                     patch.object(cpu, "spawn", side_effect=[server, client, profiler]), \
                     patch.object(cpu, "stop", side_effect=cleanup_errors) as stop, \
                     patch.object(cpu, "stderr_tail", return_value=b"raw native failure\n", side_effect=tail_error), \
@@ -1138,6 +1553,8 @@ class RetentionTests(unittest.TestCase):
             self.assertEqual([call.args[0] for call in command],
                              ["run\n", "report\n"] + ([] if invalid else ["exit\n"]))
             self.assertLessEqual((out / "result.json").stat().st_size, cpu.WINDOW_LIMIT)
+            timeout = native.control_line.call_args_list[1].args[1]
+            self.assertTrue(0 < timeout < 15 if mode == "record" else timeout == 60)
         return result
 
     def test_invalid_native_report_keeps_raw_bytes_and_stops_both_children(self):
@@ -1177,6 +1594,14 @@ class RetentionTests(unittest.TestCase):
         result = self.exercise(dict(completed=10, latencies_ns=[123456789] * 10), invalid=False)
         self.assertTrue(result["passed"])
         self.assertNotIn("123456789", cpu.bounded_bytes(result, cpu.WINDOW_LIMIT).decode("ascii"))
+
+    def test_record_enable_before_snapshots_and_finish_before_report(self):
+        timeline = []
+        self.exercise(dict(completed=10, latencies_ns=[12] * 10), invalid=False,
+                      mode="record", timeline=timeline)
+        self.assertEqual(timeline, ["ready", "enable_ack", "snapshot", "snapshot", "run", "measured",
+                                    "snapshot", "snapshot", "disable_ack", "stop_ack", "report",
+                                    "read_report", "exit"])
 
 
 if __name__ == "__main__":

@@ -289,11 +289,71 @@ Clean process CPU still includes user and system time, and stat events are
 unchanged. There is no eBPF, DWARF stack
 dump, register dump or packet capture. Record/stat use separate socket runs; their
 timings and CPU costs are excluded from comparison. The attach window is a
-bounded wall interval that can include idle/control time or cover only part of an
-overloaded run. Perf startup overhead is not synchronized to clean CPU gates.
+bounded wall interval that can include idle/control time. Record starts disabled
+with `-D -1 --control fifo:CTL,ACK`; an enable acknowledgement precedes the
+existing CPU snapshots and client `run` gate. After the measured gate and after
+snapshots, `finish_recording()` disables and stops recording before client report
+formatting/read. It is idempotent and is also attempted during context cleanup.
+The old record `-- sleep 5` lifetime is removed: its clock would already be
+running before acknowledgement and could clip a five-second client interval.
+The post-sudo 15-second watchdog and five-second KILL grace still bound record.
+Stat retains its original command, event list and sleep lifetime; clean snapshot
+and timing boundaries are unchanged.
 `perf.json`, `perf-command.log`, raw `perf.data` and stat output retain exact tool,
-event or permission refusals; process CPU still runs when perf is unavailable.
+event or permission refusals. Clean CPU qualification remains separate from
+profiler availability; a refused record startup leaves that profile window unrun.
 No perf permissions, sysctls or shared services are changed.
+
+Each record owns a private mode-0700 temporary directory containing two mode-0600
+FIFOs, opened nonblocking. This directory uses the system temporary location,
+outside the uploaded evidence paths; retained special files must never enter
+artifact traversal. Paths cross sudo; inherited extra FDs are not assumed
+to survive it, and no sudoers/FD-preservation setting changes. Only one control
+command is outstanding, in order `enable`, `disable`, `stop`. Each ACK has at most
+two seconds, clamped to the same absolute 15-second capture deadline. The whole
+channel reads at most 64 bytes with an eight-byte read/parser bound. Split
+`ack\n` replies and one optional trailing NUL are supported; upstream perf writes
+that NUL. Wrong, extra, stale, incomplete or late ACKs, short writes and target or
+recorder exits refuse the capture. A startup refusal never releases the client
+run gate. Record's measured gate is clamped to the capture deadline too.
+
+`perf_pass(..., event='cpu-clock', target=None)` yields a dict-compatible
+`PerfCapture`. Its record-only `deadline` and `finish_recording()` support the
+separate finite sampling probe; process handles and FDs are instance attributes,
+never serialized keys. Only record accepts `cpu-clock` or `task-clock`; campaigns
+continue to use inclusive `cpu-clock` without a new event CLI choice. Fixed
+timestamps, ACK counts and bounded refusal fields fit the existing 16 KiB
+`perf.json` allowance. Existing owned-group stop/reap precedes descriptor closure
+and removal of only the owned FIFO objects; unresolved cleanup is still fatal.
+An ownership mismatch is retained for review rather than recursively removed.
+On unresolved cleanup, bounded `retained_control_directory` metadata identifies
+the retained system-temp location in `perf.json`. A startup refusal before the
+context yields carries the profiler metadata on the original exception, so the
+window retains fatal cleanup status, stops later campaign windows and suppresses
+all ratios. A startup refusal with resolved cleanup remains nonfatal to the
+separate clean cohort comparisons. No process handles or descriptors are carried
+on that exception.
+
+An ACK fences perf command processing, not successful enabling of every kernel
+event or representative sampling. See upstream
+[perf control documentation](https://github.com/gregkh/linux/blob/v7.0.14/tools/perf/Documentation/perf-record.txt#L678-L728),
+[control implementation](https://github.com/gregkh/linux/blob/v7.0.14/tools/perf/util/evlist.c#L1957-L2150)
+and [sudo FD behavior](https://github.com/sudo-project/sudo/blob/main/docs/sudo.man.in#L250-L268).
+Upstream v7.0/v7.0.14
+[clock-event implementation](https://github.com/torvalds/linux/blob/v7.0/kernel/events/core.c#L12174-L12441)
+shares the hrtimer between cpu-clock and task-clock, preserves its remaining
+interval on stop/restart, and maps 997 Hz to a fixed 1,003,009 ns period. A full
+period reset at every schedule-in or generic adaptive-frequency feedback is not
+an established explanation for sparse samples. The exact Azure kernel patches,
+configuration and timer delivery are not verified by those upstream sources.
+
+The qualified [4000/s ready/blocking run 39843237773](https://github.com/jeffglousher/coaptic-validation/actions/runs/39843237773)
+at companion `d4f585a` and identical core `120a622` verified 1,344,000 operations;
+all 32 clean windows and four latency guards passed, with CPU reductions of
+17.61–30.89%. Its eight record captures contained only 5–106 samples and establish
+no remaining function/stage rank. This fence does not relabel that evidence or
+prove its sparse-count cause. Both broader 50% CPU targets remain open; sampling
+suitability needs a separately bounded busy/short-burst control before optimization.
 
 
 For a compact ready-versus-async diagnosis, keep both core SHAs identical and use

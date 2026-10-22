@@ -357,6 +357,16 @@ runner validates the complete ledger before timing, including zero warmup.
 Finite correctness checks establish no CPU gain. Select the mode explicitly;
 default adapters and the `all` selection are unchanged.
 
+The [source-matched Linux control](https://github.com/jeffglousher/coaptic-validation/actions/runs/39843237773)
+compares ready/blocking at core `120a622`, companion `d4f585a`, C1 CON and
+4,000 operations/s. All 32 clean windows qualify. Server CPU/op fell
+17.61%/26.30% for unprotected 64/1024-byte responses and 23.75%/30.89% with
+OSCORE. All pooled latency guards passed, though the unprotected 64-byte median
+increased 1.8435 microseconds against a +2 allowance. This is a host scheduling
+control with a different synchronous congestion policy, not isolated core work
+or completion of either broader 50% target. The earlier 11,900/s pacing failures
+remain retained. Its profiles are too sparse to rank functions.
+
 `coaptic-async` is an explicit application scheduling experiment using native
 `App::wait_async` then freshly timed `progress_async`, with a yield after at most
 32 progress passes. It uses the same current-thread Tokio runtime, App capacities,
@@ -418,6 +428,20 @@ minimum memory requirement or completion of the 50% target under core #650.
 Use the [manual Linux runner](linux_cpu.md) for rotated source-matched CPU
 windows and separate bounded `perf` captures. The [initial Windows results](evidence/cpu-cost-windows-20261022)
 retain the measured scheduling tradeoff and the unfinished acceptance target.
+
+Before releasing a profiled workload, the recorder starts disabled and must
+acknowledge its enable command. The runner disables it after completion, before
+report formatting. Bounded control refusal never falls back to an unsynchronized
+capture. An ACK establishes command processing, not representative sampling.
+
+`perf_sampling_probe.py --output NEW_DIRECTORY` checks sampling separately from
+network performance. The manual `perf-sampling-probe.yml` workflow runs four
+serial controls: cpu-clock/task-clock, each with continuous and short-burst work.
+Each targets 0.5 seconds of process CPU with a five-second wall limit and 10,000
+work-block ceiling. It sends no datagrams and builds no Rust. Scalar receipts,
+raw captures, sample counts, unknowns and loss/throttle observations are retained
+within 64 MiB. Compare sampling density; do not infer function or stage shares
+from these controls. Details and limits are in the [Linux guide](linux_cpu.md).
 
 ## Stateful entropy footprint diagnostic
 
