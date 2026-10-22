@@ -1,11 +1,64 @@
 """Refuse incomplete or mismatched native measurements and missing costs."""
 import copy
 import io
+import json
+from pathlib import Path
+import tempfile
 import unittest
-from native_diagnostic import control_line, cpu_cost, measure, validate_report
+from unittest.mock import patch
+from native_diagnostic import control_line, cpu_cost, main, measure, server_resources, validate_report
 
 
 class ReportTests(unittest.TestCase):
+    def test_async_startup_ledger_keeps_nested_sizes_and_unknown_runtime(self):
+        valid = dict(schema="coaptic-native-server-resources/1", server_kind="coaptic-async",
+                     udp_scratch_bytes=2049, adapter_inline_bytes=2104,
+                     app_including_adapter_bytes=16000, loop_future_including_app_bytes=32000,
+                     runtime_heap_bytes=None, runtime_stack_bytes=None)
+        raw = lambda value: io.BytesIO(json.dumps(value).encode())
+        self.assertEqual(server_resources(raw(valid), "coaptic-async"), valid)
+        self.assertIsNone(server_resources(io.BytesIO(b"no startup output"), "coaptic-ready"))
+        for change in (dict(server_kind="coaptic-ready"), dict(udp_scratch_bytes=2048),
+                       dict(adapter_inline_bytes=2048), dict(app_including_adapter_bytes=2000),
+                       dict(loop_future_including_app_bytes=15999), dict(adapter_inline_bytes=True),
+                       dict(runtime_heap_bytes=0), dict(runtime_stack_bytes=0)):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                server_resources(raw(dict(valid, **change)), "coaptic-async")
+        for key in ("runtime_heap_bytes", "runtime_stack_bytes"):
+            missing = dict(valid)
+            del missing[key]
+            with self.assertRaises(ValueError):
+                server_resources(raw(missing), "coaptic-async")
+        for data in (b"", b"[]", b"{}", b"x" * 4097):
+            with self.subTest(data=data[:10]), self.assertRaises(ValueError):
+                server_resources(io.BytesIO(data), "coaptic-async")
+
+    def test_async_kind_passes_bounds_before_any_credentials_or_socket(self):
+        with patch("native_diagnostic.tempfile.TemporaryDirectory",
+                   side_effect=RuntimeError("launch boundary")) as launch:
+            with self.assertRaisesRegex(RuntimeError, "launch boundary"):
+                measure("missing", "missing", 64, 2, 0, 1000, "spin", "oscore",
+                        server_kind="coaptic-async")
+            launch.assert_called_once()
+        with patch("native_diagnostic.tempfile.TemporaryDirectory") as launch:
+            with self.assertRaisesRegex(ValueError, "bounds"):
+                measure("missing", "missing", 64, 2, 0, 1000, "spin", "oscore",
+                        server_kind="unknown")
+            launch.assert_not_called()
+
+    def test_cli_preserves_default_and_explicit_async_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for kind in (None, "coaptic-async"):
+                output = Path(directory) / ("default.json" if kind is None else "async.json")
+                argv = ["native_diagnostic.py", "--server", "server", "--client", "client",
+                        "--output", str(output), "--policy", "spin", "--security", "oscore"]
+                if kind is not None:
+                    argv += ["--server-kind", kind]
+                with patch("sys.argv", argv), patch("native_diagnostic.measure", return_value={}) as run:
+                    main()
+                self.assertEqual(run.call_args.kwargs["server_kind"], kind or "coaptic-reusable")
+                self.assertEqual(json.loads(output.read_text()), dict(passed=True))
+
     def test_control_lines_refuse_unbounded_or_incomplete_reports(self):
         self.assertEqual(control_line(io.StringIO("ready\n"), 1), "ready")
         for text in ("ready", "", "x" * 129 + "\n"):

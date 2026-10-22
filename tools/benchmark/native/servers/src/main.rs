@@ -13,6 +13,8 @@
 //! This is a host scheduling experiment, not a core change.
 //! `coaptic-mio` applies the same policy directly through Mio without an async
 //! runtime. These variants retain the same protocol processing and pools.
+//! `coaptic-async` uses App's native async wait/progress boundary on the same
+//! current-thread Tokio runtime and emits one startup inline-storage ledger.
 #![forbid(unsafe_code)]
 macro_rules! conn_as_any {
     () => {
@@ -35,7 +37,7 @@ use coaptic::storage::{AllocMemory, Capacities, DatagramIo, Endpoint, UdpSocketI
 use coaptic::{App, ContentFormat, Request, Response, get};
 use std::{
     env,
-    io::Read,
+    io::{Read, Write},
     net::UdpSocket,
     sync::{Arc, OnceLock},
     time::{Duration, Instant},
@@ -217,8 +219,8 @@ impl coaptic::storage::AsyncDatagramIo for DtlsIo {
     }
 }
 
-struct DtlsTimer(Instant);
-impl coaptic::platform::AsyncTimer for DtlsTimer {
+struct AppTimer(Instant);
+impl coaptic::platform::AsyncTimer for AppTimer {
     async fn wait_until(&mut self, deadline_ms: u64) {
         tokio::time::sleep_until((self.0 + Duration::from_millis(deadline_ms)).into()).await;
     }
@@ -249,7 +251,7 @@ async fn coaptic_dtls_server(
                     let epoch = Instant::now();
                     let now = || epoch.elapsed().as_millis() as u64;
                     let mut clock = || Ok::<u64, std::io::Error>(now());
-                    let mut timer = DtlsTimer(epoch);
+                    let mut timer = AppTimer(epoch);
                     loop {
                         if app.wait_async(now(), &mut timer, std::future::pending::<()>()).await.is_err() { break; }
                         if app.progress_async(now(), &mut clock, &mut timer, now() + 1000).await.is_err() { break; }
@@ -288,22 +290,33 @@ fn receive_guarded(
     scratch: &mut [u8],
     recv: impl FnOnce(&mut [u8]) -> std::io::Result<(usize, std::net::SocketAddr)>,
 ) -> std::io::Result<Option<(usize, Endpoint)>> {
-    let required = buf
-        .len()
-        .checked_add(1)
-        .ok_or(std::io::ErrorKind::InvalidInput)?;
-    let scratch = scratch
-        .get_mut(..required)
-        .ok_or(std::io::ErrorKind::InvalidInput)?;
+    let scratch = guarded_scratch(buf.len(), scratch)?;
     match recv(scratch) {
-        Ok((n, peer)) if n <= buf.len() => {
-            buf[..n].copy_from_slice(&scratch[..n]);
-            Ok(Some((n, peer.into())))
-        }
-        Ok(_) => Err(std::io::ErrorKind::InvalidData.into()),
+        Ok(packet) => finish_receive(buf, scratch, packet).map(Some),
         Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
         Err(error) => Err(error),
     }
+}
+
+fn guarded_scratch(capacity: usize, scratch: &mut [u8]) -> std::io::Result<&mut [u8]> {
+    let required = capacity
+        .checked_add(1)
+        .ok_or(std::io::ErrorKind::InvalidInput)?;
+    scratch
+        .get_mut(..required)
+        .ok_or_else(|| std::io::ErrorKind::InvalidInput.into())
+}
+
+fn finish_receive(
+    buf: &mut [u8],
+    scratch: &[u8],
+    (n, peer): (usize, std::net::SocketAddr),
+) -> std::io::Result<(usize, Endpoint)> {
+    if n > buf.len() {
+        return Err(std::io::ErrorKind::InvalidData.into());
+    }
+    buf[..n].copy_from_slice(&scratch[..n]);
+    Ok((n, peer.into()))
 }
 
 impl coaptic::storage::DatagramTransport for ReadyUdp {
@@ -323,6 +336,77 @@ impl DatagramIo for ReadyUdp {
         self.socket
             .try_send_to(bytes, std::net::SocketAddr::from(dest))
     }
+}
+
+impl coaptic::storage::AsyncDatagramIo for ReadyUdp {
+    async fn recv(&mut self, buf: &mut [u8]) -> std::io::Result<(usize, Endpoint)> {
+        self.received = false;
+        let scratch = guarded_scratch(buf.len(), &mut self.scratch)?;
+        let packet = self.socket.recv_from(scratch).await?;
+        let result = finish_receive(buf, scratch, packet);
+        self.received = result.is_ok();
+        result
+    }
+
+    async fn send(&mut self, dest: Endpoint, bytes: &[u8]) -> std::io::Result<usize> {
+        self.socket
+            .send_to(bytes, std::net::SocketAddr::from(dest))
+            .await
+    }
+}
+
+type AsyncUdpApp = App<coaptic::profiles::Default, ReadyUdp, 1, true, AllocMemory>;
+
+async fn async_udp_loop(
+    mut app: AsyncUdpApp,
+    epoch: Instant,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let now = || epoch.elapsed().as_millis() as u64;
+    let mut clock = || Ok::<u64, std::io::Error>(now());
+    let mut timer = AppTimer(epoch);
+    loop {
+        for _ in 0..32 {
+            // App races local work/deadlines before ingress and retains a winning
+            // receive in its RX pool. This static fixture has no local signals.
+            app.wait_async(now(), &mut timer, std::future::pending::<()>())
+                .await?;
+            let now_ms = now();
+            // App further limits this send budget to its next protocol deadline.
+            match app
+                .progress_async(now_ms, &mut clock, &mut timer, now_ms.saturating_add(1000))
+                .await
+            {
+                Ok(()) | Err(coaptic::app::Error::Oscore(_)) => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        tokio::task::yield_now().await;
+    }
+}
+
+async fn async_udp_server(
+    address: &str,
+    bytes: usize,
+    rx_bytes: usize,
+    context: Option<SecurityContext>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let io = ReadyUdp {
+        socket: tokio::net::UdpSocket::bind(address).await?,
+        scratch: [0; 2049],
+        received: false,
+    };
+    let adapter_bytes = std::mem::size_of_val(&io);
+    let app = bind_fixture(io, bytes, rx_bytes, context)?;
+    let app_bytes = std::mem::size_of_val(&app);
+    let run = async_udp_loop(app, Instant::now());
+    // The owned loop future includes App, which includes the adapter and scratch.
+    // This excludes the outer setup future, runtime allocations and thread stacks.
+    println!(
+        "{{\"schema\":\"coaptic-native-server-resources/1\",\"server_kind\":\"coaptic-async\",\"udp_scratch_bytes\":2049,\"adapter_inline_bytes\":{adapter_bytes},\"app_including_adapter_bytes\":{app_bytes},\"loop_future_including_app_bytes\":{},\"runtime_heap_bytes\":null,\"runtime_stack_bytes\":null,\"nesting\":\"scratch inside adapter inside App inside loop future; do not sum\",\"limits\":\"inline sizes only; excludes core heap, body, outer setup future, runtime, allocator and kernel costs; runtime and stack costs unknown\"}}",
+        std::mem::size_of_val(&run)
+    );
+    std::io::stdout().flush()?;
+    run.await
 }
 
 struct MioUdp {
@@ -543,7 +627,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if !(5..=7).contains(&args.len()) {
         return Err(
-            "usage: bench-rust-server coaptic-small|coaptic|coaptic-reusable|coaptic-ready|coaptic-mio|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]]".into(),
+            "usage: bench-rust-server coaptic-small|coaptic|coaptic-reusable|coaptic-ready|coaptic-mio|coaptic-async|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]]".into(),
         );
     }
     let rx_bytes: usize = args
@@ -566,7 +650,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.len() >= 6
         && !matches!(
             args[1].as_str(),
-            "coaptic-small" | "coaptic" | "coaptic-reusable" | "coaptic-ready" | "coaptic-mio"
+            "coaptic-small"
+                | "coaptic"
+                | "coaptic-reusable"
+                | "coaptic-ready"
+                | "coaptic-mio"
+                | "coaptic-async"
         )
     {
         return Err("receive capacity is supported only by the Coaptic fixtures".into());
@@ -574,7 +663,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.len() == 7
         && !matches!(
             args[1].as_str(),
-            "coaptic-small" | "coaptic" | "coaptic-reusable" | "coaptic-ready" | "coaptic-mio"
+            "coaptic-small"
+                | "coaptic"
+                | "coaptic-reusable"
+                | "coaptic-ready"
+                | "coaptic-mio"
+                | "coaptic-async"
         )
     {
         return Err("OSCORE credentials require the Coaptic socket fixtures".into());
@@ -643,6 +737,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .enable_all()
             .build()?
             .block_on(ready_server(&address, size, rx_bytes, context)),
+        "coaptic-async" => tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?
+            .block_on(async_udp_server(&address, size, rx_bytes, context)),
         "coap-rs" => tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
@@ -655,6 +753,214 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use coaptic::message::{Message, MessageId, Type};
+
+    fn async_runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+    }
+
+    async fn async_test_io(host: &str) -> ReadyUdp {
+        ReadyUdp {
+            socket: tokio::net::UdpSocket::bind(host).await.unwrap(),
+            scratch: [0; 2049],
+            received: false,
+        }
+    }
+
+    #[test]
+    fn async_receive_preserves_guard_cancellation_endpoint_and_recovery() {
+        use coaptic::storage::AsyncDatagramIo;
+        async_runtime().block_on(async {
+            for host in ["127.0.0.1:0", "[::1]:0"] {
+                for capacity in [64, 1472, 2048] {
+                    let mut io = async_test_io(host).await;
+                    let local = io.socket.local_addr().unwrap();
+                    let sender = tokio::net::UdpSocket::bind(host).await.unwrap();
+                    let peer = sender.local_addr().unwrap();
+                    let mut buf = vec![0xa5; capacity];
+                    assert!(
+                        tokio::time::timeout(
+                            Duration::from_millis(5),
+                            AsyncDatagramIo::recv(&mut io, &mut buf)
+                        )
+                        .await
+                        .is_err()
+                    );
+                    for size in [capacity, capacity + 1, capacity + 8, 0, 3] {
+                        let payload = vec![0x39; size];
+                        sender.send_to(&payload, local).await.unwrap();
+                        buf.fill(0xa5);
+                        let result = tokio::time::timeout(
+                            Duration::from_secs(1),
+                            AsyncDatagramIo::recv(&mut io, &mut buf),
+                        )
+                        .await
+                        .unwrap();
+                        if size <= capacity {
+                            assert_eq!(result.unwrap(), (size, peer.into()));
+                            assert_eq!(&buf[..size], payload);
+                            assert!(io.received);
+                        } else {
+                            // Windows may refuse at the socket before the guard
+                            // can observe the extra byte; either path is an error.
+                            assert!(result.is_err());
+                            assert!(buf.iter().all(|byte| *byte == 0xa5));
+                            assert!(!io.received);
+                        }
+                    }
+                    assert_eq!(
+                        AsyncDatagramIo::send(&mut io, peer.into(), b"reply")
+                            .await
+                            .unwrap(),
+                        5
+                    );
+                    let mut reply = [0; 6];
+                    assert_eq!(
+                        tokio::time::timeout(Duration::from_secs(1), sender.recv_from(&mut reply))
+                            .await
+                            .unwrap()
+                            .unwrap(),
+                        (5, local)
+                    );
+                    assert_eq!(&reply[..5], b"reply");
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn async_app_wait_cancels_reservation_prioritizes_local_and_retains_ingress() {
+        async_runtime().block_on(async {
+            let io = async_test_io("127.0.0.1:0").await;
+            let local = io.socket.local_addr().unwrap();
+            let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+            let mut app = bind_fixture(io, 64, 1472, None).unwrap();
+            let epoch = Instant::now();
+            let now = || epoch.elapsed().as_millis() as u64;
+            let mut timer = AppTimer(epoch);
+            assert!(
+                tokio::time::timeout(
+                    Duration::from_millis(5),
+                    app.wait_async(now(), &mut timer, std::future::pending::<()>()),
+                )
+                .await
+                .is_err()
+            );
+            assert_eq!(app.engine_mut().rx_occupied(), 0);
+            // An empty CON is a ping: progress can dispatch it without a handler.
+            sender.send_to(&[0x40, 0, 0, 1], local).await.unwrap();
+            assert_eq!(
+                app.wait_async(now(), &mut timer, std::future::ready(()))
+                    .await
+                    .unwrap(),
+                coaptic::app::AppWake::Local
+            );
+            assert_eq!(app.engine_mut().rx_occupied(), 0);
+            assert_eq!(
+                tokio::time::timeout(
+                    Duration::from_secs(1),
+                    app.wait_async(now(), &mut timer, std::future::pending::<()>())
+                )
+                .await
+                .unwrap()
+                .unwrap(),
+                coaptic::app::AppWake::Ingress
+            );
+            assert_eq!(app.engine_mut().rx_occupied(), 1);
+            assert_eq!(
+                app.wait_async(now(), &mut timer, std::future::pending::<()>())
+                    .await
+                    .unwrap(),
+                coaptic::app::AppWake::Ready
+            );
+            assert_eq!(app.engine_mut().rx_occupied(), 1);
+            let now_ms = now();
+            let mut clock = || Ok::<u64, std::io::Error>(now());
+            app.progress_async(now_ms, &mut clock, &mut timer, now_ms + 1000)
+                .await
+                .unwrap();
+            assert_eq!(app.engine_mut().rx_occupied(), 0);
+            let mut reply = [0; 8];
+            let (n, from) =
+                tokio::time::timeout(Duration::from_secs(1), sender.recv_from(&mut reply))
+                    .await
+                    .unwrap()
+                    .unwrap();
+            assert_eq!(from, local);
+            assert_eq!(&reply[..n], &[0x70, 0, 0, 1]);
+        });
+    }
+
+    #[test]
+    fn async_app_timer_progresses_without_ingress_and_preserves_retry_bytes() {
+        async_runtime().block_on(async {
+            let io = async_test_io("127.0.0.1:0").await;
+            let local = io.socket.local_addr().unwrap();
+            let receiver = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+            let peer: Endpoint = receiver.local_addr().unwrap().into();
+            let mut app = bind_fixture(io, 64, 1472, None).unwrap();
+            let tx = app.engine_mut().acquire_tx().unwrap();
+            let mid = MessageId::new(7);
+            app.engine_mut()
+                .encode_tx(
+                    tx,
+                    &Message::new(Type::Confirmable, coaptic::Code::GET, mid),
+                )
+                .unwrap();
+            app.engine_mut()
+                .record_pending_con(tx, peer, mid, 0, 0)
+                .unwrap();
+            let due = app.next_timeout().unwrap();
+            let epoch = Instant::now() - Duration::from_millis(due - 5);
+            let now = || epoch.elapsed().as_millis() as u64;
+            let mut timer = AppTimer(epoch);
+            let before_wait = now();
+            let expected = if before_wait < due {
+                coaptic::app::AppWake::Deadline
+            } else {
+                coaptic::app::AppWake::Ready
+            };
+            assert_eq!(
+                tokio::time::timeout(
+                    Duration::from_secs(1),
+                    app.wait_async(before_wait, &mut timer, std::future::pending::<()>())
+                )
+                .await
+                .unwrap()
+                .unwrap(),
+                expected
+            );
+            assert_eq!(app.engine_mut().rx_occupied(), 0);
+            let now_ms = now();
+            assert!(now_ms >= due);
+            let mut clock = || Ok::<u64, std::io::Error>(now());
+            app.progress_async(now_ms, &mut clock, &mut timer, now_ms + 1000)
+                .await
+                .unwrap();
+            let mut packet = [0; 8];
+            let (n, from) =
+                tokio::time::timeout(Duration::from_secs(1), receiver.recv_from(&mut packet))
+                    .await
+                    .unwrap()
+                    .unwrap();
+            assert_eq!(from, local);
+            assert_eq!(&packet[..n], &[0x40, 1, 0, 7]);
+            assert!(app.next_timeout().unwrap() > now_ms);
+            // Due work wins before a continuously readable socket is received.
+            let due = app.next_timeout().unwrap();
+            receiver.send_to(&[0x40, 0, 0, 2], local).await.unwrap();
+            assert_eq!(
+                app.wait_async(due, &mut timer, std::future::pending::<()>())
+                    .await
+                    .unwrap(),
+                coaptic::app::AppWake::Ready
+            );
+            assert_eq!(app.engine_mut().rx_occupied(), 0);
+        });
+    }
 
     #[test]
     fn mio_readiness_receive_preserves_exact_oversized_and_recovery_datagrams() {

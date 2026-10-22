@@ -25,7 +25,8 @@ CARGO_VERSION = f"cargo 1.99.0 (222222222 2026-10-01)\ncommit-hash: {'2' * 40}\n
 
 def options(**overrides):
     values = dict(sizes="64,1024", rates="100,1000", seconds=10,
-                  repeats=4, server_kind="coaptic-reusable", perf=True, concurrency=1, message_type="con")
+                  repeats=4, server_kind="coaptic-reusable", perf=True, concurrency=1, message_type="con",
+                  candidate_server_kind=None, baseline_sha="a" * 40, candidate_sha="b" * 40)
     values.update(overrides)
     return argparse.Namespace(**values)
 
@@ -100,7 +101,39 @@ class ValidationTests(unittest.TestCase):
                                                 "--candidate-sha", "b" * 40,
                                                 "--build-lane", "unused", "--output", "unused"])
         self.assertEqual(args.sizes, "64,1024")
+        self.assertIsNone(args.candidate_server_kind)
         cpu.configuration(args)
+
+    def test_adapter_comparison_requires_one_source_and_explicit_distinct_fixtures(self):
+        selected = dict(server_kind="coaptic-ready", candidate_server_kind="coaptic-async",
+                        baseline_sha="a" * 40, candidate_sha="a" * 40)
+        self.assertEqual(cpu.configuration(options(**selected)),
+                         cpu.configuration(options(server_kind="coaptic-ready")))
+        for change in (dict(candidate_sha="b" * 40), dict(server_kind="all"),
+                       dict(candidate_server_kind="coaptic-ready"), dict(candidate_server_kind="unknown")):
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, "adapter comparison"):
+                cpu.configuration(options(**(selected | change)))
+        with patch.object(cpu, "build") as build, self.assertRaisesRegex(ValueError, "identical core"):
+            cpu.run(options(**(selected | dict(candidate_sha="b" * 40))))
+        build.assert_not_called()
+
+    def test_async_fixture_is_explicit_and_does_not_expand_all(self):
+        args = options(sizes="64", rates="100", perf=False, server_kind="all")
+        cells = cpu.configuration(args)
+        self.assertEqual({cell[3] for cell in cells}, set(cpu.KINDS))
+        self.assertNotIn("coaptic-async", {cell[3] for cell in cells})
+        selected = cpu.configuration(options(sizes="64", rates="100", perf=False, server_kind="coaptic-async"))
+        self.assertEqual({cell[3] for cell in selected}, {"coaptic-async"})
+
+    def test_documented_adapter_plan_keeps_existing_budgets(self):
+        args = options(sizes="64,1024", rates="4000", seconds=12, repeats=4, perf=False,
+                       server_kind="coaptic-ready", candidate_server_kind="coaptic-async",
+                       candidate_sha="a" * 40)
+        plan = cpu.rotation(args, cpu.configuration(args))
+        self.assertEqual(len(plan), 32)
+        self.assertEqual(sum(args.seconds for _ in plan), 384)
+        self.assertEqual(sum(cell[2] * args.seconds for _, _, cell, _ in plan), 1_536_000)
+        self.assertEqual(max(cpu.WARMUP + cell[2] * args.seconds for _, _, cell, _ in plan), 48_020)
 
     def test_concurrency_requires_explicit_non_without_expanding_campaign(self):
         default = cpu.configuration(options())
@@ -419,6 +452,24 @@ class AggregationTests(unittest.TestCase):
         self.assertEqual(baseline["p99_latency_ns"], 1000)
         self.assertEqual(summary["observed_peak_pending"], {"baseline": [1, 1], "candidate": [1, 1]})
 
+    def test_same_source_adapter_pairs_are_explicit_and_reject_wrong_execution(self):
+        kinds = ("coaptic-ready", "coaptic-async")
+        values = self.pairs()
+        for item in values:
+            item["server_kind"] = kinds[item["revision_label"] == "candidate"]
+            item["core_sha"] = "a" * 40
+        summary = cpu.aggregate(values, 2, .01, adapter_pair=kinds)[0]
+        self.assertTrue(summary["comparable"])
+        self.assertEqual(summary["comparison_type"], "application_scheduling")
+        self.assertEqual(summary["server_kinds"], dict(baseline=kinds[0], candidate=kinds[1]))
+        self.assertEqual(summary["server_cpu_ratio"], .5)
+        for changes in (dict(server_kind="coaptic-mio"), dict(core_sha="b" * 40), dict(core_sha=None)):
+            invalid = deepcopy(values)
+            invalid[0].update(changes)
+            result = cpu.aggregate(invalid, 2, .01, adapter_pair=kinds)[0]
+            self.assertFalse(result["comparable"])
+            self.assertIsNone(result["server_cpu_ratio"])
+
     def test_no_ratio_for_failure_missing_duplicate_or_quantized_pairs(self):
         mutations = []
         failed = self.pairs()
@@ -585,7 +636,7 @@ class MetadataTests(unittest.TestCase):
 
 class CampaignTests(unittest.TestCase):
     def exercise(self, *, failure_index=None, oversize=False, target_mismatch=False, report_error=None,
-                 report_error_command="report"):
+                 report_error_command="report", adapter_comparison=False):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             suite, lane, out = root / "source", root / "lane", root / "evidence"
@@ -593,6 +644,9 @@ class CampaignTests(unittest.TestCase):
             lane.mkdir()
             args = options(sizes="64", rates="100", repeats=2, build_lane=lane, output=out,
                            baseline_sha="a" * 40, candidate_sha="b" * 40)
+            if adapter_comparison:
+                args.server_kind, args.candidate_server_kind = "coaptic-ready", "coaptic-async"
+                args.candidate_sha = args.baseline_sha
             calls = []
 
             def build(args, label, revision, out, *, expected=None):
@@ -608,6 +662,7 @@ class CampaignTests(unittest.TestCase):
                 directory.mkdir()
                 label = server.parent.name
                 result = observation(directory, label, index, security=cell[0], mode=mode)
+                result["server_kind"] = cell[3]
                 Path(result["report_file"]).rename(directory / "client.json")
                 result["report_file"] = str(directory / "client.json")
                 if mode != "clean":
@@ -678,6 +733,14 @@ class CampaignTests(unittest.TestCase):
                         self.assertTrue(cpu.unresolved_cleanup(entries[index]))
                 self.assertTrue(all(client.parent.name == "baseline" for _, client, _ in calls))
             return summary, calls
+
+    def test_adapter_campaign_executes_both_selected_fixtures_with_one_frozen_client(self):
+        summary, calls = self.exercise(adapter_comparison=True)
+        self.assertEqual(len(calls), 16)
+        self.assertEqual(summary["comparison_type"], "application_scheduling")
+        self.assertTrue(all(item["comparable"] for item in summary["comparisons"]))
+        for item in summary["comparisons"]:
+            self.assertEqual(item["server_kinds"], dict(baseline="coaptic-ready", candidate="coaptic-async"))
 
     def test_cleanup_failure_aborts_after_first_window_even_with_oversize_metadata(self):
         for oversize in (False, True):
@@ -926,6 +989,7 @@ class RetentionTests(unittest.TestCase):
     def exercise(self, report, *, invalid=True, cleanup_errors=None, tail_error=None, mode="clean"):
         report = dict(report, warmup=cpu.WARMUP)
         native = Mock()
+        native.server_resources.return_value = None
         native.control_line.side_effect = ["ready", "measured", json.dumps(report)]
         native.validate_report.side_effect = ValueError("incomplete operations") if invalid else None
         native.snapshot.return_value = {"cpu_user_seconds": 0, "cpu_system_seconds": 0}

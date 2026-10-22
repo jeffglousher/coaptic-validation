@@ -26,6 +26,34 @@ import sys
 import psutil
 
 
+SERVER_KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready", "coaptic-async")
+
+
+def server_resources(log, server_kind):
+    """Read the async fixture's bounded startup ledger before resource gates."""
+    if server_kind != "coaptic-async":
+        return None
+    log.seek(0)
+    raw = log.read(4097)
+    if len(raw) > 4096:
+        raise ValueError("server startup ledger exceeded allowance")
+    record = json.loads(raw)
+    fields = ("udp_scratch_bytes", "adapter_inline_bytes", "app_including_adapter_bytes",
+              "loop_future_including_app_bytes")
+    if (not isinstance(record, dict)
+            or record.get("schema") != "coaptic-native-server-resources/1"
+            or record.get("server_kind") != server_kind
+            or any(type(record.get(key)) is not int or not 0 < record[key] < 2**64
+                   for key in fields)
+            or record["udp_scratch_bytes"] != 2049
+            or not record["udp_scratch_bytes"] <= record["adapter_inline_bytes"]
+            <= record["app_including_adapter_bytes"] <= record["loop_future_including_app_bytes"]
+            or any(key not in record or record[key] is not None
+                   for key in ("runtime_heap_bytes", "runtime_stack_bytes"))):
+        raise ValueError("invalid async server startup ledger")
+    return record
+
+
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -149,7 +177,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
             and security in ("unprotected", "oscore")
             and type(concurrency) is int and 1 <= concurrency <= 4
             and message_type in ("con", "non") and (concurrency == 1 or message_type == "non")
-            and server_kind in ("coaptic-reusable", "coaptic-mio", "coaptic-ready")
+            and server_kind in SERVER_KINDS
             and type(phase_timeout_seconds) is int and 1 <= phase_timeout_seconds <= 3600
             and (rate is None or (type(rate) is int and 1 <= rate <= 1_000_000
                                   and operations / rate <= 120))):
@@ -194,6 +222,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                 ready_line = control_line(child.stderr, phase_timeout_seconds)
                 if ready_line != "ready":
                     raise RuntimeError("client initialization/warmup refused: " + ready_line)
+                startup = server_resources(server_log, server_kind)
                 peers = {"client": psutil.Process(child.pid), "server": psutil.Process(sut.pid)}
                 before = {name: snapshot(p) for name, p in peers.items()}
                 started = time.perf_counter_ns()
@@ -226,6 +255,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                             cpu_boundary=("post-warmup ready/run to measured/report; excludes JSON formatting"
                                           if cpu_gated else "ready/run through JSON formatting"),
                             server_kind=server_kind, requested_operations_per_second=rate,
+                            server_resources=startup,
                             concurrency=concurrency, message_type=message_type,
                             phase_timeout_seconds=phase_timeout_seconds,
                             cpu_attribution_limit="OS-accounted process user and system CPU; quantized; IPC/snapshot boundary overhead included; machine-wide interrupts/DPCs and unrelated kernel work not attributed; client reported separately",
@@ -270,7 +300,7 @@ def main():
     parser.add_argument("--timeout-ms", type=int, default=1000)
     parser.add_argument("--policy", choices=("spin", "sleep1"), required=True)
     parser.add_argument("--security", choices=("unprotected", "oscore"), required=True)
-    parser.add_argument("--server-kind", choices=("coaptic-reusable", "coaptic-mio", "coaptic-ready"),
+    parser.add_argument("--server-kind", choices=SERVER_KINDS,
                         default="coaptic-reusable")
     parser.add_argument("--rate", type=int)
     parser.add_argument("--concurrency", type=int, choices=range(1, 5), default=1)
