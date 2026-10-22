@@ -426,7 +426,7 @@ def perf_command(mode, pid, seconds, output, quota):
     prefix = ["sudo", "-n", "--", "prlimit", f"--fsize={quota}:{quota}", "--",
               "timeout", "--signal=TERM", "--kill-after=5", str(seconds + 10), "perf"]
     if mode == "record":
-        options = ["record", "-e", "cpu-clock", "-F", "99", "--call-graph", "fp",
+        options = ["record", "-e", "cpu-clock:u", "-F", "997", "--call-graph", "fp",
                    "-m", "128", "--no-buildid-cache", "-o", str(output)]
     else:
         options = ["stat", "-x", ";", "-e", "task-clock,cycles,instructions,context-switches,cpu-migrations,page-faults",

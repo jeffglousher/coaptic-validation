@@ -135,6 +135,45 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(sum(cell[2] * args.seconds for _, _, cell, _ in plan), 1_536_000)
         self.assertEqual(max(cpu.WARMUP + cell[2] * args.seconds for _, _, cell, _ in plan), 48_020)
 
+    def test_user_profile_density_plan_keeps_existing_budgets(self):
+        core = "183b4b9141d4d8a520713292132f3d2608180a1f"
+        args = options(sizes="64", rates="11900", seconds=2, repeats=2, perf=True,
+                       server_kind="coaptic-ready", candidate_server_kind="coaptic-async",
+                       baseline_sha=core, candidate_sha=core)
+        cells = cpu.configuration(args)
+        self.assertEqual({cell[0] for cell in cells}, {"unprotected", "oscore"})
+        plan = cpu.rotation(args, cells)
+        self.assertEqual(sum(mode == "clean" for mode, *_ in plan), 8)
+        slots = sum(mode != "clean" for mode, *_ in plan)
+        self.assertEqual(slots, 8)
+        durations = [args.seconds if mode == "clean" else cpu.PROFILE_SECONDS
+                     for mode, *_ in plan]
+        self.assertEqual(sum(durations), 56)
+        operations = [cell[2] * duration for (_, _, cell, _), duration in zip(plan, durations)]
+        self.assertEqual(sum(operations), 666_400)
+        profile_sends = [cpu.WARMUP + count for (mode, *_), count in zip(plan, operations)
+                         if mode != "clean"]
+        self.assertEqual(set(profile_sends), {59_520})
+        self.assertEqual(cpu.DATAGRAM_BUDGET - max(profile_sends), 480)
+        allowance = cpu.metadata_allowance(plan, args.seconds)
+        self.assertEqual(allowance, 21_542_080)
+        quota = min(8 * cpu.MIB, (cpu.PERF_BUDGET - cpu.METADATA_BUDGET)
+                    // (cpu.PERF_FILES_PER_SLOT * slots))
+        self.assertEqual(quota, 6_990_506)
+        self.assertLessEqual(allowance + cpu.PERF_FILES_PER_SLOT * slots * quota, cpu.PERF_BUDGET)
+
+    def test_user_profile_density_refuses_long_clean_and_oversized_sample_plans(self):
+        core = "183b4b9141d4d8a520713292132f3d2608180a1f"
+        selected = dict(sizes="64", rates="11900", seconds=2, repeats=2, perf=True,
+                        server_kind="coaptic-ready", candidate_server_kind="coaptic-async",
+                        baseline_sha=core, candidate_sha=core)
+        for changes, reason in ((dict(seconds=10), "clean.*socket budget"),
+                                (dict(sizes="64,1024", seconds=5, repeats=4), "2M latency samples")):
+            with self.subTest(changes=changes), patch.object(cpu, "build") as build, \
+                    self.assertRaisesRegex(ValueError, reason):
+                cpu.run(options(**(selected | changes)))
+            build.assert_not_called()
+
     def test_concurrency_requires_explicit_non_without_expanding_campaign(self):
         default = cpu.configuration(options())
         for concurrency in (1, 2, 3, 4):
@@ -152,7 +191,14 @@ class ValidationTests(unittest.TestCase):
             self.assertNotIn("-a", argv)
             self.assertNotIn("dwarf", argv)
             self.assertNotIn("--sample-regs-user", argv)
-        self.assertIn("fp", cpu.perf_command("record", 1, 5, Path("data"), 1024))
+            if mode == "record":
+                self.assertEqual(argv[11:-5], ["record", "-e", "cpu-clock:u", "-F", "997",
+                                              "--call-graph", "fp", "-m", "128", "--no-buildid-cache",
+                                              "-o", str(Path("/tmp/profile"))])
+            else:
+                self.assertEqual(argv[11:-5], ["stat", "-x", ";", "-e",
+                                              "task-clock,cycles,instructions,context-switches,cpu-migrations,page-faults",
+                                              "-o", str(Path("/tmp/profile"))])
 
     def test_refusal_is_retained_without_changing_clean_availability(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -122,6 +122,16 @@ Wrong executed adapters or differing recorded core SHAs suppress the ratio.
 Keep latency, client CPU and startup/runtime memory costs with the result; an
 adapter comparison does not establish a core-processing speedup or either target.
 
+Current native async startup records use `coaptic-native-server-resources/2`.
+`loop_future_borrowing_app_bytes` describes a future borrowing a separate App;
+scratch is nested inside the adapter inside App. Both App and the loop future
+belong to the complete outer setup future, whose size is not reported at startup.
+Nested sizes must not be summed. Outer setup, runtime, thread and polling stacks,
+core/response-body heap, allocator and kernel costs remain excluded and unknown.
+The current parser rejects schema 1 and its owned-App future field. Frozen runs
+retain their original companion revision, schema and ledger interpretation;
+the schema-1 evidence from `b9736ba` is not relabelled as schema 2.
+
 Each security/body/rate/adapter/concurrency/message-type cell defaults to sequential
 complete CON GETs, one outstanding Call, 20 warmups, a 3s per-operation deadline
 and 60s per-control-phase deadline.
@@ -243,8 +253,11 @@ tracks the separate source/packet diagnosis under #650; no core or server
 capacity is enlarged by this diagnostic path.
 
 Optional **separate** five-second `sudo -n perf record` and `perf stat` passes
-attach only to the selected server PID after warmup. Sampling is 99Hz `cpu-clock`
-with frame-pointer call chains and 128 mmap pages; there is no eBPF, DWARF stack
+attach only to the selected server PID after warmup. Record samples user code at
+997Hz using `cpu-clock:u`, frame-pointer call chains and 128 mmap pages. This
+focuses diagnosis on resolvable user symbols; it does not account for kernel work.
+Clean process CPU still includes user and system time, and stat events are
+unchanged. There is no eBPF, DWARF stack
 dump, register dump or packet capture. Record/stat use separate socket runs; their
 timings and CPU costs are excluded from comparison. The attach window is a
 bounded wall interval that can include idle/control time or cover only part of an
@@ -252,6 +265,21 @@ overloaded run. Perf startup overhead is not synchronized to clean CPU gates.
 `perf.json`, `perf-command.log`, raw `perf.data` and stat output retain exact tool,
 event or permission refusals; process CPU still runs when perf is unavailable.
 No perf permissions, sysctls or shared services are changed.
+
+
+For a compact ready-versus-async diagnosis, keep both core SHAs identical and use
+`--sizes 64 --rates 11900 --seconds 2 --repeats 2 --server-kind coaptic-ready
+--candidate-server-kind coaptic-async --perf`. This schedules eight clean and eight
+profile windows: 56 seconds and 666,400 raw samples. Each five-second profile needs
+at least 59,520 sends including warmup, leaving 480 below the live 60,000-send cap;
+retries can exhaust that margin. Default ten-second clean windows at this rate
+are refused. This higher offered load is a separate measurement stratum.
+
+Require enough resolved user samples before ranking code costs; 100 per capture
+is a useful initial triage threshold, while single-digit counts are inconclusive.
+Retain unknown, lost and throttled-sample warnings. User-only sample percentages
+are not shares of total process CPU, and profile CPU/latency is excluded from the
+clean comparison.
 
 After each successful record capture terminates and its raw file is readable,
 nonempty and below quota, the runner reads it while the copied server/client ELF
