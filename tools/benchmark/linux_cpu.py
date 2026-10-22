@@ -464,6 +464,36 @@ class PerfCapture(dict):
         self._phase = 0
         self._enabled = False
         self._finish_attempted = False
+        self._control_log = None
+        self._log_tail = b""
+
+    def _observe_log(self, *, final=False):
+        """Bounded observations of existing stderr; these are never ACKs."""
+        if self._control_log is None:
+            return
+        quota = self["file_size_limit_bytes"]
+        try:
+            for _ in range((quota + 4095) // 4096 if final else 1):
+                remaining = quota - self.get("control_log_observed_bytes", 0)
+                if remaining <= 0:
+                    break
+                data = self._control_log.read(min(4096, remaining))
+                if not data:
+                    break
+                self["control_log_observed_bytes"] = self.get("control_log_observed_bytes", 0) + len(data)
+                observed = time.monotonic()
+                text = self._log_tail + data
+                lines = text.split(b"\n")
+                for marker, key in ((b"Events disabled", "events_disabled_observed_monotonic"),
+                                    (b"Events enabled", "events_enabled_observed_monotonic"),
+                                    (b"perf record has started", "record_start_observed_monotonic")):
+                    if marker in lines[:-1]:
+                        self.setdefault(key, observed)
+                tail = lines[-1]
+                self._log_tail = tail if len(tail) <= 64 else b"\0" + tail[-63:]
+        except Exception as error:
+            self.update(control_log_observation_error=type(error).__name__,
+                        control_log_observation_reason=str(error)[:512])
 
     def _open_control(self, directory):
         # Special files must remain outside artifact traversal, including when
@@ -543,10 +573,30 @@ class PerfCapture(dict):
         if not data:
             raise RuntimeError("record ACK channel ended")
         self["control_ack_bytes"] += len(data)
+        observed = time.monotonic()
+        self.setdefault("control_first_reply_observed_monotonic", observed)
+        self["control_last_reply_observed_monotonic"] = observed
         self["control_reply_prefix_hex"] = data.hex()
         if len(data) > allowance:
             raise RuntimeError("record ACK byte allowance exceeded")
         return data
+
+    def _retain_late_reply(self):
+        # Observe only after reap, never acknowledge or reopen a refused gate.
+        while self["control_ack_bytes"] < 64:
+            try:
+                data = self._read_ack()
+            except BlockingIOError:
+                return
+            except Exception as error:
+                self.update(control_late_read_error=type(error).__name__, control_late_read_reason=str(error)[:512])
+                return
+            observed = self["control_last_reply_observed_monotonic"]
+            self.setdefault("control_late_first_observed_monotonic", observed)
+            self["control_late_last_observed_monotonic"] = observed
+            self["control_late_reply_bytes"] = self.get("control_late_reply_bytes", 0) + len(data)
+            self["control_late_reply_hex"] = self.get("control_late_reply_hex", "") + data.hex()
+        self["control_reply_allowance_exhausted"] = True
 
     def _drain_padding(self):
         # One optional NUL may arrive after the preceding newline, including
@@ -564,8 +614,12 @@ class PerfCapture(dict):
         commands = ("enable", "disable", "stop")
         if self._phase >= len(commands) or command != commands[self._phase]:
             raise ValueError("record control command order")
-        end = min(self.deadline, time.monotonic() + 2)
+        attempted = time.monotonic()
+        end = min(self.deadline, attempted + 2)
+        self[command + "_attempt_monotonic"] = attempted
+        self[command + "_ack_deadline_monotonic"] = end
         try:
+            self._observe_log()
             self._remaining(end)
             self._check_alive()
             self._drain_padding()
@@ -579,6 +633,8 @@ class PerfCapture(dict):
             self._optional_nul = False
             trailing_nul = False
             while True:
+                self._remaining(end)
+                self._observe_log()
                 remaining = self._remaining(end)
                 try:
                     data = self._read_ack()
@@ -600,6 +656,7 @@ class PerfCapture(dict):
                     else:
                         raise RuntimeError("extra record ACK bytes")
                 if position == 4:
+                    self._observe_log()
                     self._optional_nul = not trailing_nul
                     self._drain_padding()
                     self._remaining(end)
@@ -610,10 +667,15 @@ class PerfCapture(dict):
                     self._phase += 1
                     return
         except BaseException as error:
+            self._observe_log()
+            refused = time.monotonic()
             self.update(control_error=type(error).__name__, control_reason=str(error)[:512],
-                        control_refused_command=command)
+                        control_refused_command=command, control_refused_monotonic=refused,
+                        control_ack_bytes_at_refusal=self["control_ack_bytes"])
             if isinstance(error, TimeoutError):
                 self["deadline_exceeded"] = True
+                self["control_timeout_boundary"] = "capture" if end == self.deadline else "ACK"
+                self["capture_deadline_exceeded"] = refused >= self.deadline
             raise
 
     def finish_recording(self):
@@ -694,6 +756,9 @@ def perf_pass(mode, pid, seconds, directory, quota, *, event="cpu-clock", target
                              control_commands_sent=0, control_acks=0,
                              control_ack_limit_bytes=64, control_ack_timeout_seconds=2,
                              control_interpretation="ACK fences processing, not representative sampling")
+                # A separate open file description cannot move the recorder's
+                # inherited stderr write offset. No pipe, thread or extra output.
+                state._control_log = (directory / "perf-command.log").open("rb")
                 try:
                     state._open_control(directory)
                 except BaseException as error:
@@ -702,9 +767,12 @@ def perf_pass(mode, pid, seconds, directory, quota, *, event="cpu-clock", target
             argv = perf_command(mode, pid, seconds, path, quota, event=event,
                                 control_paths=state._control_paths)
             state["command"] = argv
+            if mode == "record":
+                state["recorder_spawn_started_monotonic"] = time.monotonic()
             child = spawn(argv, stdout=log, stderr=log, file_limit=quota)
             state._recorder = child
             if mode == "record":
+                state["recorder_spawned_monotonic"] = time.monotonic()
                 state._command("enable")
                 state._enabled = True
             yield state
@@ -726,6 +794,8 @@ def perf_pass(mode, pid, seconds, directory, quota, *, event="cpu-clock", target
                         state["returncode"] = child.wait(timeout=remaining)
                     except subprocess.TimeoutExpired:
                         state["deadline_exceeded"] = True
+                        if mode == "record":
+                            state["capture_deadline_exceeded"] = True
                     except BaseException as error:
                         state._cleanup_failure(error)
                         if primary is not None:
@@ -735,11 +805,17 @@ def perf_pass(mode, pid, seconds, directory, quota, *, event="cpu-clock", target
                     finally:
                         try:
                             stop(child, elevated=True)
+                            if mode == "record":
+                                state["recorder_reaped_monotonic"] = time.monotonic()
                         except BaseException as error:
                             reaped = False
                             state._cleanup_failure(error)
                         state["returncode"] = child.returncode
             finally:
+                if mode == "record":
+                    state._observe_log(final=True)
+                    if reaped and state.get("control_error") and len(state._fds) == 2:
+                        state._retain_late_reply()
                 if mode == "record" and reaped and state.get("record_finished"):
                     try:
                         # After reap, no recorder can append a delayed extra ACK.
@@ -753,6 +829,12 @@ def perf_pass(mode, pid, seconds, directory, quota, *, event="cpu-clock", target
                         elif finish_error is None:
                             finish_error = error
                 state._close_control(remove=reaped)
+                if state._control_log is not None:
+                    try:
+                        state._control_log.close()
+                    except OSError as error:
+                        state._cleanup_failure(error)
+                    state._control_log = None
                 # Retain output independently of termination, including refusals.
                 try:
                     if path.exists():

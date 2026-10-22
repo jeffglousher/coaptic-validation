@@ -261,7 +261,7 @@ def proc_snapshot(pid):
 
 
 def parse_perf(data, event, pid, executable):
-    """Strict bounded core records; known opaque perf metadata is counted only.
+    """Strict single-clock or observed clock+dummy/IDENTIFIER records only.
 
     No ELF, raw capture, callchain or symbol is executed. No symbol resolver is
     invoked here. Features are range checked but their contents are not decoded.
@@ -285,24 +285,46 @@ def parse_perf(data, event, pid, executable):
                     raise ValueError("overlapping perf sections")
             sections.append((offset, offset + size, label))
 
-    if az != attr_stride or attr_stride not in (144, 152, 160):
-        raise ValueError("expected one supported native clock attribute")
+    # Exactly two supported shapes: the earlier single clock/sample295, or
+    # the observed perf6.17.13 clock+dummy shape with leading IDENTIFIER.
+    identified = az == 2 * attr_stride and attr_stride == 152
+    if not identified and (az != attr_stride or attr_stride not in (144, 152, 160)):
+        raise ValueError("expected single clock or supported clock+tracking layout")
     section(ao, az, "attributes")
     section(do, dz, "data", allow_empty=True)
-    typ, declared = struct.unpack_from("<II", data, ao)
-    config, freq, sample_type, read_format, flags = struct.unpack_from("<5Q", data, ao + 8)
-    if (declared + 16 != attr_stride or typ != 1
-            or config != (0 if event == "cpu-clock" else 1) or freq != 997
-            or sample_type != SAMPLE_TYPE or read_format != 20
-            or not flags & (1 << 10) or flags & ((1 << 4) | (1 << 5) | (1 << 6))):
-        raise ValueError("unsupported event, frequency, scope or sample layout")
-    io, iz = struct.unpack_from("<QQ", data, ao + declared)
-    if not 8 <= iz <= 4096 * 8 or iz % 8:
-        raise ValueError("invalid clock event ID table")
-    section(io, iz, "event IDs")
-    event_ids = set(struct.unpack_from("<" + "Q" * (iz // 8), data, io))
-    if len(event_ids) != iz // 8 or 0 in event_ids:
-        raise ValueError("duplicate or zero clock event ID")
+    attributes = []
+    all_ids = set()
+    for index in range(2 if identified else 1):
+        offset = ao + index * attr_stride
+        typ, declared = struct.unpack_from("<II", data, offset)
+        config, freq, sample_type, read_format, flags = struct.unpack_from("<5Q", data, offset + 8)
+        tracking = index == 1
+        expected_config = 9 if tracking else (0 if event == "cpu-clock" else 1)
+        expected_sample = SAMPLE_TYPE & ~32 if tracking else SAMPLE_TYPE
+        if identified:
+            expected_sample |= 1 << 16
+        scope = flags & ((1 << 4) | (1 << 5) | (1 << 6))
+        expected_scope = (1 << 5) | (1 << 6) if tracking else 0
+        # Both identified events carry TID/TIME/IDENTIFIER metadata trailers.
+        # Only the requested clock is sampled; dummy is metadata-only and has
+        # the observed user-only exclusions, never a second CPU denominator.
+        if (declared + 16 != attr_stride or typ != 1 or config != expected_config
+                or freq != 997 or sample_type != expected_sample or read_format != 20
+                or not flags & (1 << 10) or (identified and not flags & (1 << 18))
+                or scope != expected_scope):
+            raise ValueError("unsupported event, frequency, scope or sample layout")
+        io, iz = struct.unpack_from("<QQ", data, offset + declared)
+        if not 8 <= iz <= 4096 * 8 or iz % 8:
+            raise ValueError("invalid clock/tracking event ID table")
+        section(io, iz, "event IDs")
+        ids = set(struct.unpack_from("<" + "Q" * (iz // 8), data, io))
+        if len(ids) != iz // 8 or 0 in ids or all_ids & ids:
+            raise ValueError("duplicate, colliding or zero event ID")
+        all_ids.update(ids)
+        attributes.append({"ids": ids, "io": io, "iz": iz, "flags": flags})
+    clock = attributes[0]
+    event_ids = clock["ids"]
+    tracking_ids = attributes[1]["ids"] if identified else set()
     feature_bits = int.from_bytes(data[72:104], "little")
     if feature_bits & ((1 << 0) | (1 << 24) | (1 << 27)) or feature_bits >> 35:
         raise ValueError("unsupported reserved, directory, compressed or future perf features")
@@ -313,12 +335,22 @@ def parse_perf(data, event, pid, executable):
         for i in range(feature_count):
             fo, fz = struct.unpack_from("<QQ", data, feature_directory + 16 * i)
             section(fo, fz, "feature", allow_empty=True)
-    trailer_size = 16 if flags & (1 << 18) else 0  # TID + TIME for this exact sample_type.
+    trailer_size = 24 if identified else (16 if clock["flags"] & (1 << 18) else 0)
+    # UAPI SAMPLE_IDENTIFIER is first in SAMPLE but last in sample_id_all.
+    # https://github.com/torvalds/linux/blob/v6.17/include/uapi/linux/perf_event.h
+    # Synthetic MMAP/COMM/KSYMBOL/BPF metadata can have an all-zero trailer.
+    # No such exception applies to samples, loss/throttle or task lifetime.
+    synthetic_kinds = {1, 3, 10, 17, 18}
+    loss_kinds = {2, 5, 6, 13}
+    metadata_kinds = synthetic_kinds | loss_kinds | {4, 7}
     counts, modes, periods = Counter(), Counter(), Counter()
     lost = lost_samples = 0
     timestamp_min = timestamp_max = None
     executable_map = False
     map_count = callchain_max = foreign_metadata = 0
+    synthetic_metadata = tracking_metadata = 0
+    event_loss = {role: {"lost": 0, "lost_samples": 0, "throttle_records": 0,
+                         "unthrottle_records": 0} for role in ("clock", "tracking")}
     offset, end = do, do + dz
     # These userspace records are opaque metadata, never interpreted as samples.
     opaque = {64, 65, 66, 67, 68, 69, 70, 71, 73, 74, 78, 79, 80, 82}
@@ -330,12 +362,39 @@ def parse_perf(data, event, pid, executable):
             raise ValueError("invalid record length")
         body = memoryview(data)[offset + 8:offset + size]
         counts[kind] += 1
+        trailer_id = None
+        trailer_role = "clock"
+        trailer_pid = trailer_tid = None
+        if identified and kind in metadata_kinds:
+            if len(body) < trailer_size:
+                raise ValueError("truncated metadata identifier trailer")
+            trailer_pid, trailer_tid, trailer_time, trailer_id = struct.unpack_from("<IIQQ", body, len(body) - 24)
+            if trailer_id == 0:
+                if kind not in synthetic_kinds or trailer_pid or trailer_tid or trailer_time:
+                    raise ValueError("invalid synthetic metadata trailer")
+                synthetic_metadata += 1
+            elif trailer_id not in all_ids or not trailer_time:
+                raise ValueError("unknown metadata identifier or timestamp")
+            else:
+                trailer_role = "tracking" if trailer_id in tracking_ids else "clock"
+                if kind not in loss_kinds and trailer_role != "tracking":
+                    raise ValueError("nontracking metadata identifier")
+                tracking_metadata += trailer_role == "tracking"
+                if kind in loss_kinds | {4, 7} and (trailer_pid != pid or trailer_tid != pid):
+                    raise ValueError("metadata trailer PID mismatch")
         if kind == 9:
-            if len(body) < 40 or misc & 7 >= len(MODES):
+            prefix = 8 if identified else 0
+            if len(body) < prefix + 40 or misc & 7 >= len(MODES):
                 raise ValueError("unsupported sample CPU mode/length")
-            ip, sample_pid, tid, stamp, period, nr = struct.unpack_from("<QIIQQQ", body)
+            if identified:
+                sample_id = struct.unpack_from("<Q", body)[0]
+                if sample_id in tracking_ids:
+                    raise ValueError("tracking event SAMPLE is not a requested clock sample")
+                if sample_id not in event_ids:
+                    raise ValueError("unknown clock SAMPLE identifier")
+            ip, sample_pid, tid, stamp, period, nr = struct.unpack_from("<QIIQQQ", body, prefix)
             if (sample_pid != pid or tid != pid or not stamp or not period or period > WALL_NS
-                    or nr > 4096 or len(body) != 40 + nr * 8):
+                    or nr > 4096 or len(body) != prefix + 40 + nr * 8):
                 raise ValueError("sample PID/period/callchain/length mismatch")
             mode = MODES[misc & 7]
             modes[mode] += 1
@@ -343,23 +402,34 @@ def parse_perf(data, event, pid, executable):
             callchain_max = max(callchain_max, nr)
             timestamp_min = stamp if timestamp_min is None else min(timestamp_min, stamp)
             timestamp_max = stamp if timestamp_max is None else max(timestamp_max, stamp)
-        elif kind in (2, 5, 6, 13):
+        elif kind in loss_kinds:
             base = {2: 16, 5: 24, 6: 24, 13: 8}[kind]
             if len(body) != base + trailer_size:
                 raise ValueError("invalid loss/throttle record length")
             if kind == 2:
                 record_id, count = struct.unpack_from("<QQ", body)
-                if record_id not in event_ids:
+                if record_id not in all_ids or (identified and record_id != trailer_id):
                     raise ValueError("LOST event ID mismatch")
                 lost += count
+                event_loss[trailer_role]["lost"] += count
             elif kind == 13:
-                lost_samples += struct.unpack_from("<Q", body)[0]
+                count = struct.unpack_from("<Q", body)[0]
+                lost_samples += count
+                event_loss[trailer_role]["lost_samples"] += count
+            else:
+                _, record_id, stream_id = struct.unpack_from("<QQQ", body)
+                role_ids = tracking_ids if trailer_role == "tracking" else event_ids
+                if record_id not in role_ids or stream_id not in role_ids or (identified and record_id != trailer_id):
+                    raise ValueError("throttle event ID mismatch")
+                event_loss[trailer_role]["throttle_records" if kind == 5 else "unthrottle_records"] += 1
         elif kind in (1, 3, 10):
             base = {1: 32, 3: 8, 10: 64}[kind]
             payload_size = len(body) - trailer_size
             if payload_size <= base or payload_size - base > 4096:
                 raise ValueError("invalid mapping/comm length")
             rec_pid, rec_tid = struct.unpack_from("<II", body)
+            if identified and trailer_id and (trailer_pid != rec_pid or trailer_tid != rec_tid):
+                raise ValueError("mapping/comm trailer PID mismatch")
             # perf can synthesize its own COMM metadata (perf-exec). It is
             # counted separately, never accepted as a target SAMPLE or mapping.
             if (misc & 7 == 2 or kind == 3) and (rec_pid != pid or rec_tid != pid):
@@ -390,7 +460,12 @@ def parse_perf(data, event, pid, executable):
             raise ValueError("unsupported perf record type " + str(kind))
         offset += size
     return {"schema": 1, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
-            "event": event, "event_id_count": len(event_ids), "event_ids_sha256": hashlib.sha256(data[io:io + iz]).hexdigest(), "frequency_hz": freq, "inclusive": True,
+            "event": event, "event_id_count": len(event_ids),
+            "event_ids_sha256": hashlib.sha256(data[clock["io"]:clock["io"] + clock["iz"]]).hexdigest(),
+            "frequency_hz": 997, "inclusive": True,
+            "sample_layout": "clock+tracking IDENTIFIER" if identified else "single clock295",
+            "tracking_event_id_count": len(tracking_ids), "tracking_metadata_records": tracking_metadata,
+            "synthetic_metadata_records": synthetic_metadata, "loss_by_event": event_loss,
             "pid": pid, "executable_mapping_matches": executable_map, "mapping_records": map_count,
             "foreign_userspace_metadata_records": foreign_metadata,
             "sample_records": counts[9], "samples_by_mode": {m: modes[m] for m in MODES},
@@ -399,7 +474,7 @@ def parse_perf(data, event, pid, executable):
             "unthrottle_records": counts[6], "records_by_type": {str(k): v for k, v in sorted(counts.items())},
             "callchain_max_entries": callchain_max, "sample_time_min_ns": timestamp_min,
             "sample_time_max_ns": timestamp_max,
-            "limits": "Known opaque metadata counted only; no symbol shares. Observed loss records are not proof of complete delivery; sample timestamp span is not exposure."}
+            "limits": "Only requested clock SAMPLEs accepted; tracking metadata/loss separate. Known opaque metadata counted only; no symbol shares. Observed loss records are not proof of complete delivery; sample timestamp span is not exposure."}
 
 
 def report_counts(directory):
