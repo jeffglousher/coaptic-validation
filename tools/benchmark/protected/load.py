@@ -80,6 +80,7 @@ class Worker:
         self.context, self.crypto_lock = context, crypto_lock
         self.mid = 0
         self.retired = []
+        self.bootstrap_echo_challenges = 0
         self.socket = self.new_socket()
 
     def new_socket(self):
@@ -93,7 +94,7 @@ class Worker:
         for sock in self.retired:
             sock.close()
 
-    def exchange(self, sequence):
+    def exchange(self, sequence, *, bootstrap=False):
         start = time.perf_counter_ns()
         if self.mid + (self.args.bytes + 15) // 16 > 65536:
             try:
@@ -107,10 +108,12 @@ class Worker:
         token = ((self.number << 48) | sequence).to_bytes(8, "big")
         offset, etag = 0, None
         block = (0, False, 6) if self.args.bytes > 1024 else None
+        echo = None
         while True:
             mid = self.mid
             self.mid += 1
             request = aiocoap.Message(code=aiocoap.GET, uri_path=("bench",), block2=block)
+            request.opt.echo = echo
             request.mid, request.mtype, request.token = mid, aiocoap.CON if self.args.mode == "con" else aiocoap.NON, token
             if self.context:
                 with self.crypto_lock:
@@ -151,15 +154,36 @@ class Worker:
                     if response.opt.oscore is not None:
                         raise ValueError("unexpected protection")
                     plain = response
-                offset, block, etag = check_body(plain, offset, self.args.bytes, etag, block)
+                challenge = plain.code == aiocoap.UNAUTHORIZED and plain.opt.echo is not None
+                if challenge:
+                    # libcoap initializes its recipient replay window with an
+                    # authenticated RFC 8613 Appendix B.1.2 Echo challenge. Only
+                    # the explicit untimed bootstrap may retry it, once.
+                    options = list(plain.opt.option_list())
+                    if (not bootstrap or self.context is None or echo is not None or offset
+                            or len(options) != 1 or int(options[0].number) != 252
+                            or not 1 <= len(plain.opt.echo) <= 40 or plain.payload):
+                        raise ValueError("unexpected/malformed authenticated Echo challenge")
+                    echo = plain.opt.echo
+                    self.bootstrap_echo_challenges += 1
+                else:
+                    offset, block, etag = check_body(plain, offset, self.args.bytes, etag, block)
+                    echo = None
                 # A separate CON response is acknowledged only after authentication.
                 if response.mtype == aiocoap.CON:
                     ack = aiocoap.Message(code=aiocoap.EMPTY)
                     ack.mtype, ack.mid = aiocoap.ACK, response.mid
                     self.socket.send(ack.encode())
                 break
+            if challenge:
+                continue
             if block is None:
                 return time.perf_counter_ns() - start
+
+    def bootstrap(self):
+        # Every matched peer performs the same complete, byte-verified GET
+        # before warmup and timing. Errors abort setup; no sample is filtered.
+        self.exchange(0, bootstrap=True)
 
 
 def run(args):
@@ -171,8 +195,10 @@ def run(args):
         if not low <= value <= high:
             raise ValueError("driver bounds")
     per_endpoint = 65536 // ((args.bytes + 15) // 16)
+    # Reserve a complete bootstrap plus a possible Echo retry conservatively
+    # as two operations, including the smallest one-datagram representation.
     reserved = sum(max(1, (args.operations // args.concurrency + (i < args.operations % args.concurrency)
-                          + args.warmup + per_endpoint - 1) // per_endpoint) for i in range(args.concurrency))
+                          + args.warmup + 2 + per_endpoint - 1) // per_endpoint) for i in range(args.concurrency))
     if reserved > 1024:
         raise ValueError("driver endpoint reservation exceeds 1024")
     context = Context(args.credentials, sequence=args.sequence) if args.security == SECURITY else None
@@ -203,6 +229,8 @@ def run(args):
         return latencies, failures, warmup_failed, reasons
 
     try:
+        for worker in workers:
+            worker.bootstrap()
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrency) as pool:
             futures = [pool.submit(work, worker) for worker in workers]
             barrier.wait()
@@ -220,6 +248,9 @@ def run(args):
                     concurrency=args.concurrency, warmup=args.warmup, attempted=args.operations,
                     completed=len(latencies), failed=failed, warmup_failed=warmup_failed, driver_failures=reasons.get("DriverError", 0),
                     endpoint_rotations=sum(len(w.retired) for w in workers), verified_bytes=len(latencies) * args.bytes,
+                    bootstrap_completed=len(workers),
+                    bootstrap_echo_challenges=sum(w.bootstrap_echo_challenges for w in workers),
+                    bootstrap="complete verified GET per worker before warmup/timing; at most one authenticated Echo retry",
                     elapsed_ns=elapsed, latencies_ns=latencies, failure_types=reasons, clock="time.perf_counter_ns",
                     measurement="closed-loop; Python/GIL, authentication and complete byte validation included")
     finally:

@@ -222,6 +222,9 @@ fn exchange(
                 && wire[1] == 0
                 && wire[2..4] == current_mid.to_be_bytes()
             {
+                if !config.confirmable {
+                    return Err("ACK for NON request");
+                }
                 continue;
             }
             if length < 12 || wire[4..12] != token {
@@ -261,6 +264,9 @@ fn exchange(
         }
         let more = match reply.block {
             Some(block) => {
+                if block_request.is_some_and(|requested| block.size > 1 << ((requested & 7) + 4)) {
+                    return Err("Block2 size increased");
+                }
                 if block.number as usize * block.size != offset
                     || reply.body.len() > block.size
                     || (block.more && reply.body.len() != block.size)
@@ -268,6 +274,9 @@ fn exchange(
                     return Err("Block2 range");
                 }
                 offset += reply.body.len();
+                if block.more && offset >= config.bytes {
+                    return Err("Block2 M/length");
+                }
                 if offset % block.size != 0 && block.more {
                     return Err("Block2 alignment");
                 }
@@ -276,6 +285,9 @@ fn exchange(
                 block.more
             }
             None => {
+                if block_request.is_some() || offset != 0 {
+                    return Err("missing negotiated Block2");
+                }
                 offset += reply.body.len();
                 false
             }
@@ -458,6 +470,111 @@ mod tests {
             wire.extend_from_slice(&[255, 0, 1, 2]);
             assert!(response(&wire, &token).is_err(), "{options:?}");
         }
+    }
+
+    fn fixture_reply(request: &[u8], offset: usize, length: usize, block: Option<u32>) -> Vec<u8> {
+        let mut wire = vec![0x68, 69, request[2], request[3]];
+        wire.extend_from_slice(&request[4..12]);
+        wire.extend_from_slice(&[0xc1, 42]);
+        if let Some(block) = block {
+            let raw = block.to_be_bytes();
+            let first = raw.iter().position(|b| *b != 0).unwrap_or(4);
+            wire.push(0xb0 | (4 - first) as u8);
+            wire.extend_from_slice(&raw[first..]);
+        }
+        wire.push(255);
+        wire.extend((offset..offset + length).map(|i| (i % 251) as u8));
+        wire
+    }
+
+    fn hostile_peer(blocks: &[(usize, usize, Option<u32>)]) -> Result<u64, &'static str> {
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let config = Config {
+            endpoint: socket.local_addr().unwrap().to_string(),
+            bytes: 2000,
+            concurrency: 1,
+            operations: 1,
+            warmup: 0,
+            timeout_ms: 1000,
+            confirmable: true,
+        };
+        let blocks = blocks.to_vec();
+        let peer = thread::spawn(move || {
+            let mut request = [0; 64];
+            for (offset, length, block) in blocks {
+                let (n, source) = socket.recv_from(&mut request).unwrap();
+                let reply = fixture_reply(&request[..n], offset, length, block);
+                socket.send_to(&reply, source).unwrap();
+            }
+        });
+        let outcome = exchange(&mut Endpoint::new(&config).unwrap(), &config, 0, 1);
+        peer.join().unwrap();
+        outcome
+    }
+
+    #[test]
+    fn malformed_peer_cannot_omit_negotiated_final_block() {
+        assert_eq!(
+            hostile_peer(&[(0, 1024, Some(14)), (1024, 976, None)]),
+            Err("missing negotiated Block2")
+        );
+        assert!(hostile_peer(&[(0, 1024, Some(14)), (1024, 976, Some(22))]).is_ok());
+    }
+
+    #[test]
+    fn malformed_peer_cannot_increase_negotiated_size() {
+        assert_eq!(
+            hostile_peer(&[
+                (0, 512, Some(13)),
+                (512, 512, Some(29)),
+                (1024, 976, Some(22))
+            ]),
+            Err("Block2 size increased")
+        );
+        assert!(
+            hostile_peer(&[
+                (0, 512, Some(13)),
+                (512, 512, Some(29)),
+                (1024, 512, Some(45)),
+                (1536, 464, Some(53))
+            ])
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn malformed_peer_cannot_acknowledge_non_request() {
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let config = Config {
+            endpoint: socket.local_addr().unwrap().to_string(),
+            bytes: 64,
+            concurrency: 1,
+            operations: 1,
+            warmup: 0,
+            timeout_ms: 1000,
+            confirmable: false,
+        };
+        let peer = thread::spawn(move || {
+            let mut request = [0; 64];
+            let (n, source) = socket.recv_from(&mut request).unwrap();
+            socket
+                .send_to(&[0x60, 0, request[2], request[3]], source)
+                .unwrap();
+            let mut reply = fixture_reply(&request[..n], 0, 64, None);
+            reply[0] = 0x58;
+            socket.send_to(&reply, source).unwrap();
+        });
+        assert_eq!(
+            exchange(&mut Endpoint::new(&config).unwrap(), &config, 0, 1),
+            Err("ACK for NON request")
+        );
+        peer.join().unwrap();
     }
 
     #[test]

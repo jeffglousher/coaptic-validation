@@ -87,14 +87,56 @@ def noise():
 
 
 def process_cpu(pid):
-    """Process CPU accounting; sampled outside the independent driver timing."""
+    """Bounded process-tree snapshots, outside independent driver timing."""
     try:
         import psutil
     except ImportError:
         return None
     try:
-        value = psutil.Process(pid).cpu_times()
-        return {"user_seconds": value.user, "system_seconds": value.system}
+        def tree():
+            pending = [psutil.Process(pid)]
+            members = {}
+            while pending:
+                process = pending.pop()
+                identity = (process.pid, process.create_time())
+                if identity in members:
+                    continue
+                if len(members) == 8 or not process.is_running():
+                    return None
+                members[identity] = process
+                # Discover one generation at a time; do not materialize an
+                # unbounded recursive descendant list before checking the cap.
+                children = process.children(recursive=False)
+                if len(children) + len(pending) + len(members) > 8:
+                    return None
+                pending.extend(children)
+            return members
+
+        members = tree()
+        if members is None:
+            return None
+        rows = []
+        for (member_pid, created), process in sorted(members.items()):
+            cpu = process.cpu_times()
+            rows.append({"pid": member_pid, "created_seconds": created,
+                         "parent_pid": process.ppid(), "name": process.name(),
+                         "user_seconds": cpu.user, "system_seconds": cpu.system,
+                         "memory": process.memory_info()._asdict(),
+                         "threads": process.num_threads()})
+        after = tree()
+        if after is None or members.keys() != after.keys():
+            return None
+        # Only current fields may be summed. Individual lifetime peak values
+        # remain in rows: their maxima need not have occurred simultaneously.
+        memory = {field: sum(row["memory"][field] for row in rows)
+                  if all(field in row["memory"] for row in rows) else None
+                  for field in ("rss", "vms", "private")}
+        return {"user_seconds": sum(row["user_seconds"] for row in rows),
+                "system_seconds": sum(row["system_seconds"] for row in rows),
+                "memory": memory, "threads": sum(row["threads"] for row in rows),
+                "processes": rows,
+                "scope": "root plus descendants, maximum 8; sequential snapshots with stable membership at both boundaries; short-lived processes between snapshots are unmeasured",
+                "memory_aggregation": "sum of current per-process rss/vms/private where available; shared pages may overlap; not simultaneous tree/system peak; individual peak fields retained only per process"}
     except (psutil.Error, OSError):
         return None
 
@@ -214,7 +256,14 @@ class CapturedProcess:
     """Drain bounded pipes continuously, including during warmup and readiness."""
 
     def __init__(self, argv):
+        import psutil
         self.process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            self.owned_root = psutil.Process(self.process.pid)
+            self.owned_created = self.owned_root.create_time()
+        except psutil.NoSuchProcess:
+            self.owned_root = None
+            self.owned_created = None
         self.output = bytearray()
         self.errors = bytearray()
         self.overflow = threading.Event()
@@ -230,18 +279,46 @@ class CapturedProcess:
             destination.extend(chunk[:remaining])
             if len(chunk) > remaining:
                 self.overflow.set()
-                if self.process.poll() is None:
-                    self.process.kill()
                 break
 
     def close(self):
-        if self.process.poll() is None:
-            self.process.kill()
+        import psutil
+        # Snapshot only descendants of the exact process we launched. Refuse
+        # over-capacity trees before sending any signal; never kill by PID alone.
+        members = []
+        pending = [self.owned_root] if self.owned_root is not None else []
+        while pending:
+            process = pending.pop()
+            try:
+                if not process.is_running():
+                    continue
+                created = process.create_time()
+                if process is self.owned_root and created != self.owned_created:
+                    raise ValueError("owned root identity changed")
+                children = process.children(recursive=False)
+                if len(members) + len(pending) + len(children) + 1 > 8:
+                    raise ValueError("owned process tree exceeds cleanup limit 8")
+                members.append((process, created))
+                pending.extend(children)
+            except psutil.NoSuchProcess:
+                continue
+        # Children first: launcher shutdown must not orphan a live server.
+        for process, created in reversed(members):
+            try:
+                if process.is_running():
+                    if process.create_time() != created:
+                        raise ValueError("owned process identity changed before cleanup")
+                    process.kill()  # psutil additionally guards PID reuse.
+            except psutil.NoSuchProcess:
+                pass
+        _, alive = psutil.wait_procs([p for p, _ in members], timeout=3)
+        if alive:
+            raise ValueError("owned process tree did not terminate")
         self.process.wait(timeout=3)
         for reader in self.readers:
             reader.join(timeout=1)
         if any(reader.is_alive() for reader in self.readers):
-            raise ValueError("descendant retained output pipe; custom peers must not spawn descendants")
+            raise ValueError("untracked descendant retained output pipe; cleanup incomplete")
         self.process.stdout.close()
         self.process.stderr.close()
 
@@ -251,6 +328,8 @@ def execute(argv, timeout, health=None):
     try:
         deadline = time.monotonic() + timeout
         while captured.process.poll() is None:
+            if captured.overflow.is_set():
+                raise ValueError("oversize driver output")
             if health is not None and not health():
                 raise ValueError("server exited or exceeded output cap during driver execution")
             remaining = deadline - time.monotonic()
@@ -357,7 +436,7 @@ def run_cell(peer, case):
             cpu_after = process_cpu(server.pid)
             cpu_accounting = {"before": cpu_before, "after": cpu_after,
                               "driver_process_wall_seconds": measured_wall,
-                              "scope": "server CPU over driver startup, warmup, measured requests and driver exit; platform accounting granularity applies"}
+                              "scope": "server process-tree CPU over driver startup, warmup, measured requests and driver exit; memory is before/after sequential process-tree snapshots, shared pages may overlap; per-process peak fields include startup and are not summed into a tree/system peak; platform granularity applies"}
             try:
                 validate_sample(sample, case)
             except ValueError as error:

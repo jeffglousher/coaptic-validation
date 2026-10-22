@@ -82,12 +82,15 @@ matched security/protocol semantics and explicit CPU and memory budgets. The
 supplied fixtures are preliminary configurations, not evidence that every
 candidate uses its fastest configuration. Coaptic-only diagnostics and changes
 to driver scheduling cannot establish a cross-library advantage. Record client
-and server CPU, steady/peak memory, complete-operation latency/tails and verified
-goodput; retain setup and allocator/kernel accounting limitations.
+and server CPU, memory snapshots, complete-operation latency/tails and verified
+goodput; retain setup and allocator/kernel accounting limitations. The sampler
+tracks a bounded process tree, including Windows Python launchers and children.
+Summed RSS can include shared pages; per-process lifetime peaks are retained
+individually and are never summed into an invented simultaneous tree peak.
 
 Install `tools/benchmark/protected/requirements.txt` in the benchmark environment.
-Pass `--matched-oscore` to preparation to add Coaptic and aiocoap native OSCORE
-servers alongside unprotected controls. This matrix uses one external Python UDP
+Pass `--matched-oscore` to preparation to add Coaptic, aiocoap and a
+security-enabled libcoap native OSCORE endpoint alongside unprotected controls. This matrix uses one external Python UDP
 driver for both security profiles, with independent aiocoap cryptography:
 
 The driver validates fixture bytes with a bounded immutable periodic window
@@ -140,7 +143,7 @@ both ends, has one outstanding operation, and does not replace the independent
 matched driver, interoperability checks, durable-recovery qualification or
 comparative campaigns.
 
-Both protected servers use a 32-entry replay window. One shared driver identity
+The OSCORE servers use a 32-entry replay window. One shared driver identity
 serializes sequence reservation through UDP dispatch, preventing local sender
 thread scheduling from manufacturing wider reordering before packets enter
 the network. This preserves independent outstanding exchanges per worker.
@@ -155,12 +158,38 @@ they do not establish server saturation or compare directly with timings from
 the native Rust driver. Keep the native driver for a separate unprotected campaign
 and for matched historical regression measurements.
 
-The manifest explicitly records selected peers without an OSCORE fixture and
-the absent DTLS benchmark path. coap-rs and coap-lite have no native OSCORE path
-in this harness; libcoap has native OSCORE but its benchmark fixture is currently
-unprotected. HTTP/3 TLS remains a separate protocol. No unsupported combination
-is treated as a successful encrypted result. Preparation records library/suite
-revisions, cleanliness, lockfile, crypto versions and dependency hashes.
+The manifest records unsupported selected combinations. coap-rs, coap-lite and
+go-coap have no OSCORE path in this harness. HTTP/3 TLS remains a separate
+protocol. Preparation records library/suite revisions, cleanliness, lockfile,
+crypto versions and dependency hashes.
+
+### DTLS and native libcoap protection
+
+For libcoap, supply `--libcoap-security --libcoap-dtls-backend mbedtls` and
+`--libcoap-crypto-prefix PATH_TO_INSTALLED_BACKEND` (or another supported backend).
+Preparation probes the built executable for both OSCORE and DTLS; a requested
+capability that was not built is an error. The crypto provider is a separate
+pinned build input and belongs in the measurement receipt.
+
+`--dtls` adds a separate common Go wire-driver stratum: native go-coap and
+libcoap DTLS endpoints, plus test-only Coaptic and coap-rs adapters around the
+existing qualified webrtc-dtls backend. These adapters do not add DTLS to the
+Coaptic core endpoint contract. Sessions negotiate DTLS 1.2 PSK with
+TLS_PSK_WITH_AES_128_CCM_8; fresh test keys and setup handshakes precede timing.
+The driver authenticates and checks complete representations. Coaptic uses one
+App per session, bounded at 128 sessions, so its aggregate pool ownership differs
+from the shared UDP App. The manifest states these runtime differences.
+
+Keep native Rust UDP, Python UDP/OSCORE, Go DTLS and HTTP/3 drivers separate.
+Across these strata, client overhead, context ownership and runtime behavior
+differ; subtracting their timings does not isolate cryptographic cost. aiocoap
+and the codec fixture have no DTLS endpoint in the selected Windows build.
+
+[Socket traces and offline grading](packet-trace.md) run separately from timing.
+They retain actual UDP payloads in PCAP DLT_USER0, with direction and integrity
+metadata. OSCORE grading independently authenticates and reconstructs complete
+representations; DTLS grading checks record framing only without session keys.
+This is socket-boundary evidence, not kernel or NIC capture.
 
 ## Cheap check
 
@@ -249,6 +278,13 @@ cargo test --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-l
 ```
 
 ## Diagnostic stage timing
+
+`bench-core` uses `std::hint::black_box` at the poll/input/output boundary and
+checks every complete response outside the clock. Its 4096 raw empty-clock
+samples are retained separately and never subtracted. This socket-free diagnostic
+is independent of the network comparison; manual clock boundaries and optimizer
+barriers serve the same anti-elision purpose needed here without adding Criterion.
+A barrier is best-effort compiler guidance, not a security or constant-time promise.
 
 The separate `bench-profile` package enables Coaptic's `diagnostics` feature.
 Its in-process mode measures each `App::poll`; socket mode additionally separates
