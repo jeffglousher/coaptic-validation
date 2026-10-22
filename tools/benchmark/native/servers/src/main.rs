@@ -7,9 +7,10 @@
 //! Setup allocations precede the external driver's timed request phase.
 //!
 //! `coaptic-ready` uses Tokio's registered UDP socket, caller-owned scratch,
-//! and readiness-driven bounded drain bursts. Idle waits end at the next
-//! millisecond of the App clock so protocol timers still progress without
-//! incoming traffic. This is a host scheduling experiment, not a core change.
+//! and readiness-driven bounded drain bursts. Idle waits end at the App's next
+//! protocol opportunity, including retained work and timers without ingress.
+//! These static fixtures have no external application signals to wake them.
+//! This is a host scheduling experiment, not a core change.
 //! `coaptic-mio` applies the same policy directly through Mio without an async
 //! runtime. These variants retain the same protocol processing and pools.
 #![forbid(unsafe_code)]
@@ -352,6 +353,7 @@ fn mio_server(
     address: &str,
     bytes: usize,
     rx_bytes: usize,
+    context: Option<SecurityContext>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let socket = UdpSocket::bind(address)?;
     socket.set_nonblocking(true)?;
@@ -364,26 +366,29 @@ fn mio_server(
     poll.registry()
         .register(&mut io.socket, mio::Token(0), mio::Interest::READABLE)?;
     let mut events = mio::Events::with_capacity(8);
-    let mut app = bind_fixture(io, bytes, rx_bytes, None)?;
+    let mut app = bind_fixture(io, bytes, rx_bytes, context)?;
     let started = Instant::now();
     loop {
         let mut idle = false;
         for _ in 0..32 {
-            app.poll(started.elapsed().as_millis() as u64)?;
+            match app.poll(started.elapsed().as_millis() as u64) {
+                Ok(()) | Err(coaptic::app::Error::Oscore(_)) => {}
+                Err(error) => return Err(error.into()),
+            }
             if !app.transport().received {
                 idle = true;
                 break;
             }
         }
+        let now_ms = started.elapsed().as_millis() as u64;
         let timeout = if idle {
-            let now = Instant::now();
-            let next_tick =
-                started + Duration::from_millis(now.duration_since(started).as_millis() as u64 + 1);
-            next_tick.saturating_duration_since(now)
+            app.next_poll_at(now_ms).map(|due| {
+                (started + Duration::from_millis(due)).saturating_duration_since(Instant::now())
+            })
         } else {
-            Duration::ZERO
+            Some(Duration::ZERO)
         };
-        match poll.poll(&mut events, Some(timeout)) {
+        match poll.poll(&mut events, timeout) {
             Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
             result => result?,
         }
@@ -394,30 +399,40 @@ async fn ready_server(
     address: &str,
     bytes: usize,
     rx_bytes: usize,
+    context: Option<SecurityContext>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let io = ReadyUdp {
         socket: tokio::net::UdpSocket::bind(address).await?,
         scratch: [0; 2049],
         received: false,
     };
-    let mut app = bind_fixture(io, bytes, rx_bytes, None)?;
+    let mut app = bind_fixture(io, bytes, rx_bytes, context)?;
     let started = Instant::now();
     loop {
         let mut idle = false;
         for _ in 0..32 {
-            app.poll(started.elapsed().as_millis() as u64)?;
+            match app.poll(started.elapsed().as_millis() as u64) {
+                Ok(()) | Err(coaptic::app::Error::Oscore(_)) => {}
+                Err(error) => return Err(error.into()),
+            }
             if !app.transport().received {
                 idle = true;
                 break;
             }
         }
         if idle {
-            let next_tick =
-                started + Duration::from_millis(started.elapsed().as_millis() as u64 + 1);
-            if let Ok(ready) =
-                tokio::time::timeout_at(next_tick.into(), app.transport().socket.readable()).await
-            {
-                ready?;
+            let now_ms = started.elapsed().as_millis() as u64;
+            match app.next_poll_at(now_ms) {
+                Some(due) => {
+                    let deadline = started + Duration::from_millis(due);
+                    if let Ok(ready) =
+                        tokio::time::timeout_at(deadline.into(), app.transport().socket.readable())
+                            .await
+                    {
+                        ready?;
+                    }
+                }
+                None => app.transport().socket.readable().await?,
             }
         } else {
             tokio::task::yield_now().await;
@@ -559,7 +574,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.len() == 7
         && !matches!(
             args[1].as_str(),
-            "coaptic-small" | "coaptic" | "coaptic-reusable"
+            "coaptic-small" | "coaptic" | "coaptic-reusable" | "coaptic-ready" | "coaptic-mio"
         )
     {
         return Err("OSCORE credentials require the Coaptic socket fixtures".into());
@@ -623,11 +638,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         "coap-lite-codec" => codec_server(&address, body),
-        "coaptic-mio" => mio_server(&address, size, rx_bytes),
+        "coaptic-mio" => mio_server(&address, size, rx_bytes, context),
         "coaptic-ready" => tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?
-            .block_on(ready_server(&address, size, rx_bytes)),
+            .block_on(ready_server(&address, size, rx_bytes, context)),
         "coap-rs" => tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()

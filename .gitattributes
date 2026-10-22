@@ -16,3 +16,4 @@ tools/qualification/evidence/independent-edhoc/options-ce7e817-8f88d76.json text
 # Preserve original qualification logs, JSON and embedded receipt hashes.
 tools/qualification/evidence/completion-20261020/** -text whitespace=-blank-at-eol
 tools/benchmark/evidence/hot-path-windows-20261021/** -text whitespace=-blank-at-eol
+tools/benchmark/evidence/cpu-cost-windows-20261022/** -text whitespace=-blank-at-eol
