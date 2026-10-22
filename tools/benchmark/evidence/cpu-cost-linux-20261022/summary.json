@@ -1,0 +1,2287 @@
+{
+  "run_url": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39779276076",
+  "qualification": "52 Linux tests passed without skips; both source-matched builds and all48 windows passed",
+  "actual_compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "actual_cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+  "toolchain_discrepancy": "workflow selects1.99.0 but repository rust-toolchain.toml stable override selected1.99.1 for both builds",
+  "source_identity_and_binaries_verified": true,
+  "binary_hashes": {
+    "baseline/bench-rust-server": "84728ab2a2e817d0768b18ff834a1eea631820c149a5a76c55ee74bfaedd5a80",
+    "baseline/bench-native-client": "904e91922af52040cb5572a659513d54ca0bb325cc9e9a80e7c482cd06b0b4f0",
+    "candidate/bench-rust-server": "9a2c8f00c7bc6136effc7d0c421dd23f2440865042b11dfb5640db6f0f31c5c5",
+    "candidate/bench-native-client": "1864131db686c5b036f9057216eba0c44df7cdd7abe89a66dbf46c154a989726"
+  },
+  "accounting": {
+    "clean": {
+      "windows": 24,
+      "requested": 1152000,
+      "attempted": 1152000,
+      "verified": 1152000,
+      "failed": 0,
+      "unattempted": 0,
+      "latency_samples": 1152000,
+      "sent": 1152000,
+      "received": 1152000,
+      "late": 1151999,
+      "missed_period": 2439,
+      "dropped": 0
+    },
+    "record": {
+      "windows": 12,
+      "requested": 360000,
+      "attempted": 360000,
+      "verified": 360000,
+      "failed": 0,
+      "unattempted": 0,
+      "latency_samples": 360000,
+      "sent": 360000,
+      "received": 360000,
+      "late": 359996,
+      "missed_period": 545,
+      "dropped": 0
+    },
+    "stat": {
+      "windows": 12,
+      "requested": 360000,
+      "attempted": 360000,
+      "verified": 360000,
+      "failed": 0,
+      "unattempted": 0,
+      "latency_samples": 360000,
+      "sent": 360000,
+      "received": 360000,
+      "late": 359998,
+      "missed_period": 487,
+      "dropped": 0
+    }
+  },
+  "clean_groups": [
+    {
+      "security": "unprotected",
+      "adapter": "coaptic-reusable",
+      "label": "baseline",
+      "verified_operations": 96000,
+      "cpu_us_per_verified_operation": {
+        "server": {
+          "user_us": 38.958333333333336,
+          "system_us": 127.70833333333333,
+          "total_us": 166.66666666666666
+        },
+        "client": {
+          "user_us": 5.3125,
+          "system_us": 27.083333333333332,
+          "total_us": 32.395833333333336
+        }
+      },
+      "latency_us": {
+        "median": 18.525,
+        "p99": 40.566
+      },
+      "achieved_ops_s": [
+        6000.021418576459,
+        6000.097194074422
+      ],
+      "missed_period_operations": [
+        71,
+        7
+      ],
+      "max_lateness_us": [
+        2595.276,
+        338.654
+      ],
+      "server_cpu_ticks": [
+        800.0,
+        800.0
+      ],
+      "server_rss_before_after_bytes": [
+        [
+          4526080,
+          4526080
+        ],
+        [
+          4481024,
+          4481024
+        ]
+      ],
+      "client_rss_before_after_bytes": [
+        [
+          2715648,
+          3096576
+        ],
+        [
+          2719744,
+          3100672
+        ]
+      ]
+    },
+    {
+      "security": "unprotected",
+      "adapter": "coaptic-reusable",
+      "label": "candidate",
+      "verified_operations": 96000,
+      "cpu_us_per_verified_operation": {
+        "server": {
+          "user_us": 62.083333333333336,
+          "system_us": 104.79166666666667,
+          "total_us": 166.875
+        },
+        "client": {
+          "user_us": 6.25,
+          "system_us": 24.6875,
+          "total_us": 30.937499999999996
+        }
+      },
+      "latency_us": {
+        "median": 17.793,
+        "p99": 30.377
+      },
+      "achieved_ops_s": [
+        6000.067842767098,
+        6000.06509320618
+      ],
+      "missed_period_operations": [
+        35,
+        43
+      ],
+      "max_lateness_us": [
+        1251.786,
+        4174.559
+      ],
+      "server_cpu_ticks": [
+        801.0,
+        801.0
+      ],
+      "server_rss_before_after_bytes": [
+        [
+          4395008,
+          4395008
+        ],
+        [
+          4509696,
+          4509696
+        ]
+      ],
+      "client_rss_before_after_bytes": [
+        [
+          2719744,
+          3100672
+        ],
+        [
+          2719744,
+          3100672
+        ]
+      ]
+    },
+    {
+      "security": "unprotected",
+      "adapter": "coaptic-mio",
+      "label": "candidate",
+      "verified_operations": 96000,
+      "cpu_us_per_verified_operation": {
+        "server": {
+          "user_us": 5.208333333333333,
+          "system_us": 14.166666666666664,
+          "total_us": 19.374999999999996
+        },
+        "client": {
+          "user_us": 17.1875,
+          "system_us": 30.3125,
+          "total_us": 47.50000000000001
+        }
+      },
+      "latency_us": {
+        "median": 31.719,
+        "p99": 55.324
+      },
+      "achieved_ops_s": [
+        6000.00603000606,
+        6000.058208814706
+      ],
+      "missed_period_operations": [
+        183,
+        48
+      ],
+      "max_lateness_us": [
+        3015.108,
+        941.59
+      ],
+      "server_cpu_ticks": [
+        92.0,
+        93.99999999999999
+      ],
+      "server_rss_before_after_bytes": [
+        [
+          4423680,
+          4423680
+        ],
+        [
+          4530176,
+          4530176
+        ]
+      ],
+      "client_rss_before_after_bytes": [
+        [
+          2719744,
+          3100672
+        ],
+        [
+          2719744,
+          3100672
+        ]
+      ]
+    },
+    {
+      "security": "unprotected",
+      "adapter": "coaptic-mio",
+      "label": "baseline",
+      "verified_operations": 96000,
+      "cpu_us_per_verified_operation": {
+        "server": {
+          "user_us": 2.0833333333333335,
+          "system_us": 15.729166666666666,
+          "total_us": 17.8125
+        },
+        "client": {
+          "user_us": 21.666666666666668,
+          "system_us": 23.645833333333332,
+          "total_us": 45.3125
+        }
+      },
+      "latency_us": {
+        "median": 30.567,
+        "p99": 54.873
+      },
+      "achieved_ops_s": [
+        6000.045406093616,
+        6000.052999968162
+      ],
+      "missed_period_operations": [
+        56,
+        108
+      ],
+      "max_lateness_us": [
+        2526.899,
+        2923.547
+      ],
+      "server_cpu_ticks": [
+        80.99999999999999,
+        90.0
+      ],
+      "server_rss_before_after_bytes": [
+        [
+          4464640,
+          4464640
+        ],
+        [
+          4456448,
+          4456448
+        ]
+      ],
+      "client_rss_before_after_bytes": [
+        [
+          2719744,
+          3100672
+        ],
+        [
+          2719744,
+          3100672
+        ]
+      ]
+    },
+    {
+      "security": "unprotected",
+      "adapter": "coaptic-ready",
+      "label": "baseline",
+      "verified_operations": 96000,
+      "cpu_us_per_verified_operation": {
+        "server": {
+          "user_us": 6.770833333333333,
+          "system_us": 14.583333333333334,
+          "total_us": 21.354166666666668
+        },
+        "client": {
+          "user_us": 14.687500000000002,
+          "system_us": 33.12499999999999,
+          "total_us": 47.8125
+        }
+      },
+      "latency_us": {
+        "median": 32.982,
+        "p99": 56.726
+      },
+      "achieved_ops_s": [
+        6000.085913730177,
+        6000.0396257616985
+      ],
+      "missed_period_operations": [
+        104,
+        52
+      ],
+      "max_lateness_us": [
+        3754.246,
+        2869.897
+      ],
+      "server_cpu_ticks": [
+        95.0,
+        110.0
+      ],
+      "server_rss_before_after_bytes": [
+        [
+          4694016,
+          4694016
+        ],
+        [
+          4620288,
+          4620288
+        ]
+      ],
+      "client_rss_before_after_bytes": [
+        [
+          2719744,
+          3100672
+        ],
+        [
+          2715648,
+          3096576
+        ]
+      ]
+    },
+    {
+      "security": "unprotected",
+      "adapter": "coaptic-ready",
+      "label": "candidate",
+      "verified_operations": 96000,
+      "cpu_us_per_verified_operation": {
+        "server": {
+          "user_us": 7.083333333333333,
+          "system_us": 15.625,
+          "total_us": 22.708333333333332
+        },
+        "client": {
+          "user_us": 19.687500000000004,
+          "system_us": 30.0,
+          "total_us": 49.6875
+        }
+      },
+      "latency_us": {
+        "median": 36.729,
+        "p99": 57.317
+      },
+      "achieved_ops_s": [
+        6000.041462536522,
+        6000.041255533668
+      ],
+      "missed_period_operations": [
+        160,
+        152
+      ],
+      "max_lateness_us": [
+        2869.432,
+        3074.875
+      ],
+      "server_cpu_ticks": [
+        100.0,
+        118.00000000000001
+      ],
+      "server_rss_before_after_bytes": [
+        [
+          4870144,
+          4870144
+        ],
+        [
+          4493312,
+          4493312
+        ]
+      ],
+      "client_rss_before_after_bytes": [
+        [
+          2719744,
+          3100672
+        ],
+        [
+          2715648,
+          3096576
+        ]
+      ]
+    },
+    {
+      "security": "oscore",
+      "adapter": "coaptic-reusable",
+      "label": "candidate",
+      "verified_operations": 96000,
+      "cpu_us_per_verified_operation": {
+        "server": {
+          "user_us": 59.479166666666664,
+          "system_us": 107.08333333333336,
+          "total_us": 166.5625
+        },
+        "client": {
+          "user_us": 8.229166666666666,
+          "system_us": 25.104166666666668,
+          "total_us": 33.333333333333336
+        }
+      },
+      "latency_us": {
+        "median": 21.11,
+        "p99": 39.344
+      },
+      "achieved_ops_s": [
+        6000.061415878646,
+        6000.060728114644
+      ],
+      "missed_period_operations": [
+        74,
+        26
+      ],
+      "max_lateness_us": [
+        1757.865,
+        281.157
+      ],
+      "server_cpu_ticks": [
+        799.0,
+        800.0
+      ],
+      "server_rss_before_after_bytes": [
+        [
+          4534272,
+          4534272
+        ],
+        [
+          4784128,
+          4784128
+        ]
+      ],
+      "client_rss_before_after_bytes": [
+        [
+          2719744,
+          3100672
+        ],
+        [
+          2719744,
+          3100672
+        ]
+      ]
+    },
+    {
+      "security": "oscore",
+      "adapter": "coaptic-reusable",
+      "label": "baseline",
+      "verified_operations": 96000,
+      "cpu_us_per_verified_operation": {
+        "server": {
+          "user_us": 62.5,
+          "system_us": 104.16666666666667,
+          "total_us": 166.66666666666666
+        },
+        "client": {
+          "user_us": 17.395833333333332,
+          "system_us": 17.395833333333332,
+          "total_us": 34.791666666666664
+        }
+      },
+      "latency_us": {
+        "median": 21.19,
+        "p99": 47.82
+      },
+      "achieved_ops_s": [
+        6000.0612861259915,
+        6000.0614436292135
+      ],
+      "missed_period_operations": [
+        2,
+        1
+      ],
+      "max_lateness_us": [
+        206.329,
+        166.904
+      ],
+      "server_cpu_ticks": [
+        801.0,
+        799.0
+      ],
+      "server_rss_before_after_bytes": [
+        [
+          4661248,
+          4661248
+        ],
+        [
+          4784128,
+          4784128
+        ]
+      ],
+      "client_rss_before_after_bytes": [
+        [
+          2715648,
+          3096576
+        ],
+        [
+          2719744,
+          3100672
+        ]
+      ]
+    },
+    {
+      "security": "oscore",
+      "adapter": "coaptic-mio",
+      "label": "baseline",
+      "verified_operations": 96000,
+      "cpu_us_per_verified_operation": {
+        "server": {
+          "user_us": 8.854166666666668,
+          "system_us": 13.541666666666664,
+          "total_us": 22.395833333333332
+        },
+        "client": {
+          "user_us": 24.375,
+          "system_us": 30.0,
+          "total_us": 54.375
+        }
+      },
+      "latency_us": {
+        "median": 40.506,
+        "p99": 64.812
+      },
+      "achieved_ops_s": [
+        5999.998290000487,
+        6000.05046267441
+      ],
+      "missed_period_operations": [
+        196,
+        101
+      ],
+      "max_lateness_us": [
+        3027.748,
+        2746.994
+      ],
+      "server_cpu_ticks": [
+        104.0,
+        110.99999999999999
+      ],
+      "server_rss_before_after_bytes": [
+        [
+          4775936,
+          4775936
+        ],
+        [
+          4739072,
+          4739072
+        ]
+      ],
+      "client_rss_before_after_bytes": [
+        [
+          2719744,
+          3100672
+        ],
+        [
+          2719744,
+          3100672
+        ]
+      ]
+    },
+    {
+      "security": "oscore",
+      "adapter": "coaptic-mio",
+      "label": "candidate",
+      "verified_operations": 96000,
+      "cpu_us_per_verified_operation": {
+        "server": {
+          "user_us": 5.520833333333333,
+          "system_us": 15.833333333333334,
+          "total_us": 21.354166666666664
+        },
+        "client": {
+          "user_us": 19.583333333333332,
+          "system_us": 32.083333333333336,
+          "total_us": 51.666666666666664
+        }
+      },
+      "latency_us": {
+        "median": 35.016,
+        "p99": 66.235
+      },
+      "achieved_ops_s": [
+        6000.034323946355,
+        6000.003890252522
+      ],
+      "missed_period_operations": [
+        265,
+        97
+      ],
+      "max_lateness_us": [
+        3585.086,
+        2846.505
+      ],
+      "server_cpu_ticks": [
+        103.0,
+        102.0
+      ],
+      "server_rss_before_after_bytes": [
+        [
+          4767744,
+          4767744
+        ],
+        [
+          4726784,
+          4726784
+        ]
+      ],
+      "client_rss_before_after_bytes": [
+        [
+          2719744,
+          3100672
+        ],
+        [
+          2703360,
+          3084288
+        ]
+      ]
+    },
+    {
+      "security": "oscore",
+      "adapter": "coaptic-ready",
+      "label": "candidate",
+      "verified_operations": 96000,
+      "cpu_us_per_verified_operation": {
+        "server": {
+          "user_us": 6.458333333333333,
+          "system_us": 18.333333333333332,
+          "total_us": 24.791666666666668
+        },
+        "client": {
+          "user_us": 24.791666666666668,
+          "system_us": 30.104166666666668,
+          "total_us": 54.895833333333336
+        }
+      },
+      "latency_us": {
+        "median": 37.842,
+        "p99": 65.443
+      },
+      "achieved_ops_s": [
+        6000.029317643253,
+        6000.031587916298
+      ],
+      "missed_period_operations": [
+        108,
+        120
+      ],
+      "max_lateness_us": [
+        2204.264,
+        2980.672
+      ],
+      "server_cpu_ticks": [
+        127.0,
+        110.99999999999999
+      ],
+      "server_rss_before_after_bytes": [
+        [
+          4800512,
+          4800512
+        ],
+        [
+          4685824,
+          4685824
+        ]
+      ],
+      "client_rss_before_after_bytes": [
+        [
+          2719744,
+          3100672
+        ],
+        [
+          2715648,
+          3096576
+        ]
+      ]
+    },
+    {
+      "security": "oscore",
+      "adapter": "coaptic-ready",
+      "label": "baseline",
+      "verified_operations": 96000,
+      "cpu_us_per_verified_operation": {
+        "server": {
+          "user_us": 11.770833333333334,
+          "system_us": 11.875000000000002,
+          "total_us": 23.645833333333332
+        },
+        "client": {
+          "user_us": 24.791666666666668,
+          "system_us": 27.8125,
+          "total_us": 52.604166666666664
+        }
+      },
+      "latency_us": {
+        "median": 35.928,
+        "p99": 63.39
+      },
+      "achieved_ops_s": [
+        6000.020708321472,
+        6000.050213670232
+      ],
+      "missed_period_operations": [
+        136,
+        294
+      ],
+      "max_lateness_us": [
+        2786.143,
+        2929.377
+      ],
+      "server_cpu_ticks": [
+        112.99999999999999,
+        114.00000000000001
+      ],
+      "server_rss_before_after_bytes": [
+        [
+          4960256,
+          4960256
+        ],
+        [
+          4894720,
+          4894720
+        ]
+      ],
+      "client_rss_before_after_bytes": [
+        [
+          2711552,
+          3092480
+        ],
+        [
+          2719744,
+          3100672
+        ]
+      ]
+    }
+  ],
+  "comparisons": [
+    {
+      "security": "unprotected",
+      "bytes": 64,
+      "rate": 6000,
+      "server_kind": "coaptic-reusable",
+      "comparable": true,
+      "server_cpu_ratio": 1.00125,
+      "eligibility": "complete campaign; resolved cleanup; all rotated pairs complete; achieved rates within5%; <=1% missed periods (minimum1); server CPU >=20 ticks/window",
+      "cpu_ns_per_verified_operation": {
+        "baseline": {
+          "server": {
+            "user_ns": 38958.333333333336,
+            "system_ns": 127708.33333333333,
+            "total_ns": 166666.66666666666
+          },
+          "client": {
+            "user_ns": 5312.5,
+            "system_ns": 27083.333333333332,
+            "total_ns": 32395.83333333334
+          },
+          "verified_operations": 96000,
+          "median_latency_ns": 18525.0,
+          "p99_latency_ns": 40566
+        },
+        "candidate": {
+          "server": {
+            "user_ns": 62083.333333333336,
+            "system_ns": 104791.66666666667,
+            "total_ns": 166875.0
+          },
+          "client": {
+            "user_ns": 6250.0,
+            "system_ns": 24687.5,
+            "total_ns": 30937.499999999996
+          },
+          "verified_operations": 96000,
+          "median_latency_ns": 17793.0,
+          "p99_latency_ns": 30377
+        }
+      }
+    },
+    {
+      "security": "unprotected",
+      "bytes": 64,
+      "rate": 6000,
+      "server_kind": "coaptic-mio",
+      "comparable": true,
+      "server_cpu_ratio": 1.0877192982456139,
+      "eligibility": "complete campaign; resolved cleanup; all rotated pairs complete; achieved rates within5%; <=1% missed periods (minimum1); server CPU >=20 ticks/window",
+      "cpu_ns_per_verified_operation": {
+        "baseline": {
+          "server": {
+            "user_ns": 2083.3333333333335,
+            "system_ns": 15729.166666666666,
+            "total_ns": 17812.5
+          },
+          "client": {
+            "user_ns": 21666.666666666668,
+            "system_ns": 23645.833333333332,
+            "total_ns": 45312.5
+          },
+          "verified_operations": 96000,
+          "median_latency_ns": 30567.0,
+          "p99_latency_ns": 54873
+        },
+        "candidate": {
+          "server": {
+            "user_ns": 5208.333333333333,
+            "system_ns": 14166.666666666664,
+            "total_ns": 19374.999999999996
+          },
+          "client": {
+            "user_ns": 17187.5,
+            "system_ns": 30312.5,
+            "total_ns": 47500.00000000001
+          },
+          "verified_operations": 96000,
+          "median_latency_ns": 31719.0,
+          "p99_latency_ns": 55324
+        }
+      }
+    },
+    {
+      "security": "unprotected",
+      "bytes": 64,
+      "rate": 6000,
+      "server_kind": "coaptic-ready",
+      "comparable": true,
+      "server_cpu_ratio": 1.0634146341463413,
+      "eligibility": "complete campaign; resolved cleanup; all rotated pairs complete; achieved rates within5%; <=1% missed periods (minimum1); server CPU >=20 ticks/window",
+      "cpu_ns_per_verified_operation": {
+        "baseline": {
+          "server": {
+            "user_ns": 6770.833333333333,
+            "system_ns": 14583.333333333334,
+            "total_ns": 21354.166666666668
+          },
+          "client": {
+            "user_ns": 14687.500000000002,
+            "system_ns": 33124.99999999999,
+            "total_ns": 47812.5
+          },
+          "verified_operations": 96000,
+          "median_latency_ns": 32982.0,
+          "p99_latency_ns": 56726
+        },
+        "candidate": {
+          "server": {
+            "user_ns": 7083.333333333333,
+            "system_ns": 15625.0,
+            "total_ns": 22708.333333333332
+          },
+          "client": {
+            "user_ns": 19687.500000000004,
+            "system_ns": 30000.0,
+            "total_ns": 49687.5
+          },
+          "verified_operations": 96000,
+          "median_latency_ns": 36729.0,
+          "p99_latency_ns": 57317
+        }
+      }
+    },
+    {
+      "security": "oscore",
+      "bytes": 64,
+      "rate": 6000,
+      "server_kind": "coaptic-reusable",
+      "comparable": true,
+      "server_cpu_ratio": 0.999375,
+      "eligibility": "complete campaign; resolved cleanup; all rotated pairs complete; achieved rates within5%; <=1% missed periods (minimum1); server CPU >=20 ticks/window",
+      "cpu_ns_per_verified_operation": {
+        "baseline": {
+          "server": {
+            "user_ns": 62500.0,
+            "system_ns": 104166.66666666667,
+            "total_ns": 166666.66666666666
+          },
+          "client": {
+            "user_ns": 17395.833333333332,
+            "system_ns": 17395.833333333332,
+            "total_ns": 34791.666666666664
+          },
+          "verified_operations": 96000,
+          "median_latency_ns": 21190.0,
+          "p99_latency_ns": 47820
+        },
+        "candidate": {
+          "server": {
+            "user_ns": 59479.166666666664,
+            "system_ns": 107083.33333333336,
+            "total_ns": 166562.5
+          },
+          "client": {
+            "user_ns": 8229.166666666666,
+            "system_ns": 25104.166666666668,
+            "total_ns": 33333.333333333336
+          },
+          "verified_operations": 96000,
+          "median_latency_ns": 21110.0,
+          "p99_latency_ns": 39344
+        }
+      }
+    },
+    {
+      "security": "oscore",
+      "bytes": 64,
+      "rate": 6000,
+      "server_kind": "coaptic-mio",
+      "comparable": true,
+      "server_cpu_ratio": 0.9534883720930232,
+      "eligibility": "complete campaign; resolved cleanup; all rotated pairs complete; achieved rates within5%; <=1% missed periods (minimum1); server CPU >=20 ticks/window",
+      "cpu_ns_per_verified_operation": {
+        "baseline": {
+          "server": {
+            "user_ns": 8854.166666666668,
+            "system_ns": 13541.666666666664,
+            "total_ns": 22395.833333333332
+          },
+          "client": {
+            "user_ns": 24375.0,
+            "system_ns": 30000.0,
+            "total_ns": 54375.0
+          },
+          "verified_operations": 96000,
+          "median_latency_ns": 40506.0,
+          "p99_latency_ns": 64812
+        },
+        "candidate": {
+          "server": {
+            "user_ns": 5520.833333333333,
+            "system_ns": 15833.333333333334,
+            "total_ns": 21354.166666666664
+          },
+          "client": {
+            "user_ns": 19583.333333333332,
+            "system_ns": 32083.333333333332,
+            "total_ns": 51666.666666666664
+          },
+          "verified_operations": 96000,
+          "median_latency_ns": 35016.0,
+          "p99_latency_ns": 66235
+        }
+      }
+    },
+    {
+      "security": "oscore",
+      "bytes": 64,
+      "rate": 6000,
+      "server_kind": "coaptic-ready",
+      "comparable": true,
+      "server_cpu_ratio": 1.0484581497797358,
+      "eligibility": "complete campaign; resolved cleanup; all rotated pairs complete; achieved rates within5%; <=1% missed periods (minimum1); server CPU >=20 ticks/window",
+      "cpu_ns_per_verified_operation": {
+        "baseline": {
+          "server": {
+            "user_ns": 11770.833333333334,
+            "system_ns": 11875.000000000002,
+            "total_ns": 23645.833333333332
+          },
+          "client": {
+            "user_ns": 24791.666666666668,
+            "system_ns": 27812.5,
+            "total_ns": 52604.166666666664
+          },
+          "verified_operations": 96000,
+          "median_latency_ns": 35928.0,
+          "p99_latency_ns": 63390
+        },
+        "candidate": {
+          "server": {
+            "user_ns": 6458.333333333333,
+            "system_ns": 18333.333333333332,
+            "total_ns": 24791.666666666668
+          },
+          "client": {
+            "user_ns": 24791.666666666668,
+            "system_ns": 30104.166666666668,
+            "total_ns": 54895.833333333336
+          },
+          "verified_operations": 96000,
+          "median_latency_ns": 37842.0,
+          "p99_latency_ns": 65443
+        }
+      }
+    }
+  ],
+  "clean_limits": {
+    "achieved_ops_s": [
+      5999.998290000487,
+      6000.097194074422
+    ],
+    "missed_period_operations": [
+      1,
+      294
+    ],
+    "cpu_tick_seconds": 0.01,
+    "minimum_server_ticks": 80.99999999999999,
+    "one_minute_load": [
+      0.59521484375,
+      1.78125
+    ],
+    "process_resource_seconds": [
+      8.000260216,
+      8.000506507
+    ]
+  },
+  "profiles": [
+    {
+      "index": 24,
+      "security": "unprotected",
+      "adapter": "coaptic-reusable",
+      "label": "baseline",
+      "samples": 495,
+      "event_period": 4999999950,
+      "lost_samples_reported": 0,
+      "kernel_samples": 304,
+      "kernel_sample_percent": 61.41414141414141,
+      "resolved_kernel_rows": [],
+      "unresolved_samples": 343,
+      "unresolved_sample_percent": 69.29292929292929,
+      "first_sample_header": "# time of first sample : 0.000000",
+      "last_sample_header": "# time of last sample : 0.000000",
+      "duration_header": "# sample duration :      0.000 ms",
+      "warnings": [
+        "Invalid HEADER_EVENT_DESC: nre=1 sz=144 (min 64)",
+        "# event desc: not available or unable to read",
+        "# cpu pmu capabilities: not available",
+        "# missing features: TRACING_DATA BUILD_ID BRANCH_STACK GROUP_DESC AUXTRACE STAT CLOCKID DIR_FORMAT COMPRESSED CLOCK_DATA HYBRID_TOPOLOGY "
+      ],
+      "top_resolved_user_symbols": [
+        {
+          "percent": 8.89,
+          "samples": 44,
+          "period": 444444440,
+          "dso": "libc.so.6",
+          "mode": ".",
+          "symbol": "recvfrom"
+        },
+        {
+          "percent": 6.67,
+          "samples": 33,
+          "period": 333333330,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::poll_engine::<coaptic::storage::alloc_memory::AllocMemory, coaptic::storage::io::UdpSocketIo<[u8; 2049]>, 1, 0, 4, 4>"
+        },
+        {
+          "percent": 3.23,
+          "samples": 16,
+          "period": 161616160,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::expire_request_dedup::<coaptic::storage::alloc_memory::AllocMemory>"
+        },
+        {
+          "percent": 3.03,
+          "samples": 15,
+          "period": 151515150,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::storage::io::recv_udp"
+        },
+        {
+          "percent": 2.42,
+          "samples": 12,
+          "period": 121212120,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<std::sys::net::connection::socket::unix::Socket>::recv_from_with_flags"
+        },
+        {
+          "percent": 1.82,
+          "samples": 9,
+          "period": 90909090,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::client::expire_client_exchanges::<coaptic::storage::alloc_memory::AllocMemory, 4, 4>"
+        },
+        {
+          "percent": 1.01,
+          "samples": 5,
+          "period": 50505050,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::storage::alloc_memory::AllocDatagramPool as coaptic::storage::SlotPool>::release"
+        },
+        {
+          "percent": 0.81,
+          "samples": 4,
+          "period": 40404040,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<std::sys::pal::unix::time::Timespec>::sub_timespec"
+        }
+      ],
+      "full_symbol_rows": "raw-observations.tar.gz:window-024/perf-report.txt"
+    },
+    {
+      "index": 25,
+      "security": "unprotected",
+      "adapter": "coaptic-reusable",
+      "label": "candidate",
+      "samples": 494,
+      "event_period": 4989898940,
+      "lost_samples_reported": 0,
+      "kernel_samples": 324,
+      "kernel_sample_percent": 65.58704453441295,
+      "resolved_kernel_rows": [
+        {
+          "percent": 0.2,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bpf_prog_25194ef1fe028eb5_kprobe_ip_send_skb",
+          "mode": "k",
+          "symbol": "bpf_prog_25194ef1fe028eb5_kprobe_ip_send_skb"
+        }
+      ],
+      "unresolved_samples": 360,
+      "unresolved_sample_percent": 72.8744939271255,
+      "first_sample_header": "# time of first sample : 0.000000",
+      "last_sample_header": "# time of last sample : 0.000000",
+      "duration_header": "# sample duration :      0.000 ms",
+      "warnings": [
+        "Invalid HEADER_EVENT_DESC: nre=1 sz=144 (min 64)",
+        "# event desc: not available or unable to read",
+        "# cpu pmu capabilities: not available",
+        "# missing features: TRACING_DATA BUILD_ID BRANCH_STACK GROUP_DESC AUXTRACE STAT CLOCKID DIR_FORMAT COMPRESSED CLOCK_DATA HYBRID_TOPOLOGY "
+      ],
+      "top_resolved_user_symbols": [
+        {
+          "percent": 8.5,
+          "samples": 42,
+          "period": 424242420,
+          "dso": "libc.so.6",
+          "mode": ".",
+          "symbol": "recvfrom"
+        },
+        {
+          "percent": 7.09,
+          "samples": 35,
+          "period": 353535350,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::poll_engine::<coaptic::storage::alloc_memory::AllocMemory, coaptic::storage::io::UdpSocketIo<[u8; 2049]>, 1, 0, 4, 4>"
+        },
+        {
+          "percent": 2.02,
+          "samples": 10,
+          "period": 101010100,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<std::sys::net::connection::socket::unix::Socket>::recv_from_with_flags"
+        },
+        {
+          "percent": 1.42,
+          "samples": 7,
+          "period": 70707070,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::client::expire_client_exchanges::<coaptic::storage::alloc_memory::AllocMemory, 4, 4>"
+        },
+        {
+          "percent": 1.21,
+          "samples": 6,
+          "period": 60606060,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::storage::alloc_memory::AllocDatagramPool as coaptic::storage::SlotPool>::release"
+        },
+        {
+          "percent": 1.21,
+          "samples": 6,
+          "period": 60606060,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::storage::io::recv_udp"
+        },
+        {
+          "percent": 0.81,
+          "samples": 4,
+          "period": 40404040,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<std::sys::pal::unix::time::Timespec>::sub_timespec"
+        },
+        {
+          "percent": 0.81,
+          "samples": 4,
+          "period": 40404040,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "bench_rust_server::coaptic_server::<coaptic::storage::io::UdpSocketIo<[u8; 2049]>>"
+        }
+      ],
+      "full_symbol_rows": "raw-observations.tar.gz:window-025/perf-report.txt"
+    },
+    {
+      "index": 26,
+      "security": "unprotected",
+      "adapter": "coaptic-mio",
+      "label": "baseline",
+      "samples": 40,
+      "event_period": 404040400,
+      "lost_samples_reported": 0,
+      "kernel_samples": 28,
+      "kernel_sample_percent": 70.0,
+      "resolved_kernel_rows": [],
+      "unresolved_samples": 28,
+      "unresolved_sample_percent": 70.0,
+      "first_sample_header": "# time of first sample : 0.000000",
+      "last_sample_header": "# time of last sample : 0.000000",
+      "duration_header": "# sample duration :      0.000 ms",
+      "warnings": [
+        "Invalid HEADER_EVENT_DESC: nre=1 sz=144 (min 64)",
+        "# event desc: not available or unable to read",
+        "# cpu pmu capabilities: not available",
+        "# missing features: TRACING_DATA BUILD_ID BRANCH_STACK GROUP_DESC AUXTRACE STAT CLOCKID DIR_FORMAT COMPRESSED CLOCK_DATA HYBRID_TOPOLOGY "
+      ],
+      "top_resolved_user_symbols": [
+        {
+          "percent": 7.5,
+          "samples": 3,
+          "period": 30303030,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "bench_rust_server::mio_server"
+        },
+        {
+          "percent": 7.5,
+          "samples": 3,
+          "period": 30303030,
+          "dso": "libc.so.6",
+          "mode": ".",
+          "symbol": "recvfrom"
+        },
+        {
+          "percent": 2.5,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::app::request::Request>::from_decoded"
+        },
+        {
+          "percent": 2.5,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::admission::refuse_new_request::<coaptic::storage::alloc_memory::AllocMemory>"
+        },
+        {
+          "percent": 2.5,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::dispatch_rx::<coaptic::storage::alloc_memory::AllocMemory, bench_rust_server::MioUdp, 1, 0, 4, 4>"
+        },
+        {
+          "percent": 2.5,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::encode_response::<coaptic::storage::alloc_memory::AllocMemory, core::io::error::Error, 4>"
+        },
+        {
+          "percent": 2.5,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::note_dedup_store::<coaptic::storage::alloc_memory::AllocMemory>"
+        },
+        {
+          "percent": 2.5,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "libc.so.6",
+          "mode": ".",
+          "symbol": "epoll_wait"
+        }
+      ],
+      "full_symbol_rows": "raw-observations.tar.gz:window-026/perf-report.txt"
+    },
+    {
+      "index": 27,
+      "security": "unprotected",
+      "adapter": "coaptic-mio",
+      "label": "candidate",
+      "samples": 27,
+      "event_period": 272727270,
+      "lost_samples_reported": 0,
+      "kernel_samples": 19,
+      "kernel_sample_percent": 70.37037037037037,
+      "resolved_kernel_rows": [],
+      "unresolved_samples": 20,
+      "unresolved_sample_percent": 74.07407407407408,
+      "first_sample_header": "# time of first sample : 0.000000",
+      "last_sample_header": "# time of last sample : 0.000000",
+      "duration_header": "# sample duration :      0.000 ms",
+      "warnings": [
+        "Invalid HEADER_EVENT_DESC: nre=1 sz=144 (min 64)",
+        "# event desc: not available or unable to read",
+        "# cpu pmu capabilities: not available",
+        "# missing features: TRACING_DATA BUILD_ID BRANCH_STACK GROUP_DESC AUXTRACE STAT CLOCKID DIR_FORMAT COMPRESSED CLOCK_DATA HYBRID_TOPOLOGY "
+      ],
+      "top_resolved_user_symbols": [
+        {
+          "percent": 3.7,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::app::request::Request>::from_decoded"
+        },
+        {
+          "percent": 3.7,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::app::send::SendOwner<coaptic::storage::alloc_memory::AllocMemory>>::prepare::<core::io::error::Error>"
+        },
+        {
+          "percent": 3.7,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::storage::engine::Engine<coaptic::storage::alloc_memory::AllocMemory>>::send_tx::<bench_rust_server::MioUdp>"
+        },
+        {
+          "percent": 3.7,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<std::sys::pal::unix::time::Timespec>::sub_timespec"
+        },
+        {
+          "percent": 3.7,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::client::expire_client_exchanges::<coaptic::storage::alloc_memory::AllocMemory, 4, 4>"
+        },
+        {
+          "percent": 3.7,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::dispatch_rx::<coaptic::storage::alloc_memory::AllocMemory, bench_rust_server::MioUdp, 1, 0, 4, 4>"
+        },
+        {
+          "percent": 3.7,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::poll_engine::<coaptic::storage::alloc_memory::AllocMemory, bench_rust_server::MioUdp, 1, 0, 4, 4>"
+        }
+      ],
+      "full_symbol_rows": "raw-observations.tar.gz:window-027/perf-report.txt"
+    },
+    {
+      "index": 28,
+      "security": "unprotected",
+      "adapter": "coaptic-ready",
+      "label": "baseline",
+      "samples": 44,
+      "event_period": 444444440,
+      "lost_samples_reported": 0,
+      "kernel_samples": 26,
+      "kernel_sample_percent": 59.09090909090909,
+      "resolved_kernel_rows": [],
+      "unresolved_samples": 26,
+      "unresolved_sample_percent": 59.09090909090909,
+      "first_sample_header": "# time of first sample : 0.000000",
+      "last_sample_header": "# time of last sample : 0.000000",
+      "duration_header": "# sample duration :      0.000 ms",
+      "warnings": [
+        "Invalid HEADER_EVENT_DESC: nre=1 sz=144 (min 64)",
+        "# event desc: not available or unable to read",
+        "# cpu pmu capabilities: not available",
+        "# missing features: TRACING_DATA BUILD_ID BRANCH_STACK GROUP_DESC AUXTRACE STAT CLOCKID DIR_FORMAT COMPRESSED CLOCK_DATA HYBRID_TOPOLOGY "
+      ],
+      "top_resolved_user_symbols": [
+        {
+          "percent": 6.82,
+          "samples": 3,
+          "period": 30303030,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::dispatch_rx::<coaptic::storage::alloc_memory::AllocMemory, bench_rust_server::ReadyUdp, 1, 0, 4, 4>"
+        },
+        {
+          "percent": 4.55,
+          "samples": 2,
+          "period": 20202020,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<tokio::runtime::io::registration::Registration>::readiness::{closure#0}"
+        },
+        {
+          "percent": 4.55,
+          "samples": 2,
+          "period": 20202020,
+          "dso": "libc.so.6",
+          "mode": ".",
+          "symbol": "epoll_wait"
+        },
+        {
+          "percent": 2.27,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::app::request::Request>::from_decoded"
+        },
+        {
+          "percent": 2.27,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<core::pin::Pin<alloc::boxed::Box<bench_rust_server::ready_server::{closure#0}>> as core::future::future::Future>::poll"
+        },
+        {
+          "percent": 2.27,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<tokio::net::udp::UdpSocket>::readable::{closure#0}"
+        },
+        {
+          "percent": 2.27,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<tokio::runtime::io::driver::Driver>::turn"
+        },
+        {
+          "percent": 2.27,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<tokio::runtime::io::scheduled_io::Readiness as core::future::future::Future>::poll"
+        }
+      ],
+      "full_symbol_rows": "raw-observations.tar.gz:window-028/perf-report.txt"
+    },
+    {
+      "index": 29,
+      "security": "unprotected",
+      "adapter": "coaptic-ready",
+      "label": "candidate",
+      "samples": 39,
+      "event_period": 393939390,
+      "lost_samples_reported": 0,
+      "kernel_samples": 21,
+      "kernel_sample_percent": 53.84615384615385,
+      "resolved_kernel_rows": [],
+      "unresolved_samples": 23,
+      "unresolved_sample_percent": 58.97435897435897,
+      "first_sample_header": "# time of first sample : 0.000000",
+      "last_sample_header": "# time of last sample : 0.000000",
+      "duration_header": "# sample duration :      0.000 ms",
+      "warnings": [
+        "Invalid HEADER_EVENT_DESC: nre=1 sz=144 (min 64)",
+        "# event desc: not available or unable to read",
+        "# cpu pmu capabilities: not available",
+        "# missing features: TRACING_DATA BUILD_ID BRANCH_STACK GROUP_DESC AUXTRACE STAT CLOCKID DIR_FORMAT COMPRESSED CLOCK_DATA HYBRID_TOPOLOGY "
+      ],
+      "top_resolved_user_symbols": [
+        {
+          "percent": 5.13,
+          "samples": 2,
+          "period": 20202020,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::dispatch_rx::<coaptic::storage::alloc_memory::AllocMemory, bench_rust_server::ReadyUdp, 1, 0, 4, 4>"
+        },
+        {
+          "percent": 5.13,
+          "samples": 2,
+          "period": 20202020,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::poll_engine::<coaptic::storage::alloc_memory::AllocMemory, bench_rust_server::ReadyUdp, 1, 0, 4, 4>"
+        },
+        {
+          "percent": 2.56,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::app::routing::MethodRouter>::call"
+        },
+        {
+          "percent": 2.56,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<core::pin::Pin<alloc::boxed::Box<bench_rust_server::ready_server::{closure#0}>> as core::future::future::Future>::poll"
+        },
+        {
+          "percent": 2.56,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<tokio::runtime::time::entry::TimerEntry as core::ops::drop::Drop>::drop"
+        },
+        {
+          "percent": 2.56,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::admission::refuse_new_request::<coaptic::storage::alloc_memory::AllocMemory>"
+        },
+        {
+          "percent": 2.56,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::apply_observe::<coaptic::storage::alloc_memory::AllocMemory>"
+        },
+        {
+          "percent": 2.56,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::client::expire_client_exchanges::<coaptic::storage::alloc_memory::AllocMemory, 4, 4>"
+        }
+      ],
+      "full_symbol_rows": "raw-observations.tar.gz:window-029/perf-report.txt"
+    },
+    {
+      "index": 30,
+      "security": "oscore",
+      "adapter": "coaptic-reusable",
+      "label": "baseline",
+      "samples": 495,
+      "event_period": 4999999950,
+      "lost_samples_reported": 0,
+      "kernel_samples": 305,
+      "kernel_sample_percent": 61.61616161616162,
+      "resolved_kernel_rows": [],
+      "unresolved_samples": 349,
+      "unresolved_sample_percent": 70.5050505050505,
+      "first_sample_header": "# time of first sample : 0.000000",
+      "last_sample_header": "# time of last sample : 0.000000",
+      "duration_header": "# sample duration :      0.000 ms",
+      "warnings": [
+        "Invalid HEADER_EVENT_DESC: nre=1 sz=144 (min 64)",
+        "# event desc: not available or unable to read",
+        "# cpu pmu capabilities: not available",
+        "# missing features: TRACING_DATA BUILD_ID BRANCH_STACK GROUP_DESC AUXTRACE STAT CLOCKID DIR_FORMAT COMPRESSED CLOCK_DATA HYBRID_TOPOLOGY "
+      ],
+      "top_resolved_user_symbols": [
+        {
+          "percent": 10.91,
+          "samples": 54,
+          "period": 545454540,
+          "dso": "libc.so.6",
+          "mode": ".",
+          "symbol": "recvfrom"
+        },
+        {
+          "percent": 5.66,
+          "samples": 28,
+          "period": 282828280,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::poll_engine::<coaptic::storage::alloc_memory::AllocMemory, coaptic::storage::io::UdpSocketIo<[u8; 2049]>, 1, 0, 4, 4>"
+        },
+        {
+          "percent": 3.23,
+          "samples": 16,
+          "period": 161616160,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::storage::io::recv_udp"
+        },
+        {
+          "percent": 1.41,
+          "samples": 7,
+          "period": 70707070,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "bench_rust_server::coaptic_server::<coaptic::storage::io::UdpSocketIo<[u8; 2049]>>"
+        },
+        {
+          "percent": 1.41,
+          "samples": 7,
+          "period": 70707070,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::client::expire_client_exchanges::<coaptic::storage::alloc_memory::AllocMemory, 4, 4>"
+        },
+        {
+          "percent": 1.21,
+          "samples": 6,
+          "period": 60606060,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::storage::occupancy::HeapOccupancy>::acquire"
+        },
+        {
+          "percent": 1.01,
+          "samples": 5,
+          "period": 50505050,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::storage::alloc_memory::AllocDatagramPool as coaptic::storage::SlotPool>::release"
+        },
+        {
+          "percent": 1.01,
+          "samples": 5,
+          "period": 50505050,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<std::sys::net::connection::socket::unix::Socket>::recv_from_with_flags"
+        }
+      ],
+      "full_symbol_rows": "raw-observations.tar.gz:window-030/perf-report.txt"
+    },
+    {
+      "index": 31,
+      "security": "oscore",
+      "adapter": "coaptic-reusable",
+      "label": "candidate",
+      "samples": 494,
+      "event_period": 4989898940,
+      "lost_samples_reported": 0,
+      "kernel_samples": 318,
+      "kernel_sample_percent": 64.37246963562752,
+      "resolved_kernel_rows": [],
+      "unresolved_samples": 343,
+      "unresolved_sample_percent": 69.43319838056681,
+      "first_sample_header": "# time of first sample : 0.000000",
+      "last_sample_header": "# time of last sample : 0.000000",
+      "duration_header": "# sample duration :      0.000 ms",
+      "warnings": [
+        "Invalid HEADER_EVENT_DESC: nre=1 sz=144 (min 64)",
+        "# event desc: not available or unable to read",
+        "# cpu pmu capabilities: not available",
+        "# missing features: TRACING_DATA BUILD_ID BRANCH_STACK GROUP_DESC AUXTRACE STAT CLOCKID DIR_FORMAT COMPRESSED CLOCK_DATA HYBRID_TOPOLOGY "
+      ],
+      "top_resolved_user_symbols": [
+        {
+          "percent": 10.12,
+          "samples": 50,
+          "period": 505050500,
+          "dso": "libc.so.6",
+          "mode": ".",
+          "symbol": "recvfrom"
+        },
+        {
+          "percent": 7.09,
+          "samples": 35,
+          "period": 353535350,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::poll_engine::<coaptic::storage::alloc_memory::AllocMemory, coaptic::storage::io::UdpSocketIo<[u8; 2049]>, 1, 0, 4, 4>"
+        },
+        {
+          "percent": 1.62,
+          "samples": 8,
+          "period": 80808080,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::storage::alloc_memory::AllocDatagramPool as coaptic::storage::SlotPool>::release"
+        },
+        {
+          "percent": 1.62,
+          "samples": 8,
+          "period": 80808080,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::storage::io::recv_udp"
+        },
+        {
+          "percent": 1.42,
+          "samples": 7,
+          "period": 70707070,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<std::sys::net::connection::socket::unix::Socket>::recv_from_with_flags"
+        },
+        {
+          "percent": 1.42,
+          "samples": 7,
+          "period": 70707070,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::client::expire_client_exchanges::<coaptic::storage::alloc_memory::AllocMemory, 4, 4>"
+        },
+        {
+          "percent": 1.21,
+          "samples": 6,
+          "period": 60606060,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "bench_rust_server::coaptic_server::<coaptic::storage::io::UdpSocketIo<[u8; 2049]>>"
+        },
+        {
+          "percent": 1.01,
+          "samples": 5,
+          "period": 50505050,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<std::sys::pal::unix::time::Timespec>::now"
+        }
+      ],
+      "full_symbol_rows": "raw-observations.tar.gz:window-031/perf-report.txt"
+    },
+    {
+      "index": 32,
+      "security": "oscore",
+      "adapter": "coaptic-mio",
+      "label": "baseline",
+      "samples": 51,
+      "event_period": 515151510,
+      "lost_samples_reported": 0,
+      "kernel_samples": 35,
+      "kernel_sample_percent": 68.62745098039215,
+      "resolved_kernel_rows": [
+        {
+          "percent": 1.96,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bpf_prog_25194ef1fe028eb5_kprobe_ip_send_skb",
+          "mode": "k",
+          "symbol": "bpf_prog_25194ef1fe028eb5_kprobe_ip_send_skb"
+        }
+      ],
+      "unresolved_samples": 35,
+      "unresolved_sample_percent": 68.62745098039215,
+      "first_sample_header": "# time of first sample : 0.000000",
+      "last_sample_header": "# time of last sample : 0.000000",
+      "duration_header": "# sample duration :      0.000 ms",
+      "warnings": [
+        "Invalid HEADER_EVENT_DESC: nre=1 sz=144 (min 64)",
+        "# event desc: not available or unable to read",
+        "# cpu pmu capabilities: not available",
+        "# missing features: TRACING_DATA BUILD_ID BRANCH_STACK GROUP_DESC AUXTRACE STAT CLOCKID DIR_FORMAT COMPRESSED CLOCK_DATA HYBRID_TOPOLOGY "
+      ],
+      "top_resolved_user_symbols": [
+        {
+          "percent": 7.84,
+          "samples": 4,
+          "period": 40404040,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::poll_engine::<coaptic::storage::alloc_memory::AllocMemory, bench_rust_server::MioUdp, 1, 0, 4, 4>"
+        },
+        {
+          "percent": 3.92,
+          "samples": 2,
+          "period": 20202020,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "bench_rust_server::mio_server"
+        },
+        {
+          "percent": 3.92,
+          "samples": 2,
+          "period": 20202020,
+          "dso": "libc.so.6",
+          "mode": ".",
+          "symbol": "epoll_wait"
+        },
+        {
+          "percent": 1.96,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::app::request::Request>::from_decoded"
+        },
+        {
+          "percent": 1.96,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::oscore::header::OscoreHeader>::parse"
+        },
+        {
+          "percent": 1.96,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::note_dedup_store::<coaptic::storage::alloc_memory::AllocMemory>"
+        },
+        {
+          "percent": 1.96,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::send_response::<coaptic::storage::alloc_memory::AllocMemory, bench_rust_server::MioUdp, 4>"
+        },
+        {
+          "percent": 1.96,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::message::encode::encode::<coaptic::message::Token>"
+        }
+      ],
+      "full_symbol_rows": "raw-observations.tar.gz:window-032/perf-report.txt"
+    },
+    {
+      "index": 33,
+      "security": "oscore",
+      "adapter": "coaptic-mio",
+      "label": "candidate",
+      "samples": 35,
+      "event_period": 353535350,
+      "lost_samples_reported": 0,
+      "kernel_samples": 23,
+      "kernel_sample_percent": 65.71428571428571,
+      "resolved_kernel_rows": [],
+      "unresolved_samples": 24,
+      "unresolved_sample_percent": 68.57142857142857,
+      "first_sample_header": "# time of first sample : 0.000000",
+      "last_sample_header": "# time of last sample : 0.000000",
+      "duration_header": "# sample duration :      0.000 ms",
+      "warnings": [
+        "Invalid HEADER_EVENT_DESC: nre=1 sz=144 (min 64)",
+        "# event desc: not available or unable to read",
+        "# cpu pmu capabilities: not available",
+        "# missing features: TRACING_DATA BUILD_ID BRANCH_STACK GROUP_DESC AUXTRACE STAT CLOCKID DIR_FORMAT COMPRESSED CLOCK_DATA HYBRID_TOPOLOGY "
+      ],
+      "top_resolved_user_symbols": [
+        {
+          "percent": 8.57,
+          "samples": 3,
+          "period": 30303030,
+          "dso": "libc.so.6",
+          "mode": ".",
+          "symbol": "recvfrom"
+        },
+        {
+          "percent": 5.71,
+          "samples": 2,
+          "period": 20202020,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::oscore::aead::open"
+        },
+        {
+          "percent": 2.86,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<cipher::stream::wrapper::StreamCipherCoreWrapper<ctr::ctr_core::CtrCore<&aes::Aes128Enc, ctr::flavors::ctr32::Ctr32BE>> as cipher::stream::StreamCipher>::try_apply_keystream_inout"
+        },
+        {
+          "percent": 2.86,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::app::ObservePlan>::from_request::<1>"
+        },
+        {
+          "percent": 2.86,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "bench_rust_server::representation"
+        },
+        {
+          "percent": 2.86,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::dispatch_rx::<coaptic::storage::alloc_memory::AllocMemory, bench_rust_server::MioUdp, 1, 0, 4, 4>"
+        },
+        {
+          "percent": 2.86,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::encode_response::<coaptic::storage::alloc_memory::AllocMemory, core::io::error::Error, 4>"
+        },
+        {
+          "percent": 2.86,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::poll_engine::<coaptic::storage::alloc_memory::AllocMemory, bench_rust_server::MioUdp, 1, 0, 4, 4>"
+        }
+      ],
+      "full_symbol_rows": "raw-observations.tar.gz:window-033/perf-report.txt"
+    },
+    {
+      "index": 34,
+      "security": "oscore",
+      "adapter": "coaptic-ready",
+      "label": "baseline",
+      "samples": 50,
+      "event_period": 505050500,
+      "lost_samples_reported": 0,
+      "kernel_samples": 37,
+      "kernel_sample_percent": 74.0,
+      "resolved_kernel_rows": [],
+      "unresolved_samples": 39,
+      "unresolved_sample_percent": 78.0,
+      "first_sample_header": "# time of first sample : 0.000000",
+      "last_sample_header": "# time of last sample : 0.000000",
+      "duration_header": "# sample duration :      0.000 ms",
+      "warnings": [
+        "Invalid HEADER_EVENT_DESC: nre=1 sz=144 (min 64)",
+        "# event desc: not available or unable to read",
+        "# cpu pmu capabilities: not available",
+        "# missing features: TRACING_DATA BUILD_ID BRANCH_STACK GROUP_DESC AUXTRACE STAT CLOCKID DIR_FORMAT COMPRESSED CLOCK_DATA HYBRID_TOPOLOGY "
+      ],
+      "top_resolved_user_symbols": [
+        {
+          "percent": 4.0,
+          "samples": 2,
+          "period": 20202020,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::message::decode::ParsedMessage>::proxy_uri"
+        },
+        {
+          "percent": 2.0,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<aes::backends::x86_aes::Aes<11>>::encrypt::<<ctr::ctr_core::CtrCore<_, _> as cipher::stream::core_api::StreamCipherCore>::process_with_backend::Closure<ctr::flavors::ctr32::Ctr32BE, typenum::uint::UInt<typenum::uint::UInt<typenum::uint::UInt<typenum::uint::UInt<typenum::uint::UInt<typenum::uint::UTerm, typenum::bit::B1>, typenum::bit::B0>, typenum::bit::B0>, typenum::bit::B0>, typenum::bit::B0>, cipher::stream::core_api::WriteBlockCtx<typenum::uint::UInt<typenum::uint::UInt<typenum::uint::UInt<typenum::uint::UInt<typenum::uint::UInt<typenum::uint::UTerm, typenum::bit::B1>, typenum::bit::B0>, typenum::bit::B0>, typenum::bit::B0>, typenum::bit::B0>>>>"
+        },
+        {
+          "percent": 2.0,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::app::DeferredSelection>::from_parts::<coaptic::message::Token>"
+        },
+        {
+          "percent": 2.0,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::message::decode::ParsedMessage>::block2"
+        },
+        {
+          "percent": 2.0,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::message::decode::ParsedMessage>::proxy_scheme"
+        },
+        {
+          "percent": 2.0,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::message::decode::ParsedMessage>::q_block1"
+        },
+        {
+          "percent": 2.0,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::message::value::OptionsByNumber as core::iter::traits::iterator::Iterator>::next"
+        },
+        {
+          "percent": 2.0,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::message::option::read_option"
+        }
+      ],
+      "full_symbol_rows": "raw-observations.tar.gz:window-034/perf-report.txt"
+    },
+    {
+      "index": 35,
+      "security": "oscore",
+      "adapter": "coaptic-ready",
+      "label": "candidate",
+      "samples": 53,
+      "event_period": 535353530,
+      "lost_samples_reported": 0,
+      "kernel_samples": 39,
+      "kernel_sample_percent": 73.58490566037736,
+      "resolved_kernel_rows": [
+        {
+          "percent": 1.89,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bpf_prog_25194ef1fe028eb5_kprobe_ip_send_skb",
+          "mode": "k",
+          "symbol": "bpf_prog_25194ef1fe028eb5_kprobe_ip_send_skb"
+        }
+      ],
+      "unresolved_samples": 41,
+      "unresolved_sample_percent": 77.35849056603773,
+      "first_sample_header": "# time of first sample : 0.000000",
+      "last_sample_header": "# time of last sample : 0.000000",
+      "duration_header": "# sample duration :      0.000 ms",
+      "warnings": [
+        "Invalid HEADER_EVENT_DESC: nre=1 sz=144 (min 64)",
+        "# event desc: not available or unable to read",
+        "# cpu pmu capabilities: not available",
+        "# missing features: TRACING_DATA BUILD_ID BRANCH_STACK GROUP_DESC AUXTRACE STAT CLOCKID DIR_FORMAT COMPRESSED CLOCK_DATA HYBRID_TOPOLOGY "
+      ],
+      "top_resolved_user_symbols": [
+        {
+          "percent": 1.89,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::app::client::ClientLives<4>>::next_timeout_after::<coaptic::storage::alloc_memory::AllocMemory>"
+        },
+        {
+          "percent": 1.89,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::app::response::Response>::payload"
+        },
+        {
+          "percent": 1.89,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::message::decode::ParsedMessage>::proxy_scheme"
+        },
+        {
+          "percent": 1.89,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::message::no_response::NoResponse>::from_message::<coaptic::message::Token>"
+        },
+        {
+          "percent": 1.89,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<coaptic::storage::engine::Engine<coaptic::storage::alloc_memory::AllocMemory>>::send_tx::<bench_rust_server::ReadyUdp>"
+        },
+        {
+          "percent": 1.89,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "<tokio::net::udp::UdpSocket>::readable::{closure#0}"
+        },
+        {
+          "percent": 1.89,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::admission::refuse_new_request::<coaptic::storage::alloc_memory::AllocMemory>"
+        },
+        {
+          "percent": 1.89,
+          "samples": 1,
+          "period": 10101010,
+          "dso": "bench-rust-server",
+          "mode": ".",
+          "symbol": "coaptic::app::dispatch_rx::<coaptic::storage::alloc_memory::AllocMemory, bench_rust_server::ReadyUdp, 1, 0, 4, 4>"
+        }
+      ],
+      "full_symbol_rows": "raw-observations.tar.gz:window-035/perf-report.txt"
+    }
+  ],
+  "stats": [
+    {
+      "index": 36,
+      "security": "unprotected",
+      "adapter": "coaptic-reusable",
+      "label": "baseline",
+      "unavailable_events": [
+        "<not supported>;;cycles;0;100.00;;",
+        "<not supported>;;instructions;0;100.00;;"
+      ],
+      "raw": "# started on Thu Oct 22 12:40:37 2026\n\n5001.25;msec;task-clock;5001247175;100.00;;\n<not supported>;;cycles;0;100.00;;\n<not supported>;;instructions;0;100.00;;\n22;;context-switches;5001246674;100.00;;\n5;;cpu-migrations;5001245422;100.00;;\n0;;page-faults;5001244109;100.00;;\n"
+    },
+    {
+      "index": 37,
+      "security": "unprotected",
+      "adapter": "coaptic-reusable",
+      "label": "candidate",
+      "unavailable_events": [
+        "<not supported>;;cycles;0;100.00;;",
+        "<not supported>;;instructions;0;100.00;;"
+      ],
+      "raw": "# started on Thu Oct 22 12:40:43 2026\n\n5001.23;msec;task-clock;5001232859;100.00;;\n<not supported>;;cycles;0;100.00;;\n<not supported>;;instructions;0;100.00;;\n24;;context-switches;5001233111;100.00;;\n0;;cpu-migrations;5001233020;100.00;;\n0;;page-faults;5001232278;100.00;;\n"
+    },
+    {
+      "index": 38,
+      "security": "unprotected",
+      "adapter": "coaptic-mio",
+      "label": "baseline",
+      "unavailable_events": [
+        "<not supported>;;cycles;0;100.00;;",
+        "<not supported>;;instructions;0;100.00;;"
+      ],
+      "raw": "# started on Thu Oct 22 12:40:48 2026\n\n623.54;msec;task-clock;623537735;100.00;;\n<not supported>;;cycles;0;100.00;;\n<not supported>;;instructions;0;100.00;;\n29794;;context-switches;623537735;100.00;;\n71;;cpu-migrations;623537735;100.00;;\n0;;page-faults;623537735;100.00;;\n"
+    },
+    {
+      "index": 39,
+      "security": "unprotected",
+      "adapter": "coaptic-mio",
+      "label": "candidate",
+      "unavailable_events": [
+        "<not supported>;;cycles;0;100.00;;",
+        "<not supported>;;instructions;0;100.00;;"
+      ],
+      "raw": "# started on Thu Oct 22 12:40:53 2026\n\n588.66;msec;task-clock;588656042;100.00;;\n<not supported>;;cycles;0;100.00;;\n<not supported>;;instructions;0;100.00;;\n29806;;context-switches;588647196;100.00;;\n65;;cpu-migrations;588647196;100.00;;\n0;;page-faults;588647196;100.00;;\n"
+    },
+    {
+      "index": 40,
+      "security": "unprotected",
+      "adapter": "coaptic-ready",
+      "label": "baseline",
+      "unavailable_events": [
+        "<not supported>;;cycles;0;100.00;;",
+        "<not supported>;;instructions;0;100.00;;"
+      ],
+      "raw": "# started on Thu Oct 22 12:40:58 2026\n\n691.16;msec;task-clock;691163220;100.00;;\n<not supported>;;cycles;0;100.00;;\n<not supported>;;instructions;0;100.00;;\n29804;;context-switches;691160584;100.00;;\n49;;cpu-migrations;691154503;100.00;;\n0;;page-faults;691148722;100.00;;\n"
+    },
+    {
+      "index": 41,
+      "security": "unprotected",
+      "adapter": "coaptic-ready",
+      "label": "candidate",
+      "unavailable_events": [
+        "<not supported>;;cycles;0;100.00;;",
+        "<not supported>;;instructions;0;100.00;;"
+      ],
+      "raw": "# started on Thu Oct 22 12:41:03 2026\n\n687.88;msec;task-clock;687876928;100.00;;\n<not supported>;;cycles;0;100.00;;\n<not supported>;;instructions;0;100.00;;\n29794;;context-switches;687876928;100.00;;\n44;;cpu-migrations;687876928;100.00;;\n0;;page-faults;687876928;100.00;;\n"
+    },
+    {
+      "index": 42,
+      "security": "oscore",
+      "adapter": "coaptic-reusable",
+      "label": "baseline",
+      "unavailable_events": [
+        "<not supported>;;cycles;0;100.00;;",
+        "<not supported>;;instructions;0;100.00;;"
+      ],
+      "raw": "# started on Thu Oct 22 12:41:08 2026\n\n5001.30;msec;task-clock;5001303568;100.00;;\n<not supported>;;cycles;0;100.00;;\n<not supported>;;instructions;0;100.00;;\n20;;context-switches;5001302937;100.00;;\n0;;cpu-migrations;5001302356;100.00;;\n0;;page-faults;5001302125;100.00;;\n"
+    },
+    {
+      "index": 43,
+      "security": "oscore",
+      "adapter": "coaptic-reusable",
+      "label": "candidate",
+      "unavailable_events": [
+        "<not supported>;;cycles;0;100.00;;",
+        "<not supported>;;instructions;0;100.00;;"
+      ],
+      "raw": "# started on Thu Oct 22 12:41:13 2026\n\n5001.55;msec;task-clock;5001553158;100.00;;\n<not supported>;;cycles;0;100.00;;\n<not supported>;;instructions;0;100.00;;\n27;;context-switches;5001553279;100.00;;\n1;;cpu-migrations;5001552538;100.00;;\n0;;page-faults;5001551345;100.00;;\n"
+    },
+    {
+      "index": 44,
+      "security": "oscore",
+      "adapter": "coaptic-mio",
+      "label": "baseline",
+      "unavailable_events": [
+        "<not supported>;;cycles;0;100.00;;",
+        "<not supported>;;instructions;0;100.00;;"
+      ],
+      "raw": "# started on Thu Oct 22 12:41:18 2026\n\n664.13;msec;task-clock;664125904;100.00;;\n<not supported>;;cycles;0;100.00;;\n<not supported>;;instructions;0;100.00;;\n29804;;context-switches;664125904;100.00;;\n44;;cpu-migrations;664125904;100.00;;\n0;;page-faults;664125904;100.00;;\n"
+    },
+    {
+      "index": 45,
+      "security": "oscore",
+      "adapter": "coaptic-mio",
+      "label": "candidate",
+      "unavailable_events": [
+        "<not supported>;;cycles;0;100.00;;",
+        "<not supported>;;instructions;0;100.00;;"
+      ],
+      "raw": "# started on Thu Oct 22 12:41:24 2026\n\n661.16;msec;task-clock;661164715;100.00;;\n<not supported>;;cycles;0;100.00;;\n<not supported>;;instructions;0;100.00;;\n29778;;context-switches;661164715;100.00;;\n58;;cpu-migrations;661164715;100.00;;\n0;;page-faults;661160167;100.00;;\n"
+    },
+    {
+      "index": 46,
+      "security": "oscore",
+      "adapter": "coaptic-ready",
+      "label": "baseline",
+      "unavailable_events": [
+        "<not supported>;;cycles;0;100.00;;",
+        "<not supported>;;instructions;0;100.00;;"
+      ],
+      "raw": "# started on Thu Oct 22 12:41:29 2026\n\n796.85;msec;task-clock;796848006;100.00;;\n<not supported>;;cycles;0;100.00;;\n<not supported>;;instructions;0;100.00;;\n29793;;context-switches;796848006;100.00;;\n57;;cpu-migrations;796848006;100.00;;\n0;;page-faults;796848006;100.00;;\n"
+    },
+    {
+      "index": 47,
+      "security": "oscore",
+      "adapter": "coaptic-ready",
+      "label": "candidate",
+      "unavailable_events": [
+        "<not supported>;;cycles;0;100.00;;",
+        "<not supported>;;instructions;0;100.00;;"
+      ],
+      "raw": "# started on Thu Oct 22 12:41:34 2026\n\n876.95;msec;task-clock;876953198;100.00;;\n<not supported>;;cycles;0;100.00;;\n<not supported>;;instructions;0;100.00;;\n29809;;context-switches;876953198;100.00;;\n57;;cpu-migrations;876953198;100.00;;\n0;;page-faults;876948759;100.00;;\n"
+    }
+  ],
+  "client_memory_ledger_distinct": {
+    "core_heap_limit_bytes": [
+      21716
+    ],
+    "app_inline_bytes": [
+      15448
+    ],
+    "verification_heap_bytes": [
+      128
+    ],
+    "timing_heap_bytes": [
+      240000,
+      384000
+    ],
+    "udp_scratch_bytes": [
+      1473
+    ]
+  },
+  "memory_interpretation": "Native report ledger describes client; UDP scratch included in App inline; RSS is process snapshot and includes shared mappings; neither whole-system memory nor peak minimum RAM",
+  "limitations": [
+    "Default/AllocMemory host fixture, one outstanding Call,64B loopback,6k offered operations/s; no SmallDevice/Constrained/device/EDHOC/saturation qualification",
+    "all report headers expose first/last timestamps0 and duration0; zero reported lost samples does not establish coverage",
+    "kernel samples mostly unresolved raw addresses;3samples resolve existing host BPF kprobe_ip_send_skb probe, no comprehensive kernel function attribution",
+    "readiness profiles have only27..53 samples per5s pass; symbol rankings are exploratory",
+    "cycles/instructions unsupported in all12 stat passes; task-clock availability is separate from hardware-counter coverage",
+    "flat self costs and attached process kernel work exclude unrelated system/interrupt attribution; no stage timing or50% claim"
+  ],
+  "summary_derivation": "Same verified analysis with full flat symbol rows retained in the raw archive rather than duplicated here. Source analysis SHA256 a4695e37fa07fd8394c8742e707144cade4dcf7f242aa40523527b54b074bcad."
+}

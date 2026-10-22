@@ -49,6 +49,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
+      RUSTUP_TOOLCHAIN: 1.99.0
       BASELINE_SHA: ${{ inputs.baseline_sha }}
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
       RESPONSE_SIZES: ${{ inputs.sizes }}
@@ -83,7 +84,7 @@ jobs:
           path: coaptic
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
         with:
-          toolchain: 1.99.0
+          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
       - name: Python checks and one runner build lane
         run: |
           mkdir -p "$RUNNER_TEMP/cpu-build-lane" "$RUNNER_TEMP/cpu-setup-logs"

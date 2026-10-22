@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import select
+import subprocess
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -14,6 +15,12 @@ from unittest.mock import patch
 from unittest.mock import MagicMock, Mock
 
 import linux_cpu as cpu
+
+
+HOST = "x86_64-unknown-linux-gnu"
+RUSTC_VERSION = (f"rustc 1.99.0 (111111111 2026-10-01)\ncommit-hash: {'1' * 40}\n"
+                 f"host: {HOST}\nrelease: 1.99.0\nLLVM version: 22.1.0")
+CARGO_VERSION = f"cargo 1.99.0 (222222222 2026-10-01)\ncommit-hash: {'2' * 40}\nrelease: 1.99.0"
 
 
 def options(**overrides):
@@ -146,16 +153,17 @@ class BuildTests(unittest.TestCase):
                     for name in names:
                         (destination / name).write_bytes((revision + name).encode("ascii"))
 
-            rustc = f"rustc 1.99.0\nhost: {host}\nLLVM version: 22.1.0"
             with patch.object(cpu, "SUITE", suite), \
                     patch.object(cpu, "identity", return_value=dict(status="", revision=revision)), \
-                    patch.object(cpu, "command", side_effect=[rustc, "cargo 1.99.0"]), \
+                    patch.object(cpu, "command", side_effect=[RUSTC_VERSION, CARGO_VERSION]), \
                     patch.object(cpu, "run_logged", side_effect=compile) as logged, \
                     patch.object(cpu, "digest", return_value="hash"), \
                     patch.dict(os.environ, CARGO_BUILD_TARGET=configured):
                 record = cpu.build(options(build_lane=lane), "baseline", revision, out)
             self.assertEqual(logged.call_count, 3)
             self.assertEqual(record["target"], host)
+            self.assertEqual(record["rustc"], RUSTC_VERSION)
+            self.assertEqual(record["cargo"], CARGO_VERSION)
             self.assertEqual(json.loads((out / "build-baseline.json").read_text())["target"], host)
             for name in names:
                 self.assertEqual(Path(record["binaries"][name]["path"]).read_bytes(),
@@ -174,6 +182,74 @@ class BuildTests(unittest.TestCase):
                     cpu.build(options(build_lane=root), "baseline", "a" * 40, root)
                 logged.assert_not_called()
                 self.assertFalse((root / "binaries").exists())
+
+    def test_selected_compiler_overrides_ambient_and_root_toolchains_for_versions_and_build(self):
+        # A child-process stand-in for rustup selection: env wins over the root file.
+        # Exercise real command output capture and Cargo's compiler subprocess.
+        proxy = '''
+import os, pathlib, subprocess, sys, tomllib
+tool, *args = sys.argv[1:]
+selected = os.environ.get("RUSTUP_TOOLCHAIN") or tomllib.loads(
+    pathlib.Path("rust-toolchain.toml").read_text())["toolchain"]["channel"]
+release = {"stable": "1.99.1", "nightly": "1.100.0-nightly"}.get(selected, selected)
+if tool == "rustc":
+    print(f"rustc {release}\\ncommit-hash: {'1' * 40}\\nhost: x86_64-unknown-linux-gnu\\nrelease: {release}")
+elif tool == "cargo" and args == ["-Vv"]:
+    print(f"cargo {release}\\ncommit-hash: {'2' * 40}\\nrelease: {release}")
+elif tool == "cargo" and args[0] == "build":
+    version = subprocess.check_output([sys.executable, "-c", os.environ["TEST_RUSTUP_PROXY"], os.environ["RUSTC"], "-Vv"], text=True)
+    dest = pathlib.Path(os.environ["CARGO_TARGET_DIR"]) / args[args.index("--target") + 1] / "release"
+    dest.mkdir(parents=True)
+    for name in ("bench-rust-server", "bench-native-client"):
+        (dest / name).write_text(version)
+'''
+        for ambient in (None, "nightly"):
+            with self.subTest(ambient=ambient), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                suite, lane, out = root / "source", root / "lane", root / "evidence"
+                suite.mkdir()
+                out.mkdir()
+                (suite / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "stable"\n')
+
+                def spawn(argv, *, file_limit, **kwargs):
+                    return cpu.OwnedProcess(subprocess.Popen([sys.executable, "-c", proxy, *argv], **kwargs))
+
+                with patch.dict(os.environ, TEST_RUSTUP_PROXY=proxy, RUSTC="wrong-compiler"), \
+                        patch.object(cpu, "SUITE", suite), \
+                        patch.object(cpu, "identity", return_value=dict(status="", revision="a" * 40)), \
+                        patch.object(cpu, "digest", return_value="hash"), \
+                        patch.object(cpu, "spawn", side_effect=spawn), \
+                        patch.object(cpu, "stop", side_effect=lambda child: child.wait(timeout=5)):
+                    if ambient is None:
+                        os.environ.pop("RUSTUP_TOOLCHAIN", None)
+                    else:
+                        os.environ["RUSTUP_TOOLCHAIN"] = ambient
+                    control = cpu.command(["rustc", "-Vv"], cwd=suite)
+                    self.assertIn("release: " + ("1.99.1" if ambient is None else "1.100.0-nightly"), control)
+                    record = cpu.build(options(build_lane=lane), "baseline", "a" * 40, out)
+                self.assertIn("release: 1.99.0\n", record["rustc"] + "\n")
+                self.assertIn("release: 1.99.0\n", record["cargo"] + "\n")
+                for binary in record["binaries"].values():
+                    self.assertIn("release: 1.99.0\n", Path(binary["path"]).read_text())
+                versions = json.loads((out / "build-baseline.json").read_text())
+                self.assertEqual(versions["flags"]["RUSTUP_TOOLCHAIN"], "1.99.0")
+                self.assertEqual(versions["rustc"], record["rustc"])
+
+    def test_changed_compiler_or_cargo_commit_is_refused_before_candidate_build(self):
+        expected = dict(rustc=RUSTC_VERSION, cargo=CARGO_VERSION, target=HOST, flags=cpu.FLAGS)
+        for tool in ("rustc", "cargo"):
+            with self.subTest(tool=tool), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                versions = dict(rustc=RUSTC_VERSION, cargo=CARGO_VERSION)
+                versions[tool] = versions[tool].replace("commit-hash: " + ("1" if tool == "rustc" else "2") * 40,
+                                                      "commit-hash: " + "3" * 40)
+                with patch.object(cpu, "identity", return_value=dict(status="")), \
+                        patch.object(cpu, "command", side_effect=[versions["rustc"], versions["cargo"]]), \
+                        patch.object(cpu, "run_logged") as logged, \
+                        self.assertRaisesRegex(ValueError, "before build: " + tool):
+                    cpu.build(options(build_lane=root), "candidate", "b" * 40, root, expected=expected)
+                logged.assert_not_called()
+                self.assertEqual(json.loads((root / "build-candidate.json").read_text())[tool], versions[tool])
 
 
 class PerfReportTests(unittest.TestCase):
@@ -486,7 +562,7 @@ class CampaignTests(unittest.TestCase):
                            baseline_sha="a" * 40, candidate_sha="b" * 40)
             calls = []
 
-            def build(args, label, revision, out):
+            def build(args, label, revision, out, *, expected=None):
                 return dict(core=dict(revision=revision), native_lock_sha256="lock", flags=cpu.FLAGS,
                             native_manifest_sha256="manifest", rustc="rustc", cargo="cargo",
                             target=label if target_mismatch else "x86_64-unknown-linux-gnu",

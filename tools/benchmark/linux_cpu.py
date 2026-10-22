@@ -39,7 +39,8 @@ PROFILE_SECONDS = 5
 PERF_REPORT_SECONDS = 30
 PERF_FILES_PER_SLOT = 3  # Data/stat output, command/version log, record report.
 KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready")
-FLAGS = {"RUSTFLAGS": "-C force-frame-pointers=yes", "CARGO_PROFILE_RELEASE_DEBUG": "1",
+FLAGS = {"RUSTUP_TOOLCHAIN": "1.99.0", "RUSTC": "rustc",
+         "RUSTFLAGS": "-C force-frame-pointers=yes", "CARGO_PROFILE_RELEASE_DEBUG": "1",
          "CARGO_PROFILE_RELEASE_STRIP": "none", "CARGO_INCREMENTAL": "0",
          "CARGO_BUILD_JOBS": "2"}
 SUITE = Path(__file__).resolve().parents[2]
@@ -340,7 +341,7 @@ def hardware():
     return info
 
 
-def build(args, label, revision, out):
+def build(args, label, revision, out, *, expected=None):
     core = SUITE / "coaptic"
     if identity(core)["status"]:
         raise ValueError("refusing to replace a dirty core checkout")
@@ -351,11 +352,30 @@ def build(args, label, revision, out):
         if (key.startswith("CARGO_PROFILE_RELEASE_") and key not in FLAGS
                 or key in ("CARGO_ENCODED_RUSTFLAGS", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER")):
             del env[key]
-    rustc = command(["rustc", "-Vv"], env=env)
+    # Retain exact identities even on refusal, before checkout or compilation.
+    versions = {"RUSTUP_TOOLCHAIN": env["RUSTUP_TOOLCHAIN"]}
+    version_path = out / f"build-{label}.json"
+    save(version_path, versions)
+    for tool in ("rustc", "cargo"):
+        versions[tool] = command([tool, "-Vv"], cwd=SUITE, env=env)
+        save(version_path, versions)
+    rustc, cargo = versions["rustc"], versions["cargo"]
     hosts = [line[6:] for line in rustc.splitlines() if line.startswith("host: ")]
     if len(hosts) != 1 or not re.fullmatch(r"[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)+", hosts[0]):
         raise ValueError("rustc -Vv must identify one valid host target")
     host = hosts[0]
+    for tool in ("rustc", "cargo"):
+        lines = versions[tool].splitlines()
+        releases = [line.removeprefix("release: ") for line in lines if line.startswith("release: ")]
+        commits = [line.removeprefix("commit-hash: ") for line in lines if line.startswith("commit-hash: ")]
+        if releases != [env["RUSTUP_TOOLCHAIN"]]:
+            raise ValueError(f"{tool} release does not match selected RUSTUP_TOOLCHAIN {env['RUSTUP_TOOLCHAIN']}")
+        if len(commits) != 1 or not re.fullmatch(r"[0-9a-f]{40}", commits[0]):
+            raise ValueError(f"{tool} -Vv must identify one full commit hash")
+    if expected is not None:
+        for field, actual in (("rustc", rustc), ("cargo", cargo), ("target", host), ("flags", FLAGS)):
+            if actual != expected[field]:
+                raise ValueError("build configuration differs before build: " + field)
     with log.open("wb") as stream:
         for argv in (["git", "-C", str(core), "fetch", "--depth", "1", "origin", revision],
                      ["git", "-C", str(core), "checkout", "--detach", revision],
@@ -385,7 +405,7 @@ def build(args, label, revision, out):
               "native_lock_sha256": digest(SUITE / "tools/benchmark/native/Cargo.lock"),
               "core_lock_sha256": digest(core / "Cargo.lock"), "flags": FLAGS,
               "native_manifest_sha256": digest(SUITE / "tools/benchmark/native/Cargo.toml"),
-              "target": host, "rustc": rustc, "cargo": command(["cargo", "-V"], env=env)}
+              "target": host, "rustc": rustc, "cargo": cargo}
     save(out / f"build-{label}.json", record)
     return record
 
@@ -733,7 +753,7 @@ def run(args):
         save(out / "request.json", {"baseline_sha": args.baseline_sha,
                                    "candidate_sha": args.candidate_sha, "cells": cells,
                                    "seconds": args.seconds, "repeats": args.repeats,
-                                   "perf": args.perf})
+                                   "perf": args.perf, "RUSTUP_TOOLCHAIN": FLAGS["RUSTUP_TOOLCHAIN"]})
         suite_identity = identity(SUITE)
         if suite_identity["status"] or identity(SUITE / "coaptic")["status"]:
             raise ValueError("commit the source first; clean suite/core required")
@@ -752,7 +772,7 @@ def run(args):
                 "limits": "concurrency1 complete loopback GET; Default/AllocMemory host fixture; OSCORE established only; process CPU includes IPC boundaries/idle; no interrupt attribution, EDHOC, saturation, device or50% target proof"}
         save(out / "manifest.json", manifest)
         baseline = build(args, "baseline", args.baseline_sha, out)
-        candidate = build(args, "candidate", args.candidate_sha, out)
+        candidate = build(args, "candidate", args.candidate_sha, out, expected=baseline)
         for field in ("native_lock_sha256", "native_manifest_sha256", "target", "rustc", "cargo", "flags"):
             if baseline[field] != candidate[field]:
                 raise ValueError("build configuration differs: " + field)
