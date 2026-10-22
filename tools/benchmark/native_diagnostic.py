@@ -26,6 +26,51 @@ import sys
 import psutil
 
 
+SERVER_KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready", "coaptic-async")
+
+
+def server_resources(log_path, server_kind, *, deadline, server):
+    """Await one bounded startup line before resource gates, without touching writer offsets.
+
+    ``deadline`` is an absolute monotonic time; ``server`` supplies Popen.poll().
+    Partial writes remain unparsed until newline. The independently opened reader
+    never seeks or reads the file description inherited by the server.
+    """
+    if server_kind != "coaptic-async":
+        return None
+    if type(deadline) not in (int, float) or not math.isfinite(deadline):
+        raise ValueError("server startup ledger needs a finite monotonic deadline")
+    raw = bytearray()
+    with Path(log_path).open("rb") as reader:
+        while True:
+            raw.extend(reader.readline(4097 - len(raw)))
+            if len(raw) > 4096:
+                raise ValueError("server startup ledger exceeded allowance")
+            if raw.endswith(b"\n"):
+                break
+            if server.poll() is not None:
+                raise RuntimeError("server exited before complete startup ledger")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("server startup ledger deadline")
+            time.sleep(min(.01, remaining))
+    record = json.loads(raw)
+    fields = ("udp_scratch_bytes", "adapter_inline_bytes", "app_including_adapter_bytes",
+              "loop_future_including_app_bytes")
+    if (not isinstance(record, dict)
+            or record.get("schema") != "coaptic-native-server-resources/1"
+            or record.get("server_kind") != server_kind
+            or any(type(record.get(key)) is not int or not 0 < record[key] < 2**64
+                   for key in fields)
+            or record["udp_scratch_bytes"] != 2049
+            or not record["udp_scratch_bytes"] <= record["adapter_inline_bytes"]
+            <= record["app_including_adapter_bytes"] <= record["loop_future_including_app_bytes"]
+            or any(key not in record or record[key] is not None
+                   for key in ("runtime_heap_bytes", "runtime_stack_bytes"))):
+        raise ValueError("invalid async server startup ledger")
+    return record
+
+
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -149,7 +194,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
             and security in ("unprotected", "oscore")
             and type(concurrency) is int and 1 <= concurrency <= 4
             and message_type in ("con", "non") and (concurrency == 1 or message_type == "non")
-            and server_kind in ("coaptic-reusable", "coaptic-mio", "coaptic-ready")
+            and server_kind in SERVER_KINDS
             and type(phase_timeout_seconds) is int and 1 <= phase_timeout_seconds <= 3600
             and (rate is None or (type(rate) is int and 1 <= rate <= 1_000_000
                                   and operations / rate <= 120))):
@@ -166,7 +211,8 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
             command.append(str(credentials))
         child = None
         report = None
-        with tempfile.TemporaryFile() as server_log:
+        server_log_path = Path(directory) / "server.log"
+        with server_log_path.open("wb") as server_log:
             sut = subprocess.Popen(command, stdout=server_log, stderr=server_log)
             try:
                 # Readiness sends no protected traffic and consumes no sequence.
@@ -194,6 +240,9 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                 ready_line = control_line(child.stderr, phase_timeout_seconds)
                 if ready_line != "ready":
                     raise RuntimeError("client initialization/warmup refused: " + ready_line)
+                startup = server_resources(server_log_path, server_kind,
+                                           deadline=time.monotonic() + phase_timeout_seconds,
+                                           server=sut)
                 peers = {"client": psutil.Process(child.pid), "server": psutil.Process(sut.pid)}
                 before = {name: snapshot(p) for name, p in peers.items()}
                 started = time.perf_counter_ns()
@@ -226,6 +275,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                             cpu_boundary=("post-warmup ready/run to measured/report; excludes JSON formatting"
                                           if cpu_gated else "ready/run through JSON formatting"),
                             server_kind=server_kind, requested_operations_per_second=rate,
+                            server_resources=startup,
                             concurrency=concurrency, message_type=message_type,
                             phase_timeout_seconds=phase_timeout_seconds,
                             cpu_attribution_limit="OS-accounted process user and system CPU; quantized; IPC/snapshot boundary overhead included; machine-wide interrupts/DPCs and unrelated kernel work not attributed; client reported separately",
@@ -240,9 +290,10 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                 if child is not None and child.poll() is None:
                     child.terminate()
                     child.wait(timeout=5)
-                server_log.seek(0)
+                with server_log_path.open("rb") as reader:
+                    server_output = reader.read(65536).decode("utf-8", errors="replace")
                 error.diagnostic = dict(
-                    server_log=server_log.read(65536).decode("utf-8", errors="replace"),
+                    server_log=server_output,
                     client_log=child.stderr.read(65536) if child is not None else "",
                     partial_report=report,
                     accounting_status=("partial report retained; not an accepted complete observation"
@@ -270,7 +321,7 @@ def main():
     parser.add_argument("--timeout-ms", type=int, default=1000)
     parser.add_argument("--policy", choices=("spin", "sleep1"), required=True)
     parser.add_argument("--security", choices=("unprotected", "oscore"), required=True)
-    parser.add_argument("--server-kind", choices=("coaptic-reusable", "coaptic-mio", "coaptic-ready"),
+    parser.add_argument("--server-kind", choices=SERVER_KINDS,
                         default="coaptic-reusable")
     parser.add_argument("--rate", type=int)
     parser.add_argument("--concurrency", type=int, choices=range(1, 5), default=1)

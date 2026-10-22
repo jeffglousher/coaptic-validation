@@ -92,6 +92,36 @@ it at the candidate; use only an explicitly assigned checkout/lane. Output must
 be fresh and outside source. It fetches only the two specified core commits.
 Do not run concurrently with another lane consumer, compiler or timing campaign.
 
+### Compare scheduling at one core revision
+
+Use `--candidate-server-kind` to compare two explicit adapters at **identical core
+SHAs**. Combining adapter and core changes, `all`, or identical adapter names is
+refused before builds. Defaults and the three adapters selected by `all` stay
+unchanged; `coaptic-async` must be selected explicitly. The manual workflow's
+`candidate_server_kind` defaults to `same` and exposes the same restriction.
+
+For example, compare the current Tokio polling loop with native async App
+wait/progress, with profiling off:
+
+```sh
+CORE_SHA=97934e67f0fde780d7f12509e1bba6b50199b2ad
+python3 tools/benchmark/linux_cpu.py \
+  --baseline-sha "$CORE_SHA" --candidate-sha "$CORE_SHA" \
+  --build-lane /existing/compatible/cargo-lane --output /fresh/evidence/async-ab \
+  --sizes 64,1024 --rates 4000 --seconds 12 --repeats 4 \
+  --server-kind coaptic-ready --candidate-server-kind coaptic-async
+```
+
+This plans 32 clean windows, 384 scheduled seconds and 1,536,000 latency samples;
+each fresh socket needs at least 48,020 sends including warmup. Both builds use
+the same companion snapshot, compiler, locks and frozen baseline client. Window
+records retain the adapter actually executed. Summary `server_kinds` names both
+adapters, and `comparison_type=application_scheduling` distinguishes these ratios
+from `core_revision` comparisons. Summary `server_kind` is the baseline adapter.
+Wrong executed adapters or differing recorded core SHAs suppress the ratio.
+Keep latency, client CPU and startup/runtime memory costs with the result; an
+adapter comparison does not establish a core-processing speedup or either target.
+
 Each security/body/rate/adapter/concurrency/message-type cell defaults to sequential
 complete CON GETs, one outstanding Call, 20 warmups, a 3s per-operation deadline
 and 60s per-control-phase deadline.

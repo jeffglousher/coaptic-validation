@@ -39,6 +39,7 @@ PROFILE_SECONDS = 5
 PERF_REPORT_SECONDS = 30
 PERF_FILES_PER_SLOT = 3  # Data/stat output, command/version log, record report.
 KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready")
+EXPLICIT_KINDS = (*KINDS, "coaptic-async")
 FLAGS = {"RUSTUP_TOOLCHAIN": "1.99.0", "RUSTC": "rustc",
          "RUSTFLAGS": "-C force-frame-pointers=yes", "CARGO_PROFILE_RELEASE_DEBUG": "1",
          "CARGO_PROFILE_RELEASE_STRIP": "none", "CARGO_INCREMENTAL": "0",
@@ -62,6 +63,12 @@ def selection(value, allowed=None):
 
 
 def configuration(args):
+    if args.candidate_server_kind is not None:
+        if (args.server_kind not in EXPLICIT_KINDS or args.candidate_server_kind not in EXPLICIT_KINDS
+                or args.server_kind == args.candidate_server_kind):
+            raise ValueError("adapter comparison requires two distinct explicit server kinds")
+        if sha40(args.baseline_sha) != sha40(args.candidate_sha):
+            raise ValueError("adapter comparison requires identical core SHAs; do not combine source and scheduling changes")
     if (type(args.concurrency) is not int or not 1 <= args.concurrency <= 4
             or args.message_type not in ("con", "non")
             or (args.concurrency > 1 and args.message_type != "non")):
@@ -72,7 +79,7 @@ def configuration(args):
         raise ValueError("rates must be numerically distinct")
     kinds = list(KINDS) if args.server_kind == "all" else [args.server_kind]
     if (not 2 <= args.seconds <= 30 or not 2 <= args.repeats <= 8
-            or any(not 1 <= r <= 100_000 for r in rates) or args.server_kind not in (*KINDS, "all")):
+            or any(not 1 <= r <= 100_000 for r in rates) or args.server_kind not in (*EXPLICIT_KINDS, "all")):
         raise ValueError("seconds 2..30, repeats 2..8, rates 1..100000, supported host adapter")
     cells = list(itertools.product(("unprotected", "oscore"), sizes, rates, kinds))
     windows = len(cells) * 2 * args.repeats
@@ -552,7 +559,8 @@ def save_window(directory, result):
         # fields exceed their allowance. Retain a small explicit failed result.
         identity_fields = {key: result[key] for key in
                            ("mode", "security", "bytes", "rate", "server_kind", "operations",
-                            "concurrency", "message_type", "cleanup_errors")
+                            "concurrency", "message_type", "cleanup_errors", "revision_label",
+                            "core_sha", "repeat", "index", "comparison_type")
                            if key in result}
         if unresolved_cleanup(result):
             identity_fields["cleanup_unresolved"] = True
@@ -592,7 +600,7 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
         if security == "oscore":
             server_args.append(str(credentials))
             client_args.insert(8, str(credentials))
-        with (directory / "server.log").open("w+") as server_log, (directory / "client.stderr").open("wb") as client_log:
+        with (directory / "server.log").open("w+b") as server_log, (directory / "client.stderr").open("wb") as client_log:
             try:
                 sut = spawn(server_args, stdout=server_log, stderr=server_log)
                 for _ in range(100):
@@ -618,6 +626,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                     if line != expected:
                         raise RuntimeError("client gate: " + line)
                 gate("ready")
+                result["server_resources"] = native.server_resources(
+                    directory / "server.log", kind, deadline=time.monotonic() + 60, server=sut)
                 peers = {"server": psutil.Process(sut.pid), "client": psutil.Process(child.pid)}
                 with perf_pass(mode, sut.pid, PROFILE_SECONDS, directory, quota) as perf:
                     result["perf"] = perf
@@ -705,12 +715,13 @@ def report_latencies(result):
     return values
 
 
-def aggregate(results, repeats, tick, *, campaign_complete=True):
+def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=None):
     """Never pool security/body/load/adapter strata, partial pairs or perf timings."""
     groups = {}
     for item in results:
         if item["mode"] == "clean":
-            key = (item["security"], item["bytes"], item["rate"], item["server_kind"],
+            key = (item["security"], item["bytes"], item["rate"],
+                   adapter_pair[0] if adapter_pair else item["server_kind"],
                    item.get("concurrency"), item.get("message_type"))
             groups.setdefault(key, []).append(item)
     output = []
@@ -719,6 +730,9 @@ def aggregate(results, repeats, tick, *, campaign_complete=True):
         record = dict(zip(("security", "bytes", "rate", "server_kind", "concurrency", "message_type"), key))
         labels = {label: [i for i in items if i["revision_label"] == label]
                   for label in ("baseline", "candidate")}
+        kinds = dict(zip(("baseline", "candidate"), adapter_pair or (key[3], key[3])))
+        record.update(server_kinds=kinds,
+                      comparison_type="application_scheduling" if adapter_pair else "core_revision")
         # Keep the observed peak of every bounded repeat visible even when a
         # window is ineligible. A configured limit does not prove overlap.
         record["observed_peak_pending"] = {
@@ -728,6 +742,12 @@ def aggregate(results, repeats, tick, *, campaign_complete=True):
         valid = campaign_complete and not cleanup_failed and all(
                     len(group) == repeats and {i["repeat"] for i in group} == set(range(repeats))
                     and all(accepted(i, tick) for i in group) for group in labels.values())
+        if adapter_pair:
+            valid = valid and all(i["server_kind"] == kinds[label]
+                                  for label, group in labels.items() for i in group)
+            sources = {i.get("core_sha") for i in items}
+            valid = valid and len(sources) == 1 and all(
+                isinstance(source, str) and re.fullmatch(r"[0-9a-f]{40}", source) for source in sources)
         for repeat in range(repeats):
             pair = [i for i in items if i["repeat"] == repeat and i.get("passed")]
             if len(pair) != 2:
@@ -755,6 +775,9 @@ def aggregate(results, repeats, tick, *, campaign_complete=True):
 
 def run(args):
     cells = configuration(args)
+    adapter_pair = ((args.server_kind, args.candidate_server_kind)
+                    if args.candidate_server_kind is not None else None)
+    comparison_type = "application_scheduling" if adapter_pair else "core_revision"
     plan = rotation(args, cells)
     metadata_bytes = metadata_allowance(plan, args.seconds)
     perf_slots = sum(mode != "clean" for mode, _, _, _ in plan)
@@ -781,6 +804,8 @@ def run(args):
                                    "seconds": args.seconds, "repeats": args.repeats,
                                    "perf": args.perf, "concurrency": args.concurrency,
                                    "message_type": args.message_type,
+                                   "candidate_server_kind": args.candidate_server_kind,
+                                   "comparison_type": comparison_type,
                                    "RUSTUP_TOOLCHAIN": FLAGS["RUSTUP_TOOLCHAIN"]})
         suite_identity = identity(SUITE)
         if suite_identity["status"] or identity(SUITE / "coaptic")["status"]:
@@ -797,6 +822,7 @@ def run(args):
                 "artifact_bound_bytes_excluding_binaries": metadata_bytes + PERF_FILES_PER_SLOT * perf_slots * quota,
                 "cells": cells, "seconds": args.seconds, "repeats": args.repeats,
                 "concurrency": args.concurrency, "message_type": args.message_type,
+                "adapter_pair": adapter_pair, "comparison_type": comparison_type,
                 "rotation": "AB/BA by repeat and cell; all clean windows precede all profiling passes",
                 "limits": "selected bounded concurrency/message type complete loopback GET; Default/AllocMemory host fixture; one App/context/global sender sequence per window; OSCORE established only; process CPU includes IPC boundaries/idle; no interrupt attribution, EDHOC, saturation, device or50% target proof"}
         save(out / "manifest.json", manifest)
@@ -812,11 +838,14 @@ def run(args):
         for index, (mode, repeat, cell, label) in enumerate(plan):
             print(f"{index + 1}/{len(plan)} {mode} {label} {cell}", flush=True)
             server = Path(builds[label]["binaries"]["bench-rust-server"]["path"])
-            result = window(server, client, cell, cell[2] * (args.seconds if mode == "clean" else PROFILE_SECONDS),
+            actual_cell = (*cell[:3], adapter_pair[1 if label == "candidate" else 0]) if adapter_pair else cell
+            result = window(server, client, actual_cell, cell[2] * (args.seconds if mode == "clean" else PROFILE_SECONDS),
                             out / f"window-{index:03}", mode, quota,
                             concurrency=args.concurrency, message_type=args.message_type)
             result.update(revision_label=label, core_sha=builds[label]["core"]["revision"], repeat=repeat,
                           server_sha256=digest(server), client_sha256=digest(client), index=index)
+            result["comparison_type"] = comparison_type
+            save_window(out / f"window-{index:03}", result)
             results.append(result)
             # Small append-only index survives later failures; each directory owns raw data.
             entry = bounded_bytes(result, WINDOW_LIMIT)
@@ -834,7 +863,9 @@ def run(args):
         cleanup_failed = any(unresolved_cleanup(result) for result in results)
         complete = len(results) == len(plan) and not cleanup_failed
         save(out / "summary.json", {"comparisons": aggregate(results, args.repeats, 1 / os.sysconf("SC_CLK_TCK"),
-                                                            campaign_complete=complete) if results else [],
+                                                            campaign_complete=complete,
+                                                            adapter_pair=adapter_pair) if results else [],
+                                   "comparison_type": comparison_type,
                                    "campaign_complete": complete, "cleanup_unresolved": cleanup_failed,
                                    "windows_recorded": len(results),
                                    "failed_windows": [r["index"] for r in results if not r["passed"]],
@@ -856,7 +887,9 @@ def argument_parser():
     parser.add_argument("--rates", default="100,1000")
     parser.add_argument("--seconds", type=int, default=10)
     parser.add_argument("--repeats", type=int, default=4)
-    parser.add_argument("--server-kind", choices=(*KINDS, "all"), default="coaptic-reusable")
+    parser.add_argument("--server-kind", choices=(*EXPLICIT_KINDS, "all"), default="coaptic-reusable")
+    parser.add_argument("--candidate-server-kind", choices=EXPLICIT_KINDS,
+                        help="compare two adapters at identical core SHAs; otherwise both use --server-kind")
     parser.add_argument("--perf", action="store_true")
     parser.add_argument("--concurrency", type=int, choices=range(1, 5), default=1)
     parser.add_argument("--message-type", choices=("con", "non"), default="con")

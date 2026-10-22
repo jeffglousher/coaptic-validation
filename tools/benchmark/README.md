@@ -329,12 +329,25 @@ plugtest and device qualification retain their own acceptance and reports.
 
 `native_diagnostic.py` measures Coaptic at both ends, including established
 OSCORE. It is separate from the independent comparator campaign. Select
-`--server-kind coaptic-reusable|coaptic-mio|coaptic-ready`, `--rate OPS_PER_SEC`
+`--server-kind coaptic-reusable|coaptic-mio|coaptic-ready|coaptic-async`, `--rate OPS_PER_SEC`
 and `--cpu-gated` for matched-load process CPU windows. The readiness fixtures
 now accept the same ephemeral OSCORE credentials and wait for App protocol
 opportunities rather than a fixed millisecond tick. They have static handlers;
 generic application signals, pin release and checkpoint recovery need their
 own event-loop wake/retry integration.
+
+`coaptic-async` is an explicit application scheduling experiment using native
+`App::wait_async` then freshly timed `progress_async`, with a yield after at most
+32 progress passes. It uses the same current-thread Tokio runtime, App capacities,
+2049-byte receive scratch, oversize guard and one accepted-packet copy as the
+readiness fixture. It adds no packet queue or spawned task. The diagnostic retains
+its one startup ledger as `server_resources`: scratch is inside the adapter,
+the adapter is inside App, and App is inside the measured owned loop future.
+Do not sum these nested inline sizes. Core heap, response body, outer setup future,
+Tokio allocations, thread stacks and kernel socket costs are excluded; runtime and
+stack costs are unknown. No Linux CPU gain or core processing improvement is
+established by a finite correctness run. Same-core adapter A/B selection belongs
+to the separate Linux runner; the default fixtures and C1 CON behavior remain.
 
 The CPU handshake pauses after warmup and before report formatting. User and
 process-accounted kernel CPU are divided by verified complete operations;
