@@ -29,14 +29,31 @@ import psutil
 SERVER_KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready", "coaptic-async")
 
 
-def server_resources(log, server_kind):
-    """Read the async fixture's bounded startup ledger before resource gates."""
+def server_resources(log_path, server_kind, *, deadline, server):
+    """Await one bounded startup line before resource gates, without touching writer offsets.
+
+    ``deadline`` is an absolute monotonic time; ``server`` supplies Popen.poll().
+    Partial writes remain unparsed until newline. The independently opened reader
+    never seeks or reads the file description inherited by the server.
+    """
     if server_kind != "coaptic-async":
         return None
-    log.seek(0)
-    raw = log.read(4097)
-    if len(raw) > 4096:
-        raise ValueError("server startup ledger exceeded allowance")
+    if type(deadline) not in (int, float) or not math.isfinite(deadline):
+        raise ValueError("server startup ledger needs a finite monotonic deadline")
+    raw = bytearray()
+    with Path(log_path).open("rb") as reader:
+        while True:
+            raw.extend(reader.readline(4097 - len(raw)))
+            if len(raw) > 4096:
+                raise ValueError("server startup ledger exceeded allowance")
+            if raw.endswith(b"\n"):
+                break
+            if server.poll() is not None:
+                raise RuntimeError("server exited before complete startup ledger")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("server startup ledger deadline")
+            time.sleep(min(.01, remaining))
     record = json.loads(raw)
     fields = ("udp_scratch_bytes", "adapter_inline_bytes", "app_including_adapter_bytes",
               "loop_future_including_app_bytes")
@@ -194,7 +211,8 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
             command.append(str(credentials))
         child = None
         report = None
-        with tempfile.TemporaryFile() as server_log:
+        server_log_path = Path(directory) / "server.log"
+        with server_log_path.open("wb") as server_log:
             sut = subprocess.Popen(command, stdout=server_log, stderr=server_log)
             try:
                 # Readiness sends no protected traffic and consumes no sequence.
@@ -222,7 +240,9 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                 ready_line = control_line(child.stderr, phase_timeout_seconds)
                 if ready_line != "ready":
                     raise RuntimeError("client initialization/warmup refused: " + ready_line)
-                startup = server_resources(server_log, server_kind)
+                startup = server_resources(server_log_path, server_kind,
+                                           deadline=time.monotonic() + phase_timeout_seconds,
+                                           server=sut)
                 peers = {"client": psutil.Process(child.pid), "server": psutil.Process(sut.pid)}
                 before = {name: snapshot(p) for name, p in peers.items()}
                 started = time.perf_counter_ns()
@@ -270,9 +290,10 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                 if child is not None and child.poll() is None:
                     child.terminate()
                     child.wait(timeout=5)
-                server_log.seek(0)
+                with server_log_path.open("rb") as reader:
+                    server_output = reader.read(65536).decode("utf-8", errors="replace")
                 error.diagnostic = dict(
-                    server_log=server_log.read(65536).decode("utf-8", errors="replace"),
+                    server_log=server_output,
                     client_log=child.stderr.read(65536) if child is not None else "",
                     partial_report=report,
                     accounting_status=("partial report retained; not an accepted complete observation"

@@ -626,7 +626,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                     if line != expected:
                         raise RuntimeError("client gate: " + line)
                 gate("ready")
-                result["server_resources"] = native.server_resources(server_log, kind)
+                result["server_resources"] = native.server_resources(
+                    directory / "server.log", kind, deadline=time.monotonic() + 60, server=sut)
                 peers = {"server": psutil.Process(sut.pid), "client": psutil.Process(child.pid)}
                 with perf_pass(mode, sut.pid, PROFILE_SECONDS, directory, quota) as perf:
                     result["perf"] = perf
