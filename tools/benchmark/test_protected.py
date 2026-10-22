@@ -70,10 +70,77 @@ class ProtectedTests(unittest.TestCase):
     def test_failure_accounting_includes_warmup_and_driver_failures(self):
         args = SimpleNamespace(host="127.0.0.1", port=1, bytes=64, concurrency=1, operations=2,
                                warmup=1, timeout_ms=1000, sequence=0, mode="con", security="unprotected")
-        with patch.object(Worker, "exchange", side_effect=[ValueError("warmup"), DriverError("rotation"), 100]):
+        with patch.object(Worker, "bootstrap") as bootstrap, patch.object(
+                Worker, "exchange", side_effect=[ValueError("warmup"), DriverError("rotation"), 100]):
             result = run(args)
+        bootstrap.assert_called_once()
         self.assertEqual((result["attempted"], result["completed"], result["failed"], result["warmup_failed"],
                           result["driver_failures"], result["verified_bytes"]), (2, 1, 1, 1, 1, 64))
+
+    def echo_worker(self, responses, *, tamper=False):
+        server = Context(self.credentials, server=True)
+        pending, requests = [], []
+        sock = Mock()
+        def send(wire):
+            incoming = aiocoap.Message.decode(wire)
+            incoming.direction = Direction.INCOMING
+            request, binding = server.unprotect(incoming)
+            requests.append(request)
+            response = responses[len(requests) - 1]
+            protected, _ = server.protect(response, binding)
+            protected.mid, protected.mtype, protected.token = incoming.mid, aiocoap.ACK, incoming.token
+            if tamper:
+                protected.payload = protected.payload[:-1] + bytes([protected.payload[-1] ^ 1])
+            pending.append(protected.encode())
+        sock.send.side_effect = send
+        sock.recv.side_effect = lambda _: pending.pop(0)
+        args = SimpleNamespace(host="127.0.0.1", port=1, bytes=64, timeout_ms=1000, mode="con")
+        with patch.object(Worker, "new_socket", return_value=sock):
+            worker = Worker(args, 0, Context(self.credentials), threading.Lock())
+        self.addCleanup(worker.close)
+        return worker, requests
+
+    def test_authenticated_echo_bootstrap_retries_once_and_verifies_complete_body(self):
+        challenge = aiocoap.Message(code=aiocoap.UNAUTHORIZED, echo=b"nonce123")
+        body = aiocoap.Message(code=aiocoap.CONTENT, payload=bytes(range(64)), content_format=42)
+        worker, requests = self.echo_worker([challenge, body])
+        worker.bootstrap()
+        self.assertEqual([r.opt.echo for r in requests], [None, b"nonce123"])
+        self.assertEqual(worker.bootstrap_echo_challenges, 1)
+        self.assertEqual(worker.mid, 2)
+
+    def test_echo_is_not_a_timed_success_and_setup_failures_are_not_filtered(self):
+        challenge = aiocoap.Message(code=aiocoap.UNAUTHORIZED, echo=b"nonce123")
+        worker, requests = self.echo_worker([challenge])
+        with self.assertRaisesRegex(ValueError, "Echo challenge"):
+            worker.exchange(1)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(worker.bootstrap_echo_challenges, 0)
+        args = SimpleNamespace(host="127.0.0.1", port=1, bytes=64, concurrency=1, operations=1,
+                               warmup=0, timeout_ms=1000, sequence=0, mode="con", security="unprotected")
+        with patch.object(Worker, "bootstrap", side_effect=ValueError("setup")), patch.object(Worker, "exchange") as exchange:
+            with self.assertRaisesRegex(ValueError, "setup"):
+                run(args)
+        exchange.assert_not_called()
+
+    def test_repeated_malformed_or_unauthenticated_echo_cannot_initialize(self):
+        challenge = aiocoap.Message(code=aiocoap.UNAUTHORIZED, echo=b"nonce123")
+        worker, requests = self.echo_worker([challenge, challenge])
+        with self.assertRaisesRegex(ValueError, "Echo challenge"):
+            worker.bootstrap()
+        self.assertEqual((len(requests), worker.bootstrap_echo_challenges), (2, 1))
+        for response in (challenge.copy(echo=b""), challenge.copy(echo=b"x" * 41),
+                         challenge.copy(payload=b"unexpected"), challenge.copy(content_format=42)):
+            with self.subTest(response=response):
+                worker, requests = self.echo_worker([response])
+                with self.assertRaises(ValueError):
+                    worker.bootstrap()
+                self.assertEqual(len(requests), 1)
+                self.assertEqual(worker.bootstrap_echo_challenges, 0)
+        worker, requests = self.echo_worker([challenge], tamper=True)
+        with self.assertRaises(Exception):
+            worker.bootstrap()
+        self.assertEqual((len(requests), worker.bootstrap_echo_challenges), (1, 0))
 
     def test_shared_sender_dispatch_holds_sequence_lock_through_udp_send(self):
         crypto_lock = threading.Lock()

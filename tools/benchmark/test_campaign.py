@@ -54,6 +54,87 @@ def evidence(root, count=6, failed_reference=False, resumed=False, overlap=False
 
 
 class CampaignTests(unittest.TestCase):
+    def test_process_tree_accounts_launcher_and_child_without_summing_peaks(self):
+        from types import SimpleNamespace
+
+        class Process:
+            def __init__(self, pid, children, user, system, memory):
+                self.pid, self.descendants = pid, children
+                self.cpu = SimpleNamespace(user=user, system=system)
+                self.memory = memory
+                self.running = True
+
+            def create_time(self): return float(self.pid)
+            def is_running(self): return self.running
+            def children(self, recursive=False):
+                self.assert_direct = not recursive
+                return self.descendants
+            def cpu_times(self): return self.cpu
+            def memory_info(self): return SimpleNamespace(_asdict=lambda: self.memory)
+            def num_threads(self): return 2
+            def ppid(self): return 10 if self.pid == 11 else 1
+            def name(self): return 'python'
+
+        child = Process(11, [], 3.0, 2.0, dict(rss=100, vms=300, private=80, peak_wset=150))
+        root = Process(10, [child], 0.1, 0.2, dict(rss=4, vms=10, private=2, peak_wset=9))
+        fake = SimpleNamespace(Process=lambda pid: root, Error=RuntimeError)
+        with patch.dict(sys.modules, psutil=fake):
+            result = bench.process_cpu(10)
+            self.assertEqual(result['user_seconds'], 3.1)
+            self.assertEqual(result['system_seconds'], 2.2)
+            self.assertEqual(result['memory'], dict(rss=104, vms=310, private=82))
+            self.assertEqual(result['threads'], 4)
+            self.assertNotIn('peak_wset', result['memory'])
+            self.assertEqual([p['memory']['peak_wset'] for p in result['processes']], [9, 150])
+            self.assertIn('shared pages may overlap', result['memory_aggregation'])
+            self.assertTrue(root.assert_direct)
+            child.running = False
+            self.assertIsNone(bench.process_cpu(10), 'never silently return launcher-only accounting')
+            child.running = True
+            with patch.object(child, 'memory_info', side_effect=RuntimeError('vanished')):
+                self.assertIsNone(bench.process_cpu(10))
+            root.descendants = [Process(i, [], 0, 0, {}) for i in range(11, 19)]
+            self.assertIsNone(bench.process_cpu(10), 'tree over capacity is unmeasured')
+
+    def test_cleanup_refuses_oversize_tree_before_signalling(self):
+        from unittest.mock import Mock
+        root = Mock()
+        root.is_running.return_value = True
+        root.create_time.return_value = 1
+        root.children.return_value = [Mock() for _ in range(8)]
+        captured = object.__new__(bench.CapturedProcess)
+        captured.owned_root, captured.owned_created = root, 1
+        with self.assertRaisesRegex(ValueError, 'limit 8'):
+            captured.close()
+        root.kill.assert_not_called()
+        for child in root.children.return_value:
+            child.kill.assert_not_called()
+
+    def test_live_launcher_child_cleanup(self):
+        import os
+        import time
+        import psutil
+        launcher = Path(r"D:/CoapticCurrent/matched-benchmark-20261013-venv/Scripts/python.exe")
+        if os.name != 'nt' or not launcher.exists():
+            self.skipTest('Windows venv launcher qualification')
+        captured = bench.CapturedProcess([str(launcher), '-u', '-c',
+                                         'import time; print("ready", flush=True); time.sleep(30)'])
+        members = []
+        try:
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                members = psutil.Process(captured.process.pid).children(recursive=False)
+                if members:
+                    break
+                time.sleep(.02)
+            self.assertTrue(members, 'must exercise actual launcher child')
+            identities = [(p, p.create_time()) for p in members]
+        finally:
+            captured.close()
+        self.assertIsNotNone(captured.process.poll())
+        self.assertTrue(all(not p.is_running() for p, _ in identities))
+        self.assertTrue(all(not r.is_alive() for r in captured.readers))
+
     def test_smoke_covers_small_and_blockwise_in_each_security_stratum(self):
         data = manifest()
         secure_peer = dict(data["peers"][0], id="coaptic-oscore", security="OSCORE")

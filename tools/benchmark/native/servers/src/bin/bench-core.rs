@@ -7,6 +7,7 @@
 use coaptic::message::{Message, MessageId, Opt, Token, Type, decode};
 use coaptic::storage::{Capacities, DatagramIo};
 use coaptic::{App, Code, ContentFormat, Endpoint, Request, Response, get};
+use std::hint::black_box;
 use std::time::Instant;
 
 const BODY: [u8; 64] = [0x5a; 64];
@@ -112,6 +113,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     )?;
     let mut latencies = Vec::with_capacity(operations);
+    let mut clock_calibration = Vec::with_capacity(4096);
+    for sample in 0..4096 {
+        let started = Instant::now();
+        black_box(sample);
+        clock_calibration.push(started.elapsed().as_nanos());
+    }
     let mut opened = [0; 1472];
     let clock = Instant::now();
     for operation in 0..operations + 128 {
@@ -126,12 +133,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
         let now = clock.elapsed().as_millis() as u64;
         let started = Instant::now();
-        let outcome = app.poll(now);
+        let outcome = black_box(black_box(&mut app).poll(black_box(now)));
         let elapsed = started.elapsed().as_nanos();
         outcome.map_err(|_| "poll failure")?;
         let io = app.transport_mut();
         let n = io.output_len.take().ok_or("missing response")?;
-        let wire = decode(&io.output[..n])?;
+        let wire = decode(black_box(&io.output[..n]))?;
         let reply = match client_context.as_mut() {
             Some(context) => {
                 let binding = context.take(token).ok_or("request binding")?;
@@ -157,9 +164,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     print!(
-        "{{\"operations\":{operations},\"warmup\":128,\"security\":\"{security}\",\"measurement\":\"server App::poll only; request preparation and complete response verification outside clock; OSCORE responses authenticated\",\"latencies_ns\":["
+        "{{\"operations\":{operations},\"warmup\":128,\"security\":\"{security}\",\"black_box\":true,\"measurement\":\"server App::poll with optimizer barriers; request preparation and complete response verification outside clock; OSCORE responses authenticated; timer calibration separate and never subtracted\",\"latencies_ns\":["
     );
     for (i, elapsed) in latencies.iter().enumerate() {
+        if i > 0 {
+            print!(",");
+        }
+        print!("{elapsed}");
+    }
+    print!("],\"clock_calibration_ns\":[");
+    for (i, elapsed) in clock_calibration.iter().enumerate() {
         if i > 0 {
             print!(",");
         }

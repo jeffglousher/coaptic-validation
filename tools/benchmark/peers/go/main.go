@@ -55,15 +55,22 @@ func certificate(path string) (tls.Certificate, error) {
 
 func server(protocol, address string, size int, certFile string) error {
 	body := payload(size)
-	if protocol == "coap" {
+	if protocol == "coap" || protocol == "coap-dtls" {
 		router := mux.NewRouter()
 		router.Handle("/bench", mux.HandlerFunc(func(w mux.ResponseWriter, r *mux.Message) {
 			if r.Code() != codes.GET {
 				_ = w.SetResponse(codes.MethodNotAllowed, message.TextPlain, bytes.NewReader(nil))
 				return
 			}
-			_ = w.SetResponse(codes.Content, message.AppOctets, bytes.NewReader(body))
+			_ = w.SetResponse(codes.Content, message.AppOctets, bytes.NewReader(body), message.Option{ID: message.ETag, Value: []byte("fixture")})
 		}))
+		if protocol == "coap-dtls" {
+			config, err := dtlsConfig(certFile, false)
+			if err != nil {
+				return err
+			}
+			return coap.ListenAndServeDTLS("udp4", address, config, router)
+		}
 		return coap.ListenAndServe("udp", address, router)
 	}
 	if protocol != "http3" {
@@ -98,6 +105,9 @@ type sample struct {
 	Completed         int     `json:"completed"`
 	Failed            int     `json:"failed"`
 	WarmupFailed      int     `json:"warmup_failed"`
+	DriverFailures    int     `json:"driver_failures"`
+	EndpointRotations int     `json:"endpoint_rotations,omitempty"`
+	Measurement       string  `json:"measurement,omitempty"`
 	VerifiedBytes     int     `json:"verified_bytes"`
 	ElapsedNS         int64   `json:"elapsed_ns"`
 	Latencies         []int64 `json:"latencies_ns"`
@@ -202,6 +212,13 @@ func load(address string, size, concurrency, operations, warmup, timeoutMS int, 
 
 func main() {
 	args := os.Args
+	if len(args) > 1 && args[1] == "dtls-load" {
+		if err := dtlsLoadCommand(args); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		return
+	}
 	if len(args) < 7 {
 		fmt.Fprintln(os.Stderr, "server PROTOCOL HOST PORT BYTES CERT; load HOST PORT BYTES CONCURRENCY OPERATIONS WARMUP TIMEOUT_MS MODE CERT")
 		os.Exit(2)

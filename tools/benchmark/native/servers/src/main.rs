@@ -13,6 +13,21 @@
 //! `coaptic-mio` applies the same policy directly through Mio without an async
 //! runtime. These variants retain the same protocol processing and pools.
 #![forbid(unsafe_code)]
+macro_rules! conn_as_any {
+    () => {
+        fn as_any(&self) -> &(dyn std::any::Any + Send + Sync) {
+            self
+        }
+    };
+}
+#[path = "../../../../interop/coap_dtls.rs"]
+#[allow(
+    dead_code,
+    reason = "The shared interop module also supplies an unused client transport."
+)]
+mod coap_dtls;
+#[path = "../../../../interop/dtls_listener.rs"]
+mod dtls_listener;
 use coap_lite::{CoapOption, MessageClass, MessageType, Packet, ResponseType};
 use coaptic::oscore::{DeriveParams, SecurityContext};
 use coaptic::storage::{AllocMemory, Capacities, DatagramIo, Endpoint, UdpSocketIo};
@@ -31,6 +46,64 @@ fn representation(_: Request<'_>) -> Response<'static> {
     Response::content(BODY.get().expect("initialized fixture"))
         .content_format(ContentFormat::OCTET_STREAM)
         .etag(b"fixture")
+}
+
+async fn coap_rs_server(
+    address: &str,
+    body: &'static [u8],
+    config: Option<webrtc_dtls::config::Config>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let server = if let Some(config) = config {
+        let listener = dtls_listener::BoundedListener::bind(address.parse()?, config).await?;
+        coap::Server::from_listeners(vec![Box::new(coap_dtls::Server(listener))])
+    } else {
+        coap::Server::new_udp(address)?
+    };
+    let body: Arc<[u8]> = Arc::from(body);
+    server
+        .run(
+            move |mut request: Box<coap_lite::CoapRequest<std::net::SocketAddr>>| {
+                let body = Arc::clone(&body);
+                async move {
+                    if let Some(response) = request.response.as_mut() {
+                        response.message.header.code =
+                            MessageClass::Response(ResponseType::Content);
+                        response.message.payload = body.to_vec();
+                        response
+                            .message
+                            .set_option(CoapOption::ContentFormat, [vec![42]].into());
+                        response
+                            .message
+                            .set_option(CoapOption::ETag, [b"fixture".to_vec()].into());
+                    }
+                    request
+                }
+            },
+        )
+        .await?;
+    Ok(())
+}
+
+fn dtls_config(path: &str) -> Result<webrtc_dtls::config::Config, Box<dyn std::error::Error>> {
+    let mut material = [0; 24];
+    let mut file = std::fs::File::open(path)?;
+    file.read_exact(&mut material)?;
+    if file.read(&mut [0])? != 0 {
+        return Err("expected 24-byte ephemeral credentials".into());
+    }
+    let key = material[..16].to_vec();
+    material.fill(0);
+    Ok(webrtc_dtls::config::Config {
+        psk: Some(Arc::new(move |identity| {
+            if identity != b"benchmark" {
+                return Err(std::io::Error::other("unexpected DTLS identity").into());
+            }
+            Ok(key.clone())
+        })),
+        psk_identity_hint: Some(b"benchmark".to_vec()),
+        cipher_suites: vec![webrtc_dtls::cipher_suite::CipherSuiteId::Tls_Psk_With_Aes_128_Ccm_8],
+        ..Default::default()
+    })
 }
 
 // The quick-check path keeps the public SmallDevice preset unchanged.
@@ -76,7 +149,7 @@ fn small_device_server(
     }
 }
 
-fn bind_fixture<T: DatagramIo<Error = std::io::Error>>(
+fn bind_fixture<T: coaptic::storage::DatagramTransport<Error = std::io::Error>>(
     io: T,
     bytes: usize,
     rx_bytes: usize,
@@ -105,6 +178,86 @@ fn bind_fixture<T: DatagramIo<Error = std::io::Error>>(
         builder.allow_unprotected()
     };
     Ok(builder.bind_alloc(io, capacities)?)
+}
+
+struct DtlsIo {
+    conn: Arc<dyn webrtc_util::conn::Conn + Send + Sync>,
+    peer: Endpoint,
+    scratch: [u8; 1473],
+}
+
+impl coaptic::storage::DatagramTransport for DtlsIo {
+    type Error = std::io::Error;
+}
+
+impl coaptic::storage::AsyncDatagramIo for DtlsIo {
+    async fn recv(&mut self, output: &mut [u8]) -> std::io::Result<(usize, Endpoint)> {
+        let required = output
+            .len()
+            .checked_add(1)
+            .filter(|n| *n <= self.scratch.len())
+            .ok_or(std::io::ErrorKind::InvalidInput)?;
+        let n = self
+            .conn
+            .recv(&mut self.scratch[..required])
+            .await
+            .map_err(std::io::Error::other)?;
+        if n > output.len() {
+            return Err(std::io::ErrorKind::InvalidData.into());
+        }
+        output[..n].copy_from_slice(&self.scratch[..n]);
+        Ok((n, self.peer))
+    }
+    async fn send(&mut self, peer: Endpoint, bytes: &[u8]) -> std::io::Result<usize> {
+        if peer != self.peer {
+            return Err(std::io::ErrorKind::InvalidInput.into());
+        }
+        self.conn.send(bytes).await.map_err(std::io::Error::other)
+    }
+}
+
+struct DtlsTimer(Instant);
+impl coaptic::platform::AsyncTimer for DtlsTimer {
+    async fn wait_until(&mut self, deadline_ms: u64) {
+        tokio::time::sleep_until((self.0 + Duration::from_millis(deadline_ms)).into()).await;
+    }
+}
+
+async fn coaptic_dtls_server(
+    address: &str,
+    bytes: usize,
+    config: webrtc_dtls::config::Config,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use webrtc_util::conn::Listener as _;
+    let listener = dtls_listener::BoundedListener::bind(address.parse()?, config).await?;
+    let mut tasks = tokio::task::JoinSet::new();
+    loop {
+        tokio::select! {
+            Some(_) = tasks.join_next(), if !tasks.is_empty() => {},
+            accepted = listener.accept() => {
+                let (conn, peer) = accepted?;
+                if tasks.len() >= 128 {
+                    let _ = tokio::time::timeout(Duration::from_secs(1), conn.close()).await;
+                    continue;
+                }
+                tasks.spawn_local(async move {
+                    let io = DtlsIo {conn: Arc::clone(&conn), peer: peer.into(), scratch: [0; 1473]};
+                    // One unchanged bounded App per DTLS session; the transport
+                    // authenticates records before plaintext reaches the App.
+                    let Ok(mut app) = bind_fixture(io, bytes, 1472, None) else { return; };
+                    let epoch = Instant::now();
+                    let now = || epoch.elapsed().as_millis() as u64;
+                    let mut clock = || Ok::<u64, std::io::Error>(now());
+                    let mut timer = DtlsTimer(epoch);
+                    loop {
+                        if app.wait_async(now(), &mut timer, std::future::pending::<()>()).await.is_err() { break; }
+                        if app.progress_async(now(), &mut clock, &mut timer, now() + 1000).await.is_err() { break; }
+                    }
+                    let _ = tokio::time::timeout(Duration::from_secs(1), conn.close()).await;
+                });
+            }
+        }
+    }
 }
 
 fn coaptic_server<T: DatagramIo<Error = std::io::Error>>(
@@ -336,6 +489,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         return Ok(());
     }
+    if args
+        .get(1)
+        .is_some_and(|name| matches!(name.as_str(), "coap-rs-dtls" | "coaptic-dtls"))
+    {
+        if args.len() != 6 || args[2] != "127.0.0.1" {
+            return Err(
+                "bench-rust-server coap-rs-dtls|coaptic-dtls 127.0.0.1 PORT BYTES CREDENTIALS"
+                    .into(),
+            );
+        }
+        let size: usize = args[4].parse()?;
+        if !(1..=1_048_576).contains(&size) {
+            return Err("fixture size".into());
+        }
+        let config = dtls_config(&args[5])?;
+        let body: &'static [u8] = Box::leak(
+            (0..size)
+                .map(|i| (i % 251) as u8)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        );
+        BODY.set(body).map_err(|_| "fixture initialization")?;
+        let address = format!("{}:{}", args[2], args[3]);
+        return if args[1] == "coap-rs-dtls" {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()?;
+            runtime.block_on(coap_rs_server(&address, body, Some(config)))
+        } else {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?;
+            tokio::task::LocalSet::new()
+                .block_on(&runtime, coaptic_dtls_server(&address, size, config))
+        };
+    }
     if !(5..=7).contains(&args.len()) {
         return Err(
             "usage: bench-rust-server coaptic-small|coaptic|coaptic-reusable|coaptic-ready|coaptic-mio|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]]".into(),
@@ -442,29 +632,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .worker_threads(2)
             .enable_all()
             .build()?
-            .block_on(async {
-                let server = coap::Server::new_udp(&address)?;
-                let body: Arc<[u8]> = Arc::from(body);
-                server
-                    .run(
-                        move |mut request: Box<coap_lite::CoapRequest<std::net::SocketAddr>>| {
-                            let body = Arc::clone(&body);
-                            async move {
-                                if let Some(response) = request.response.as_mut() {
-                                    response.message.header.code =
-                                        MessageClass::Response(ResponseType::Content);
-                                    response.message.payload = body.to_vec();
-                                    response
-                                        .message
-                                        .set_option(CoapOption::ContentFormat, [vec![42]].into());
-                                }
-                                request
-                            }
-                        },
-                    )
-                    .await?;
-                Ok(())
-            }),
+            .block_on(coap_rs_server(&address, body, None)),
         _ => Err("unknown implementation".into()),
     }
 }

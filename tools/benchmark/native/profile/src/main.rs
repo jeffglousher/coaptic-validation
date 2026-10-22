@@ -37,6 +37,8 @@ static ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
 static ALLOCATED_BYTES: AtomicU64 = AtomicU64::new(0);
 static REALLOCATIONS: AtomicU64 = AtomicU64::new(0);
 static BODY: OnceLock<&'static [u8]> = OnceLock::new();
+const BARE_UDP_MAX_BYTES: usize =
+    <coaptic::profiles::Default as coaptic::storage::MemoryProfile>::RX_DATAGRAM_BYTES;
 
 struct CountingAllocator;
 
@@ -223,7 +225,9 @@ fn core_probe(bytes: usize, operations: usize) -> Result<(), Box<dyn std::error:
             }
             begin();
             let started = Instant::now();
-            let outcome = app.poll(datagrams as u64);
+            let outcome = std::hint::black_box(
+                std::hint::black_box(&mut app).poll(std::hint::black_box(datagrams as u64)),
+            );
             let elapsed = started.elapsed().as_nanos();
             elapsed_ns += elapsed;
             let count = end();
@@ -285,6 +289,16 @@ fn udp_idle_probe(capacity: usize, polls: usize) -> Result<(), Box<dyn std::erro
     let mut socket = UdpSocket::bind("127.0.0.1:0")?;
     socket.set_nonblocking(true)?;
     let mut buffer = vec![0; capacity];
+    if capacity > BARE_UDP_MAX_BYTES {
+        match DatagramIo::recv(&mut socket, &mut buffer) {
+            Err(error) if error.kind() == std::io::ErrorKind::InvalidInput => {}
+            _ => return Err("oversized bare UDP receive was not refused".into()),
+        }
+        println!(
+            "{{\"kind\":\"udp_idle_unsupported\",\"capacity\":{capacity},\"attempts\":1,\"expected_error\":\"InvalidInput\",\"reason\":\"bare UdpSocket requires destination at or below Default RX ceiling; use reusable scratch for larger datagrams\"}}"
+        );
+        return Ok(());
+    }
     for _ in 0..20 {
         DatagramIo::recv(&mut socket, &mut buffer)?;
     }
@@ -326,6 +340,16 @@ fn udp_receive_probe<T: DatagramIo<Error = std::io::Error>>(
         let outcome = io.recv(&mut buffer);
         let elapsed = started.elapsed().as_nanos();
         let count = end();
+        if !reusable && capacity > BARE_UDP_MAX_BYTES {
+            match outcome {
+                Err(error) if error.kind() == std::io::ErrorKind::InvalidInput => {}
+                _ => return Err("oversized bare UDP receive was not refused".into()),
+            }
+            println!(
+                "{{\"kind\":\"udp_receive_unsupported\",\"capacity\":{capacity},\"attempts\":1,\"reusable\":false,\"active\":{active},\"expected_error\":\"InvalidInput\",\"reason\":\"destination exceeds bare UdpSocket RX ceiling\"}}"
+            );
+            return Ok(());
+        }
         let received = outcome?;
         if active {
             if received != Some((capacity, expected_peer)) || buffer != payload {
@@ -472,7 +496,8 @@ fn socket_probe(
         times.borrow_mut().received = false;
         begin();
         let polling = Instant::now();
-        let outcome = app.poll(now);
+        let outcome =
+            std::hint::black_box(std::hint::black_box(&mut app).poll(std::hint::black_box(now)));
         let elapsed = polling.elapsed().as_nanos();
         let count = end();
         if outcome.is_err() {
