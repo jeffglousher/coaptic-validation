@@ -68,9 +68,37 @@ class Writer:
             stream.close()
 
 
+def windows_udp_connreset(sock, enabled):
+    # CPython does not expose this IOCTL through socket.ioctl on all versions.
+    # Winsock SIO_UDP_CONNRESET = _WSAIOW(IOC_VENDOR, 12).
+    import ctypes
+    from ctypes import wintypes
+    winsock = ctypes.WinDLL('ws2_32')
+    ioctl = winsock.WSAIoctl
+    ioctl.argtypes = [ctypes.c_size_t, wintypes.DWORD, ctypes.c_void_p,
+                     wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD,
+                     ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p, ctypes.c_void_p]
+    ioctl.restype = ctypes.c_int
+    winsock.WSAGetLastError.restype = ctypes.c_int
+    flag, returned = wintypes.BOOL(enabled), wintypes.DWORD()
+    if ioctl(sock.fileno(), 0x9800000C, ctypes.byref(flag), ctypes.sizeof(flag),
+             None, 0, ctypes.byref(returned), None, None) != 0:
+        raise ctypes.WinError(winsock.WSAGetLastError())
+
+
 class Relay:
     def __init__(self, directory, server):
         self.front = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        if sys.platform == 'win32':
+            # A closing client can trigger ICMP Port Unreachable for a trailing
+            # server alert. This socket records UDP payloads, not ICMP. Disable
+            # Windows' conversion of that ICMP into a later recvfrom reset;
+            # upstream and actual receive/send errors remain fatal.
+            try:
+                windows_udp_connreset(self.front, False)
+            except Exception:
+                self.front.close()
+                raise
         self.front.bind(('127.0.0.1', 0))
         self.address = self.front.getsockname()
         self.server = server

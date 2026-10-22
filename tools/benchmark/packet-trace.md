@@ -20,6 +20,11 @@ PCAP uses DLT_USER0 (147): every record is the actual received UDP payload. Ther
 are no fabricated Ethernet/IP headers. The sidecar records direction, client and
 relay socket addresses, wall time and a payload digest. This validates the socket
 boundary, not kernel packet receipt, IP checksums, NIC behavior or packet loss.
+On Windows, the client-facing socket disables `SIO_UDP_CONNRESET`: a trailing
+server alert sent to a closed client must not turn an ICMP Port Unreachable into
+a later UDP receive failure. Received alert payloads are still recorded before
+forwarding. This is not ICMP capture or proof of delivery to the closed client.
+Upstream socket errors and actual receive/forward failures still fail the capture.
 The relay caps 10,000 frames, 16 client endpoints, and 14 MiB packet/sidecar output;
 logs are capped at 64 KiB each with refusal on overflow. The case output budget is
 16 MiB including metadata. Failure records are preserved; reruns require a new
