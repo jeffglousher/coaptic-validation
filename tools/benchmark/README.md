@@ -54,9 +54,13 @@ sample rather than widening pools or silently dropping operations.
 ## Prepare explicitly
 
 Setup and compilation are outside timing. Use Python 3.10+, the repository's
-Rust toolchain, Go 1.26+, and CMake 3.20+ with a C compiler. Go dependencies and
+Rust toolchain, Go 1.26.2+, and CMake 3.20+ with a C compiler. Go dependencies and
 the isolated Rust benchmark workspace have committed lockfiles; none enter
-the production Coaptic dependency graph.
+the production Coaptic dependency graph. Go 1.26.0/1.26.1 have a known Windows
+network-I/O runtime regression; use a patched toolchain, as required by go.mod
+([upstream fix](https://github.com/golang/go/issues/78041)). Go 1.26.0/1.26.1 have a known Windows
+network-I/O runtime regression; use a patched toolchain, as required by go.mod
+([upstream fix](https://github.com/golang/go/issues/78041)).
 
 ```sh
 python -m venv target/benchmark-venv

@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 import socket
 import tempfile
+import sys
+import time
 import unittest
 
 import packet_trace as trace
@@ -146,6 +148,47 @@ class PacketTraceTests(unittest.TestCase):
                 self.assertEqual(client.recvfrom(100)[0], b'actual response bytes')
             self.assertIsNone(relay.error)
             self.assertEqual(relay.writer.count, 2)
+
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows UDP ICMP behavior')
+    def test_closed_client_alert_does_not_reset_relay(self):
+        # Establish that this host generates the asynchronous port-closed reset.
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as closed:
+            closed.bind(('127.0.0.1', 0))
+            closed_address = closed.getsockname()
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as control:
+            trace.windows_udp_connreset(control, True)
+            control.bind(('127.0.0.1', 0))
+            control.settimeout(1)
+            control.sendto(b'closed endpoint control', closed_address)
+            with self.assertRaises(ConnectionResetError):
+                control.recvfrom(100)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server, socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as live:
+            server.bind(('127.0.0.1', 0))
+            server.settimeout(1)
+            live.settimeout(1)
+            with trace.Relay(self.directory, server.getsockname()) as relay:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+                    client.sendto(b'first request', relay.address)
+                    self.assertEqual(server.recvfrom(100)[0], b'first request')
+                    upstream = next(iter(relay.upstream.values())).getsockname()
+                # Record and forward both trailing alerts after the client exits.
+                server.sendto(b'closing alert one', upstream)
+                server.sendto(b'closing alert two', upstream)
+                deadline = time.monotonic() + 1
+                while relay.writer.count < 3 and relay.error is None and time.monotonic() < deadline:
+                    time.sleep(.005)
+                self.assertIsNone(relay.error)
+                self.assertEqual(relay.writer.count, 3)
+                live.sendto(b'next live request', relay.address)
+                data, source = server.recvfrom(100)
+                self.assertEqual(data, b'next live request')
+                server.sendto(b'live response', source)
+                self.assertEqual(live.recvfrom(100)[0], b'live response')
+            self.assertIsNone(relay.error)
+            self.assertEqual(relay.writer.count, 5)
+        wire = (self.directory / 'datagrams.pcap').read_bytes()
+        self.assertIn(b'closing alert one', wire)
+        self.assertIn(b'closing alert two', wire)
 
     def test_missing_whole_operation_and_replay_refused(self):
         frames = self.frames(True)
