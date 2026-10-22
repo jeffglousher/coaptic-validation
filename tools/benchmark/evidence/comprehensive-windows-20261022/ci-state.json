@@ -1,0 +1,651 @@
+{
+  "scope": "point-in-time hosted CI snapshots; advisory, not implementation proof",
+  "captured": "2026-10-22T02:39:20.882Z",
+  "pull_requests": {
+    "145": {
+      "state": "MERGED",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:52:22Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708090197/job/119592749202",
+          "name": "Analyze (actions)",
+          "startedAt": "2026-10-22T01:51:37Z",
+          "status": "COMPLETED",
+          "workflowName": "CodeQL"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:55:02Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753603",
+          "name": "validation / durable host receipts (ubuntu-latest)",
+          "startedAt": "2026-10-22T01:53:58Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:52:45Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708090197/job/119592749363",
+          "name": "Analyze (c-cpp)",
+          "startedAt": "2026-10-22T01:51:37Z",
+          "status": "COMPLETED",
+          "workflowName": "CodeQL"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:53:26Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753520",
+          "name": "validation / durable host receipts (windows-latest)",
+          "startedAt": "2026-10-22T01:51:38Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:52:29Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708090197/job/119592749884",
+          "name": "Analyze (go)",
+          "startedAt": "2026-10-22T01:51:37Z",
+          "status": "COMPLETED",
+          "workflowName": "CodeQL"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:52:46Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708090197/job/119592749223",
+          "name": "Analyze (python)",
+          "startedAt": "2026-10-22T01:51:37Z",
+          "status": "COMPLETED",
+          "workflowName": "CodeQL"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:55:52Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708090197/job/119592748946",
+          "name": "Analyze (rust)",
+          "startedAt": "2026-10-22T01:51:37Z",
+          "status": "COMPLETED",
+          "workflowName": "CodeQL"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:52:26Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753519",
+          "name": "validation / protected Linux container",
+          "startedAt": "2026-10-22T01:51:37Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:01:15Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753624",
+          "name": "validation / host library (windows-latest)",
+          "startedAt": "2026-10-22T01:52:23Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:56:43Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753478",
+          "name": "validation / host library (macos-latest)",
+          "startedAt": "2026-10-22T01:51:38Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:00:00Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753474",
+          "name": "validation / 32-bit library (i686-pc-windows-msvc)",
+          "startedAt": "2026-10-22T01:51:37Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:58:02Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753505",
+          "name": "validation / 32-bit library (i686-unknown-linux-gnu)",
+          "startedAt": "2026-10-22T01:51:37Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:09:44Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753577",
+          "name": "validation / big-endian library (emulated s390x)",
+          "startedAt": "2026-10-22T01:53:00Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:53:55Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753289",
+          "name": "validation / source coverage evidence",
+          "startedAt": "2026-10-22T01:51:38Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:57:18Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753538",
+          "name": "validation / source branch coverage evidence",
+          "startedAt": "2026-10-22T01:55:05Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:52:58Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753436",
+          "name": "validation / coverage-guided fuzz smoke",
+          "startedAt": "2026-10-22T01:51:37Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:55:26Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753593",
+          "name": "validation / no_std code generation (thumbv6m-none-eabi)",
+          "startedAt": "2026-10-22T01:54:29Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:55:16Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753587",
+          "name": "validation / no_std code generation (thumbv7em-none-eabi)",
+          "startedAt": "2026-10-22T01:54:30Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:52:21Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753470",
+          "name": "validation / no_std code generation (riscv32imac-unknown-none-elf)",
+          "startedAt": "2026-10-22T01:51:37Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:54:58Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753607",
+          "name": "validation / no_std code generation (wasm32-unknown-unknown)",
+          "startedAt": "2026-10-22T01:54:05Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:52:49Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753486",
+          "name": "validation / seeded qualification",
+          "startedAt": "2026-10-22T01:51:37Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:58:41Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753508",
+          "name": "validation / independent process interop",
+          "startedAt": "2026-10-22T01:51:37Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:08:01Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753684",
+          "name": "validation / App plugtest and dogfood",
+          "startedAt": "2026-10-22T01:55:19Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:54:28Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753560",
+          "name": "validation / Custom ESPHome source and configuration",
+          "startedAt": "2026-10-22T01:52:52Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:54:02Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39708092830/job/119592753455",
+          "name": "validation / Validation runner tests",
+          "startedAt": "2026-10-22T01:51:37Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:52:15Z",
+          "conclusion": "NEUTRAL",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/runs/119592948213",
+          "name": "CodeQL",
+          "startedAt": "2026-10-22T01:52:12Z",
+          "status": "COMPLETED",
+          "workflowName": ""
+        }
+      ]
+    },
+    "148": {
+      "state": "MERGED",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:27:22Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711386840/job/119603292031",
+          "name": "Analyze (actions)",
+          "startedAt": "2026-10-22T02:26:36Z",
+          "status": "COMPLETED",
+          "workflowName": "CodeQL"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:28:36Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294540",
+          "name": "validation / durable host receipts (ubuntu-latest)",
+          "startedAt": "2026-10-22T02:27:43Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:27:32Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711386840/job/119603291906",
+          "name": "Analyze (c-cpp)",
+          "startedAt": "2026-10-22T02:26:36Z",
+          "status": "COMPLETED",
+          "workflowName": "CodeQL"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:30:51Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294549",
+          "name": "validation / durable host receipts (windows-latest)",
+          "startedAt": "2026-10-22T02:27:30Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:27:40Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711386840/job/119603291914",
+          "name": "Analyze (go)",
+          "startedAt": "2026-10-22T02:26:35Z",
+          "status": "COMPLETED",
+          "workflowName": "CodeQL"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:27:46Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711386840/job/119603291893",
+          "name": "Analyze (python)",
+          "startedAt": "2026-10-22T02:26:35Z",
+          "status": "COMPLETED",
+          "workflowName": "CodeQL"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:30:43Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711386840/job/119603291729",
+          "name": "Analyze (rust)",
+          "startedAt": "2026-10-22T02:26:36Z",
+          "status": "COMPLETED",
+          "workflowName": "CodeQL"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:27:22Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294192",
+          "name": "validation / protected Linux container",
+          "startedAt": "2026-10-22T02:26:36Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294541",
+          "name": "validation / host library (windows-latest)",
+          "startedAt": "2026-10-22T02:27:40Z",
+          "status": "IN_PROGRESS",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:33:37Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294424",
+          "name": "validation / host library (macos-latest)",
+          "startedAt": "2026-10-22T02:26:52Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294547",
+          "name": "validation / 32-bit library (i686-pc-windows-msvc)",
+          "startedAt": "2026-10-22T02:28:04Z",
+          "status": "IN_PROGRESS",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:31:58Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294418",
+          "name": "validation / 32-bit library (i686-unknown-linux-gnu)",
+          "startedAt": "2026-10-22T02:26:36Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294377",
+          "name": "validation / big-endian library (emulated s390x)",
+          "startedAt": "2026-10-22T02:26:36Z",
+          "status": "IN_PROGRESS",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:28:57Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294484",
+          "name": "validation / source coverage evidence",
+          "startedAt": "2026-10-22T02:26:36Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:28:49Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294529",
+          "name": "validation / source branch coverage evidence",
+          "startedAt": "2026-10-22T02:26:36Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:29:28Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294557",
+          "name": "validation / coverage-guided fuzz smoke",
+          "startedAt": "2026-10-22T02:27:49Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:27:36Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294510",
+          "name": "validation / no_std code generation (thumbv6m-none-eabi)",
+          "startedAt": "2026-10-22T02:26:36Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:27:28Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294574",
+          "name": "validation / no_std code generation (thumbv7em-none-eabi)",
+          "startedAt": "2026-10-22T02:26:36Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:28:31Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294519",
+          "name": "validation / no_std code generation (riscv32imac-unknown-none-elf)",
+          "startedAt": "2026-10-22T02:27:35Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:27:37Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294643",
+          "name": "validation / no_std code generation (wasm32-unknown-unknown)",
+          "startedAt": "2026-10-22T02:26:37Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:27:39Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294615",
+          "name": "validation / seeded qualification",
+          "startedAt": "2026-10-22T02:26:36Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:34:15Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294637",
+          "name": "validation / independent process interop",
+          "startedAt": "2026-10-22T02:27:38Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294559",
+          "name": "validation / App plugtest and dogfood",
+          "startedAt": "2026-10-22T02:26:36Z",
+          "status": "IN_PROGRESS",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:28:01Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294545",
+          "name": "validation / Custom ESPHome source and configuration",
+          "startedAt": "2026-10-22T02:26:36Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:29:53Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/actions/runs/39711388763/job/119603294573",
+          "name": "validation / Validation runner tests",
+          "startedAt": "2026-10-22T02:26:36Z",
+          "status": "COMPLETED",
+          "workflowName": "Suite CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T02:27:15Z",
+          "conclusion": "NEUTRAL",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic-validation/runs/119603485295",
+          "name": "CodeQL",
+          "startedAt": "2026-10-22T02:27:12Z",
+          "status": "COMPLETED",
+          "workflowName": ""
+        }
+      ]
+    },
+    "648": {
+      "state": "MERGED",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:22:35Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic/actions/runs/39705163326/job/119583378799",
+          "name": "Quick development checks",
+          "startedAt": "2026-10-22T01:21:07Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:21:48Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic/actions/runs/39705159803/job/119583370157",
+          "name": "Analyze (actions)",
+          "startedAt": "2026-10-22T01:21:05Z",
+          "status": "COMPLETED",
+          "workflowName": "CodeQL"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic/actions/runs/39705159803/job/119583370468",
+          "name": "Analyze (rust)",
+          "startedAt": "2026-10-22T01:21:06Z",
+          "status": "IN_PROGRESS",
+          "workflowName": "CodeQL"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:21:04Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic/actions/runs/39705163326/job/119583428672",
+          "name": "library MSRV",
+          "startedAt": "2026-10-22T01:21:14Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:21:04Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic/actions/runs/39705163326/job/119583379781",
+          "name": "fmt",
+          "startedAt": "2026-10-22T01:21:05Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:21:04Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic/actions/runs/39705163326/job/119583380402",
+          "name": "clippy",
+          "startedAt": "2026-10-22T01:21:05Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:21:04Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic/actions/runs/39705163326/job/119583380120",
+          "name": "test",
+          "startedAt": "2026-10-22T01:21:05Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:21:04Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic/actions/runs/39705163326/job/119583380329",
+          "name": "doc",
+          "startedAt": "2026-10-22T01:21:05Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:21:04Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic/actions/runs/39705163326/job/119583380446",
+          "name": "package",
+          "startedAt": "2026-10-22T01:21:05Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:21:04Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic/actions/runs/39705163326/job/119583380214",
+          "name": "Companion validation",
+          "startedAt": "2026-10-22T01:21:05Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T01:21:41Z",
+          "conclusion": "NEUTRAL",
+          "detailsUrl": "https://github.com/jeffglousher/coaptic/runs/119583544593",
+          "name": "CodeQL",
+          "startedAt": "2026-10-22T01:21:37Z",
+          "status": "COMPLETED",
+          "workflowName": ""
+        }
+      ]
+    }
+  }
+}
