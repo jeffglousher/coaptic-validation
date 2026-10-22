@@ -253,9 +253,9 @@ tracks the separate source/packet diagnosis under #650; no core or server
 capacity is enlarged by this diagnostic path.
 
 Optional **separate** five-second `sudo -n perf record` and `perf stat` passes
-attach only to the selected server PID after warmup. Record samples user code at
-997Hz using `cpu-clock:u`, frame-pointer call chains and 128 mmap pages. This
-focuses diagnosis on resolvable user symbols; it does not account for kernel work.
+attach only to the selected server PID after warmup. Record samples user and
+kernel execution at 997Hz using inclusive `cpu-clock`, frame-pointer call chains
+and 128 mmap pages. Kernel symbols may remain unresolved under runner policy.
 Clean process CPU still includes user and system time, and stat events are
 unchanged. There is no eBPF, DWARF stack
 dump, register dump or packet capture. Record/stat use separate socket runs; their
@@ -275,20 +275,39 @@ at least 59,520 sends including warmup, leaving 480 below the live 60,000-send c
 retries can exhaust that margin. Default ten-second clean windows at this rate
 are refused. This higher offered load is a separate measurement stratum.
 
-Require enough resolved user samples before ranking code costs; 100 per capture
-is a useful initial triage threshold, while single-digit counts are inconclusive.
-Retain unknown, lost and throttled-sample warnings. User-only sample percentages
-are not shares of total process CPU, and profile CPU/latency is excluded from the
-clean comparison.
+Require enough resolved samples in the CPU mode being ranked; 100 per capture
+is a useful initial triage threshold, while single-digit symbol counts remain
+inconclusive. Report resolved user/kernel samples and unknowns separately. Retain
+lost and throttled-sample warnings and include unresolved samples in percentage
+denominators. Sample percentages are not clean process CPU shares or stage times;
+profile CPU/latency is excluded from the clean comparison. PID-scoped sampling
+does not cover all machine-wide interrupt or worker costs, or blocked time.
 
 After each successful record capture terminates and its raw file is readable,
 nonempty and below quota, the runner reads it while the copied server/client ELF
-paths still exist. Nonprivileged `perf --version` has a five-second deadline and
-appends to `perf-command.log`; nonprivileged `perf report` has a 30-second deadline
-and writes combined stdout/stderr to `perf-report.txt`. Both use owned sessions
-and hard file limits. The exact argv arrays, return codes, byte counts, deadlines
-and failures are retained under `report` in `perf.json`. A missing perf executable
-is an explicit report refusal. Remote debuginfod downloads are disabled.
+paths still exist on the original runner. Nonprivileged `perf --version` has a
+five-second deadline and appends to `perf-command.log`. The report prefix is
+`sudo -n -- prlimit --fsize=QUOTA:QUOTA -- timeout --signal=TERM --kill-after=5 25
+env DEBUGINFOD_URLS= perf report`: the file limit and empty debuginfod URLs apply
+after sudo. The inner timeout sends TERM after 25 seconds and KILL five seconds
+later; the outer owned-process wait remains 30 seconds. Combined stdout/stderr
+goes to the parent-opened `perf-report.txt`, with the same file quota. Both
+commands use owned sessions. Only the report opts into elevated cleanup through
+`run_owned`; version and other helpers retain the default. Exact argv arrays,
+return codes, byte counts, deadlines and failures remain under `report` in
+`perf.json`. Missing tools or sudo refusal remain explicit unavailable reports.
+No remote debuginfod downloads or symbol snapshots are added.
+
+Upstream perf's
+[kernel symbol loader](https://github.com/torvalds/linux/blob/v6.17/tools/perf/util/symbol.c#L2005-L2127)
+can resolve against live `/proc/kallsyms` after matching the recorded kernel
+build ID to `/sys/kernel/notes`. Keep reporting on that runner before its kernel
+or module mappings change. Root does not guarantee resolution: the kernel's
+[kallsyms policy](https://github.com/torvalds/linux/blob/v6.17/kernel/ksyms_common.c#L8-L40)
+requires suitable `CAP_SYSLOG` in the initial user namespace under restrictive
+settings, and `kptr_restrict=2` hides addresses even then. Other security policy,
+missing symbols or build-ID mismatches can also prevent resolution. Retain raw
+unknowns/warnings; do not change capabilities, permissions or kernel policy.
 
 The report uses `--stdio --header --show-nr-samples --show-total-period
 --sort dso,symbol --no-children --call-graph none --percent-limit 0
@@ -347,7 +366,7 @@ not an estimate based on typical latency widths. At most 192 total windows and
 constraints. Even the combination of those maxima with 2M samples needs at most
 75391744 metadata bytes; report status fits the existing capped `perf.json`.
 Each perf data/stat output has a hard `RLIMIT_FSIZE` applied **after sudo**;
-its command/version log and nonprivileged report have the same quota. Reserve
+its command/version log and privileged report have the same quota. Reserve
 **three file quotas per profile pass**, conservatively including a report quota
 for stat passes too. The per-file quota is
 `min(8 MiB, floor(160 MiB / (3 * profile_passes)))` when profiling is enabled.
@@ -363,11 +382,16 @@ one job has no matrix/parallel build. Raw failed windows and earlier successful
 windows survive later failure and upload with `if: always()`. Credentials and
 the Cargo lane are excluded from uploads. Cancellation can interrupt cleanup;
 the runner starts every command in an owned session, signals only its process
-group, escalates TERM to KILL and reaps with five-second waits. This covers Cargo
-descendants as well as server/client and perf. An inner privileged `timeout`
-also bounds perf to its five-second window plus ten seconds, with KILL five
-seconds later if sudo isolates its group. Client/server cleanup attempts run
-independently, and cleanup errors retain `result.json` and `perf.json`.
+group, escalates TERM to KILL and reaps with five-second waits. This targets Cargo
+descendants in that group as well as server/client and perf launch groups. An
+inner privileged `timeout` also bounds perf to its five-second window plus ten seconds, with KILL five
+seconds later if sudo isolates its group. Reporting has its own 25+5-second
+privileged watchdog as described above. These bounds and owned-group signaling
+are not proof that every descendant stays in those groups or that separated
+descendants have terminated. Full descendant containment has not been qualified;
+it would require separate work beyond this bounded reporting change.
+Client/server cleanup attempts run independently, and cleanup errors retain
+`result.json` and `perf.json`.
 Unresolved termination of the client, server, perf, report or any helper aborts
 the remaining campaign after retaining the window and append-only index. `summary.json` records
 `campaign_complete=false` and `cleanup_unresolved=true`; no stratum emits a
