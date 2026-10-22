@@ -22,7 +22,7 @@ class PreflightEvidenceTests(unittest.TestCase):
             lane.mkdir()
             output = root / 'evidence'
             args = argparse.Namespace(sizes='64', rates='1', seconds=2, repeats=2,
-                                      server_kind='coaptic-reusable', perf=False,
+                                      server_kind='coaptic-reusable', perf=False, concurrency=1, message_type='con',
                                       baseline_sha='a' * 40, candidate_sha='b' * 40,
                                       build_lane=lane, output=output)
             with patch.object(cpu.sys, 'platform', 'linux'), patch.object(cpu, 'SUITE', suite), \
@@ -53,7 +53,7 @@ class PreflightEvidenceTests(unittest.TestCase):
                     suite.mkdir()
                     lane.mkdir()
                     args = argparse.Namespace(sizes='64', rates='1', seconds=2, repeats=2,
-                                              server_kind='coaptic-reusable', perf=False,
+                                              server_kind='coaptic-reusable', perf=False, concurrency=1, message_type='con',
                                               baseline_sha='a' * 40, candidate_sha='b' * 40,
                                               build_lane=lane, output=output)
                     versions = dict(rustc=rustc, cargo=cargo)

@@ -25,18 +25,21 @@ CARGO_VERSION = f"cargo 1.99.0 (222222222 2026-10-01)\ncommit-hash: {'2' * 40}\n
 
 def options(**overrides):
     values = dict(sizes="64,1024", rates="100,1000", seconds=10,
-                  repeats=4, server_kind="coaptic-reusable", perf=True)
+                  repeats=4, server_kind="coaptic-reusable", perf=True, concurrency=1, message_type="con")
     values.update(overrides)
     return argparse.Namespace(**values)
 
 
-def observation(root, label, repeat, *, security="unprotected", size=64, mode="clean"):
+def observation(root, label, repeat, *, security="unprotected", size=64, mode="clean",
+                concurrency=1, message_type="con"):
     report = dict(completed=1000, achieved_ops_per_second=100,
-                  pacing_missed_period_operations=0, latencies_ns=[1000] * 1000)
-    path = root / f"{label}-{repeat}-{security}-{size}-{mode}.json"
+                  pacing_missed_period_operations=0, latencies_ns=[1000] * 1000,
+                  concurrency=concurrency, message_type=message_type, peak_pending=1)
+    path = root / f"{label}-{repeat}-{security}-{size}-{mode}-{concurrency}-{message_type}.json"
     cpu.retain_report(path, json.dumps(report), 1000)
     return dict(revision_label=label, repeat=repeat, security=security, bytes=size,
                 mode=mode, rate=100, operations=1000, server_kind="coaptic-reusable", passed=True,
+                concurrency=concurrency, message_type=message_type,
                 report=cpu.report_summary(report), report_file=str(path),
                 cpu_cost={who: dict(user_seconds=.8 if label == "baseline" else .4,
                                     system_seconds=.2 if label == "baseline" else .1,
@@ -98,6 +101,14 @@ class ValidationTests(unittest.TestCase):
                                                 "--build-lane", "unused", "--output", "unused"])
         self.assertEqual(args.sizes, "64,1024")
         cpu.configuration(args)
+
+    def test_concurrency_requires_explicit_non_without_expanding_campaign(self):
+        default = cpu.configuration(options())
+        for concurrency in (1, 2, 3, 4):
+            self.assertEqual(cpu.configuration(options(concurrency=concurrency, message_type="non")), default)
+        for concurrency, message_type in ((2, "con"), (4, "con"), (True, "non"), (5, "non"), (0, "non")):
+            with self.subTest(concurrency=concurrency), self.assertRaisesRegex(ValueError, "NSTART"):
+                cpu.configuration(options(concurrency=concurrency, message_type=message_type))
 
     def test_perf_is_pid_scoped_bounded_and_has_no_memory_dump(self):
         for mode in ("record", "stat"):
@@ -406,6 +417,7 @@ class AggregationTests(unittest.TestCase):
         self.assertEqual(baseline["client"]["system_ns"], 200_000)
         self.assertEqual(baseline["verified_operations"], 2000)
         self.assertEqual(baseline["p99_latency_ns"], 1000)
+        self.assertEqual(summary["observed_peak_pending"], {"baseline": [1, 1], "candidate": [1, 1]})
 
     def test_no_ratio_for_failure_missing_duplicate_or_quantized_pairs(self):
         mutations = []
@@ -452,6 +464,25 @@ class AggregationTests(unittest.TestCase):
         profile["report_file"] = "must-never-read-profiling-samples"
         self.assertEqual(cpu.aggregate(values + [profile], 2, .01), cpu.aggregate(values, 2, .01))
         self.assertEqual(cpu.aggregate([profile], 2, .01), [])
+
+    def test_con_non_and_concurrency_cohorts_and_legacy_metadata_stay_separate(self):
+        values = self.pairs()
+        for concurrency in (1, 2, 3, 4):
+            values += [observation(self.root, label, repeat, concurrency=concurrency, message_type="non")
+                       for repeat in range(2) for label in ("baseline", "candidate")]
+        summaries = cpu.aggregate(values, 2, .01)
+        self.assertEqual(len(summaries), 5)
+        self.assertTrue(all(s["comparable"] for s in summaries))
+        c4 = next(s for s in summaries if s["concurrency"] == 4)
+        self.assertEqual(c4["observed_peak_pending"], {"baseline": [1, 1], "candidate": [1, 1]})
+        old = self.pairs()
+        for item in old:
+            item.pop("concurrency")
+            item.pop("message_type")
+        self.assertFalse(cpu.aggregate(old, 2, .01)[0]["comparable"])
+        mismatch = self.pairs()
+        mismatch[0]["report"]["concurrency"] = 2
+        self.assertFalse(cpu.aggregate(mismatch, 2, .01)[0]["comparable"])
 
     def test_incomplete_campaign_or_profile_cleanup_invalidates_complete_clean_pairs(self):
         values = self.pairs()
@@ -528,9 +559,11 @@ class MetadataTests(unittest.TestCase):
             root = Path(temporary)
             result = dict(passed=True, mode="clean", security="oscore", bytes=64,
                           rate=100, server_kind="coaptic-ready", operations=1000,
+                          concurrency=4, message_type="non",
                           report={"huge": "x" * cpu.WINDOW_LIMIT})
             cpu.save_window(root, result)
             self.assertFalse(result["passed"])
+            self.assertEqual((result["concurrency"], result["message_type"]), (4, "non"))
             self.assertEqual(json.loads((root / "result.json").read_text()), result)
             self.assertLessEqual((root / "result.json").stat().st_size, cpu.WINDOW_LIMIT)
 
@@ -569,7 +602,7 @@ class CampaignTests(unittest.TestCase):
                             binaries={name: dict(path=str(out / label / name))
                                       for name in ("bench-rust-server", "bench-native-client")})
 
-            def window(server, client, cell, operations, directory, mode, quota):
+            def window(server, client, cell, operations, directory, mode, quota, **kwargs):
                 index = len(calls)
                 calls.append((server, client, mode))
                 directory.mkdir()
@@ -891,6 +924,7 @@ class LinuxProcessTests(unittest.TestCase):
 
 class RetentionTests(unittest.TestCase):
     def exercise(self, report, *, invalid=True, cleanup_errors=None, tail_error=None, mode="clean"):
+        report = dict(report, warmup=cpu.WARMUP)
         native = Mock()
         native.control_line.side_effect = ["ready", "measured", json.dumps(report)]
         native.validate_report.side_effect = ValueError("incomplete operations") if invalid else None

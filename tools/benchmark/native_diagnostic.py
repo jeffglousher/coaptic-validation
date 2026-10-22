@@ -73,16 +73,22 @@ def cpu_cost(before, after, completed):
     return result
 
 
-def validate_report(report, size, operations, policy, security, rate=None):
+def validate_report(report, size, operations, policy, security, rate=None,
+                    concurrency=1, message_type="con"):
     if not isinstance(report, dict):
         raise ValueError("native diagnostic report must be an object")
     if (report.get("schema") != "coaptic-native-complete/1"
             or type(report.get("bytes")) is not int or type(report.get("completed")) is not int
             or report.get("bytes") != size or report.get("completed") != operations
-            or report.get("policy") != policy or report.get("security") != security):
+            or report.get("policy") != policy or report.get("security") != security
+            or type(report.get("concurrency")) is not int or report["concurrency"] != concurrency
+            or report.get("message_type") != message_type
+            or type(concurrency) is not int or not 1 <= concurrency <= 4
+            or message_type not in ("con", "non") or (concurrency > 1 and message_type != "non")):
         raise ValueError("mismatched native diagnostic report")
     for name, expected in (("requested_operations", operations), ("attempted", operations),
-                           ("failed", 0), ("unattempted", 0), ("pacing_dropped_operations", 0)):
+                           ("failed", 0), ("unattempted", 0), ("cancelled_inflight", 0),
+                           ("rx_body_slots", concurrency), ("pacing_dropped_operations", 0)):
         if type(report.get(name)) is not int or report[name] != expected:
             raise ValueError("incomplete native operation accounting")
     if report.get("failure") is not None or "failure" not in report:
@@ -93,16 +99,26 @@ def validate_report(report, size, operations, policy, security, rate=None):
         raise ValueError("mismatched requested operation rate")
     values = report.get("latencies_ns")
     if (not isinstance(values, list) or len(values) != operations
-            or any(type(v) is not int or v < 0 for v in values)):
+            or any(type(v) is not int or not 0 <= v < 2**64 for v in values)):
         raise ValueError("incomplete native diagnostic timing")
     for key in ("elapsed_ns", "received_datagrams", "sent_datagrams",
                 "core_heap_limit_bytes", "app_inline_bytes", "verification_heap_bytes",
-                "timing_heap_bytes", "udp_scratch_bytes"):
+                "timing_heap_bytes", "udp_scratch_bytes", "pending_call_metadata_bytes"):
         if type(report.get(key)) is not int or report[key] <= 0:
             raise ValueError("missing native diagnostic cost")
     minimum = operations * ((size + 1023) // 1024)
+    if (type(report.get("warmup")) is not int or not 0 <= report["warmup"] <= 1000
+            or type(report.get("total_sent_datagrams")) is not int
+            or not report["sent_datagrams"] + report["warmup"] * ((size + 1023) // 1024)
+            <= report["total_sent_datagrams"] <= 60_000
+            or type(report.get("peak_pending")) is not int
+            or not 1 <= report["peak_pending"] <= min(concurrency, operations)):
+        raise ValueError("inconsistent bounded native resources")
+    # Latencies may overlap: at most C Calls contribute time at any instant.
+    # Each individual latency must still fit inside the measured window.
     if (report["received_datagrams"] < minimum or report["sent_datagrams"] < minimum
-            or sum(values) > report["elapsed_ns"]):
+            or max(values) > report["elapsed_ns"]
+            or sum(values) > concurrency * report["elapsed_ns"]):
         raise ValueError("incomplete native diagnostic traffic")
     achieved = report.get("achieved_ops_per_second")
     expected_rate = operations * 1e9 / report["elapsed_ns"]
@@ -126,11 +142,13 @@ def validate_report(report, size, operations, policy, security, rate=None):
 
 def measure(server, client, size, operations, warmup, timeout_ms, policy, security,
             *, server_kind="coaptic-reusable", rate=None, cpu_gated=False,
-            phase_timeout_seconds=300):
+            phase_timeout_seconds=300, concurrency=1, message_type="con"):
     if not (1 <= size <= 65536 and 1 <= operations <= 60_000 and 0 <= warmup <= 1000
             and (operations + warmup) * ((size + 1023) // 1024) <= 60_000
             and 1 <= timeout_ms <= 60000 and policy in ("spin", "sleep1")
             and security in ("unprotected", "oscore")
+            and type(concurrency) is int and 1 <= concurrency <= 4
+            and message_type in ("con", "non") and (concurrency == 1 or message_type == "non")
             and server_kind in ("coaptic-reusable", "coaptic-mio", "coaptic-ready")
             and type(phase_timeout_seconds) is int and 1 <= phase_timeout_seconds <= 3600
             and (rate is None or (type(rate) is int and 1 <= rate <= 1_000_000
@@ -169,6 +187,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                     command.append(str(credentials))
                 if rate is not None:
                     command.extend(["--rate", str(rate)])
+                command.extend(["--concurrency", str(concurrency), "--message-type", message_type])
                 command.append("--cpu-gated" if cpu_gated else "--gated")
                 child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                          stderr=subprocess.PIPE, text=True)
@@ -191,7 +210,9 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                 if not output:
                     raise RuntimeError("client refused measured operation")
                 report = json.loads(output)
-                validate_report(report, size, operations, policy, security, rate)
+                validate_report(report, size, operations, policy, security, rate, concurrency, message_type)
+                if report["warmup"] != warmup:
+                    raise ValueError("mismatched warmup")
                 if not cpu_gated:
                     after = {name: snapshot(p) for name, p in peers.items()}
                     resource_window_ns = time.perf_counter_ns() - started
@@ -205,6 +226,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                             cpu_boundary=("post-warmup ready/run to measured/report; excludes JSON formatting"
                                           if cpu_gated else "ready/run through JSON formatting"),
                             server_kind=server_kind, requested_operations_per_second=rate,
+                            concurrency=concurrency, message_type=message_type,
                             phase_timeout_seconds=phase_timeout_seconds,
                             cpu_attribution_limit="OS-accounted process user and system CPU; quantized; IPC/snapshot boundary overhead included; machine-wide interrupts/DPCs and unrelated kernel work not attributed; client reported separately",
                             server_sha256=digest(server), client_sha256=digest(client),
@@ -226,7 +248,8 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                     accounting_status=("partial report retained; not an accepted complete observation"
                                        if report is not None else "no report; measured activity unknown"),
                     phase_timeout_seconds=phase_timeout_seconds,
-                    size=size, operations=operations, policy=policy, security=security)
+                    size=size, operations=operations, policy=policy, security=security,
+                    concurrency=concurrency, message_type=message_type)
                 raise
             finally:
                 if child is not None and child.poll() is None:
@@ -250,6 +273,8 @@ def main():
     parser.add_argument("--server-kind", choices=("coaptic-reusable", "coaptic-mio", "coaptic-ready"),
                         default="coaptic-reusable")
     parser.add_argument("--rate", type=int)
+    parser.add_argument("--concurrency", type=int, choices=range(1, 5), default=1)
+    parser.add_argument("--message-type", choices=("con", "non"), default="con")
     parser.add_argument("--cpu-gated", action="store_true")
     parser.add_argument("--phase-timeout-seconds", type=int, default=300,
                         help="finite control-phase wall deadline, 1..3600s; expiry invalidates observation")
@@ -260,7 +285,8 @@ def main():
         report = measure(args.server, args.client, args.bytes, args.operations, args.warmup,
                          args.timeout_ms, args.policy, args.security,
                          server_kind=args.server_kind, rate=args.rate, cpu_gated=args.cpu_gated,
-                         phase_timeout_seconds=args.phase_timeout_seconds)
+                         phase_timeout_seconds=args.phase_timeout_seconds,
+                         concurrency=args.concurrency, message_type=args.message_type)
     except Exception as error:
         args.output.write_text(json.dumps(dict(passed=False, error_type=type(error).__name__,
                                               reason=str(error),
