@@ -33,16 +33,17 @@
       "id": "linux-sampling-1",
       "hypothesis": "Rotated matched-load CPU windows and separate perf captures will resolve active processing and syscall costs more clearly.",
       "change": "Manual Linux runner uses immutable revisions, a frozen baseline client, sequential builds, complete authenticated operations and bounded artifacts.",
-      "result": "Not executed. Review fixed datagram admission, artifact bounds, descendant cleanup, Cargo target-path selection and campaign abort defects. The focused runner suite passes 38 tests; two Linux-only checks remain pending.",
-      "decision": "Run only after the corrected source is reviewed and committed. No Linux performance claim yet."
+      "result": "Run39779276076 completed 24 clean windows and 24 separate profiles: 1,872,000 verified operations, zero failures. At64B,C1,6000/s, both builds actually used matched Rust1.99.1. Same-adapter candidate/baseline CPU ratios range0.9535..1.0877; no50%target proof. All52 Linux tests passed. Most kernel samples unresolved; readiness captures27..53 samples and zero duration headers do not prove coverage.",
+      "decision": "Retain all results and warnings. Investigate repeated receive/poll maintenance; enforce selected compiler before future builds. Do not treat cross-adapter savings as core speedup.",
+      "evidence": "../cpu-cost-linux-20261022/README.md and hashed raw-observations.tar.gz"
     }
   ],
   "next_work": [
     {
       "priority": 1,
       "area": "Idle receive and readiness scheduling",
-      "basis": "Measured large process CPU difference with a visible RTT tradeoff in one small sequential workload.",
-      "next": "Profile equivalent adapters at resolved CPU accounting intervals and matched offered load; retain pacing and latency."
+      "basis": "Windows and Linux matched-load cells show substantial idle receive cost, with readiness RTT tradeoffs. Linux first-core-batch CPU results are mixed.",
+      "next": "Reduce repeated maintenance without skipping deadlines, refusal or recovery. Keep scheduling and core changes separate in matched comparisons."
     },
     {
       "priority": 2,

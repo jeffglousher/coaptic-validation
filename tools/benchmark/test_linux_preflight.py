@@ -26,6 +26,7 @@ class PreflightEvidenceTests(unittest.TestCase):
                                       baseline_sha='a' * 40, candidate_sha='b' * 40,
                                       build_lane=lane, output=output)
             with patch.object(cpu.sys, 'platform', 'linux'), patch.object(cpu, 'SUITE', suite), \
+                    patch.object(cpu.os, 'sysconf', return_value=100, create=True), \
                     patch.object(cpu, 'identity', side_effect=RuntimeError('identity refused')), \
                     patch.object(cpu, 'build') as build:
                 with self.assertRaisesRegex(RuntimeError, 'identity refused'):
@@ -39,6 +40,51 @@ class PreflightEvidenceTests(unittest.TestCase):
             self.assertEqual(summary['windows_recorded'], 0)
             self.assertFalse(summary['campaign_complete'])
             self.assertEqual(summary['comparisons'], [])
+
+    def test_wrong_release_or_missing_commit_retains_versions_and_stops_before_build(self):
+        host = 'x86_64-unknown-linux-gnu'
+        rustc = f'rustc 1.99.0\nhost: {host}\nrelease: 1.99.0\ncommit-hash: {"1" * 40}'
+        cargo = f'cargo 1.99.0\nrelease: 1.99.0\ncommit-hash: {"2" * 40}'
+        for tool in ('rustc', 'cargo'):
+            for problem in ('release', 'commit'):
+                with self.subTest(tool=tool, problem=problem), tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    suite, lane, output = root / 'suite', root / 'lane', root / 'evidence'
+                    suite.mkdir()
+                    lane.mkdir()
+                    args = argparse.Namespace(sizes='64', rates='1', seconds=2, repeats=2,
+                                              server_kind='coaptic-reusable', perf=False,
+                                              baseline_sha='a' * 40, candidate_sha='b' * 40,
+                                              build_lane=lane, output=output)
+                    versions = dict(rustc=rustc, cargo=cargo)
+                    if problem == 'release':
+                        versions[tool] = versions[tool].replace('1.99.0', '1.99.1')
+                    else:
+                        versions[tool] = versions[tool].split('\ncommit-hash:')[0]
+                    with patch.object(cpu.sys, 'platform', 'linux'), patch.object(cpu, 'SUITE', suite), \
+                            patch.object(cpu.os, 'sysconf', return_value=100, create=True), \
+                            patch.object(cpu, 'identity', return_value=dict(status='')), \
+                            patch.object(cpu, 'hardware', return_value={}), \
+                            patch.object(cpu, 'digest', return_value='hash'), \
+                            patch.object(cpu.importlib.metadata, 'version', return_value='7.0.0'), \
+                            patch.object(cpu, 'command', side_effect=[versions['rustc'], versions['cargo']]), \
+                            patch.object(cpu, 'run_logged') as logged, patch.object(cpu, 'window') as window:
+                        with self.assertRaisesRegex(ValueError, tool):
+                            cpu.run(args)
+                    logged.assert_not_called()  # No fetch, checkout or Cargo build for either revision.
+                    window.assert_not_called()
+                    request = json.loads((output / 'request.json').read_bytes())
+                    actual = json.loads((output / 'build-baseline.json').read_bytes())
+                    failure = json.loads((output / 'failure.json').read_bytes())
+                    summary = json.loads((output / 'summary.json').read_bytes())
+                    self.assertEqual(request['RUSTUP_TOOLCHAIN'], '1.99.0')
+                    self.assertEqual(actual, dict(RUSTUP_TOOLCHAIN='1.99.0', **versions))
+                    self.assertEqual(failure['type'], 'ValueError')
+                    self.assertIn(tool, failure['reason'])
+                    self.assertEqual(summary['windows_recorded'], 0)
+                    self.assertFalse(summary['campaign_complete'])
+                    self.assertEqual(summary['comparisons'], [])
+                    self.assertFalse((output / 'binaries').exists())
 
 
 @unittest.skipUnless(sys.platform == 'linux', 'requires Linux process groups and file limits')

@@ -7,8 +7,25 @@ baseline and candidate; branch names are refused. The initial runtime baseline i
 `b8f44fa16b3e16f4c9c6cc5f1205d2aee9cb0b57`; the merged CPU candidate is
 `21f6dea85fb49bd766b405b3d48f58e76976ae1d`.
 
-The manual workflow uses Ubuntu 24.04, Rust 1.99.0, two Cargo jobs and one runner
-build lane. It builds both revisions sequentially with `--release --locked
+The manual workflow uses Ubuntu 24.04, pinned Rust 1.99.0, two Cargo jobs and one
+runner build lane. The workflow installs `RUSTUP_TOOLCHAIN=1.99.0`; the runner
+sets the same value for every rustc/Cargo command, overriding ambient selection
+and the root `rust-toolchain.toml`'s `stable`. Cargo uses `RUSTC=rustc` so its
+compiler uses that selection too. Before either build, the runner retains full
+`rustc -Vv` and `cargo -Vv` output in `build-baseline.json` or
+`build-candidate.json`, requires release 1.99.0 and full commit hashes, and
+checks the candidate identities against the baseline before compiling it.
+Version refusals retain the request, observed versions, failure and incomplete
+summary without starting that build. A successful build replaces its preflight
+record with the full build record, including the same version output; this
+reuses the existing metadata allowance.
+
+The [rustup override order](https://rust-lang.github.io/rustup/overrides.html)
+puts `RUSTUP_TOOLCHAIN` ahead of directory/toolchain-file defaults;
+[Cargo documents `RUSTC`](https://doc.rust-lang.org/cargo/reference/environment-variables.html)
+as its compiler executable selection.
+
+It builds both revisions sequentially with `--release --locked
 --target HOST`, where HOST is the validated host triple from `rustc -Vv`;
 this overrides inherited Cargo target configuration and environment settings.
 It copies binaries only from `lane/HOST/release` and records/compares the target
@@ -21,6 +38,14 @@ Both candidate binaries remain available for inspection. Clean source identities
 trees, compiler, flags, lock/manifest hashes, binary SHA256s and Linux hardware,
 affinity, governor, load and CPU accounting tick rate are retained. A lock mismatch
 fails rather than updating dependencies. No build runs during measurement.
+
+Historical run `39779276076` predates this enforcement: the workflow selected
+1.99.0, but the root `stable` override selected rustc and Cargo 1.99.1. Its
+retained versions describe a valid matched 1.99.1 comparison. This fix does not
+relabel that evidence or claim it used 1.99.0. Existing frame-pointer, release
+debug/strip, incremental and job flags remain the same; the new recorded flags
+explicitly select the toolchain and Cargo compiler. Cargo identity now includes
+verbose release/commit data rather than only `cargo -V`.
 
 On an otherwise idle Linux host with committed clean companion/core checkouts,
 the pinned compiler and `psutil==7.0.0` already installed, reuse an existing lane:

@@ -63,5 +63,7 @@ recovery pass. No physical-device qualification was repeated.
 
 During these timing runs, Windows system sampling was refused and WSL did not
 start. Process accounting does not attribute machine-wide interrupts or DPCs.
-Linux sampling, larger and concurrent workloads, observability overhead, EDHOC
-setup, device CPU and whole-system memory peaks remain unfinished.
+The [subsequent Linux campaign](../cpu-cost-linux-20261022/README.md) retains
+matched-load process CPU and limited sampling evidence separately. Larger and
+concurrent workloads, observability overhead, EDHOC setup, device CPU and
+whole-system memory peaks remain unfinished.

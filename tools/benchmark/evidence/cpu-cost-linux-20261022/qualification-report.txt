@@ -1,0 +1,102 @@
+Run39779276076: SUCCESS; cpu job119826049837, completed2026-10-22T12:41:46Z.
+
+https://github.com/jeffglousher/coaptic-validation/actions/runs/39779276076
+
+Exact companion4be0a2e189b0d768f5f16539cb1edf5102e91884; clean suite/core identities.
+
+Core baselineb8f44fa16b3e16f4c9c6cc5f1205d2aee9cb0b57; candidate21f6dea85fb49bd766b405b3d48f58e76976ae1d.
+
+Linux unittest:52 tests in5.446s, OK, no skips. Sequential baseline release build1m46s; candidate38.34s.
+
+IMPORTANT: actual rustc1.99.1(58cf8f9c3), Cargo1.99.1(5f94df478), LLVM23.1.1, x86_64-unknown-linux-gnu.
+
+Workflow installed/defaulted1.99.0, but job log explicitly identifies root rust-toolchain.toml stable override.
+
+Both actual compilers/flags/locks/manifests/target matched; binary SHA256s independently verified inside ZIP.
+
+Release debuginfo1, forced frame pointers, no stripping, incremental0,2 build jobs, one lane; baseline client used for every window.
+
+Only this run artifact downloaded; all292 entries checked for names/traversal/link/special/encryption/size constraints and streamed for CRC+SHA256.
+
+All24 clean windows+12record+12stat passed; complete campaign, no failed windows/unresolved cleanup/unavailable captures or reports.
+
+All1,872,000 measured operations attempted+verified, same number of latency samples and sent/received datagrams per direction,0failed/unattempted/dropped.
+
+Clean:1,152,000 verified; record360,000; stat360,000.960 additional warmup operations are outside measured counts.
+
+Clean achieved5999.998290..6000.097194/s at offered6000/s; each window48000 operations over about8s; profiles30000 over5s.
+
+Absolute starts:1,151,999/1,152,000 clean starts late by some amount;2439missed whole periods total(0.2117%), range1..294/window(max0.6125%);0drops.
+
+Process clock tick10ms; minimum server81ticks/window versus20required; resource boundaries8.000260..8.000507s.1min load0.5952..1.7813 on4available logical CPUs.
+
+Fixture:64B loopback, Default/AllocMemory host, one outstanding Call, established OSCORE/unprotected strata. CPU includes IPC/control/idle and process kernel time.
+
+CPU and latency below are separate metrics; ratios candidate/baseline, complete rotated two-pair aggregates,96000 verified operations/revision/cell. No confidence interval or acceptance claim.
+
+unprotected/reusable: server CPU us/op 166.666667->166.875000, ratio1.001250; client CPU us/op 32.395833->30.937500; RTT median us 18.525->17.793,p99us 40.566->30.377.
+
+  Server user/system us/op 38.958333/127.708333 -> 62.083333/104.791667.
+
+unprotected/mio: server CPU us/op 17.812500->19.375000, ratio1.087719; client CPU us/op 45.312500->47.500000; RTT median us 30.567->31.719,p99us 54.873->55.324.
+
+  Server user/system us/op 2.083333/15.729167 -> 5.208333/14.166667.
+
+unprotected/ready: server CPU us/op 21.354167->22.708333, ratio1.063415; client CPU us/op 47.812500->49.687500; RTT median us 32.982->36.729,p99us 56.726->57.317.
+
+  Server user/system us/op 6.770833/14.583333 -> 7.083333/15.625000.
+
+oscore/reusable: server CPU us/op 166.666667->166.562500, ratio0.999375; client CPU us/op 34.791667->33.333333; RTT median us 21.190->21.110,p99us 47.820->39.344.
+
+  Server user/system us/op 62.500000/104.166667 -> 59.479167/107.083333.
+
+oscore/mio: server CPU us/op 22.395833->21.354167, ratio0.953488; client CPU us/op 54.375000->51.666667; RTT median us 40.506->35.016,p99us 64.812->66.235.
+
+  Server user/system us/op 8.854167/13.541667 -> 5.520833/15.833333.
+
+oscore/ready: server CPU us/op 23.645833->24.791667, ratio1.048458; client CPU us/op 52.604167->54.895833; RTT median us 35.928->37.842,p99us 63.390->65.443.
+
+  Server user/system us/op 11.770833/11.875000 -> 6.458333/18.333333.
+
+Memory separate: clean server RSS snapshots4,395,008..4,960,256B; client2,703,360..3,100,672B. Every server before/after RSS equal within its window; this does not establish peak or whole-system memory.
+
+Client App ledger: inline15448B(includes1473B UDP scratch), core requested heap21716B, verification128B, timing384000B clean/240000B profile. Not a server ledger or minimum RAM.
+
+Perf7.0.14:12readable flat reports,2317samples total; reusable494/495per pass, mio/ready27..53. Every report says0lost, but first/last/sample duration headers all0; full CPU-gate coverage unproven.
+
+Every report retains Invalid HEADER_EVENT_DESC:nre=1 sz=144(min64), event description unavailable, PMU capabilities unavailable and missing-feature headers.
+
+Kernel sample shares53.85..74.00%; all but3kernel samples are unresolved addresses.3samples resolve the existing host bpf_prog_25194ef1fe028eb5_kprobe_ip_send_skb probe,1each in windows25/32/35. Total unresolved including user addresses58.97..78.00%. These are sampled process self costs, not exact stage timing or system-wide interrupt attribution.
+
+Every stat pass retains unsupported cycles/instructions; task-clock/context-switches/migrations/page-faults available. No hardware-counter claim.
+
+Reusable candidate ranked resolved user self samples: unprotected recvfrom8.50%(42),poll_engine7.09%(35),recv_from_with_flags2.02%(10); OSCORE recvfrom10.12%(50),poll_engine7.09%(35),pool release1.62%(8) tied recv_udp1.62%(8).
+
+Other exploratory hotspots: baseline dedup expiry3.23%(16) unprotected reusable; candidate client expiry1.42%(7) in both reusable modes. Readiness rankings have single-digit counts and cannot establish a stable order.
+
+Raw failures: no failed operations/windows;19vendored webrtc-dtls deprecation warnings retained in each build log,12perf header warnings,12stat passes with unsupported hardware events. No warning was suppressed.
+
+Source check snapshot at about12:43UTC: 24success,3in progress: validation / host library (windows-latest); validation / App plugtest and dogfood; validation / big-endian library (emulated s390x). Only cpu job belongs to this qualification run; legacy status endpoint has0statuses and pending aggregate, not a failed check.
+
+NEXT CONCRETE HARNESS FIX: set explicit RUSTUP_TOOLCHAIN=1.99.0 for rustc/cargo build commands and assert actual release/commit before either build; retain this run as matched1.99.1 evidence.
+
+NEXT PERFORMANCE TARGET: reduce repeated nonblocking recvfrom/idle poll/maintenance work in reusable adapter via bounded readiness/deadline scheduling; preserve timers, refusal/recovery and authentication. This is a profiling inference; crypto is not the leading resolved cost here.
+
+Qualification remains open: no50%CPU target proof; SmallDevice/Constrained, representative device/cloud, concurrency scaling and saturation not qualified. Two repeats and noisy hosted scheduling do not establish regressions.
+
+Artifact12426841440: 22657554compressed bytes; declared/verified expanded80525121B; extracted JSON/log/text13,931,333B. Raw perf and four ELF binaries stay private in original ZIP, not executed/extracted.
+
+ZIP SHA256 d03a7f1b20eef624ad7c7b9b7fce0cb669e52a2d432ac1b183ea3be5fcc4147b
+
+Job log SHA256 bb748ffbd08bbe82f54ec15cfe9913bb2d32b41323e99fbbd88ea56617f46fa2
+
+Binary baseline/bench-rust-server SHA256 84728ab2a2e817d0768b18ff834a1eea631820c149a5a76c55ee74bfaedd5a80
+
+Binary baseline/bench-native-client SHA256 904e91922af52040cb5572a659513d54ca0bb325cc9e9a80e7c482cd06b0b4f0
+
+Binary candidate/bench-rust-server SHA256 9a2c8f00c7bc6136effc7d0c421dd23f2440865042b11dfb5640db6f0f31c5c5
+
+Binary candidate/bench-native-client SHA256 1864131db686c5b036f9057216eba0c44df7cdd7abe89a66dbf46c154a989726
+
+
+No source changes/commits/PRs, redispatch/cancellation, local builds, runtime installs, hardware/UAC/restart/touch/firewall actions or cleanup performed.
