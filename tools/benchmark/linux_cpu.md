@@ -347,6 +347,36 @@ period reset at every schedule-in or generic adaptive-frequency feedback is not
 an established explanation for sparse samples. The exact Azure kernel patches,
 configuration and timer delivery are not verified by those upstream sources.
 
+The raw reader accepts the earlier single-clock layout or the observed
+clock-plus-dummy layout with `IDENTIFIER`. Every sample must bind to the requested
+clock's IDs and target PID; tracking metadata and loss stay separate. Other
+layouts are retained and refused.
+
+[Run 39855681794](https://github.com/jeffglousher/coaptic-validation/actions/runs/39855681794)
+passed all 57 selected Linux tests, then refused enable ACK before releasing work.
+No measured CPU receipt exists. Its partial samples and eventual log messages do
+not establish startup latency, the failure cause or sampling density.
+
+Upstream 6.17.13 accepts newline or NUL commands, opens both FIFOs read/write and
+nonblocking, and sends ACK after handling enable/disable. The current framing is
+supported by its [control implementation](https://github.com/gregkh/linux/blob/v6.17.13/tools/perf/util/evlist.c#L1890-L2229).
+Its [startup loop](https://github.com/gregkh/linux/blob/v6.17.13/tools/perf/builtin-record.c#L2560-L2801)
+initializes control before synthesis. These facts do not prove the runner binary's
+patches or failure mechanism.
+
+Metadata retains spawn, command, deadline, refusal and ACK observations. Legacy
+`deadline_exceeded` covers either timeout; `control_timeout_boundary` identifies
+`ACK` or `capture`, while `capture_deadline_exceeded` records absolute expiry.
+An independent regular-log reader uses 4096-byte chunks, a 64-byte tail and the
+existing file quota. Fixed marker timestamps are first observations, not emission
+times or ACKs. Log text cannot release work or move perf's write offset.
+
+After refused control and confirmed reap, a nonblocking drain retains late bytes
+as hex and observation timestamps within the same 64-byte channel allowance.
+It preserves the refusal and successful ACK count and never reopens the gate.
+These changes repair missing failure evidence; timely enable/run/measured/
+disable/stop and a verified worker receipt are still required for comparison.
+
 The qualified [4000/s ready/blocking run 39843237773](https://github.com/jeffglousher/coaptic-validation/actions/runs/39843237773)
 at companion `d4f585a` and identical core `120a622` verified 1,344,000 operations;
 all 32 clean windows and four latency guards passed, with CPU reductions of

@@ -54,6 +54,55 @@ def capture(records=None, event="cpu-clock", ids=(101, 102), trailer=False, feat
     return bytes(header) + ids_raw + bytes(attr) + records + footer
 
 
+# Sanitized perf6.17.13 shape from retained run39855681794: header104,
+# attrs136+ID-section16 each, clock65831/dummy65799, four IDs each.
+# Addresses, PID, timestamps and executable name are synthetic fixture values.
+CLOCK_IDS = (19, 20, 21, 22)
+TRACKING_IDS = (23, 24, 25, 26)
+
+
+def identified_sample(identifier=22, mode=2, pid=PID, tid=None, stamp=123456789,
+                      period=probe.PERIOD_NS, chain=(0x1234,)):
+    return record(9, struct.pack("<QQIIQQQ", identifier, 0x1234, pid, pid if tid is None else tid,
+                                 stamp, period, len(chain))
+                  + struct.pack("<" + "Q" * len(chain), *chain), mode)
+
+
+def tracked_record(kind, body, *, identifier=26, pid=PID, tid=None, stamp=123456789,
+                   synthetic=False, misc=0):
+    body += b"\0" * ((-len(body)) % 8)
+    trailer = b"\0" * 24 if synthetic else struct.pack("<IIQQ", pid, pid if tid is None else tid, stamp, identifier)
+    return record(kind, body + trailer, misc)
+
+
+def observed_capture(records=None, event="cpu-clock", clock_ids=CLOCK_IDS, tracking_ids=TRACKING_IDS):
+    if records is None:
+        body = bytearray(64)
+        struct.pack_into("<II", body, 0, PID, PID)
+        records = tracked_record(10, bytes(body) + EXE.encode() + b"\0", synthetic=True, misc=2)
+        records += tracked_record(3, struct.pack("<II", PID, PID) + b"probe\0")
+        records += tracked_record(17, bytes(16) + b"test_symbol\0", synthetic=True)
+        records += tracked_record(18, bytes(16), synthetic=True)
+        records += b"".join(identified_sample(CLOCK_IDS[i % 4], mode=2 if i < 44 else 1,
+                                             stamp=123456789 + i * 1000) for i in range(50))
+        records += tracked_record(4, struct.pack("<IIIIQ", PID, 1, PID, 1, 123456999))
+    clock_raw = struct.pack("<" + "Q" * len(clock_ids), *clock_ids)
+    tracking_raw = struct.pack("<" + "Q" * len(tracking_ids), *tracking_ids)
+    io, ti = 104, 104 + len(clock_raw)
+    ao, stride = ti + len(tracking_raw), 152
+    do = ao + 2 * stride
+    header = bytearray(104)
+    header[:8] = b"PERFILE2"
+    struct.pack_into("<8Q", header, 8, 104, stride, ao, 2 * stride, do, len(records), 0, 0)
+    attributes = bytearray(2 * stride)
+    for index, config, sample_type, flags, offset, size in (
+            (0, 0 if event == "cpu-clock" else 1, 65831, 263171, io, len(clock_raw)),
+            (1, 9, 65799, 18816972643, ti, len(tracking_raw))):
+        struct.pack_into("<II5Q", attributes, index * stride, 1, 136, config, 997, sample_type, 20, flags)
+        struct.pack_into("<QQ", attributes, index * stride + 136, offset, size)
+    return bytes(header) + clock_raw + tracking_raw + bytes(attributes) + records
+
+
 def receipt(pattern="continuous", **changes):
     value = {"schema": 1, "pid": PID, "pattern": pattern, "process_cpu_ns": 500_050_000,
              "thread_cpu_ns": 500_000_000, "wall_ns": 600_000_000,
@@ -283,6 +332,148 @@ class RawParserTests(unittest.TestCase):
         self.assertEqual(result["foreign_userspace_metadata_records"], 1)
         self.assertEqual(result["sample_records"], 1)
         self.assertTrue(result["executable_mapping_matches"])
+
+
+class ObservedIdentifierTests(unittest.TestCase):
+    def parse(self, data, event="cpu-clock"):
+        return probe.parse_perf(data, event, PID, EXE)
+
+    def change_attr(self, data, index, offset, value, fmt="<Q"):
+        data = bytearray(data)
+        stride, ao = struct.unpack_from("<QQ", data, 16)
+        struct.pack_into(fmt, data, ao + index * stride + offset, value)
+        return data
+
+    def test_observed_shape_counts_only_requested_clock_and_keeps_unknown_modes(self):
+        data = observed_capture()
+        result = self.parse(data)
+        self.assertEqual(struct.unpack_from("<4Q", data, 8), (104, 152, 168, 304))
+        self.assertEqual((result["sample_records"], result["samples_by_mode"]["user"], result["samples_by_mode"]["kernel"]), (50, 44, 6))
+        self.assertEqual(result["total_period"], 50 * probe.PERIOD_NS)
+        self.assertEqual((result["event_id_count"], result["tracking_event_id_count"]), (4, 4))
+        self.assertEqual((result["synthetic_metadata_records"], result["tracking_metadata_records"]), (3, 2))
+        self.assertTrue(result["executable_mapping_matches"])
+        self.assertEqual(result["sample_layout"], "clock+tracking IDENTIFIER")
+        self.assertNotIn("samples_per_process_cpu_second", result)
+        unknown = self.parse(observed_capture(identified_sample(mode=0)))
+        self.assertEqual(unknown["samples_by_mode"]["unknown"], 1)
+
+    def test_task_clock_is_bound_to_requested_event(self):
+        data = observed_capture(event="task-clock")
+        self.assertEqual(self.parse(data, "task-clock")["sample_records"], 50)
+        with self.assertRaisesRegex(ValueError, "unsupported event"):
+            self.parse(data)
+
+    def test_dummy_unknown_and_misordered_sample_identifier_refused(self):
+        good = identified_sample()
+        swapped = bytearray(good)
+        # IDENTIFIER precedes IP; a plausible IP is never an alternative event ID.
+        swapped[8:16], swapped[16:24] = swapped[16:24], swapped[8:16]
+        for sample in (identified_sample(26), identified_sample(999), bytes(swapped)):
+            with self.subTest(sample=sample[:24]), self.assertRaises(ValueError):
+                self.parse(observed_capture(sample))
+
+    def test_every_clock_id_and_tracking_id_has_one_role(self):
+        data = b"".join(identified_sample(i) for i in CLOCK_IDS)
+        data += b"".join(tracked_record(3, struct.pack("<II", PID, PID) + b"probe\0", identifier=i) for i in TRACKING_IDS)
+        result = self.parse(observed_capture(data))
+        self.assertEqual((result["sample_records"], result["tracking_metadata_records"]), (4, 4))
+
+    def test_zero_duplicate_and_cross_attribute_ID_collision_refused(self):
+        for clock, tracking in (((0, 20, 21, 22), TRACKING_IDS),
+                                ((19, 19, 21, 22), TRACKING_IDS),
+                                (CLOCK_IDS, (22, 24, 25, 26)),
+                                (CLOCK_IDS, (23, 23, 25, 26))):
+            with self.subTest(clock=clock, tracking=tracking), self.assertRaisesRegex(ValueError, "event ID"):
+                self.parse(observed_capture(clock_ids=clock, tracking_ids=tracking))
+
+    def test_ID_table_bounds_overlap_and_width_refused(self):
+        good = observed_capture()
+        for index, offset, value in ((0, 136, len(good) + 1), (1, 136, 104),
+                                     (0, 144, 7), (0, 144, 4097 * 8), (1, 144, 0)):
+            with self.subTest(index=index, offset=offset, value=value), self.assertRaises(ValueError):
+                self.parse(self.change_attr(good, index, offset, value))
+
+    def test_other_attribute_shapes_scopes_and_missing_trailers_refused(self):
+        good = observed_capture()
+        variants = [self.change_attr(good, 0, 24, 295), self.change_attr(good, 1, 24, 65831),
+                    self.change_attr(good, 1, 8, 0), self.change_attr(good, 0, 40, 263171 | (1 << 5)),
+                    self.change_attr(good, 1, 40, 18816972643 & ~(1 << 18)),
+                    self.change_attr(good, 0, 4, 128, "<I")]
+        for offset, value in ((16, 160), (32, 456), (32, 152)):
+            bad = bytearray(good)
+            struct.pack_into("<Q", bad, offset, value)
+            variants.append(bad)
+        for data in variants:
+            with self.subTest(tail=data[-16:]), self.assertRaises(ValueError):
+                self.parse(data)
+
+    def test_identifier_layout_is_not_silently_enabled_for_legacy(self):
+        data = bytearray(capture())
+        ao = struct.unpack_from("<Q", data, 24)[0]
+        struct.pack_into("<Q", data, ao + 24, 65831)
+        with self.assertRaisesRegex(ValueError, "unsupported event"):
+            self.parse(data)
+
+    def test_sample_PID_TID_period_chain_and_mode_corruption_refused(self):
+        variants = [identified_sample(pid=PID + 1), identified_sample(tid=PID + 1),
+                    identified_sample(period=0), identified_sample(period=probe.WALL_NS + 1),
+                    identified_sample(stamp=0), identified_sample(mode=6)]
+        short = bytearray(identified_sample())
+        struct.pack_into("<Q", short, 48, 4097)  # nr after IDENTIFIER/IP/TID/TIME/PERIOD.
+        variants.append(bytes(short))
+        variants.append(identified_sample()[:-8])
+        for data in variants:
+            with self.subTest(data=data[:24]), self.assertRaises(ValueError):
+                self.parse(observed_capture(data))
+
+    def test_metadata_trailer_ID_PID_time_and_zero_exception_refused(self):
+        comm = struct.pack("<II", PID, PID) + b"probe\0"
+        variants = [tracked_record(3, comm, identifier=999), tracked_record(3, comm, identifier=22),
+                    tracked_record(3, comm, identifier=0), tracked_record(3, comm, stamp=0),
+                    tracked_record(3, comm, pid=PID + 1),
+                    record(3, comm)]
+        for data in variants:
+            with self.subTest(data=data[-24:]), self.assertRaises(ValueError):
+                self.parse(observed_capture(data))
+        # Only the complete all-zero synthetic metadata trailer is allowed.
+        result = self.parse(observed_capture(tracked_record(3, comm, synthetic=True)))
+        self.assertEqual(result["synthetic_metadata_records"], 1)
+
+    def test_loss_events_separate_clock_and_tracking_with_exact_trailers(self):
+        data = tracked_record(2, struct.pack("<QQ", 22, 7), identifier=22)
+        data += tracked_record(2, struct.pack("<QQ", 26, 11), identifier=26)
+        data += tracked_record(13, struct.pack("<Q", 3), identifier=22)
+        data += tracked_record(5, struct.pack("<QQQ", 1234, 22, 22), identifier=22)
+        data += tracked_record(6, struct.pack("<QQQ", 1235, 26, 26), identifier=26)
+        result = self.parse(observed_capture(data))
+        self.assertEqual((result["lost"], result["lost_samples"], result["throttle_records"], result["unthrottle_records"]), (18, 3, 1, 1))
+        self.assertEqual(result["loss_by_event"]["clock"], {"lost": 7, "lost_samples": 3, "throttle_records": 1, "unthrottle_records": 0})
+        self.assertEqual(result["loss_by_event"]["tracking"], {"lost": 11, "lost_samples": 0, "throttle_records": 0, "unthrottle_records": 1})
+
+    def test_loss_ID_trailer_role_PID_and_truncation_corruption_refused(self):
+        variants = [tracked_record(2, struct.pack("<QQ", 999, 7), identifier=22),
+                    tracked_record(2, struct.pack("<QQ", 22, 7), identifier=26),
+                    tracked_record(2, struct.pack("<QQ", 22, 7), synthetic=True),
+                    tracked_record(2, struct.pack("<QQ", 22, 7), identifier=22, pid=PID + 1),
+                    tracked_record(13, struct.pack("<Q", 3), identifier=999),
+                    tracked_record(5, struct.pack("<QQQ", 1, 22, 999), identifier=22),
+                    tracked_record(5, struct.pack("<QQQ", 1, 22, 26), identifier=22),
+                    tracked_record(5, struct.pack("<QQQ", 1, 26, 26), identifier=22),
+                    tracked_record(2, bytes(8), identifier=22)]
+        for data in variants:
+            with self.subTest(data=data[:32]), self.assertRaises(ValueError):
+                self.parse(observed_capture(data))
+
+    def test_unknown_record_and_data_range_truncation_refused(self):
+        good = observed_capture()
+        variants = [good[:-1], observed_capture(record(999)), observed_capture(record(81))]
+        bad = bytearray(good)
+        struct.pack_into("<Q", bad, 48, len(good))
+        variants.append(bad)
+        for data in variants:
+            with self.subTest(length=len(data)), self.assertRaises(ValueError):
+                self.parse(data)
 
 
 class WorkflowTests(unittest.TestCase):

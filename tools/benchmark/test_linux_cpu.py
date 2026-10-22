@@ -339,6 +339,8 @@ class RecordControlTests(unittest.TestCase):
                     self.assertRaises(TimeoutError):
                 capture._command("enable")
             self.assertTrue(capture["deadline_exceeded"])
+            self.assertEqual(capture["capture_deadline_exceeded"], total_remaining < 2)
+            self.assertEqual(capture["control_timeout_boundary"], "capture" if total_remaining < 2 else "ACK")
         capture = self.capture()
         now = [10.0]
         replies = iter([BlockingIOError(), b"ack\n", BlockingIOError()])
@@ -484,6 +486,113 @@ class RecordControlTests(unittest.TestCase):
         self.assertEqual(capture["retained_control_directory"], "owned-control-retained")
         self.assertTrue(cpu.unresolved_cleanup(dict(perf=capture)))
 
+    def test_enabled_and_startup_log_markers_never_acknowledge_and_late_bytes_stay_refused(self):
+        capture = self.capture()
+        capture["file_size_limit_bytes"] = 4096
+        capture._control_log = io.BytesIO(b"Events disabled\nEvents enabled\nperf record has started\n")
+        now = [10.0]
+        def waited(*args):
+            now[0] = 12.0
+            return ([], [], [])
+        with patch.object(cpu.time, "monotonic", side_effect=lambda: now[0]), \
+                patch.object(cpu.os, "read", side_effect=BlockingIOError()), \
+                patch.object(cpu.os, "write", side_effect=lambda fd, data: len(data)), \
+                patch.object(cpu.select, "select", side_effect=waited), self.assertRaises(TimeoutError):
+            capture._command("enable")
+        self.assertEqual(capture["control_acks"], 0)
+        self.assertFalse(capture._enabled)
+        self.assertEqual(capture["enable_attempt_monotonic"], 10)
+        self.assertEqual(capture["enable_ack_deadline_monotonic"], 12)
+        self.assertEqual(capture["control_refused_monotonic"], 12)
+        self.assertEqual(capture["control_timeout_boundary"], "ACK")
+        self.assertFalse(capture["capture_deadline_exceeded"])
+        self.assertEqual(capture["control_ack_bytes_at_refusal"], 0)
+        self.assertEqual(capture["events_enabled_observed_monotonic"], 10)
+        self.assertEqual(capture["record_start_observed_monotonic"], 10)
+        with patch.object(cpu.time, "monotonic", return_value=20), \
+                patch.object(cpu.os, "read", side_effect=[b"ack\n\0", BlockingIOError()]):
+            capture._retain_late_reply()
+        self.assertEqual(capture["control_late_reply_hex"], b"ack\n\0".hex())
+        self.assertEqual(capture["control_late_first_observed_monotonic"], 20)
+        self.assertEqual(capture["control_late_reply_bytes"], 5)
+        self.assertEqual(capture["control_acks"], 0)
+        self.assertNotIn("enable_ack_monotonic", capture)
+        self.assertFalse(capture._enabled)
+
+    def test_late_reply_and_split_log_observations_share_fixed_existing_bounds(self):
+        capture = self.capture()
+        capture["control_ack_bytes"] = 62
+        with patch.object(cpu.os, "read", side_effect=lambda fd, size: b"x" * size) as read:
+            capture._retain_late_reply()
+        self.assertEqual(capture["control_ack_bytes"], 64)
+        self.assertEqual(capture["control_late_reply_bytes"], 2)
+        self.assertEqual(len(capture["control_late_reply_hex"]), 4)
+        self.assertTrue(capture["control_reply_allowance_exhausted"])
+        read.assert_called_once_with(102, 2)
+        capture["file_size_limit_bytes"] = 8192
+        capture._control_log = io.BytesIO(b"x" * 4089 + b"\nEvents enabled\n" + b"x" * 8192)
+        with patch.object(cpu.time, "monotonic", return_value=30):
+            capture._observe_log()
+            self.assertNotIn("events_enabled_observed_monotonic", capture)
+            capture._observe_log(final=True)
+        self.assertEqual(capture["events_enabled_observed_monotonic"], 30)
+        self.assertEqual(capture["control_log_observed_bytes"], 8192)
+        self.assertEqual(capture._control_log.tell(), 8192)
+        self.assertLessEqual(len(capture._log_tail), 64)
+        capture._control_log = io.BytesIO(b"x" * 4096 + b"Events disabled\n")
+        capture["control_log_observed_bytes"] = 0
+        capture._log_tail = b""
+        capture._observe_log(final=True)
+        self.assertNotIn("events_disabled_observed_monotonic", capture)
+
+    def test_failed_enter_observes_late_ack_only_after_reap_and_preserves_primary(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            recorder = Mock(returncode=0)
+            recorder.poll.return_value = None
+            now, reaped, late = [10.0], [False], [b"ack\n\0"]
+            def opened(capture, directory):
+                capture._control_paths = (Path("temp/ctl"), Path("temp/ack"))
+                capture._fds = (301, 302)
+            def waited(*args):
+                now[0] = 12
+                return ([], [], [])
+            def exited(*args, **kwargs):
+                now[0] = 20
+                (root / "perf-command.log").write_bytes(b"Events disabled\nEvents enabled\n")
+                return 0
+            def stopped(*args, **kwargs):
+                reaped[0] = True
+            def read(fd, size):
+                if reaped[0] and late:
+                    return late.pop(0)
+                raise BlockingIOError()
+            original_close = cpu.os.close
+            recorder.wait.side_effect = exited
+            with patch.object(cpu.PerfCapture, "_open_control", autospec=True, side_effect=opened), \
+                    patch.object(cpu, "spawn", return_value=recorder), \
+                    patch.object(cpu, "stop", side_effect=stopped), \
+                    patch.object(cpu.time, "monotonic", side_effect=lambda: now[0]), \
+                    patch.object(cpu.select, "select", side_effect=waited), \
+                    patch.object(cpu.os, "read", side_effect=read), \
+                    patch.object(cpu.os, "write", side_effect=lambda fd, data: len(data)), \
+                    patch.object(cpu.os, "close", side_effect=lambda fd: None if fd in (301, 302)
+                                 else original_close(fd)), self.assertRaises(TimeoutError) as failure:
+                with cpu.perf_pass("record", 123, 5, root, 4096):
+                    self.fail("refused enable released run gate")
+            state = json.loads((root / "perf.json").read_text())
+            self.assertEqual(str(failure.exception), "record control deadline")
+            self.assertEqual(failure.exception.perf_capture, state)
+            self.assertEqual(state["control_ack_bytes_at_refusal"], 0)
+            self.assertEqual(state["control_timeout_boundary"], "ACK")
+            self.assertFalse(state["capture_deadline_exceeded"])
+            self.assertEqual(state["control_late_reply_bytes"], 5)
+            self.assertEqual(state["recorder_reaped_monotonic"], 20)
+            self.assertEqual(state["events_enabled_observed_monotonic"], 20)
+            self.assertEqual(state["control_acks"], 0)
+            self.assertFalse(state["available"])
+            self.assertNotIn("record_finished", state)
+
 
 @unittest.skipUnless(sys.platform == "linux", "real private FIFO controller requires Linux")
 class RecordFifoTests(unittest.TestCase):
@@ -496,10 +605,19 @@ writer = os.open(ack, os.O_RDWR)
 with open(output, 'wb') as stream:
     stream.write(b'fake capture')
 end = time.monotonic() + 5
-for expected in (b'enable\n', b'disable\n', b'stop\n'):
-    if not select.select([reader], [], [], max(0, end-time.monotonic()))[0]:
-        sys.exit(2)
-    assert os.read(reader, 64) == expected
+print('Events disabled', flush=True)
+for expected in (b'enable', b'disable', b'stop'):
+    # v6.17.13 evlist__ctlfd_recv: one byte at a time, either terminator,
+    # at most63 command bytes. ACK is written by ctlfd_process, not work.
+    command = bytearray()
+    while len(command) < 63:
+        if not select.select([reader], [], [], max(0, end-time.monotonic()))[0]:
+            sys.exit(2)
+        byte = os.read(reader, 1)
+        if byte in (b'\n', b'\0'):
+            break
+        command.extend(byte)
+    assert command == expected
     print(expected.decode().strip(), flush=True)
     os.write(writer, b'a')
     time.sleep(.001)
@@ -530,7 +648,9 @@ os.close(writer)
             self.assertFalse(control.exists())
             self.assertTrue(capture["available"])
             self.assertEqual((capture["control_commands_sent"], capture["control_acks"]), (3, 3))
-            self.assertEqual((root / "perf-command.log").read_text().splitlines(), ["enable", "disable", "stop"])
+            self.assertEqual((root / "perf-command.log").read_text().splitlines(),
+                             ["Events disabled", "enable", "disable", "stop"])
+            self.assertLessEqual(capture["events_disabled_observed_monotonic"], capture["enable_ack_monotonic"])
             self.assertEqual(json.loads((root / "perf.json").read_text()), capture)
 
     def test_partial_setup_closes_owned_fifo_and_replacement_is_preserved(self):
