@@ -165,6 +165,71 @@ def save(path, value, limit=SUMMARY_LIMIT):
     Path(path).write_bytes(bounded_bytes(value, limit))
 
 
+def scheduler_snapshot(pid):
+    """Bounded attached-thread accounting, separate from process user/system CPU."""
+    result = {"available": False, "snapshot_started_ns": time.monotonic_ns()}
+    try:
+        if sys.platform != "linux":
+            raise OSError("schedstat requires Linux")
+        if type(pid) is not int or pid <= 1:
+            raise ValueError("invalid scheduler target PID")
+
+        def identity():
+            raw = bounded_read(Path(f"/proc/{pid}/stat"), 4096)
+            prefix, separator, rest = raw.partition(b" (")
+            _, closing, tail = rest.rpartition(b") ")
+            fields = tail.split()
+            if (not separator or not closing or prefix != str(pid).encode("ascii")
+                    or len(fields) < 20 or not fields[17].isdigit() or not fields[19].isdigit()):
+                raise ValueError("invalid scheduler target identity")
+            threads, start = int(fields[17]), int(fields[19])
+            if not 0 < threads < 2**32 or not 0 < start < 2**64:
+                raise ValueError("scheduler identity outside bounds")
+            return {"pid": pid, "start_ticks": start, "threads": threads}
+
+        before = identity()
+        fields = bounded_read(Path(f"/proc/{pid}/schedstat"), 128).split()
+        if len(fields) != 3 or any(not field.isdigit() for field in fields):
+            raise ValueError("invalid scheduler counters")
+        values = [int(field) for field in fields]
+        if any(value >= 2**64 for value in values):
+            raise ValueError("scheduler counter outside bounds")
+        after = identity()
+        if before != after:
+            raise ValueError("scheduler target identity changed during read")
+        result.update(available=True, **before, runtime_ns=values[0], runqueue_wait_ns=values[1],
+                      timeslices=values[2])
+    except (OSError, ValueError) as error:
+        result.update(error_type=type(error).__name__, reason=str(error)[:128])
+    result["snapshot_finished_ns"] = time.monotonic_ns()
+    if result["snapshot_finished_ns"] < result["snapshot_started_ns"]:
+        result.update(available=False, error_type="ValueError", reason="scheduler snapshot clock regressed")
+    return result
+
+
+def scheduler_delta(before, after):
+    """Refuse invalid accounting without replacing the established CPU metric."""
+    result = {"available": False, "scope": "attached thread; not descendants or whole-machine CPU"}
+    if not before["available"] or not after["available"]:
+        return {**result, "reason": "scheduler snapshot unavailable"}
+    if any(before[key] != after[key] for key in ("pid", "start_ticks", "threads")):
+        return {**result, "reason": "scheduler target identity changed"}
+    if before["threads"] != 1:
+        return {**result, "reason": "multi-thread process; attached-thread/process scopes differ"}
+    if after["snapshot_started_ns"] < before["snapshot_finished_ns"]:
+        return {**result, "reason": "scheduler snapshot order regressed"}
+    counters = ("runtime_ns", "runqueue_wait_ns", "timeslices")
+    delta = {key: after[key] - before[key] for key in counters}
+    if any(value < 0 for value in delta.values()):
+        return {**result, "reason": "scheduler counters regressed"}
+    if delta["runtime_ns"] == 0:
+        return {**result, "reason": "no positive scheduler runtime"}
+    envelope = after["snapshot_finished_ns"] - before["snapshot_started_ns"]
+    if delta["runtime_ns"] > envelope:
+        return {**result, "reason": "scheduler runtime exceeds observation envelope"}
+    return {**result, "available": True, **delta, "observation_envelope_ns": envelope}
+
+
 def retain_report(path, raw, operations):
     data = (raw + "\n").encode("utf-8")
     if len(data) > report_limit(operations):
@@ -981,6 +1046,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                 with perf_pass(mode, sut.pid, PROFILE_SECONDS, directory, quota, target=sut) as perf:
                     result["perf"] = perf
                     before = {name: native.snapshot(proc) for name, proc in peers.items()}
+                    if mode == "record":
+                        result["scheduler_before"] = scheduler_snapshot(sut.pid)
                     started = time.perf_counter_ns()
                     if perf.deadline is not None:
                         PerfCapture._remaining(perf.deadline)
@@ -989,6 +1056,10 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                     gate("measured", perf.deadline)
                     after = {name: native.snapshot(proc) for name, proc in peers.items()}
                     resource_ns = time.perf_counter_ns() - started
+                    if mode == "record":
+                        result["scheduler_after"] = scheduler_snapshot(sut.pid)
+                        result["scheduler_delta"] = scheduler_delta(result["scheduler_before"],
+                                                                    result["scheduler_after"])
                     perf.finish_recording()
                     child.stdin.write("report\n")
                     child.stdin.flush()
