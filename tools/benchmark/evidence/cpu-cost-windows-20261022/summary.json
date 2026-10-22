@@ -1,0 +1,550 @@
+{
+  "status": "incomplete",
+  "target": "50% less server CPU per verified operation independently for unprotected and OSCORE, without material regressions",
+  "baseline_core": "b8f44fa16b3e16f4c9c6cc5f1205d2aee9cb0b57",
+  "candidate_core": "8e93916b07cc05a4020ba870b22aa5953d7ff950",
+  "merged_core": "21f6dea85fb49bd766b405b3d48f58e76976ae1d",
+  "baseline_suite": "98b54fe8fd4c9b76301d2d22a533af40ecade744",
+  "build_identity": "Raw archive build records retain source overlays, compiler and binary hashes; later nonexecuted diagnostic admission/validator fixes are not retimed or substituted.",
+  "cpu_method": "Process user+system delta / verified complete operations; post-warmup ready/run to measured/report. Client CPU separate. OS CPU accounting quantized; IPC/snapshot overhead included; interrupt/DPC work not attributed.",
+  "scope": "Windows loopback, Default allocated App, GET/CON,64B,concurrency1,2000 scheduled operations/s,10000 measured operations/window,32 warmups; three windows/variant/mode; baseline batch precedes candidate batch, not interleaved randomized trials.",
+  "configuration": {
+    "rx_slots": 4,
+    "tx_slots": 4,
+    "datagram_bytes": 1472,
+    "dedup": 8,
+    "observe": 4,
+    "rx_body_slots": 1,
+    "tx_body_slots": 2,
+    "body_bytes": 1024,
+    "routes": 1,
+    "calls": 4,
+    "deferred": 0,
+    "associations": 1,
+    "security_bindings": 4
+  },
+  "windows": [
+    {
+      "file": "baseline-spin-unprotected-0.json",
+      "security": "unprotected",
+      "variant": "baseline-spin",
+      "verified_completions": 10000,
+      "cpu": {
+        "client": {
+          "user_seconds": 0.03125,
+          "system_seconds": 0.359375,
+          "total_seconds": 0.390625,
+          "ns_per_verified_operation": 39062.5
+        },
+        "server": {
+          "user_seconds": 1.53125,
+          "system_seconds": 3.453125,
+          "total_seconds": 4.984375,
+          "ns_per_verified_operation": 498437.5
+        }
+      },
+      "elapsed_ns": 4999626200,
+      "p50_ns": 25200,
+      "p99_ns": 51200,
+      "achieved_ops_per_second": 2000.1495311789508,
+      "pacing_missed_period_operations": 1270,
+      "client_memory": {
+        "core_heap_limit_bytes": 21716,
+        "app_inline_bytes": 15456,
+        "timing_heap_bytes": 80000,
+        "verification_heap_bytes": 128
+      }
+    },
+    {
+      "file": "baseline-spin-unprotected-1.json",
+      "security": "unprotected",
+      "variant": "baseline-spin",
+      "verified_completions": 10000,
+      "cpu": {
+        "client": {
+          "user_seconds": 0.03125,
+          "system_seconds": 0.203125,
+          "total_seconds": 0.234375,
+          "ns_per_verified_operation": 23437.5
+        },
+        "server": {
+          "user_seconds": 1.75,
+          "system_seconds": 3.234375,
+          "total_seconds": 4.984375,
+          "ns_per_verified_operation": 498437.5
+        }
+      },
+      "elapsed_ns": 4999577800,
+      "p50_ns": 26200,
+      "p99_ns": 52700,
+      "achieved_ops_per_second": 2000.1688942614314,
+      "pacing_missed_period_operations": 1306,
+      "client_memory": {
+        "core_heap_limit_bytes": 21716,
+        "app_inline_bytes": 15456,
+        "timing_heap_bytes": 80000,
+        "verification_heap_bytes": 128
+      }
+    },
+    {
+      "file": "baseline-spin-unprotected-2.json",
+      "security": "unprotected",
+      "variant": "baseline-spin",
+      "verified_completions": 10000,
+      "cpu": {
+        "client": {
+          "user_seconds": 0.015625,
+          "system_seconds": 0.390625,
+          "total_seconds": 0.40625,
+          "ns_per_verified_operation": 40625.0
+        },
+        "server": {
+          "user_seconds": 1.625,
+          "system_seconds": 3.34375,
+          "total_seconds": 4.96875,
+          "ns_per_verified_operation": 496875.0
+        }
+      },
+      "elapsed_ns": 4999578200,
+      "p50_ns": 27000,
+      "p99_ns": 53700,
+      "achieved_ops_per_second": 2000.16873423442,
+      "pacing_missed_period_operations": 1299,
+      "client_memory": {
+        "core_heap_limit_bytes": 21716,
+        "app_inline_bytes": 15456,
+        "timing_heap_bytes": 80000,
+        "verification_heap_bytes": 128
+      }
+    },
+    {
+      "file": "candidate-mio-unprotected-0.json",
+      "security": "unprotected",
+      "variant": "candidate-mio",
+      "verified_completions": 10000,
+      "cpu": {
+        "client": {
+          "user_seconds": 0.015625,
+          "system_seconds": 0.421875,
+          "total_seconds": 0.4375,
+          "ns_per_verified_operation": 43750.0
+        },
+        "server": {
+          "user_seconds": 0.0625,
+          "system_seconds": 0.265625,
+          "total_seconds": 0.328125,
+          "ns_per_verified_operation": 32812.5
+        }
+      },
+      "elapsed_ns": 4999592300,
+      "p50_ns": 36500,
+      "p99_ns": 71600,
+      "achieved_ops_per_second": 2000.1630932986275,
+      "pacing_missed_period_operations": 1325,
+      "client_memory": {
+        "core_heap_limit_bytes": 21716,
+        "app_inline_bytes": 15456,
+        "timing_heap_bytes": 80000,
+        "verification_heap_bytes": 128
+      }
+    },
+    {
+      "file": "candidate-mio-unprotected-1.json",
+      "security": "unprotected",
+      "variant": "candidate-mio",
+      "verified_completions": 10000,
+      "cpu": {
+        "client": {
+          "user_seconds": 0.0,
+          "system_seconds": 0.203125,
+          "total_seconds": 0.203125,
+          "ns_per_verified_operation": 20312.5
+        },
+        "server": {
+          "user_seconds": 0.0,
+          "system_seconds": 0.125,
+          "total_seconds": 0.125,
+          "ns_per_verified_operation": 12500.0
+        }
+      },
+      "elapsed_ns": 5000053700,
+      "p50_ns": 38400,
+      "p99_ns": 71300,
+      "achieved_ops_per_second": 1999.9785202306928,
+      "pacing_missed_period_operations": 1281,
+      "client_memory": {
+        "core_heap_limit_bytes": 21716,
+        "app_inline_bytes": 15456,
+        "timing_heap_bytes": 80000,
+        "verification_heap_bytes": 128
+      }
+    },
+    {
+      "file": "candidate-mio-unprotected-2.json",
+      "security": "unprotected",
+      "variant": "candidate-mio",
+      "verified_completions": 10000,
+      "cpu": {
+        "client": {
+          "user_seconds": 0.03125,
+          "system_seconds": 0.453125,
+          "total_seconds": 0.484375,
+          "ns_per_verified_operation": 48437.5
+        },
+        "server": {
+          "user_seconds": 0.03125,
+          "system_seconds": 0.234375,
+          "total_seconds": 0.265625,
+          "ns_per_verified_operation": 26562.5
+        }
+      },
+      "elapsed_ns": 4999923000,
+      "p50_ns": 39100,
+      "p99_ns": 71000,
+      "achieved_ops_per_second": 2000.0308004743274,
+      "pacing_missed_period_operations": 1378,
+      "client_memory": {
+        "core_heap_limit_bytes": 21716,
+        "app_inline_bytes": 15456,
+        "timing_heap_bytes": 80000,
+        "verification_heap_bytes": 128
+      }
+    },
+    {
+      "file": "baseline-spin-oscore-0.json",
+      "security": "oscore",
+      "variant": "baseline-spin",
+      "verified_completions": 10000,
+      "cpu": {
+        "client": {
+          "user_seconds": 0.109375,
+          "system_seconds": 0.34375,
+          "total_seconds": 0.453125,
+          "ns_per_verified_operation": 45312.5
+        },
+        "server": {
+          "user_seconds": 1.890625,
+          "system_seconds": 3.109375,
+          "total_seconds": 5.0,
+          "ns_per_verified_operation": 500000.0
+        }
+      },
+      "elapsed_ns": 4999838400,
+      "p50_ns": 31200,
+      "p99_ns": 59200,
+      "achieved_ops_per_second": 2000.0646420892324,
+      "pacing_missed_period_operations": 1282,
+      "client_memory": {
+        "core_heap_limit_bytes": 21716,
+        "app_inline_bytes": 15456,
+        "timing_heap_bytes": 80000,
+        "verification_heap_bytes": 128
+      }
+    },
+    {
+      "file": "baseline-spin-oscore-1.json",
+      "security": "oscore",
+      "variant": "baseline-spin",
+      "verified_completions": 10000,
+      "cpu": {
+        "client": {
+          "user_seconds": 0.03125,
+          "system_seconds": 0.390625,
+          "total_seconds": 0.421875,
+          "ns_per_verified_operation": 42187.5
+        },
+        "server": {
+          "user_seconds": 1.734375,
+          "system_seconds": 3.25,
+          "total_seconds": 4.984375,
+          "ns_per_verified_operation": 498437.5
+        }
+      },
+      "elapsed_ns": 4999577500,
+      "p50_ns": 30000,
+      "p99_ns": 57800,
+      "achieved_ops_per_second": 2000.1690142817067,
+      "pacing_missed_period_operations": 1336,
+      "client_memory": {
+        "core_heap_limit_bytes": 21716,
+        "app_inline_bytes": 15456,
+        "timing_heap_bytes": 80000,
+        "verification_heap_bytes": 128
+      }
+    },
+    {
+      "file": "baseline-spin-oscore-2.json",
+      "security": "oscore",
+      "variant": "baseline-spin",
+      "verified_completions": 10000,
+      "cpu": {
+        "client": {
+          "user_seconds": 0.0,
+          "system_seconds": 0.3125,
+          "total_seconds": 0.3125,
+          "ns_per_verified_operation": 31250.0
+        },
+        "server": {
+          "user_seconds": 1.625,
+          "system_seconds": 3.359375,
+          "total_seconds": 4.984375,
+          "ns_per_verified_operation": 498437.5
+        }
+      },
+      "elapsed_ns": 4999834000,
+      "p50_ns": 30400,
+      "p99_ns": 58400,
+      "achieved_ops_per_second": 2000.0664022045532,
+      "pacing_missed_period_operations": 1315,
+      "client_memory": {
+        "core_heap_limit_bytes": 21716,
+        "app_inline_bytes": 15456,
+        "timing_heap_bytes": 80000,
+        "verification_heap_bytes": 128
+      }
+    },
+    {
+      "file": "candidate-mio-oscore-0.json",
+      "security": "oscore",
+      "variant": "candidate-mio",
+      "verified_completions": 10000,
+      "cpu": {
+        "client": {
+          "user_seconds": 0.015625,
+          "system_seconds": 0.25,
+          "total_seconds": 0.265625,
+          "ns_per_verified_operation": 26562.5
+        },
+        "server": {
+          "user_seconds": 0.015625,
+          "system_seconds": 0.125,
+          "total_seconds": 0.140625,
+          "ns_per_verified_operation": 14062.5
+        }
+      },
+      "elapsed_ns": 4999560300,
+      "p50_ns": 42100,
+      "p99_ns": 77000,
+      "achieved_ops_per_second": 2000.1758954682475,
+      "pacing_missed_period_operations": 1314,
+      "client_memory": {
+        "core_heap_limit_bytes": 21716,
+        "app_inline_bytes": 15456,
+        "timing_heap_bytes": 80000,
+        "verification_heap_bytes": 128
+      }
+    },
+    {
+      "file": "candidate-mio-oscore-1.json",
+      "security": "oscore",
+      "variant": "candidate-mio",
+      "verified_completions": 10000,
+      "cpu": {
+        "client": {
+          "user_seconds": 0.0,
+          "system_seconds": 0.21875,
+          "total_seconds": 0.21875,
+          "ns_per_verified_operation": 21875.0
+        },
+        "server": {
+          "user_seconds": 0.0,
+          "system_seconds": 0.140625,
+          "total_seconds": 0.140625,
+          "ns_per_verified_operation": 14062.5
+        }
+      },
+      "elapsed_ns": 4999844100,
+      "p50_ns": 41700,
+      "p99_ns": 77300,
+      "achieved_ops_per_second": 2000.0623619444455,
+      "pacing_missed_period_operations": 1323,
+      "client_memory": {
+        "core_heap_limit_bytes": 21716,
+        "app_inline_bytes": 15456,
+        "timing_heap_bytes": 80000,
+        "verification_heap_bytes": 128
+      }
+    },
+    {
+      "file": "candidate-mio-oscore-2.json",
+      "security": "oscore",
+      "variant": "candidate-mio",
+      "verified_completions": 10000,
+      "cpu": {
+        "client": {
+          "user_seconds": 0.03125,
+          "system_seconds": 0.984375,
+          "total_seconds": 1.015625,
+          "ns_per_verified_operation": 101562.5
+        },
+        "server": {
+          "user_seconds": 0.125,
+          "system_seconds": 0.421875,
+          "total_seconds": 0.546875,
+          "ns_per_verified_operation": 54687.5
+        }
+      },
+      "elapsed_ns": 4999884700,
+      "p50_ns": 43300,
+      "p99_ns": 78300,
+      "achieved_ops_per_second": 2000.0461210635517,
+      "pacing_missed_period_operations": 1330,
+      "client_memory": {
+        "core_heap_limit_bytes": 21716,
+        "app_inline_bytes": 15456,
+        "timing_heap_bytes": 80000,
+        "verification_heap_bytes": 128
+      }
+    }
+  ],
+  "core_probe": [
+    {
+      "file": "core-unprotected-0-baseline.json",
+      "security": "unprotected",
+      "variant": "baseline",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1065.346
+    },
+    {
+      "file": "core-unprotected-1-baseline.json",
+      "security": "unprotected",
+      "variant": "baseline",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1039.97
+    },
+    {
+      "file": "core-unprotected-2-baseline.json",
+      "security": "unprotected",
+      "variant": "baseline",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1041.532
+    },
+    {
+      "file": "core-unprotected-3-baseline.json",
+      "security": "unprotected",
+      "variant": "baseline",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1041.398
+    },
+    {
+      "file": "core-unprotected-4-baseline.json",
+      "security": "unprotected",
+      "variant": "baseline",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1047.45
+    },
+    {
+      "file": "core-unprotected-0-candidate.json",
+      "security": "unprotected",
+      "variant": "candidate",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1021.718
+    },
+    {
+      "file": "core-unprotected-1-candidate.json",
+      "security": "unprotected",
+      "variant": "candidate",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1021.782
+    },
+    {
+      "file": "core-unprotected-2-candidate.json",
+      "security": "unprotected",
+      "variant": "candidate",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1000.996
+    },
+    {
+      "file": "core-unprotected-3-candidate.json",
+      "security": "unprotected",
+      "variant": "candidate",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1009.256
+    },
+    {
+      "file": "core-unprotected-4-candidate.json",
+      "security": "unprotected",
+      "variant": "candidate",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1009.59
+    },
+    {
+      "file": "core-oscore-0-baseline.json",
+      "security": "oscore",
+      "variant": "baseline",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1963.7
+    },
+    {
+      "file": "core-oscore-1-baseline.json",
+      "security": "oscore",
+      "variant": "baseline",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1955.31
+    },
+    {
+      "file": "core-oscore-2-baseline.json",
+      "security": "oscore",
+      "variant": "baseline",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1931.522
+    },
+    {
+      "file": "core-oscore-3-baseline.json",
+      "security": "oscore",
+      "variant": "baseline",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1921.428
+    },
+    {
+      "file": "core-oscore-4-baseline.json",
+      "security": "oscore",
+      "variant": "baseline",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1929.144
+    },
+    {
+      "file": "core-oscore-0-candidate.json",
+      "security": "oscore",
+      "variant": "candidate",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1929.152
+    },
+    {
+      "file": "core-oscore-1-candidate.json",
+      "security": "oscore",
+      "variant": "candidate",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1893.104
+    },
+    {
+      "file": "core-oscore-2-candidate.json",
+      "security": "oscore",
+      "variant": "candidate",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1907.91
+    },
+    {
+      "file": "core-oscore-3-candidate.json",
+      "security": "oscore",
+      "variant": "candidate",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1885.454
+    },
+    {
+      "file": "core-oscore-4-candidate.json",
+      "security": "oscore",
+      "variant": "candidate",
+      "verified_completions": 50000,
+      "mean_poll_ns": 1902.792
+    }
+  ],
+  "limitations": [
+    "Readiness introduces about12us median latency in this Windows cell. It is a visible tradeoff, not proof of the no-material-regression target.",
+    "Only one small sequential cell measured; no new device, concurrent, saturation, EDHOC or minimum/peak-RAM qualification.",
+    "The native Coaptic client is not an independent interoperability peer; existing independent comparator evidence remains a different stratum.",
+    "Core probe measures clock-instrumented App::poll wall time, not isolated process CPU; request preparation and full/authenticated verification are outside each poll clock.",
+    "No App/pool/context fields or capacities changed. Stack/initialization/whole-system memory peaks were not measured.",
+    "Windows WPR -start CPU -filemode refused with0xc5585011 (failed to enable system-performance profiling policy). WSL list remained unavailable withREGDB_E_CLASSNOTREG."
+  ]
+}

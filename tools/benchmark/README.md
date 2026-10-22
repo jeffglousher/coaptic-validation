@@ -325,6 +325,48 @@ Architecture and further workload decisions are tracked in
 [#341](https://github.com/jeffglousher/coaptic/issues/341). Existing interop,
 plugtest and device qualification retain their own acceptance and reports.
 
+## CPU cost and paced native operations
+
+`native_diagnostic.py` measures Coaptic at both ends, including established
+OSCORE. It is separate from the independent comparator campaign. Select
+`--server-kind coaptic-reusable|coaptic-mio|coaptic-ready`, `--rate OPS_PER_SEC`
+and `--cpu-gated` for matched-load process CPU windows. The readiness fixtures
+now accept the same ephemeral OSCORE credentials and wait for App protocol
+opportunities rather than a fixed millisecond tick. They have static handlers;
+generic application signals, pin release and checkpoint recovery need their
+own event-loop wake/retry integration.
+
+The CPU handshake pauses after warmup and before report formatting. User and
+process-accounted kernel CPU are divided by verified complete operations;
+client costs remain separate. Snapshot/IPC boundary costs and OS quantization
+remain. Machine-wide interrupts and unrelated kernel work are not attributed.
+Pacing uses absolute operation-start deadlines with one outstanding Call;
+late starts catch up without dropping operations. Every latency is retained,
+and lateness, failed/unattempted operations and achieved rate remain visible.
+
+```sh
+python tools/benchmark/native_diagnostic.py --server SERVER --client CLIENT --output NEW.json --bytes 64 --operations 10000 --warmup 32 --timeout-ms 1000 --policy spin --security oscore --server-kind coaptic-mio --rate 2000 --cpu-gated
+```
+
+The native client retains at most 60,000 latency samples (480,000 bytes), with
+a conservative 60,000 outbound-datagram budget per
+fresh socket including warmup. Preflight counts at least `ceil(bytes/1024)`
+datagrams per operation; retries consume the runtime budget too. This avoids
+scheduling into the core's existing safe Message ID lifetime refusal.
+Paced schedules cannot exceed 120 seconds. Wrapper control phases have an
+explicit `--phase-timeout-seconds` deadline (default 300, maximum 3600). An
+external timeout invalidates the observation; activity without a returned
+report is unknown. Partial native failure reports are retained and refused
+as successful CPU evidence.
+
+Readiness saves idle CPU but can add wakeup latency. Neither this driver nor
+the small socket-free poll probe establishes a universal throughput gain,
+minimum memory requirement or completion of the 50% target under core #650.
+
+Use the [manual Linux runner](linux_cpu.md) for rotated source-matched CPU
+windows and separate bounded `perf` captures. The [initial Windows results](evidence/cpu-cost-windows-20261022)
+retain the measured scheduling tradeoff and the unfinished acceptance target.
+
 ## Stateful entropy footprint diagnostic
 
 The [source-bound entropy report](evidence/stateful-entropy-20261010.json) compares
