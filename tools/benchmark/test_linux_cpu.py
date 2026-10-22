@@ -1616,8 +1616,91 @@ class LinuxProcessTests(unittest.TestCase):
             self.assertLessEqual(path.stat().st_size, 1024)
 
 
+class SchedulerAccountingTests(unittest.TestCase):
+    @staticmethod
+    def stat(pid=123, start=900, threads=1):
+        fields = [b"S"] + [b"0"] * 19
+        fields[17], fields[19] = str(threads).encode(), str(start).encode()
+        return str(pid).encode() + b" (name with ) and ( spaces) " + b" ".join(fields)
+
+    def snapshot(self, values=None):
+        values = [self.stat(), b"1000 200 5\n", self.stat()] if values is None else values
+        with patch.object(cpu.sys, "platform", "linux"), \
+                patch.object(cpu, "bounded_read", side_effect=values) as read, \
+                patch.object(cpu.time, "monotonic_ns", side_effect=[10, 20]):
+            result = cpu.scheduler_snapshot(123)
+        return result, read
+
+    def test_snapshot_brackets_exact_pid_and_bounded_reads(self):
+        result, read = self.snapshot()
+        self.assertTrue(result["available"])
+        self.assertEqual((result["pid"], result["start_ticks"], result["threads"]), (123, 900, 1))
+        self.assertEqual((result["runtime_ns"], result["runqueue_wait_ns"], result["timeslices"]), (1000, 200, 5))
+        self.assertEqual(read.call_args_list, [unittest.mock.call(Path("/proc/123/stat"), 4096),
+                                              unittest.mock.call(Path("/proc/123/schedstat"), 128),
+                                              unittest.mock.call(Path("/proc/123/stat"), 4096)])
+
+    def test_missing_denied_malformed_and_out_of_range_are_explicitly_unavailable(self):
+        for value in (FileNotFoundError("missing"), PermissionError("denied"), b"bad stat",
+                      self.stat(pid=124), self.stat(start=0), self.stat(threads=0)):
+            with self.subTest(value=value):
+                result, _ = self.snapshot([value])
+                self.assertFalse(result["available"])
+                self.assertIn("error_type", result)
+        for raw in (b"1 2", b"1 2 3 4", b"1 -2 3", b"x 2 3", str(2**64).encode() + b" 2 3"):
+            with self.subTest(raw=raw):
+                result, _ = self.snapshot([self.stat(), raw])
+                self.assertFalse(result["available"])
+
+    def test_identity_change_during_snapshot_is_rejected(self):
+        result, _ = self.snapshot([self.stat(), b"1000 200 5", self.stat(start=901)])
+        self.assertFalse(result["available"])
+        self.assertIn("identity changed", result["reason"])
+
+    @staticmethod
+    def readings():
+        before = dict(available=True, pid=123, start_ticks=900, threads=1,
+                      snapshot_started_ns=100, snapshot_finished_ns=110,
+                      runtime_ns=1000, runqueue_wait_ns=200, timeslices=5)
+        after = {**before, "snapshot_started_ns": 300, "snapshot_finished_ns": 310,
+                 "runtime_ns": 1100, "runqueue_wait_ns": 220, "timeslices": 7}
+        return before, after
+
+    def test_delta_reports_separate_attached_thread_counters(self):
+        result = cpu.scheduler_delta(*self.readings())
+        self.assertTrue(result["available"])
+        self.assertEqual((result["runtime_ns"], result["runqueue_wait_ns"], result["timeslices"]), (100, 20, 2))
+        self.assertEqual(result["observation_envelope_ns"], 210)
+        self.assertNotIn("ns_per_verified_operation", result)
+
+    def test_delta_rejects_unavailable_identity_scope_regression_and_envelope(self):
+        for changed in ({"available": False}, {"pid": 124}, {"start_ticks": 901}, {"threads": 2},
+                        {"runtime_ns": 999}, {"runqueue_wait_ns": 199}, {"timeslices": 4},
+                        {"snapshot_started_ns": 109}, {"runtime_ns": 2000}, {"runtime_ns": 1000}):
+            with self.subTest(changed=changed):
+                before, after = self.readings()
+                after.update(changed)
+                result = cpu.scheduler_delta(before, after)
+                self.assertFalse(result["available"])
+                self.assertNotIn("runtime_ns", result)
+        before, after = self.readings()
+        before["threads"] = after["threads"] = 2
+        self.assertFalse(cpu.scheduler_delta(before, after)["available"])
+
+    @unittest.skipUnless(sys.platform == "linux", "real proc snapshot requires Linux")
+    def test_real_self_snapshot_is_bounded_and_identity_matches(self):
+        result = cpu.scheduler_snapshot(os.getpid())
+        if not result["available"] and result.get("error_type") in ("FileNotFoundError", "PermissionError"):
+            self.skipTest(result["reason"])
+        self.assertTrue(result["available"], result)
+        self.assertEqual(result["pid"], os.getpid())
+        self.assertGreaterEqual(result["runtime_ns"], 0)
+        self.assertLessEqual(result["snapshot_started_ns"], result["snapshot_finished_ns"])
+
+
 class RetentionTests(unittest.TestCase):
-    def exercise(self, report, *, invalid=True, cleanup_errors=None, tail_error=None, mode="clean", timeline=None):
+    def exercise(self, report, *, invalid=True, cleanup_errors=None, tail_error=None, mode="clean", timeline=None,
+                 scheduler_snapshots=None):
         report = dict(report, warmup=cpu.WARMUP)
         timeline = [] if timeline is None else timeline
         native = Mock()
@@ -1647,6 +1730,13 @@ class RetentionTests(unittest.TestCase):
         probe.bind.side_effect = OSError("bound by fixture")
         reserve.__enter__.return_value = reserve
         probe.__enter__.return_value = probe
+        original_scheduler = cpu.scheduler_snapshot
+        snapshots = iter(scheduler_snapshots) if scheduler_snapshots is not None else None
+        def scheduler(pid):
+            if snapshots is None:
+                return original_scheduler(pid)
+            timeline.append("scheduler")
+            return next(snapshots)
         with tempfile.TemporaryDirectory() as temporary:
             out = Path(temporary) / "window"
             with mock_record_control(timeline), patch.dict(sys.modules, {"psutil": Mock(), "native_diagnostic": native}), \
@@ -1654,6 +1744,7 @@ class RetentionTests(unittest.TestCase):
                     patch.object(cpu, "stop", side_effect=cleanup_errors) as stop, \
                     patch.object(cpu, "stderr_tail", return_value=b"raw native failure\n", side_effect=tail_error), \
                     patch.object(cpu.socket, "socket", side_effect=[reserve, probe]), \
+                    patch.object(cpu, "scheduler_snapshot", side_effect=scheduler), \
                     patch.object(cpu.os, "getloadavg", return_value=(0, 0, 0), create=True):
                 result = cpu.window(Path("server"), Path("client"),
                                     ("oscore", 64, 100, "coaptic-reusable"), 10, out, mode=mode)
@@ -1722,6 +1813,30 @@ class RetentionTests(unittest.TestCase):
         self.assertEqual(timeline, ["ready", "enable_ack", "snapshot", "snapshot", "run", "measured",
                                     "snapshot", "snapshot", "disable_ack", "stop_ack", "report",
                                     "read_report", "exit"])
+
+    def test_scheduler_snapshots_bracket_record_work_before_stop(self):
+        timeline = []
+        result = self.exercise(dict(completed=10, latencies_ns=[12] * 10), invalid=False,
+                               mode="record", timeline=timeline,
+                               scheduler_snapshots=SchedulerAccountingTests.readings())
+        self.assertTrue(result["scheduler_delta"]["available"])
+        self.assertEqual(timeline, ["ready", "enable_ack", "snapshot", "snapshot", "scheduler", "run", "measured",
+                                    "snapshot", "snapshot", "scheduler", "disable_ack", "stop_ack", "report",
+                                    "read_report", "exit"])
+
+    def test_scheduler_unavailability_does_not_replace_existing_cpu_or_completion(self):
+        result = self.exercise(dict(completed=10, latencies_ns=[12] * 10), invalid=False, mode="record",
+                               scheduler_snapshots=[dict(available=False), dict(available=False)])
+        self.assertTrue(result["passed"])
+        self.assertFalse(result["scheduler_delta"]["available"])
+        self.assertEqual(result["cpu_cost"]["server"]["total_seconds"], 1)
+
+    def test_clean_and_stat_do_not_read_scheduler_counters(self):
+        for mode in ("clean", "stat"):
+            result = self.exercise(dict(completed=10, latencies_ns=[12] * 10), invalid=False,
+                                   mode=mode, scheduler_snapshots=[])
+            self.assertNotIn("scheduler_before", result)
+            self.assertNotIn("scheduler_after", result)
 
 
 if __name__ == "__main__":

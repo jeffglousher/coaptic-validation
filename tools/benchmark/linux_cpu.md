@@ -377,6 +377,24 @@ It preserves the refusal and successful ACK count and never reopens the gate.
 These changes repair missing failure evidence; timely enable/run/measured/
 disable/stop and a verified worker receipt are still required for comparison.
 
+Record passes also retain separate `/proc/PID/schedstat` observations around the
+existing workload gates. Each snapshot brackets its reads with monotonic times,
+checks PID/start-time identity before and after, and bounds reads to 4096 bytes
+for `stat` and 128 bytes for the three scheduler counters. The counters report
+attached-thread CPU runtime, runqueue wait and timeslices; see the
+[kernel contract](https://docs.kernel.org/scheduler/sched-stats.html#proc-pid-schedstat).
+These are additional observations, not replacements for process user/system CPU.
+Clean/stat passes and all existing eligibility gates are unchanged.
+
+Unavailable, malformed, changed-identity, multi-thread or regressed observations
+cannot supply a runtime delta. Zero runtime and deltas beyond the observation
+envelope are refused. Original observations and bounded reasons remain visible.
+Single-thread counts at the gates do not prove no transient thread existed;
+these values never cover descendants or machine-wide interrupt/worker costs.
+The read envelopes are not exact workload timestamps. New Linux execution must
+qualify this accounting before any density or CPU-per-operation conclusion uses
+it. This diagnostic removes no application work and establishes no CPU gain.
+
 The qualified [4000/s ready/blocking run 39843237773](https://github.com/jeffglousher/coaptic-validation/actions/runs/39843237773)
 at companion `d4f585a` and identical core `120a622` verified 1,344,000 operations;
 all 32 clean windows and four latency guards passed, with CPU reductions of
