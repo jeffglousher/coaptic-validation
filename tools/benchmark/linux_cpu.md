@@ -97,7 +97,7 @@ Do not run concurrently with another lane consumer, compiler or timing campaign.
 Use `--candidate-server-kind` to compare two explicit adapters at **identical core
 SHAs**. Combining adapter and core changes, `all`, or identical adapter names is
 refused before builds. Defaults and the three adapters selected by `all` stay
-unchanged; `coaptic-async` must be selected explicitly. The manual workflow's
+unchanged; `coaptic-async` and `coaptic-blocking` must be selected explicitly. The manual workflow's
 `candidate_server_kind` defaults to `same` and exposes the same restriction.
 
 For example, compare the current Tokio polling loop with native async App
@@ -131,6 +131,35 @@ core/response-body heap, allocator and kernel costs remain excluded and unknown.
 The current parser rejects schema 1 and its owned-App future field. Frozen runs
 retain their original companion revision, schema and ledger interpretation;
 the schema-1 evidence from `b9736ba` is not relabelled as schema 2.
+
+The explicit `coaptic-blocking` control uses synchronous App polling with a
+receive staged in its one 2049-byte scratch before a fresh poll timestamp. At
+most one transport packet is retained there, separate from the unchanged Engine
+RX pool and preserved on RX refusal. There is no second payload buffer or growing
+queue. Read waits are requested for at most 5 ms; a cached timeout is reused only while it fits the next
+App opportunity. Very close deadlines use a visible sleep fallback that may
+delay ingress. Writes use a positive 1 ms timeout, so congestion may wait rather
+than report immediate WouldBlock. OS timeouts are soft; this does not supply async
+cancellation or exact absolute send deadlines. External application wake signals
+need their own integration. Core processing, security and configured capacities
+are unchanged; this is an application scheduling comparison.
+
+Its `coaptic-native-blocking-resources/1` startup record reports the <=64-byte
+stage/cache metadata, transport staging capacity one, 2049-byte scratch, adapter
+and App sizes, requested read and write timeouts, and unknown runtime costs. The complete newline-terminated record
+must pass the same bounded startup gate before CPU snapshots. Metadata and scratch
+are nested inside the adapter inside App; main/polling stacks, pool/body heap,
+allocator and kernel costs remain excluded. Do not sum nested owners.
+
+For a finite same-core ready/blocking comparison with profiling off, select both
+core SHAs as `120a6227ab56b31c9898870950b81ddafdb933e6`, `--sizes 64 --rates 11900
+--seconds 5 --repeats 4 --server-kind coaptic-ready
+--candidate-server-kind coaptic-blocking`. This schedules 16 clean windows,
+80 seconds and 952,000 verified-operation attempts, each socket requiring at
+least 59,520 sends with warmup. Existing live send, sample, cleanup and artifact
+bounds still apply. Authentication and complete response verification remain
+required; neither a successful finite proof nor adapter selection establishes a
+CPU reduction target.
 
 Each security/body/rate/adapter/concurrency/message-type cell defaults to sequential
 complete CON GETs, one outstanding Call, 20 warmups, a 3s per-operation deadline

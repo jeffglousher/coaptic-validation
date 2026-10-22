@@ -329,12 +329,33 @@ plugtest and device qualification retain their own acceptance and reports.
 
 `native_diagnostic.py` measures Coaptic at both ends, including established
 OSCORE. It is separate from the independent comparator campaign. Select
-`--server-kind coaptic-reusable|coaptic-mio|coaptic-ready|coaptic-async`, `--rate OPS_PER_SEC`
+`--server-kind coaptic-reusable|coaptic-mio|coaptic-ready|coaptic-async|coaptic-blocking`,
+`--rate OPS_PER_SEC`
 and `--cpu-gated` for matched-load process CPU windows. The readiness fixtures
 now accept the same ephemeral OSCORE credentials and wait for App protocol
 opportunities rather than a fixed millisecond tick. They have static handlers;
 generic application signals, pin release and checkpoint recovery need their
 own event-loop wake/retry integration.
+
+`coaptic-blocking` is an explicit synchronous host experiment. It waits for a
+packet in reusable 2049-byte scratch before sampling a fresh App poll timestamp.
+It retains at most one transport packet there, separate from the Engine RX pool;
+RX refusal preserves that staged owner. It adds no second payload buffer.
+Retained/local/due work takes precedence over a receive wait. A cached positive
+read timeout avoids repeated timeout configuration at a steady allowance.
+Requested read waits are at most 5 ms and writes use a 1 ms timeout; OS rounding
+and scheduling make these soft bounds. A close-deadline sleep fallback can delay
+ingress. Bounded write waiting changes the congestion policy from immediate
+WouldBlock and provides no async cancellation or absolute send-deadline promise.
+This static fixture has no external application wake source.
+
+Its `coaptic-native-blocking-resources/1` startup ledger reports metadata
+(at most 64 bytes), staging capacity one, scratch, adapter and App layouts.
+Metadata and scratch are inside the adapter inside App; do not add nested owners. Pool/body heap, main and
+polling stacks, allocator and kernel costs remain separate and unknown. The
+runner validates the complete ledger before timing, including zero warmup.
+Finite correctness checks establish no CPU gain. Select the mode explicitly;
+default adapters and the `all` selection are unchanged.
 
 `coaptic-async` is an explicit application scheduling experiment using native
 `App::wait_async` then freshly timed `progress_async`, with a yield after at most

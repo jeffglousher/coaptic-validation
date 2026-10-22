@@ -15,6 +15,8 @@
 //! runtime. These variants retain the same protocol processing and pools.
 //! `coaptic-async` uses App's native async wait/progress boundary on the same
 //! current-thread Tokio runtime and emits one startup inline-storage ledger.
+//! `coaptic-blocking` stages bounded synchronous receives before App polling,
+//! with soft socket timeouts and a distinct synchronous send congestion policy.
 #![forbid(unsafe_code)]
 macro_rules! conn_as_any {
     () => {
@@ -31,6 +33,7 @@ macro_rules! conn_as_any {
 mod coap_dtls;
 #[path = "../../../../interop/dtls_listener.rs"]
 mod dtls_listener;
+mod staged_udp;
 use coap_lite::{CoapOption, MessageClass, MessageType, Packet, ResponseType};
 use coaptic::oscore::{DeriveParams, SecurityContext};
 use coaptic::storage::{AllocMemory, Capacities, DatagramIo, Endpoint, UdpSocketIo};
@@ -627,7 +630,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if !(5..=7).contains(&args.len()) {
         return Err(
-            "usage: bench-rust-server coaptic-small|coaptic|coaptic-reusable|coaptic-ready|coaptic-mio|coaptic-async|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]]".into(),
+            "usage: bench-rust-server coaptic-small|coaptic|coaptic-reusable|coaptic-ready|coaptic-mio|coaptic-async|coaptic-blocking|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]]".into(),
         );
     }
     let rx_bytes: usize = args
@@ -656,6 +659,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 | "coaptic-ready"
                 | "coaptic-mio"
                 | "coaptic-async"
+                | "coaptic-blocking"
         )
     {
         return Err("receive capacity is supported only by the Coaptic fixtures".into());
@@ -669,6 +673,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 | "coaptic-ready"
                 | "coaptic-mio"
                 | "coaptic-async"
+                | "coaptic-blocking"
         )
     {
         return Err("OSCORE credentials require the Coaptic socket fixtures".into());
@@ -732,6 +737,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         "coap-lite-codec" => codec_server(&address, body),
+        "coaptic-blocking" => staged_udp::serve(&address, size, rx_bytes, context),
         "coaptic-mio" => mio_server(&address, size, rx_bytes, context),
         "coaptic-ready" => tokio::runtime::Builder::new_current_thread()
             .enable_all()

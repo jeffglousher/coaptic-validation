@@ -32,12 +32,12 @@ on:
         description: Same host adapter for both core revisions
         type: choice
         default: coaptic-reusable
-        options: [coaptic-reusable, coaptic-mio, coaptic-ready, coaptic-async, all]
+        options: [coaptic-reusable, coaptic-mio, coaptic-ready, coaptic-async, coaptic-blocking, all]
       candidate_server_kind:
         description: Same adapter, or explicit scheduling comparison requiring identical core SHAs
         type: choice
         default: same
-        options: [same, coaptic-reusable, coaptic-mio, coaptic-ready, coaptic-async]
+        options: [same, coaptic-reusable, coaptic-mio, coaptic-ready, coaptic-async, coaptic-blocking]
       perf:
         description: Additional bounded perf record and stat passes (permission refusal retained)
         type: boolean

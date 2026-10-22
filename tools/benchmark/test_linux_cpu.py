@@ -126,6 +126,21 @@ class ValidationTests(unittest.TestCase):
         selected = cpu.configuration(options(sizes="64", rates="100", perf=False, server_kind="coaptic-async"))
         self.assertEqual({cell[3] for cell in selected}, {"coaptic-async"})
 
+    def test_blocking_fixture_is_explicit_and_keeps_same_core_comparison_rules(self):
+        args = options(sizes="64", rates="11900", seconds=5, repeats=2,
+                       server_kind="coaptic-ready", candidate_server_kind="coaptic-blocking",
+                       candidate_sha="a" * 40)
+        plan = cpu.rotation(args, cpu.configuration(args))
+        self.assertEqual(sum(mode == "clean" for mode, *_ in plan), 8)
+        self.assertEqual(sum(mode != "clean" for mode, *_ in plan), 8)
+        self.assertEqual(sum(cell[2] * 5 for _, _, cell, _ in plan), 952_000)
+        self.assertEqual(max(cpu.WARMUP + cell[2] * 5 for _, _, cell, _ in plan), 59_520)
+        self.assertNotIn("coaptic-blocking", cpu.KINDS)
+        standalone = cpu.configuration(options(server_kind="coaptic-blocking", perf=False))
+        self.assertEqual({cell[3] for cell in standalone}, {"coaptic-blocking"})
+        with self.assertRaisesRegex(ValueError, "identical core"):
+            cpu.configuration(options(**(vars(args) | dict(candidate_sha="b" * 40))))
+
     def test_documented_adapter_plan_keeps_existing_budgets(self):
         args = options(sizes="64,1024", rates="4000", seconds=12, repeats=4, perf=False,
                        server_kind="coaptic-ready", candidate_server_kind="coaptic-async",

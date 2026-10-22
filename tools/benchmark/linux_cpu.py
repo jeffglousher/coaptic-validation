@@ -39,7 +39,7 @@ PROFILE_SECONDS = 5
 PERF_REPORT_SECONDS = 30
 PERF_FILES_PER_SLOT = 3  # Data/stat output, command/version log, record report.
 KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready")
-EXPLICIT_KINDS = (*KINDS, "coaptic-async")
+EXPLICIT_KINDS = (*KINDS, "coaptic-async", "coaptic-blocking")
 FLAGS = {"RUSTUP_TOOLCHAIN": "1.99.0", "RUSTC": "rustc",
          "RUSTFLAGS": "-C force-frame-pointers=yes", "CARGO_PROFILE_RELEASE_DEBUG": "1",
          "CARGO_PROFILE_RELEASE_STRIP": "none", "CARGO_INCREMENTAL": "0",
