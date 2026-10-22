@@ -200,7 +200,7 @@ def signal_group(child, sig, elevated):
     except PermissionError:
         if not elevated:
             raise
-        # The only elevated target is the group created by our perf launcher.
+        # Only owned perf capture/report groups opt into elevated signaling.
         run_owned(["sudo", "-n", "--", "kill", f"-{signal.Signals(sig).name[3:]}",
                    "--", f"-{child.group}"], timeout=5, stdout=subprocess.DEVNULL,
                   stderr=subprocess.DEVNULL)
@@ -241,7 +241,7 @@ def stop(child, *, elevated=False):
     child.stopped = True
 
 
-def run_owned(argv, *, timeout, check=True, **kwargs):
+def run_owned(argv, *, timeout, check=True, elevated=False, **kwargs):
     child = spawn(argv, **kwargs)
     try:
         code = child.wait(timeout=timeout)
@@ -249,14 +249,14 @@ def run_owned(argv, *, timeout, check=True, **kwargs):
             raise subprocess.CalledProcessError(code, argv)
     except BaseException as error:
         try:
-            stop(child)
+            stop(child, elevated=elevated)
         except Exception as cleanup:
             error.add_note(f"owned process cleanup: {type(cleanup).__name__}: {str(cleanup)[:512]}")
             error.cleanup_unresolved = True
         raise
     else:
         try:
-            stop(child)
+            stop(child, elevated=elevated)
         except Exception as error:
             error.cleanup_unresolved = True
             raise
@@ -426,7 +426,7 @@ def perf_command(mode, pid, seconds, output, quota):
     prefix = ["sudo", "-n", "--", "prlimit", f"--fsize={quota}:{quota}", "--",
               "timeout", "--signal=TERM", "--kill-after=5", str(seconds + 10), "perf"]
     if mode == "record":
-        options = ["record", "-e", "cpu-clock:u", "-F", "997", "--call-graph", "fp",
+        options = ["record", "-e", "cpu-clock", "-F", "997", "--call-graph", "fp",
                    "-m", "128", "--no-buildid-cache", "-o", str(output)]
     else:
         options = ["stat", "-x", ";", "-e", "task-clock,cycles,instructions,context-switches,cpu-migrations,page-faults",
@@ -435,12 +435,18 @@ def perf_command(mode, pid, seconds, output, quota):
 
 
 def perf_report(directory, quota, log):
-    """Read our completed capture without privilege while copied ELF paths exist."""
+    """Read our completed capture on its runner while live kernel/ELF symbols exist."""
     path = directory / "perf-report.txt"
     # Flat self costs avoid cumulative double counting and unbounded callchain
     # expansion. Keep headers, unknown symbols and stderr warnings verbatim.
     # --force permits our sudo-owned capture; it does not grant read permission.
-    argv = ["perf", "report", "--stdio", "--header", "--show-nr-samples", "--show-total-period",
+    # Reapply bounds after sudo and leave five seconds for the inner KILL.
+    # This watchdog also bounds perf if sudo/timeout separates its process group;
+    # signaling our launch group alone cannot prove containment of descendants.
+    argv = ["sudo", "-n", "--", "prlimit", f"--fsize={quota}:{quota}", "--",
+            "timeout", "--signal=TERM", "--kill-after=5", str(PERF_REPORT_SECONDS - 5),
+            "env", "DEBUGINFOD_URLS=",
+            "perf", "report", "--stdio", "--header", "--show-nr-samples", "--show-total-period",
             "--sort", "dso,symbol", "--no-children", "--call-graph", "none", "--percent-limit", "0",
             "--stdio-color", "never", "--no-inline", "--demangle", "--force",
             "--input", str(directory / "perf.data")]
@@ -453,7 +459,7 @@ def perf_report(directory, quota, log):
             state["version_returncode"] = run_owned(version, timeout=5, check=False,
                                                     stdin=subprocess.DEVNULL, stdout=log, stderr=log,
                                                     file_limit=quota)
-            state["returncode"] = run_owned(argv, timeout=PERF_REPORT_SECONDS, check=False,
+            state["returncode"] = run_owned(argv, timeout=PERF_REPORT_SECONDS, check=False, elevated=True,
                                            stdin=subprocess.DEVNULL, stdout=stream, stderr=stream,
                                            file_limit=quota, env={**os.environ, "DEBUGINFOD_URLS": ""})
     except Exception as error:

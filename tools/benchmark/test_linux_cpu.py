@@ -2,6 +2,7 @@
 import argparse
 from copy import deepcopy
 import io
+import itertools
 import json
 import os
 from pathlib import Path
@@ -192,7 +193,7 @@ class ValidationTests(unittest.TestCase):
             self.assertNotIn("dwarf", argv)
             self.assertNotIn("--sample-regs-user", argv)
             if mode == "record":
-                self.assertEqual(argv[11:-5], ["record", "-e", "cpu-clock:u", "-F", "997",
+                self.assertEqual(argv[11:-5], ["record", "-e", "cpu-clock", "-F", "997",
                                               "--call-graph", "fp", "-m", "128", "--no-buildid-cache",
                                               "-o", str(Path("/tmp/profile"))])
             else:
@@ -357,7 +358,7 @@ class PerfReportTests(unittest.TestCase):
 
             def run(argv, **kwargs):
                 commands.append((argv, kwargs))
-                if argv[0] == "sudo":
+                if argv == ["sudo", "-n", "--", "chmod", "a+r", str(raw)]:
                     return 0  # Existing capture readability helper only.
                 self.assertEqual(kwargs["file_limit"], 4096)
                 self.assertIs(kwargs["stdout"], kwargs["stderr"])
@@ -369,7 +370,7 @@ class PerfReportTests(unittest.TestCase):
                     kwargs["stdout"].write("x" * 4096 if log_full else "perf version fixture\n")
                     kwargs["stdout"].flush()
                     return 0
-                self.assertEqual(argv[:2], ["perf", "report"])
+                self.assertEqual(argv[12:14], ["perf", "report"])
                 kwargs["stdout"].write(output)
                 kwargs["stdout"].flush()
                 if error is not None:
@@ -392,8 +393,9 @@ class PerfReportTests(unittest.TestCase):
                 b"# Total Lost Samples: 2\n# Samples: 99 of event 'cpu-clock'\n"
                 b"# Event count (approx.): 1000000000\n"
                 b"# Overhead Samples Period Shared Object Symbol\n"
-                b"70.00% 69 700000000 bench-rust-server [.] route_lookup\n"
-                b"30.00% 30 300000000 [unknown] [.] 0x1234\n"
+                b"50.00% 49 500000000 [kernel.kallsyms] [k] udp_sendmsg\n"
+                b"20.00% 20 200000000 bench-rust-server [.] route_lookup\n"
+                b"30.00% 30 300000000 [unknown] [k] 0x1234\n"
                 b"Warning: kernel symbols restricted\n")
         state, calls, saved, log = self.capture(output=text)
         self.assertTrue(state["available"])
@@ -401,16 +403,19 @@ class PerfReportTests(unittest.TestCase):
         self.assertEqual(saved, text)
         self.assertIn("perf version fixture", log)
         self.assertEqual([argv[:2] for argv, _ in calls],
-                         [["sudo", "-n"], ["perf", "--version"], ["perf", "report"]])
+                         [["sudo", "-n"], ["perf", "--version"], ["sudo", "-n"]])
+        self.assertFalse(calls[-2][1].get("elevated", False))
         argv, kwargs = calls[-1]
-        for flag in ("--stdio", "--header", "--show-nr-samples", "--show-total-period", "--no-inline",
-                     "--demangle", "--no-children", "--force"):
-            self.assertIn(flag, argv)
-        for flag, value in (("--sort", "dso,symbol"), ("--call-graph", "none"),
-                            ("--percent-limit", "0"), ("--stdio-color", "never")):
-            self.assertEqual(argv[argv.index(flag) + 1], value)
-        self.assertEqual(argv[-2:], ["--input", state["command"][state["command"].index("-o") + 1]])
+        self.assertEqual(argv, ["sudo", "-n", "--", "prlimit", "--fsize=4096:4096", "--",
+                                "timeout", "--signal=TERM", "--kill-after=5",
+                                str(cpu.PERF_REPORT_SECONDS - 5), "env", "DEBUGINFOD_URLS=",
+                                "perf", "report", "--stdio", "--header", "--show-nr-samples",
+                                "--show-total-period", "--sort", "dso,symbol", "--no-children",
+                                "--call-graph", "none", "--percent-limit", "0", "--stdio-color", "never",
+                                "--no-inline", "--demangle", "--force", "--input",
+                                state["command"][state["command"].index("-o") + 1]])
         self.assertEqual(kwargs["timeout"], cpu.PERF_REPORT_SECONDS)
+        self.assertTrue(kwargs["elevated"])
         self.assertEqual(kwargs["env"]["DEBUGINFOD_URLS"], "")
         self.assertEqual(state["report"]["command"], argv)
         self.assertEqual(state["report"]["version_command"], calls[-2][0])
@@ -418,6 +423,9 @@ class PerfReportTests(unittest.TestCase):
 
     def test_refused_or_full_report_preserves_capture_and_is_nonfatal(self):
         for code, output, log_full in ((255, b"report refused\n", False),
+                                       (124, b"inner report timeout\n", False),
+                                       (137, b"inner report killed\n", False),
+                                       (127, b"env: perf: No such file or directory\n", False),
                                        (-25, b"partial output\n", False),
                                        (0, b"x" * 4096, False), (0, b"hotspots\n", True)):
             with self.subTest(code=code, size=len(output), log_full=log_full):
@@ -475,7 +483,8 @@ class PerfReportTests(unittest.TestCase):
             self.assertTrue(state["deadline_exceeded"])
             self.assertEqual(state["error_type"], "TimeoutExpired")
             self.assertTrue(all(call.kwargs["file_limit"] == 4096 for call in spawn.call_args_list))
-            self.assertEqual(stop.call_args_list, [unittest.mock.call(version), unittest.mock.call(report)])
+            self.assertEqual(stop.call_args_list, [unittest.mock.call(version, elevated=False),
+                                                  unittest.mock.call(report, elevated=True)])
 
 
 class AggregationTests(unittest.TestCase):
@@ -720,7 +729,8 @@ class CampaignTests(unittest.TestCase):
                     profiler.wait.return_value = 0
 
                     def read_capture(argv, **kwargs):
-                        if argv[:2] == ["perf", "report" if report_error_command == "report" else "--version"]:
+                        command = argv[12:14] if argv[:3] == ["sudo", "-n", "--"] else argv[:2]
+                        if command == ["perf", "report" if report_error_command == "report" else "--version"]:
                             raise report_error
                         return 0
 
@@ -934,6 +944,7 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual([call.args[0] for call in run.call_args_list],
                          [["sudo", "-n", "--", "kill", "-TERM", "--", "-4321"],
                           ["sudo", "-n", "--", "kill", "-KILL", "--", "-4321"]])
+        self.assertTrue(all(not call.kwargs.get("elevated", False) for call in run.call_args_list))
         self.assertEqual(child.process.wait.call_count, 2)
 
     def test_perf_timeout_escalates_reaps_and_retains_failure(self):
@@ -955,19 +966,52 @@ class ProcessTests(unittest.TestCase):
         self.assertIn(unittest.mock.call(4321, cpu.signal.SIGKILL), kill.call_args_list)
         self.assertEqual(child.process.wait.call_count, 3)
 
+    def test_run_owned_elevation_is_cleanup_only_on_every_exit(self):
+        for elevated in (None, False, True):
+            for outcome in (0, 7, cpu.subprocess.TimeoutExpired("helper", 5), KeyboardInterrupt()):
+                for check in (False, True):
+                    with self.subTest(elevated=elevated, outcome=outcome, check=check):
+                        child = Mock()
+                        if isinstance(outcome, BaseException):
+                            child.wait.side_effect = outcome
+                        else:
+                            child.wait.return_value = outcome
+                        kwargs = {} if elevated is None else dict(elevated=elevated)
+                        with patch.object(cpu, "spawn", return_value=child) as spawn, \
+                                patch.object(cpu, "stop") as stop:
+                            if isinstance(outcome, BaseException):
+                                with self.assertRaises(type(outcome)) as failure:
+                                    cpu.run_owned(["helper"], timeout=5, check=check, **kwargs)
+                                self.assertIs(failure.exception, outcome)
+                            elif check and outcome:
+                                with self.assertRaises(cpu.subprocess.CalledProcessError) as failure:
+                                    cpu.run_owned(["helper"], timeout=5, check=check, **kwargs)
+                                self.assertEqual(failure.exception.returncode, outcome)
+                                self.assertEqual(failure.exception.cmd, ["helper"])
+                            else:
+                                self.assertEqual(cpu.run_owned(["helper"], timeout=5, check=check, **kwargs), outcome)
+                        spawn.assert_called_once_with(["helper"])
+                        stop.assert_called_once_with(child, elevated=bool(elevated))
+
     def test_run_owned_preserves_fatal_cleanup_status_with_or_without_primary_failure(self):
-        for primary_failure in (False, True):
-            with self.subTest(primary_failure=primary_failure):
+        for elevated, primary_failure in itertools.product((False, True), repeat=2):
+            with self.subTest(elevated=elevated, primary_failure=primary_failure):
                 child = Mock()
+                primary = cpu.subprocess.TimeoutExpired("helper", 5)
+                cleanup = TimeoutError("helper not reaped")
                 if primary_failure:
-                    child.wait.side_effect = cpu.subprocess.TimeoutExpired("helper", 5)
+                    child.wait.side_effect = primary
                 else:
                     child.wait.return_value = 0
                 with patch.object(cpu, "spawn", return_value=child), \
-                        patch.object(cpu, "stop", side_effect=TimeoutError("helper not reaped")), \
+                        patch.object(cpu, "stop", side_effect=cleanup) as stop, \
                         self.assertRaises((TimeoutError, cpu.subprocess.TimeoutExpired)) as failure:
-                    cpu.run_owned(["helper"], timeout=5)
+                    cpu.run_owned(["helper"], timeout=5, elevated=elevated)
                 self.assertTrue(failure.exception.cleanup_unresolved)
+                self.assertIs(failure.exception, primary if primary_failure else cleanup)
+                stop.assert_called_once_with(child, elevated=elevated)
+                if primary_failure:
+                    self.assertIn("helper not reaped", failure.exception.__notes__[0])
 
     def test_perf_output_helper_refusal_and_resolved_timeout_are_distinct_from_unresolved_cleanup(self):
         for timeout, cleanup_failure in ((False, False), (True, False), (False, True), (True, True)):
@@ -989,7 +1033,8 @@ class ProcessTests(unittest.TestCase):
                 self.assertEqual(cpu.unresolved_cleanup(dict(perf=state)), cleanup_failure)
                 self.assertEqual("output_error" in state, timeout or cleanup_failure)
                 self.assertEqual(stop.call_args_list,
-                                 [unittest.mock.call(profiler, elevated=True), unittest.mock.call(helper)])
+                                 [unittest.mock.call(profiler, elevated=True),
+                                  unittest.mock.call(helper, elevated=False)])
 
 
 @unittest.skipUnless(sys.platform == "linux", "real session/file-limit checks require Linux")
