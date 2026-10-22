@@ -1,0 +1,114 @@
+name: Manual Linux process CPU and perf qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_sha:
+        description: Immutable full baseline core SHA (hex40)
+        required: true
+        type: string
+        default: b8f44fa16b3e16f4c9c6cc5f1205d2aee9cb0b57
+      candidate_sha:
+        description: Immutable full candidate core SHA (hex40)
+        required: true
+        type: string
+      sizes:
+        description: Comma-separated response bytes selected from 64,1024,65536
+        type: string
+        default: 64,1024
+      rates:
+        description: One to three paced complete operations/s (campaign bounds enforced)
+        type: string
+        default: 100,1000
+      seconds:
+        description: Clean window scheduled seconds (2..30)
+        type: number
+        default: 10
+      repeats:
+        description: Rotated clean pairs (2..8)
+        type: number
+        default: 4
+      server_kind:
+        description: Same host adapter for both core revisions
+        type: choice
+        default: coaptic-reusable
+        options: [coaptic-reusable, coaptic-mio, coaptic-ready, all]
+      perf:
+        description: Additional bounded perf record and stat passes (permission refusal retained)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+concurrency:
+  group: manual-linux-cpu
+  cancel-in-progress: false
+
+jobs:
+  cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      BASELINE_SHA: ${{ inputs.baseline_sha }}
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      RESPONSE_SIZES: ${{ inputs.sizes }}
+      OFFERED_RATES: ${{ inputs.rates }}
+      WINDOW_SECONDS: ${{ inputs.seconds }}
+      REPEATS: ${{ inputs.repeats }}
+      SERVER_KIND: ${{ inputs.server_kind }}
+      PERF_ENABLED: ${{ inputs.perf }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Validate immutable inputs and every clean/profile plan before setup
+        run: |
+          mkdir -p "$RUNNER_TEMP/cpu-setup-logs"
+          python3 - <<'PY' >"$RUNNER_TEMP/cpu-setup-logs/input-validation.log" 2>&1
+          import argparse, os, sys
+          sys.path.insert(0, 'tools/benchmark')
+          from linux_cpu import configuration, sha40
+          sha40(os.environ['BASELINE_SHA'])
+          sha40(os.environ['CANDIDATE_SHA'])
+          configuration(argparse.Namespace(
+              sizes=os.environ['RESPONSE_SIZES'], rates=os.environ['OFFERED_RATES'],
+              seconds=int(os.environ['WINDOW_SECONDS']), repeats=int(os.environ['REPEATS']),
+              server_kind=os.environ['SERVER_KIND'], perf=os.environ['PERF_ENABLED'] == 'true'))
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          repository: jeffglousher/coaptic
+          ref: ${{ inputs.baseline_sha }}
+          path: coaptic
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: 1.99.0
+      - name: Python checks and one runner build lane
+        run: |
+          mkdir -p "$RUNNER_TEMP/cpu-build-lane" "$RUNNER_TEMP/cpu-setup-logs"
+          python3 -m venv "$RUNNER_TEMP/cpu-venv"
+          "$RUNNER_TEMP/cpu-venv/bin/pip" install 'psutil==7.0.0' >"$RUNNER_TEMP/cpu-setup-logs/python.log" 2>&1
+          "$RUNNER_TEMP/cpu-venv/bin/python" -m unittest discover -s tools/benchmark -p test_linux_cpu.py
+          # Never change perf_event_paranoid or install a kernel/profiling service.
+          # Missing perf/sudo, unsupported events and permission refusal are raw artifacts.
+          { command -v perf; perf --version; command -v prlimit; uname -a; } >"$RUNNER_TEMP/cpu-setup-logs/perf-tools.log" 2>&1 || true
+      - name: Sequential source-matched builds, clean windows, then profiling
+        run: |
+          options=()
+          if [[ "$PERF_ENABLED" == true ]]; then options+=(--perf); fi
+          "$RUNNER_TEMP/cpu-venv/bin/python" tools/benchmark/linux_cpu.py \
+            --baseline-sha "$BASELINE_SHA" --candidate-sha "$CANDIDATE_SHA" \
+            --build-lane "$RUNNER_TEMP/cpu-build-lane" --output "$RUNNER_TEMP/cpu-evidence" \
+            --sizes "$RESPONSE_SIZES" --rates "$OFFERED_RATES" \
+            --seconds "$WINDOW_SECONDS" --repeats "$REPEATS" --server-kind "$SERVER_KIND" \
+            "${options[@]}"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: linux-cpu-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/cpu-evidence
+            ${{ runner.temp }}/cpu-setup-logs
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,62 +1,67 @@
-# Initial CPU-cost batch — target unfinished
+# Initial CPU results: target unfinished
 
-The first core optimization is merged in [core#651](https://github.com/jeffglousher/coaptic/pull/651).
-It removes unused AES inverse-key setup, a ciphertext staging copy and option
-scanning past an ordered target. No pool, App or context fields were added.
-The broader50% CPU target remains open in [core#650](https://github.com/jeffglousher/coaptic/issues/650).
+[Core #651](https://github.com/jeffglousher/coaptic/pull/651) removes unused AES
+inverse-key setup, a ciphertext staging copy and option scanning beyond an ordered
+target. It adds no pool, App or context fields. The broader 50% CPU target remains
+open in [core #650](https://github.com/jeffglousher/coaptic/issues/650).
 
-Three five-second Windows loopback windows per mode/variant compare the legacy
-spinning server with the modified Mio readiness fixture at2,000 scheduled64-byte
-GET/CON operations/sec, one outstanding operation. Every10,000-operation window
-completed and verified its entire body; OSCORE responses were authenticated.
-User and process-accounted kernel CPU are retained, with client CPU separate.
+Three five-second Windows loopback windows per mode and variant compare the
+spinning server with the modified Mio readiness fixture. Each window schedules
+10,000 complete 64-byte GET/CON operations at 2,000 operations/s, with one
+outstanding Call. All responses passed full-body verification; OSCORE responses
+also passed authentication. Client CPU is recorded separately from server CPU.
 
-- Unprotected median server CPU/operation:498.44µs spinning versus26.56µs readiness.
-- OSCORE median server CPU/operation:498.44µs spinning versus14.06µs readiness.
-- This saves approximately95%/97% CPU in this client-limited cell, **with a latency
-  tradeoff**: median window p50 rises from26.2µs to38.4µs unprotected and30.4µs
-  to42.1µs OSCORE. Quantized CPU values vary substantially; every window is retained.
+- Unprotected median server CPU per operation: 498.44 microseconds spinning,
+  26.56 microseconds with readiness.
+- OSCORE median server CPU per operation: 498.44 microseconds spinning,
+  14.06 microseconds with readiness.
+- Readiness saves about 95% and 97% CPU in this client-limited cell, with a
+  latency tradeoff: median window p50 rises from 26.2 to 38.4 microseconds
+  unprotected, and from 30.4 to 42.1 microseconds with OSCORE.
 
-The variants ran in successive batches, not randomized interleaved CPU trials.
-Pacing catches up after late starts, skips no operations, and records lateness.
-These observations do not establish the no-material-regression target, active
-request-processing CPU gains, a universal speedup or superiority at saturation.
+CPU accounting is quantized and varies substantially between windows. The
+variants ran in successive batches. Pacing catches up after late starts without
+dropping operations, and every window retains that lateness. These results do not
+establish the target without material regressions, active processing gains or
+saturation capacity.
 
-A separate socket-free probe alternates baseline/candidate order across five
-50,000-operation windows per mode. Median window **mean poll wall time** changes
-from1,041.53ns to1,009.59ns unprotected and1,931.52ns to1,902.79ns OSCORE.
-Per-call clocks perturb this probe; it is not process CPU accounting. Requests
-are prepared and full responses verified outside the poll clock.
+A separate socket-free probe alternates baseline and candidate across five
+50,000-operation windows per mode. Median window mean poll wall time changes
+from 1,041.53 to 1,009.59 ns unprotected, and from 1,931.52 to 1,902.79 ns with
+OSCORE. Per-call clocks perturb this probe. Request preparation and complete
+authenticated response verification run outside the poll clock; this measures
+poll wall time, not isolated process CPU.
 
-Baseline core is`b8f44fa` (runtime`739c277`); candidate source is`8e93916`, merged
-unchanged as`21f6dea`. Baseline suite is`98b54fe`; build records retain exact
-uncommitted measurement overlays, compiler and binary hashes. Bounds/validator
-fixes made after these valid observations are not substituted into their source
-identity. Both sides use the same frozen client binary in each CPU window.
+Baseline core is `b8f44fa` (runtime `739c277`). Candidate source is `8e93916`,
+merged unchanged as `21f6dea`. Baseline suite is `98b54fe`. Build records retain
+the exact measurement overlays, compiler and binary hashes. Later admission and
+validator fixes do not replace those source identities. Both server variants use
+the same frozen client binary.
 
-`summary.json` contains configurations, each window, client storage figures and
-limitations. `raw-observations.tar.gz` retains raw latency/calibration arrays,
-CPU snapshots, build identity and check logs; `archive-index.json` binds its
-members. `SHA256SUMS` binds the public files. Original binaries remain in the
-owned private evidence directory for regrading, outside the public archive.
+`summary.json` contains the configuration, all windows, client storage figures and
+limitations. `raw-observations.tar.gz` retains latency and calibration arrays,
+CPU snapshots, build identities and check logs. `archive-index.json` binds its
+members; `SHA256SUMS` binds the public files. Original binaries remain in private
+evidence for regrading.
 
-To repeat the CPU windows, build the native server/client at the identified
-source or a separately identified candidate and use:
+`experiments.json` records the hypotheses, results, rejected evidence and next work.
+
+Build the native server and client at an identified source, then use fresh output
+paths for each repeat:
 
 ```sh
 python tools/benchmark/native_diagnostic.py --server SERVER --client CLIENT --output NEW.json --bytes 64 --operations 10000 --warmup 32 --timeout-ms 1000 --policy spin --security oscore --server-kind coaptic-mio --rate 2000 --cpu-gated
 ```
 
-Repeat with`--security unprotected` and`--server-kind coaptic-reusable` for the
-other cells. Keep fresh output paths, credentials and source identities. The raw
-archive contains the exact alternating core-probe recipe.
+Repeat with `--security unprotected` and `--server-kind coaptic-reusable` for the
+other cells. The raw archive also contains the alternating core-probe recipe.
 
-Core checks:1,171 all-feature and693 no-default release library tests, strict
-all-target/all-feature Clippy and affected feature checks. Native focused tests
-and independent corrupt-body/wrong-key refusal plus fresh protected Block2
+Core validation passed 1,171 all-feature and 693 no-default release library tests,
+strict all-target/all-feature Clippy and affected feature checks. Native focused
+tests, independent corrupt-body/wrong-key refusal and fresh protected Block2
 recovery pass. No physical-device qualification was repeated.
 
-Windows system CPU sampling was refused (`WPR0xc5585011`); process accounting does
-not attribute machine-wide interrupts/DPCs. WSL remains unavailable. Linux
-sampling, larger/concurrent workloads, observability overhead, EDHOC setup,
-device CPU and whole-stack/runtime/initialization peaks remain unfinished work.
+During these timing runs, Windows system sampling was refused and WSL did not
+start. Process accounting does not attribute machine-wide interrupts or DPCs.
+Linux sampling, larger and concurrent workloads, observability overhead, EDHOC
+setup, device CPU and whole-system memory peaks remain unfinished.

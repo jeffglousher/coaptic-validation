@@ -1,0 +1,60 @@
+{
+  "schema": "coaptic-cpu-experiments/1",
+  "goal_issue": "https://github.com/jeffglousher/coaptic/issues/650",
+  "status": "target unfinished",
+  "experiments": [
+    {
+      "id": "active-core-1",
+      "hypothesis": "Unused AES inverse-key setup, ciphertext staging and scanning beyond an ordered option add avoidable work.",
+      "change": "Core #651 uses the encryption-only AES type, separate-input CCM opening and early option-iterator exhaustion. No App, pool or security-context fields added.",
+      "baseline": "b8f44fa16b3e16f4c9c6cc5f1205d2aee9cb0b57",
+      "candidate": "21f6dea85fb49bd766b405b3d48f58e76976ae1d",
+      "result": "The combined batch changes median window mean poll wall time by about 3% unprotected and 1.5% OSCORE. This does not isolate the contribution of each change or establish process CPU improvement.",
+      "evidence": "summary.json core_probe and raw-observations.tar.gz",
+      "decision": "Merged after focused library, feature and independent reviews; continue profiling."
+    },
+    {
+      "id": "readiness-1",
+      "hypothesis": "Repeated nonblocking receive attempts consume CPU while no request is available.",
+      "change": "Give the Mio and ready host fixtures equivalent OSCORE configuration and wait for App deadlines rather than a fixed millisecond tick.",
+      "result": "At 2000 scheduled 64-byte operations/s, readiness reduces median server process CPU by about 95% unprotected and 97% OSCORE, with roughly 12 microseconds additional median RTT. CPU windows were successive batches and accounting is quantized.",
+      "evidence": "summary.json windows and raw-observations.tar.gz",
+      "decision": "Retain the adapter support and all observations. The latency tradeoff and narrow workload leave acceptance unfinished."
+    },
+    {
+      "id": "windows-sampling-1",
+      "hypothesis": "CPU and scheduling stacks can distinguish core work from transport and idle-poll costs.",
+      "change": "A symbolized release server ran under a fixed 32 MiB circular WPR CPU/scheduling profile with 30000 verified 64-byte operations at 6000/s.",
+      "result": "The private trace saved and Rust symbols resolve, but the circular buffer retained sampled CPU only from 5.386528 to 7.732580 seconds of a 7.732580-second trace. Zero lost-event counters do not establish workload coverage. Instrumented process CPU is not a clean comparison.",
+      "evidence": "Private trace, frequency report, raw native diagnostic and pinned build manifest retained outside this repository.",
+      "decision": "Reject whole-window attribution from this capture. Stage a sampled-only 64 MiB profile; further Windows elevation is deferred by the operator."
+    },
+    {
+      "id": "linux-sampling-1",
+      "hypothesis": "Rotated matched-load CPU windows and separate perf captures will resolve active processing and syscall costs more clearly.",
+      "change": "Manual Linux runner uses immutable revisions, a frozen baseline client, sequential builds, complete authenticated operations and bounded artifacts.",
+      "result": "Not executed. Review fixed datagram admission, artifact bounds, descendant cleanup, Cargo target-path selection and campaign abort defects. The focused runner suite passes 38 tests; two Linux-only checks remain pending.",
+      "decision": "Run only after the corrected source is reviewed and committed. No Linux performance claim yet."
+    }
+  ],
+  "next_work": [
+    {
+      "priority": 1,
+      "area": "Idle receive and readiness scheduling",
+      "basis": "Measured large process CPU difference with a visible RTT tradeoff in one small sequential workload.",
+      "next": "Profile equivalent adapters at resolved CPU accounting intervals and matched offered load; retain pacing and latency."
+    },
+    {
+      "priority": 2,
+      "area": "Active unprotected and OSCORE processing",
+      "basis": "The initial core batch produces only small poll wall-time changes. Source inspection suggests repeated packet setup, scans and copies, but their contribution is not yet ranked by complete-window sampling.",
+      "next": "Use representative sampling before further ownership, scratch or key-cache changes. Count any bounded storage tradeoff."
+    },
+    {
+      "priority": 3,
+      "area": "Representative acceptance",
+      "basis": "Current measurements cover one Default/AllocMemory host fixture with concurrency one.",
+      "next": "Extend evidence to larger complete bodies, representative cloud and SmallDevice configurations, concurrency, saturation and recovery. Measure instrumentation overhead and whole-system memory separately."
+    }
+  ]
+}
