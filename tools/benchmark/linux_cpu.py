@@ -36,6 +36,8 @@ BUILD_LOG_LIMIT = 2 * MIB
 WARMUP = 20
 DATAGRAM_BUDGET = 60_000
 PROFILE_SECONDS = 5
+PERF_REPORT_SECONDS = 30
+PERF_FILES_PER_SLOT = 3  # Data/stat output, command/version log, record report.
 KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready")
 FLAGS = {"RUSTFLAGS": "-C force-frame-pointers=yes", "CARGO_PROFILE_RELEASE_DEBUG": "1",
          "CARGO_PROFILE_RELEASE_STRIP": "none", "CARGO_INCREMENTAL": "0",
@@ -110,7 +112,7 @@ def metadata_allowance(plan, seconds):
         operations = cell[2] * (seconds if mode == "clean" else PROFILE_SECONDS)
         allowance += report_limit(operations) + 4 * WINDOW_LIMIT
         if mode != "clean":
-            allowance += WINDOW_LIMIT  # perf.json; perf output/log use separate quotas.
+            allowance += WINDOW_LIMIT  # perf.json includes report status; output/log/report use separate quotas.
     if allowance > METADATA_BUDGET:
         raise ValueError("planned metadata exceeds 96MiB allowance")
     return allowance
@@ -250,7 +252,7 @@ def run_owned(argv, *, timeout, check=True, **kwargs):
 
 
 def run_logged(argv, stream, *, timeout, limit=BUILD_LOG_LIMIT, **kwargs):
-    """Cap retained build output without imposing RLIMIT_FSIZE on compiler files."""
+    """Cap retained output without limiting other files written by the child."""
     remaining = limit - stream.tell()
     if remaining < 0:
         raise ValueError("build log exceeds byte allowance")
@@ -305,8 +307,7 @@ def run_logged(argv, stream, *, timeout, limit=BUILD_LOG_LIMIT, **kwargs):
 
 def command(argv, *, cwd=SUITE, timeout=60, env=None):
     with tempfile.TemporaryFile() as stream:
-        run_owned(argv, cwd=cwd, env=env, stdout=stream, stderr=stream,
-                  timeout=timeout, file_limit=SUMMARY_LIMIT)
+        run_logged(argv, stream, cwd=cwd, env=env, timeout=timeout, limit=SUMMARY_LIMIT)
         stream.seek(0)
         data = stream.read(SUMMARY_LIMIT + 1)
         if len(data) > SUMMARY_LIMIT:
@@ -317,7 +318,7 @@ def command(argv, *, cwd=SUITE, timeout=60, env=None):
 def identity(root):
     return {"revision": command(["git", "rev-parse", "HEAD"], cwd=root),
             "tree": command(["git", "rev-parse", "HEAD^{tree}"], cwd=root),
-            "status": command(["git", "status", "--porcelain"], cwd=root)}
+            "status": command(["git", "--no-optional-locks", "status", "--porcelain"], cwd=root)}
 
 
 def hardware():
@@ -402,6 +403,48 @@ def perf_command(mode, pid, seconds, output, quota):
     return prefix + options + ["-p", str(pid), "--", "sleep", str(seconds)]
 
 
+def perf_report(directory, quota, log):
+    """Read our completed capture without privilege while copied ELF paths exist."""
+    path = directory / "perf-report.txt"
+    # Flat self costs avoid cumulative double counting and unbounded callchain
+    # expansion. Keep headers, unknown symbols and stderr warnings verbatim.
+    # --force permits our sudo-owned capture; it does not grant read permission.
+    argv = ["perf", "report", "--stdio", "--header", "--show-nr-samples", "--show-total-period",
+            "--sort", "dso,symbol", "--no-children", "--call-graph", "none", "--percent-limit", "0",
+            "--stdio-color", "never", "--no-inline", "--demangle", "--force",
+            "--input", str(directory / "perf.data")]
+    version = ["perf", "--version"]
+    state = dict(available=False, command=argv, version_command=version, output_file=str(path),
+                 file_size_limit_bytes=quota, timeout_seconds=PERF_REPORT_SECONDS, version_timeout_seconds=5,
+                 interpretation="flat sampled self costs; capture headers/counts/warnings as exposed by perf; no stage timings")
+    try:
+        with path.open("wb") as stream:
+            state["version_returncode"] = run_owned(version, timeout=5, check=False,
+                                                    stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                                                    file_limit=quota)
+            state["returncode"] = run_owned(argv, timeout=PERF_REPORT_SECONDS, check=False,
+                                           stdin=subprocess.DEVNULL, stdout=stream, stderr=stream,
+                                           file_limit=quota, env={**os.environ, "DEBUGINFOD_URLS": ""})
+    except Exception as error:
+        state.update(error_type=type(error).__name__, reason=str(error)[:512])
+        if isinstance(error, subprocess.TimeoutExpired):
+            state["deadline_exceeded"] = True
+        if getattr(error, "cleanup_unresolved", False):
+            state["cleanup_unresolved"] = True
+            state["cleanup_reason"] = "; ".join(getattr(error, "__notes__", []) or [str(error)])[:512]
+    finally:
+        try:
+            state["output_bytes"] = path.stat().st_size
+            state["command_log_bytes"] = os.fstat(log.fileno()).st_size
+        except OSError as error:
+            state.setdefault("error_type", type(error).__name__)
+            state.setdefault("reason", str(error)[:512])
+    state["available"] = (not state.get("error_type") and state.get("returncode") == 0
+                          and 0 < state.get("output_bytes", 0) < quota
+                          and state.get("command_log_bytes", quota) < quota)
+    return state
+
+
 @contextmanager
 def perf_pass(mode, pid, seconds, directory, quota):
     state = {"mode": mode, "window_seconds": seconds,
@@ -446,6 +489,10 @@ def perf_pass(mode, pid, seconds, directory, quota):
                     state["available"] = (not state.get("deadline_exceeded") and not state.get("cleanup_error")
                                           and not state.get("output_error") and state.get("returncode") == 0
                                           and 0 < state.get("output_bytes", 0) < quota)
+                    if mode == "record" and state["available"]:
+                        state["report"] = perf_report(directory, quota, log)
+                        if state["report"].get("cleanup_unresolved"):
+                            state["cleanup_unresolved"] = True
                     save(directory / "perf.json", state, WINDOW_LIMIT)
 
 
@@ -665,7 +712,7 @@ def run(args):
     plan = rotation(args, cells)
     metadata_bytes = metadata_allowance(plan, args.seconds)
     perf_slots = sum(mode != "clean" for mode, _, _, _ in plan)
-    quota = min(8 * MIB, (PERF_BUDGET - METADATA_BUDGET) // max(1, 2 * perf_slots))
+    quota = min(8 * MIB, (PERF_BUDGET - METADATA_BUDGET) // max(1, PERF_FILES_PER_SLOT * perf_slots))
     if sys.platform != "linux":
         raise ValueError("execution requires Linux; validation/tests are portable")
     if not args.build_lane.is_dir():
@@ -677,27 +724,33 @@ def run(args):
     if (output.is_relative_to(SUITE) or output.is_relative_to(lane)
             or lane.is_relative_to(output)):
         raise ValueError("evidence must be outside source and disjoint from the build lane")
-    if identity(SUITE)["status"] or identity(SUITE / "coaptic")["status"]:
-        raise ValueError("commit the source first; clean suite/core required")
     args.output = args.output.resolve()
     args.build_lane = args.build_lane.resolve()
     args.output.mkdir(parents=True)
     out = args.output
     results = []
-    manifest = {"schema": "coaptic-linux-cpu/1", "baseline_sha": args.baseline_sha,
+    try:
+        save(out / "request.json", {"baseline_sha": args.baseline_sha,
+                                   "candidate_sha": args.candidate_sha, "cells": cells,
+                                   "seconds": args.seconds, "repeats": args.repeats,
+                                   "perf": args.perf})
+        suite_identity = identity(SUITE)
+        if suite_identity["status"] or identity(SUITE / "coaptic")["status"]:
+            raise ValueError("commit the source first; clean suite/core required")
+        manifest = {"schema": "coaptic-linux-cpu/1", "baseline_sha": args.baseline_sha,
                 "candidate_sha": args.candidate_sha, "hardware": hardware(), "flags": FLAGS,
-                "suite": identity(SUITE), "runner_sha256": digest(__file__),
+                "suite": suite_identity, "runner_sha256": digest(__file__),
                 "psutil_version": importlib.metadata.version("psutil"),
                 "diagnostic_sha256": digest(Path(__file__).with_name("native_diagnostic.py")),
                 "build_lane": str(args.build_lane), "perf_budget_bytes": PERF_BUDGET,
                 "metadata_budget_bytes": METADATA_BUDGET, "metadata_allowance_bytes": metadata_bytes,
                 "perf_file_quota_bytes": quota,
-                "artifact_bound_bytes_excluding_binaries": metadata_bytes + 2 * perf_slots * quota,
+                "perf_files_per_slot": PERF_FILES_PER_SLOT,
+                "artifact_bound_bytes_excluding_binaries": metadata_bytes + PERF_FILES_PER_SLOT * perf_slots * quota,
                 "cells": cells, "seconds": args.seconds, "repeats": args.repeats,
                 "rotation": "AB/BA by repeat and cell; all clean windows precede all profiling passes",
                 "limits": "concurrency1 complete loopback GET; Default/AllocMemory host fixture; OSCORE established only; process CPU includes IPC boundaries/idle; no interrupt attribution, EDHOC, saturation, device or50% target proof"}
-    save(out / "manifest.json", manifest)
-    try:
+        save(out / "manifest.json", manifest)
         baseline = build(args, "baseline", args.baseline_sha, out)
         candidate = build(args, "candidate", args.candidate_sha, out)
         for field in ("native_lock_sha256", "native_manifest_sha256", "target", "rustc", "cargo", "flags"):
@@ -725,18 +778,21 @@ def run(args):
                 raise RuntimeError("owned process termination unresolved; campaign aborted")
         return all(r["passed"] for r in results if r["mode"] == "clean")
     except Exception as error:
-        save(out / "failure.json", {"type": type(error).__name__, "reason": str(error)})
+        save(out / "failure.json", {"type": type(error).__name__, "reason": str(error)[:4096]})
         raise
     finally:
         cleanup_failed = any(unresolved_cleanup(result) for result in results)
         complete = len(results) == len(plan) and not cleanup_failed
         save(out / "summary.json", {"comparisons": aggregate(results, args.repeats, 1 / os.sysconf("SC_CLK_TCK"),
-                                                            campaign_complete=complete),
+                                                            campaign_complete=complete) if results else [],
                                    "campaign_complete": complete, "cleanup_unresolved": cleanup_failed,
                                    "windows_recorded": len(results),
                                    "failed_windows": [r["index"] for r in results if not r["passed"]],
                                    "unavailable_profiles": [r["index"] for r in results if r["mode"] != "clean"
                                                             and not r.get("perf", {}).get("available")],
+                                   "unavailable_reports": [r["index"] for r in results if r["mode"] == "record"
+                                                           and r.get("perf", {}).get("available")
+                                                           and not r["perf"].get("report", {}).get("available")],
                                    "interpretation": "ratios only for eligible complete pairs; raw failures and low-resolution/load-mismatched windows retained; no acceptance claim"})
 
 

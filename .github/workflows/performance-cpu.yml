@@ -89,7 +89,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/cpu-build-lane" "$RUNNER_TEMP/cpu-setup-logs"
           python3 -m venv "$RUNNER_TEMP/cpu-venv"
           "$RUNNER_TEMP/cpu-venv/bin/pip" install 'psutil==7.0.0' >"$RUNNER_TEMP/cpu-setup-logs/python.log" 2>&1
-          "$RUNNER_TEMP/cpu-venv/bin/python" -m unittest discover -s tools/benchmark -p test_linux_cpu.py
+          "$RUNNER_TEMP/cpu-venv/bin/python" -m unittest discover -s tools/benchmark -p 'test_linux*.py'
           # Never change perf_event_paranoid or install a kernel/profiling service.
           # Missing perf/sudo, unsupported events and permission refusal are raw artifacts.
           { command -v perf; perf --version; command -v prlimit; uname -a; } >"$RUNNER_TEMP/cpu-setup-logs/perf-tools.log" 2>&1 || true
