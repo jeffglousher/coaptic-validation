@@ -12,12 +12,12 @@ from native_diagnostic import control_line, cpu_cost, main, measure, server_reso
 class ReportTests(unittest.TestCase):
     @staticmethod
     def startup_record():
-        return dict(schema="coaptic-native-server-resources/1", server_kind="coaptic-async",
+        return dict(schema="coaptic-native-server-resources/2", server_kind="coaptic-async",
                     udp_scratch_bytes=2049, adapter_inline_bytes=2104,
-                    app_including_adapter_bytes=16000, loop_future_including_app_bytes=32000,
+                    app_including_adapter_bytes=16000, loop_future_borrowing_app_bytes=12000,
                     runtime_heap_bytes=None, runtime_stack_bytes=None)
 
-    def test_async_startup_ledger_keeps_nested_sizes_and_unknown_runtime(self):
+    def test_async_startup_ledger_keeps_separate_borrower_and_unknown_runtime(self):
         valid = self.startup_record()
         self.assertIsNone(server_resources("unused", "coaptic-ready", deadline=0, server=None))
         with tempfile.TemporaryDirectory() as directory, patch("native_diagnostic.time.sleep") as sleep:
@@ -28,13 +28,22 @@ class ReportTests(unittest.TestCase):
                 return server_resources(path, "coaptic-async", deadline=0, server=None)
 
             self.assertEqual(read(valid), valid)
+            # A borrowing future can be smaller or larger than its separate App.
+            for child_bytes in (1, 15999, 16000, 32000):
+                record = dict(valid, loop_future_borrowing_app_bytes=child_bytes)
+                with self.subTest(child_bytes=child_bytes):
+                    self.assertEqual(read(record), record)
             for change in (dict(server_kind="coaptic-ready"), dict(udp_scratch_bytes=2048),
                            dict(adapter_inline_bytes=2048), dict(app_including_adapter_bytes=2000),
-                           dict(loop_future_including_app_bytes=15999), dict(adapter_inline_bytes=True),
+                           dict(loop_future_borrowing_app_bytes=0),
+                           dict(loop_future_borrowing_app_bytes=-1),
+                           dict(loop_future_borrowing_app_bytes=True),
+                           dict(loop_future_borrowing_app_bytes=None),
+                           dict(loop_future_borrowing_app_bytes=2**64), dict(adapter_inline_bytes=True),
                            dict(runtime_heap_bytes=0), dict(runtime_stack_bytes=0)):
                 with self.subTest(change=change), self.assertRaises(ValueError):
                     read(dict(valid, **change))
-            for key in ("runtime_heap_bytes", "runtime_stack_bytes"):
+            for key in ("runtime_heap_bytes", "runtime_stack_bytes", "loop_future_borrowing_app_bytes"):
                 missing = dict(valid)
                 del missing[key]
                 with self.assertRaises(ValueError):
@@ -44,6 +53,24 @@ class ReportTests(unittest.TestCase):
                 with self.subTest(data=data[:10]), self.assertRaises(ValueError):
                     server_resources(path, "coaptic-async", deadline=0, server=None)
             sleep.assert_not_called()
+
+    def test_startup_rejects_owned_app_schema_and_obsolete_future_field(self):
+        valid = self.startup_record()
+        old_field = dict(valid)
+        old_field["loop_future_including_app_bytes"] = old_field.pop("loop_future_borrowing_app_bytes")
+        legacy = dict(old_field, schema="coaptic-native-server-resources/1")
+        records = (
+            (legacy, "requires borrowing schema coaptic-native-server-resources/2"),
+            (dict(valid, schema="coaptic-native-server-resources/1"), "requires borrowing schema"),
+            (old_field, "obsolete owned-App loop future field"),
+            (dict(valid, loop_future_including_app_bytes=32000), "obsolete owned-App loop future field"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "server.log"
+            for record, message in records:
+                path.write_bytes(json.dumps(record).encode() + b"\n")
+                with self.subTest(record=record), self.assertRaisesRegex(ValueError, message):
+                    server_resources(path, "coaptic-async", deadline=0, server=None)
 
     def test_startup_wait_accepts_delayed_partial_line_only_after_newline(self):
         valid = self.startup_record()

@@ -358,7 +358,7 @@ impl coaptic::storage::AsyncDatagramIo for ReadyUdp {
 type AsyncUdpApp = App<coaptic::profiles::Default, ReadyUdp, 1, true, AllocMemory>;
 
 async fn async_udp_loop(
-    mut app: AsyncUdpApp,
+    app: &mut AsyncUdpApp,
     epoch: Instant,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let now = || epoch.elapsed().as_millis() as u64;
@@ -396,13 +396,13 @@ async fn async_udp_server(
         received: false,
     };
     let adapter_bytes = std::mem::size_of_val(&io);
-    let app = bind_fixture(io, bytes, rx_bytes, context)?;
+    let mut app = bind_fixture(io, bytes, rx_bytes, context)?;
     let app_bytes = std::mem::size_of_val(&app);
-    let run = async_udp_loop(app, Instant::now());
-    // The owned loop future includes App, which includes the adapter and scratch.
-    // This excludes the outer setup future, runtime allocations and thread stacks.
+    let run = async_udp_loop(&mut app, Instant::now());
+    // App owns the adapter and scratch; the separate loop future borrows App.
+    // Both live in the outer setup future, whose complete layout is not reported.
     println!(
-        "{{\"schema\":\"coaptic-native-server-resources/1\",\"server_kind\":\"coaptic-async\",\"udp_scratch_bytes\":2049,\"adapter_inline_bytes\":{adapter_bytes},\"app_including_adapter_bytes\":{app_bytes},\"loop_future_including_app_bytes\":{},\"runtime_heap_bytes\":null,\"runtime_stack_bytes\":null,\"nesting\":\"scratch inside adapter inside App inside loop future; do not sum\",\"limits\":\"inline sizes only; excludes core heap, body, outer setup future, runtime, allocator and kernel costs; runtime and stack costs unknown\"}}",
+        "{{\"schema\":\"coaptic-native-server-resources/2\",\"server_kind\":\"coaptic-async\",\"udp_scratch_bytes\":2049,\"adapter_inline_bytes\":{adapter_bytes},\"app_including_adapter_bytes\":{app_bytes},\"loop_future_borrowing_app_bytes\":{},\"runtime_heap_bytes\":null,\"runtime_stack_bytes\":null,\"nesting\":\"scratch inside adapter inside App; loop future borrows separate App; both inside outer setup future; do not sum nested owners\",\"limits\":\"inline component sizes only; complete outer setup future, core heap, response body, runtime heap, thread and polling stacks, allocator and kernel costs excluded and unknown\"}}",
         std::mem::size_of_val(&run)
     );
     std::io::stdout().flush()?;

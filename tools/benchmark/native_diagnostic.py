@@ -55,16 +55,20 @@ def server_resources(log_path, server_kind, *, deadline, server):
                 raise TimeoutError("server startup ledger deadline")
             time.sleep(min(.01, remaining))
     record = json.loads(raw)
+    if not isinstance(record, dict):
+        raise ValueError("invalid async server startup ledger")
+    if record.get("schema") != "coaptic-native-server-resources/2":
+        raise ValueError("async server startup ledger requires borrowing schema coaptic-native-server-resources/2")
+    if "loop_future_including_app_bytes" in record:
+        raise ValueError("async server startup ledger uses obsolete owned-App loop future field")
     fields = ("udp_scratch_bytes", "adapter_inline_bytes", "app_including_adapter_bytes",
-              "loop_future_including_app_bytes")
-    if (not isinstance(record, dict)
-            or record.get("schema") != "coaptic-native-server-resources/1"
-            or record.get("server_kind") != server_kind
+              "loop_future_borrowing_app_bytes")
+    if (record.get("server_kind") != server_kind
             or any(type(record.get(key)) is not int or not 0 < record[key] < 2**64
                    for key in fields)
             or record["udp_scratch_bytes"] != 2049
             or not record["udp_scratch_bytes"] <= record["adapter_inline_bytes"]
-            <= record["app_including_adapter_bytes"] <= record["loop_future_including_app_bytes"]
+            <= record["app_including_adapter_bytes"]
             or any(key not in record or record[key] is not None
                    for key in ("runtime_heap_bytes", "runtime_stack_bytes"))):
         raise ValueError("invalid async server startup ledger")
