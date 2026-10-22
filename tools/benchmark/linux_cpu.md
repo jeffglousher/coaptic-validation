@@ -113,9 +113,42 @@ bounded wall interval that can include idle/control time or cover only part of a
 overloaded run. Perf startup overhead is not synchronized to clean CPU gates.
 `perf.json`, `perf-command.log`, raw `perf.data` and stat output retain exact tool,
 event or permission refusals; process CPU still runs when perf is unavailable.
-No perf permissions, sysctls or shared services are changed. Inspect copied
-symbolized binaries with the raw profiles; binaries retain their original build
-paths in debug information.
+No perf permissions, sysctls or shared services are changed.
+
+After each successful record capture terminates and its raw file is readable,
+nonempty and below quota, the runner reads it while the copied server/client ELF
+paths still exist. Nonprivileged `perf --version` has a five-second deadline and
+appends to `perf-command.log`; nonprivileged `perf report` has a 30-second deadline
+and writes combined stdout/stderr to `perf-report.txt`. Both use owned sessions
+and hard file limits. The exact argv arrays, return codes, byte counts, deadlines
+and failures are retained under `report` in `perf.json`. A missing perf executable
+is an explicit report refusal. Remote debuginfod downloads are disabled.
+
+The report uses `--stdio --header --show-nr-samples --show-total-period
+--sort dso,symbol --no-children --call-graph none --percent-limit 0
+--stdio-color never --no-inline --demangle --force --input OWNED_PERF_DATA`.
+These options are documented in the upstream
+[perf report manual](https://github.com/torvalds/linux/blob/v6.8/tools/perf/Documentation/perf-report.txt).
+`--force` permits reading this runner's sudo-owned capture without an ownership
+check; it grants no filesystem permissions. The initial report is a flat ranked
+DSO/function summary of sampled self costs, sample counts and event periods.
+Callchain display and inline expansion are disabled to bound processing; the
+original frame-pointer callchains remain in raw `perf.data` for later inspection.
+Headers, event/sample totals, any exposed first/last sample times, lost-sample
+counts and warnings remain verbatim, including stderr and unresolved symbols.
+Perf versions expose different coverage details; absent warnings or zero reported
+losses do not prove full measurement-window coverage. A successful report command
+does not prove nonzero samples, resolved symbols or complete coverage. Sample
+percentages/periods are not stage timings or clean process CPU measurements.
+
+A nonzero report exit, quota hit or timeout with resolved cleanup leaves the
+capture available and preserves its raw data and partial report. `unavailable_reports`
+in `summary.json` lists successful record captures whose report was unavailable;
+`unavailable_profiles` separately lists unavailable captures/stat passes. A report
+refusal does not invalidate eligible clean pairs. Unresolved termination of either
+the version command or report process is fatal to the campaign, as for capture
+helpers. Binaries retain original build paths in debug information; copied
+symbolized binaries and raw profiles remain available even if reporting fails.
 
 Bounds: 1..3 distinct rates, 1..100000 ops/s; 2..30 scheduled seconds;
 2..8 repeats; the 60000-datagram admission bound above applies to each socket
@@ -134,19 +167,31 @@ Server logs have a 16 KiB hard file limit; retained client stderr is also capped
 at 16 KiB. The two build logs each retain at most 2 MiB through a bounded pipe
 reader; overflow fails the build and stops its owned group. Compiler artifact
 files are not subject to this log quota.
+Source/version commands use the same bounded pipe reader with a 64 KiB output
+ceiling. That ceiling does not restrict other files written by Git or its tools.
+Git identity checks disable optional locks, so a clean status check cannot refresh
+the source index. After output-path and workload validation, `request.json` is
+retained before source inspection; preflight failures produce `failure.json` and
+an incomplete summary with zero measured windows.
 
 Before builds, the runner sums every planned raw-report, metadata and log ceiling
 and rejects totals above a **96 MiB metadata reserve**. This is a checked bound,
 not an estimate based on typical latency widths. At most 192 total windows and
-96 profile passes fit the clean-window/repeat constraints. Even the combination
-of those maxima with 2M samples needs at most 75391744 metadata bytes. Each perf
-data/stat output has a hard `RLIMIT_FSIZE` applied **after sudo**; its launcher log
-has the same quota. All perf data/log quotas fit the remaining 160 MiB (at most
-8 MiB per file), so runner metadata, logs and profiles together stay within
+96 profile passes (at most 48 record reports) fit the clean-window/repeat
+constraints. Even the combination of those maxima with 2M samples needs at most
+75391744 metadata bytes; report status fits the existing capped `perf.json`.
+Each perf data/stat output has a hard `RLIMIT_FSIZE` applied **after sudo**;
+its command/version log and nonprivileged report have the same quota. Reserve
+**three file quotas per profile pass**, conservatively including a report quota
+for stat passes too. The per-file quota is
+`min(8 MiB, floor(160 MiB / (3 * profile_passes)))` when profiling is enabled.
+All perf data/log/report quotas fit the remaining 160 MiB, so runner metadata,
+logs and profiles together stay within
 **256 MiB**, excluding binaries and the workflow's separate setup logs. The
-manifest records the exact planned metadata allowance and per-file perf quota.
-Truncation/refusal remains a failed profile. Each binary copy is capped
-at 128 MiB (four copies <=512 MiB). Workflow timeout is 60 minutes, artifacts
+manifest records the exact planned metadata allowance, three-files-per-slot
+reservation, per-file perf quota and total artifact ceiling. Truncation/refusal
+remains an unavailable capture or report, with raw evidence retained. Each binary
+copy is capped at 128 MiB (four copies <=512 MiB). Workflow timeout is 60 minutes, artifacts
 retain 14 days, and the
 one job has no matrix/parallel build. Raw failed windows and earlier successful
 windows survive later failure and upload with `if: always()`. Credentials and
@@ -157,8 +202,8 @@ descendants as well as server/client and perf. An inner privileged `timeout`
 also bounds perf to its five-second window plus ten seconds, with KILL five
 seconds later if sudo isolates its group. Client/server cleanup attempts run
 independently, and cleanup errors retain `result.json` and `perf.json`.
-Unresolved termination of the client, server, perf or its helpers aborts the remaining campaign after
-retaining the window and append-only index. `summary.json` records
+Unresolved termination of the client, server, perf, report or any helper aborts
+the remaining campaign after retaining the window and append-only index. `summary.json` records
 `campaign_complete=false` and `cleanup_unresolved=true`; no stratum emits a
 valid ratio, including earlier complete clean pairs. A perf permission/tool
 refusal with a cleanly terminated process remains an unavailable profile and
@@ -167,8 +212,8 @@ allows later windows to run.
 Portable checks (no Cargo or profiling):
 
 ```sh
-python3 -m unittest discover -s tools/benchmark -p test_linux_cpu.py
-python3 -c "import ast,pathlib; [ast.parse(p.read_text()) for p in map(pathlib.Path, ['tools/benchmark/linux_cpu.py','tools/benchmark/test_linux_cpu.py'])]"
+python3 -m unittest discover -s tools/benchmark -p 'test_linux*.py'
+python3 -c "import ast,pathlib; [ast.parse(p.read_text()) for p in pathlib.Path('tools/benchmark').glob('*linux*.py')]"
 ```
 
 For qualification, dispatch a selected committed companion ref. Review failure and perf-availability artifacts,
