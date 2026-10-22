@@ -1,0 +1,43 @@
+name: Manual finite perf sampling suitability controls
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: manual-linux-cpu
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Finite isolated controller and raw parser tests
+        run: |
+          mkdir "$RUNNER_TEMP/perf-sampling-probe-evidence"
+          ulimit -f 4096
+          PYTHONPATH=tools/benchmark timeout --signal=TERM --kill-after=5 90 \
+            python3 -B -m unittest \
+            test_linux_cpu.RecordControlTests \
+            test_linux_cpu.RecordFifoTests \
+            test_linux_cpu.LinuxProcessTests \
+            test_perf_sampling_probe \
+            >"$RUNNER_TEMP/perf-sampling-probe-evidence/tests.log" 2>&1
+      - name: Four serial bounded sampling controls
+        run: >-
+          timeout --signal=INT --kill-after=60 300
+          python3 -B tools/benchmark/perf_sampling_probe.py
+          --output "$RUNNER_TEMP/perf-sampling-probe-evidence/controls"
+      - name: Retain success or explicit refusal evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: perf-sampling-probe-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/perf-sampling-probe-evidence
+          if-no-files-found: warn
+          retention-days: 14

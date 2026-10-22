@@ -16,9 +16,11 @@ from pathlib import Path
 import platform
 import re
 import secrets
+import select
 import shutil
 import signal
 import socket
+import stat
 import statistics
 import subprocess
 import sys
@@ -421,17 +423,207 @@ def build(args, label, revision, out, *, expected=None):
     return record
 
 
-def perf_command(mode, pid, seconds, output, quota):
+def perf_command(mode, pid, seconds, output, quota, *, event="cpu-clock", control_paths=None):
     # Apply a hard RLIMIT_FSIZE after sudo so sudo policy cannot reset the bound.
     prefix = ["sudo", "-n", "--", "prlimit", f"--fsize={quota}:{quota}", "--",
-              "timeout", "--signal=TERM", "--kill-after=5", str(seconds + 10), "perf"]
+              "timeout", "--signal=TERM", "--kill-after=5",
+              str(PROFILE_SECONDS + 10 if mode == "record" else seconds + 10), "perf"]
     if mode == "record":
-        options = ["record", "-e", "cpu-clock", "-F", "997", "--call-graph", "fp",
-                   "-m", "128", "--no-buildid-cache", "-o", str(output)]
+        if event not in ("cpu-clock", "task-clock"):
+            raise ValueError("record event must be cpu-clock or task-clock")
+        if (control_paths is None or len(control_paths) != 2
+                or any(not str(path) or any(c in str(path) for c in ",\n\r") for path in control_paths)):
+            raise ValueError("record requires two unambiguous control FIFO paths")
+        return prefix + ["record", "-e", event, "-F", "997", "--call-graph", "fp",
+                         "-m", "128", "--no-buildid-cache", "-o", str(output), "-p", str(pid),
+                         "-D", "-1", "--control", "fifo:" + ",".join(map(str, control_paths))]
     else:
         options = ["stat", "-x", ";", "-e", "task-clock,cycles,instructions,context-switches,cpu-migrations,page-faults",
                    "-o", str(output)]
     return prefix + options + ["-p", str(pid), "--", "sleep", str(seconds)]
+
+
+class PerfCapture(dict):
+    """Serializable capture metadata; private handles never become mapping keys.
+
+    The record ACK fences command processing, not representative sampling or
+    success of every kernel enable operation. No control state affects clean/stat.
+    """
+    def __init__(self, mode, seconds, target=None):
+        super().__init__(mode=mode, window_seconds=seconds,
+                         boundary="attach after warmup; bounded wall window; may include idle/control overhead; never clean timing")
+        self.deadline = None
+        self._target = target
+        self._recorder = None
+        self._control_dir = None
+        self._directory_id = None
+        self._control_paths = None
+        self._fifo_ids = ()
+        self._fds = ()
+        self._optional_nul = False
+        self._phase = 0
+        self._enabled = False
+        self._finish_attempted = False
+
+    def _open_control(self, directory):
+        # Special files must remain outside artifact traversal, including when
+        # unresolved process cleanup requires retaining the owned control paths.
+        self._control_dir = Path(tempfile.mkdtemp(prefix="coaptic-perf-control-"))
+        info = self._control_dir.lstat()
+        self._directory_id = (info.st_dev, info.st_ino)
+        self._control_dir.chmod(0o700)
+        info = self._control_dir.lstat()
+        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o700:
+            raise RuntimeError("private record control directory refused")
+        self._control_paths = tuple(self._control_dir / name for name in ("ctl", "ack"))
+        for path in self._control_paths:
+            os.mkfifo(path, 0o600)
+            info = path.lstat()
+            self._fifo_ids += ((info.st_dev, info.st_ino),)
+            path.chmod(0o600)
+            fd = os.open(path, os.O_RDWR | os.O_NONBLOCK | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0))
+            self._fds += (fd,)
+            opened = os.fstat(fd)
+            if (not stat.S_ISFIFO(opened.st_mode) or stat.S_IMODE(opened.st_mode) != 0o600
+                    or (opened.st_dev, opened.st_ino) != self._fifo_ids[-1]):
+                raise RuntimeError("owned record control FIFO refused")
+
+    def _cleanup_failure(self, error):
+        self.update(cleanup_unresolved=True, cleanup_error=type(error).__name__,
+                    cleanup_reason=(self.get("cleanup_reason", "") + "; " + str(error))[-512:])
+
+    def _close_control(self, *, remove):
+        # Attempt every close after recorder cleanup, even if a previous close fails.
+        for fd in self._fds:
+            try:
+                os.close(fd)
+            except OSError as error:
+                self._cleanup_failure(error)
+        self._fds = ()
+        if self._control_dir is None:
+            return
+        if remove:
+            try:
+                info = self._control_dir.lstat()
+                if ((info.st_dev, info.st_ino) != self._directory_id
+                        or not stat.S_ISDIR(info.st_mode)):
+                    raise RuntimeError("record control directory ownership changed")
+                for path, identity in zip(self._control_paths or (), self._fifo_ids):
+                    info = path.lstat()
+                    if (not stat.S_ISFIFO(info.st_mode)
+                            or (info.st_dev, info.st_ino) != identity):
+                        raise RuntimeError("record control FIFO ownership changed")
+                    path.unlink()
+                self._control_dir.rmdir()  # Refuse unexpected contents; never recursive.
+            except OSError as error:
+                self._cleanup_failure(error)
+            except RuntimeError as error:
+                self._cleanup_failure(error)
+        if not remove or self.get("cleanup_unresolved"):
+            self["retained_control_directory"] = str(self._control_dir)
+
+    def _check_alive(self, *, recorder=True):
+        if self._target is not None and self._target.poll() is not None:
+            raise RuntimeError("record target exited during control")
+        if recorder and self._recorder.poll() is not None:
+            raise RuntimeError("recorder exited during control")
+
+    @staticmethod
+    def _remaining(deadline):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("record control deadline")
+        return remaining
+
+    def _read_ack(self):
+        allowance = min(8, 64 - self["control_ack_bytes"])
+        if allowance <= 0:
+            raise RuntimeError("record ACK byte allowance exceeded")
+        data = os.read(self._fds[1], allowance)
+        if not data:
+            raise RuntimeError("record ACK channel ended")
+        self["control_ack_bytes"] += len(data)
+        self["control_reply_prefix_hex"] = data.hex()
+        if len(data) > allowance:
+            raise RuntimeError("record ACK byte allowance exceeded")
+        return data
+
+    def _drain_padding(self):
+        # One optional NUL may arrive after the preceding newline, including
+        # across command boundaries. Everything else before a command is stale.
+        while True:
+            try:
+                data = self._read_ack()
+            except BlockingIOError:
+                return
+            if not self._optional_nul or data != b"\0":
+                raise RuntimeError("stale or extra record ACK bytes")
+            self._optional_nul = False
+
+    def _command(self, command):
+        commands = ("enable", "disable", "stop")
+        if self._phase >= len(commands) or command != commands[self._phase]:
+            raise ValueError("record control command order")
+        end = min(self.deadline, time.monotonic() + 2)
+        try:
+            self._remaining(end)
+            self._check_alive()
+            self._drain_padding()
+            self._remaining(end)
+            message = (command + "\n").encode("ascii")
+            if os.write(self._fds[0], message) != len(message):
+                raise RuntimeError("short record control write")
+            self["control_commands_sent"] += 1
+            self[command + "_sent_monotonic"] = time.monotonic()
+            position, padding = 0, self._optional_nul
+            self._optional_nul = False
+            trailing_nul = False
+            while True:
+                remaining = self._remaining(end)
+                try:
+                    data = self._read_ack()
+                except BlockingIOError:
+                    self._check_alive()
+                    select.select([self._fds[1]], [], [], min(remaining, .05))
+                    continue
+                for byte in data:
+                    if padding:
+                        padding = False
+                        if byte == 0:
+                            continue
+                    if position < 4:
+                        if byte != b"ack\n"[position]:
+                            raise RuntimeError("malformed record ACK")
+                        position += 1
+                    elif byte == 0 and not trailing_nul:
+                        trailing_nul = True
+                    else:
+                        raise RuntimeError("extra record ACK bytes")
+                if position == 4:
+                    self._optional_nul = not trailing_nul
+                    self._drain_padding()
+                    self._remaining(end)
+                    # A recorder may exit normally immediately after stop ACK.
+                    self._check_alive(recorder=command != "stop")
+                    self[command + "_ack_monotonic"] = time.monotonic()
+                    self["control_acks"] += 1
+                    self._phase += 1
+                    return
+        except BaseException as error:
+            self.update(control_error=type(error).__name__, control_reason=str(error)[:512],
+                        control_refused_command=command)
+            if isinstance(error, TimeoutError):
+                self["deadline_exceeded"] = True
+            raise
+
+    def finish_recording(self):
+        """Disable then stop once; cleanup still reaps the owned recorder."""
+        if self["mode"] != "record" or self._finish_attempted or not self._enabled:
+            return
+        self._finish_attempted = True
+        self._command("disable")
+        self._command("stop")
+        self["record_finished"] = True
 
 
 def perf_report(directory, quota, log):
@@ -483,35 +675,84 @@ def perf_report(directory, quota, log):
 
 
 @contextmanager
-def perf_pass(mode, pid, seconds, directory, quota):
-    state = {"mode": mode, "window_seconds": seconds,
-             "boundary": "attach after warmup; bounded wall window; may include idle/control overhead; never clean timing"}
+def perf_pass(mode, pid, seconds, directory, quota, *, event="cpu-clock", target=None):
+    state = PerfCapture(mode, seconds, target)
     if mode == "clean":
         yield state
         return
+    if mode == "record" and event not in ("cpu-clock", "task-clock"):
+        raise ValueError("record event must be cpu-clock or task-clock")
     path = directory / ("perf.data" if mode == "record" else "perf-stat.txt")
-    argv = perf_command(mode, pid, seconds, path, quota)
-    state.update(command=argv, file_size_limit_bytes=quota)
+    state["file_size_limit_bytes"] = quota
     with (directory / "perf-command.log").open("w") as log:
-        child = None
+        child = primary = finish_error = None
+        reaped = True
         try:
+            if mode == "record":
+                state.deadline = time.monotonic() + PROFILE_SECONDS + 10
+                state.update(capture_deadline_monotonic=state.deadline, control_ack_bytes=0,
+                             control_commands_sent=0, control_acks=0,
+                             control_ack_limit_bytes=64, control_ack_timeout_seconds=2,
+                             control_interpretation="ACK fences processing, not representative sampling")
+                try:
+                    state._open_control(directory)
+                except BaseException as error:
+                    state.update(control_error=type(error).__name__, control_reason=str(error)[:512])
+                    raise
+            argv = perf_command(mode, pid, seconds, path, quota, event=event,
+                                control_paths=state._control_paths)
+            state["command"] = argv
             child = spawn(argv, stdout=log, stderr=log, file_limit=quota)
+            state._recorder = child
+            if mode == "record":
+                state._command("enable")
+                state._enabled = True
             yield state
+        except BaseException as error:
+            primary = error
+            raise
         finally:
             try:
+                try:
+                    state.finish_recording()
+                except BaseException as error:
+                    finish_error = error
+                    if primary is not None:
+                        primary.add_note("record finish: " + str(error)[:512])
                 if child is not None:
                     try:
-                        state["returncode"] = child.wait(timeout=seconds + 10)
+                        remaining = (max(0, state.deadline - time.monotonic())
+                                     if state.deadline is not None else seconds + 10)
+                        state["returncode"] = child.wait(timeout=remaining)
                     except subprocess.TimeoutExpired:
                         state["deadline_exceeded"] = True
+                    except BaseException as error:
+                        state._cleanup_failure(error)
+                        if primary is not None:
+                            primary.add_note("record wait: " + str(error)[:512])
+                        elif finish_error is None:
+                            finish_error = error
                     finally:
                         try:
                             stop(child, elevated=True)
-                        except Exception as error:
-                            state.update(cleanup_unresolved=True, cleanup_error=type(error).__name__,
-                                         cleanup_reason=str(error)[:512])
+                        except BaseException as error:
+                            reaped = False
+                            state._cleanup_failure(error)
                         state["returncode"] = child.returncode
             finally:
+                if mode == "record" and reaped and state.get("record_finished"):
+                    try:
+                        # After reap, no recorder can append a delayed extra ACK.
+                        # A single late trailing NUL remains permitted padding.
+                        state._drain_padding()
+                    except BaseException as error:
+                        state.update(control_error=type(error).__name__, control_reason=str(error)[:512],
+                                     control_refused_command="stop")
+                        if primary is not None:
+                            primary.add_note("record final ACK bytes: " + str(error)[:512])
+                        elif finish_error is None:
+                            finish_error = error
+                state._close_control(remove=reaped)
                 # Retain output independently of termination, including refusals.
                 try:
                     if path.exists():
@@ -524,13 +765,32 @@ def perf_pass(mode, pid, seconds, directory, quota):
                         state["cleanup_unresolved"] = True
                 finally:
                     state["available"] = (not state.get("deadline_exceeded") and not state.get("cleanup_error")
-                                          and not state.get("output_error") and state.get("returncode") == 0
+                                          and not state.get("output_error") and not state.get("control_error")
+                                          and (mode != "record" or state.get("record_finished", False))
+                                          and state.get("returncode") == 0
                                           and 0 < state.get("output_bytes", 0) < quota)
                     if mode == "record" and state["available"]:
                         state["report"] = perf_report(directory, quota, log)
                         if state["report"].get("cleanup_unresolved"):
                             state["cleanup_unresolved"] = True
-                    save(directory / "perf.json", state, WINDOW_LIMIT)
+                    try:
+                        save(directory / "perf.json", state, WINDOW_LIMIT)
+                    except Exception as error:
+                        if primary is not None or finish_error is not None:
+                            (primary if primary is not None else finish_error).add_note(
+                                "perf metadata retention: " + str(error)[:512])
+                        else:
+                            raise
+                    finally:
+                        # __enter__ can fail before a caller receives this mapping.
+                        # Carry only metadata, never the capture's process/FD attrs.
+                        error = primary if primary is not None else finish_error
+                        if error is not None:
+                            error.perf_capture = dict(state)
+                            if unresolved_cleanup({"perf": state}):
+                                error.cleanup_unresolved = True
+            if finish_error is not None and primary is None:
+                raise finish_error
 
 
 def report_summary(report):
@@ -572,7 +832,7 @@ def save_window(directory, result):
             identity_fields["cleanup_unresolved"] = True
             identity_fields["perf"] = {key: value for key, value in result.get("perf", {}).items()
                                        if key in ("cleanup_unresolved", "cleanup_error", "cleanup_reason", "returncode",
-                                                  "output_error", "output_reason")}
+                                                  "output_error", "output_reason", "retained_control_directory")}
         result.clear()
         result.update(identity_fields, passed=False, reason="window metadata exceeded byte allowance",
                       raw_evidence="client.json, server.log, client.stderr; perf.json if profiling")
@@ -622,8 +882,9 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                     raise RuntimeError("server bind deadline")
                 child = spawn(client_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, text=True)
-                def gate(expected):
-                    line = native.control_line(child.stderr, 60)
+                def gate(expected, deadline=None):
+                    timeout = 60 if deadline is None else min(60, PerfCapture._remaining(deadline))
+                    line = native.control_line(child.stderr, timeout)
                     data = (line + "\n").encode("utf-8")
                     if client_log.tell() + len(data) > WINDOW_LIMIT:
                         raise ValueError("client log exceeds byte allowance")
@@ -635,15 +896,18 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                 result["server_resources"] = native.server_resources(
                     directory / "server.log", kind, deadline=time.monotonic() + 60, server=sut)
                 peers = {"server": psutil.Process(sut.pid), "client": psutil.Process(child.pid)}
-                with perf_pass(mode, sut.pid, PROFILE_SECONDS, directory, quota) as perf:
+                with perf_pass(mode, sut.pid, PROFILE_SECONDS, directory, quota, target=sut) as perf:
                     result["perf"] = perf
                     before = {name: native.snapshot(proc) for name, proc in peers.items()}
                     started = time.perf_counter_ns()
+                    if perf.deadline is not None:
+                        PerfCapture._remaining(perf.deadline)
                     child.stdin.write("run\n")
                     child.stdin.flush()
-                    gate("measured")
+                    gate("measured", perf.deadline)
                     after = {name: native.snapshot(proc) for name, proc in peers.items()}
                     resource_ns = time.perf_counter_ns() - started
+                    perf.finish_recording()
                     child.stdin.write("report\n")
                     child.stdin.flush()
                     raw = native.control_line(child.stdout, 15, report_limit(operations) - 1)
@@ -667,6 +931,10 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
             except Exception as error:
                 result.update(error_type=type(error).__name__, reason=str(error)[:512],
                               accounting="failed window; no verified denominator unless raw report present")
+                if hasattr(error, "perf_capture"):
+                    result["perf"] = error.perf_capture
+                if getattr(error, "cleanup_unresolved", False):
+                    result["cleanup_unresolved"] = True
             finally:
                 try:
                     for name, process in (("client", child), ("server", sut)):
