@@ -97,7 +97,8 @@ Do not run concurrently with another lane consumer, compiler or timing campaign.
 Use `--candidate-server-kind` to compare two explicit adapters at **identical core
 SHAs**. Combining adapter and core changes, `all`, or identical adapter names is
 refused before builds. Defaults and the three adapters selected by `all` stay
-unchanged; `coaptic-async`, `coaptic-blocking` and `coaptic-staged-ready` must be
+unchanged; `coaptic-async`, `coaptic-blocking`, `coaptic-staged-ready` and
+`coaptic-staged-mio` must be
 selected explicitly. The manual workflow's
 `candidate_server_kind` defaults to `same` and exposes the same restriction.
 
@@ -589,3 +590,31 @@ For qualification, dispatch a selected committed companion ref. Review failure a
 choose rates/windows with resolved CPU counters, and investigate ranked profiles.
 Concurrency, saturation, recovery, SmallDevice, representative cloud/device work
 and both 50% targets remain separate work under #650.
+
+### Explicit staged Mio control
+
+Select coaptic-staged-mio explicitly to combine direct Mio readiness (no Tokio
+runtime) with one staged receive before synchronous App polling. It uses one
+socket and the existing 2049-byte scratch, with a <=64-byte Stage and capacity
+one beyond the unchanged four Engine RX slots. N+1 guarding occurs at ingress;
+occupied stages survive short destinations, RX refusal, stop and errors. Empty
+actual WouldBlock probes skip App maintenance; zero-length packets and every
+other receive error pass through ordinary App polling. Sends use immediate
+send_to refusal and short-send handling without writable waits or retries.
+
+Fresh App::next_poll_at eligibility precedes probes and follows poll wakes.
+Successful reads and advisory edge-triggered events never prove emptiness:
+actual reads continue to WouldBlock. Every 32 total turns, including spurious
+immediate wakes, yields the OS thread as a synchronous control checkpoint.
+Production has no artificial lifetime or turn limit. External signals, pin
+release or policy changes require independent wakes; no async cancellation or
+absolute send deadline is promised.
+
+Its single flushed schema-2 startup ledger passes the existing <=4096-byte
+newline/deadline/exit gate before measurements. Scratch and Stage nest in adapter
+in App; Driver separately owns Poll/Events. The ledger reports compiled inline
+sizes with no future field. Core pools/body heap, Events/poller allocations,
+stacks, allocator/kernel costs and whole RAM remain unknown. Existing selectors,
+defaults, all, capacities, authentication and guards are unchanged. This
+unmeasured fixture supports a same-core explicit adapter comparison; it claims no
+CPU gain, causal stage/kernel result or completion of either 50% target.
