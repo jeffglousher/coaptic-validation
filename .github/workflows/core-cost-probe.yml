@@ -2,6 +2,14 @@ name: Manual fixed socket-free core cost diagnosis
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Fixed diagnosis (batch CPU uses four serial processes with perf OFF)
+        type: choice
+        default: original
+        options:
+          - original
+          - server-app-batch-cpu
 
 permissions:
   contents: read
@@ -24,7 +32,8 @@ jobs:
         with:
           persist-credentials: false
           repository: jeffglousher/coaptic
-          ref: ff08926422d570602069d2231a555559d1154f3f
+          # b9b83 is PLAN-only over 1629; Rust is source-equivalent.
+          ref: ${{ inputs.mode == 'server-app-batch-cpu' && 'b9b83d8663cbdcb7a80bf143670a05019f25cf25' || 'ff08926422d570602069d2231a555559d1154f3f' }}
           path: coaptic
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
         with:
@@ -40,9 +49,16 @@ jobs:
               run_logged([sys.executable, '-B', '-m', 'unittest', 'test_core_cost_probe'], log,
                          timeout=90, limit=64 * 1024)
           PY
-      - name: One build and six fixed diagnostic phases
+      - name: One build and fixed serial diagnostic phases
         # No apt/pip install, policy change, cache install, UDP or device action.
-        run: python3 -B tools/benchmark/core_cost_probe.py
+        env:
+          DIAGNOSIS_MODE: ${{ inputs.mode }}
+        run: |
+          if [ "$DIAGNOSIS_MODE" = server-app-batch-cpu ]; then
+            python3 -B tools/benchmark/core_cost_probe.py --batch-cpu
+          else
+            python3 -B tools/benchmark/core_cost_probe.py
+          fi
       - name: Retain diagnosis or explicit refusal
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

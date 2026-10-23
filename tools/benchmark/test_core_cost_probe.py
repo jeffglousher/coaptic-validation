@@ -1,5 +1,10 @@
-"""Isolated stdlib checks. No Cargo, perf, sudo or real child processes."""
+"""Isolated stdlib checks by default. No Cargo, perf or sudo.
+
+Two real custody/EOF checks require an explicitly supplied existing Linux
+binary in CORE_COST_BATCH_FAILURE_TEST_BINARY; never built or enabled here.
+"""
 import hashlib
+import io
 import json
 import os
 import stat
@@ -36,7 +41,7 @@ class ProbeTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         # A forgotten mock must fail rather than launch a build/profiler/worker.
-        for name in ("run_owned", "run_logged", "command", "subprocess.Popen"):
+        for name in ("run_owned", "run_logged", "command", "subprocess.Popen", "spawn", "batch_run_command"):
             started = patch("core_cost_probe." + name, side_effect=AssertionError("real launch forbidden"))
             started.start()
             self.addCleanup(started.stop)
@@ -570,6 +575,534 @@ class ProbeTests(unittest.TestCase):
         self.assertIn("retention-days: 14", workflow)
         self.assertNotIn("pip install", "\n".join(line for line in workflow.splitlines() if not line.lstrip().startswith("#")))
         self.assertNotIn("apt-get", workflow)
+
+
+class BatchProbeTests(unittest.TestCase):
+    setUp = ProbeTests.setUp
+    worker_fixture = ProbeTests.worker_fixture
+    controller_fixture = ProbeTests.controller_fixture
+    capture_permissions = ProbeTests.capture_permissions
+
+    @staticmethod
+    def receipt():
+        return dict(complete=True, returncode=0, cleanup_settled=True, child_cleanup_settled=True,
+                    operations=50000, warmup=128, security="unprotected")
+
+    @staticmethod
+    def native(security="unprotected"):
+        return dict(event="complete", mode="server-app-batch-cpu", security=security,
+                    operations=50000, warmup=128, verified=50128, work_batches=5,
+                    batch_operations=10000, empty_gates=16, internal_datagrams=100256,
+                    udp_datagrams=0, black_box=True)
+
+    @staticmethod
+    def fixture(security="unprotected"):
+        return dict(event="fixture", security=security, requested_bytes=30_043_568, row_bytes=3000,
+                    row_metadata_bytes=56, request_ref_bytes=16, optional_request_ref_bytes=17,
+                    wire_bytes=29_440_000, app_heap_bytes=16000, app_inline_bytes=9600,
+                    fixture_inline_bytes=1584, scratch_allowance_bytes=16384, rows=10000, limit_bytes=32 * probe.MIB)
+
+    @staticmethod
+    def evidence(security="unprotected"):
+        # Exercise the installed process_clock_delta; its ownership/ABI fault
+        # coverage remains in test_linux_cpu rather than duplicating that API.
+        base = dict(available=True, pid=222, parent_pid=12345, start_ticks=99, group=222,
+                    session=222, clock_id=-123, glibc="2.39", reported_resolution_seconds=1e-9)
+        windows = []
+        for kind, count in (("empty", 16), ("work", 5)):
+            for block in range(count):
+                before = dict(base, cpu_time_ns=1_000_000, snapshot_started_ns=1, snapshot_finished_ns=2)
+                after = dict(base, cpu_time_ns=1_000_000 + (10_000 if kind == "empty" else 20_000_000),
+                             snapshot_started_ns=3, snapshot_finished_ns=4)
+                windows.append(dict(kind=kind, block=block, before=before, after=after))
+        return dict(native=BatchProbeTests.native(security), windows=windows, fixture=BatchProbeTests.fixture(security))
+
+    def test_opt_in_plan_perf_off_and_static_storage_budget(self):
+        self.assertEqual([security for _, security, _ in probe.BATCH_PLAN],
+                         ["unprotected", "oscore", "oscore", "unprotected"])
+        self.assertEqual([count for _, _, count in probe.BATCH_PLAN], [1] * 4)
+        self.assertEqual(4 * (probe.OPERATIONS + probe.WARMUP), 200512)
+        self.assertEqual(8 * (probe.OPERATIONS + probe.WARMUP), 401024)
+        self.assertEqual(probe.WORK_BATCHES * probe.BATCH_OPERATIONS, probe.OPERATIONS)
+        self.assertEqual(probe.CORE, "ff08926422d570602069d2231a555559d1154f3f")
+        self.assertEqual(probe.BATCH_CORE, "b9b83d8663cbdcb7a80bf143670a05019f25cf25")
+        for phase in range(4):
+            argv = probe.phase_command(self.root, phase, 1001, 1002, batch_cpu=True)
+            self.assertNotIn("perf", argv)
+            self.assertIn("CORE_COST_BATCH_CPU=1", argv)
+            self.assertIn("--as=536870912:536870912", argv)
+            self.assertIn("--fsize=32768:32768", argv)
+            self.assertIn("--bounding-set=-all", argv)
+        phase_files = ("perf-command.log", "bench-0.jsonlog", "bench-stderr.log", "cpu-windows.json",
+                       "bench-0.json", "worker.json", "owned-child.json", "launch-intent.json", "phase.json")
+        root_files = set(probe.BATCH_LIMITS) - set(phase_files) - {"bench-core"}
+        bound = sum(probe.BATCH_LIMITS[name] for name in root_files)
+        bound += 4 * sum(probe.BATCH_LIMITS[name] for name in phase_files) + probe.META  # workflow test log
+        self.assertLessEqual(bound, probe.MIB)
+        self.assertLessEqual(len(root_files) + 4 * len(phase_files) + 2, 100)
+        self.assertLessEqual(bound + probe.ELF, 65 * probe.MIB)
+        workflow = (Path(probe.__file__).resolve().parents[2] / ".github/workflows/core-cost-probe.yml").read_text()
+        self.assertIn("default: original", workflow)
+        self.assertIn("- server-app-batch-cpu", workflow)
+        self.assertIn(probe.CORE, workflow)
+        self.assertIn(probe.BATCH_CORE, workflow)
+        self.assertIn("core_cost_probe.py --batch-cpu", workflow)
+
+    def test_fixture_and_complete_receipts_refuse_partial_or_inconsistent_counts(self):
+        probe.validate_fixture(self.fixture(), "unprotected")
+        probe.validate_batch_complete(self.native(), "unprotected")
+        for key, value in (("row_metadata_bytes", 65), ("requested_bytes", 32 * probe.MIB),
+                           ("request_ref_bytes", 100), ("rows", True), ("wire_bytes", 10)):
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                probe.validate_fixture(dict(self.fixture(), **{key: value}), "unprotected")
+        for key, value in (("verified", 50000), ("operations", True), ("internal_datagrams", 100257),
+                           ("security", "oscore"), ("black_box", False), ("udp_datagrams", 1)):
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                probe.validate_batch_complete(dict(self.native(), **{key: value}), "unprotected")
+
+    def test_interpret_only_complete_verified_exit_and_settled_cleanup(self):
+        receipt = self.receipt()
+        result = probe.batch_interpret(self.evidence(), receipt)
+        self.assertTrue(result["available"])
+        self.assertEqual(result["summed_cpu_ns"], 100_000_000)
+        self.assertEqual(result["ns_per_verified_operation"], 2000)
+        self.assertFalse(result["calibration_subtracted"])
+        self.assertIn("server-App driver CPU window", result["scope"])
+        for changes in (dict(complete=False), dict(returncode=7), dict(cleanup_settled=False)):
+            result = probe.batch_interpret(self.evidence(), dict(receipt, **changes))
+            self.assertFalse(result["available"])
+            self.assertNotIn("ns_per_verified_operation", result)
+
+    def test_clock_faults_and_fixed_minimums_stay_inconclusive_without_fallback(self):
+        receipt = self.receipt()
+        faults = [dict(available=False), dict(cpu_time_ns=999999), dict(pid=223),
+                  dict(snapshot_started_ns=0), dict(cpu_time_ns=1_000_000 + 9_999_999),
+                  dict(reported_resolution_seconds=.001)]
+        for changes in faults:
+            evidence = self.evidence()
+            evidence["windows"][-1]["after"].update(changes)
+            if "reported_resolution_seconds" in changes:
+                evidence["windows"][-1]["before"].update(changes)
+            with self.subTest(changes=changes):
+                result = probe.batch_interpret(evidence, receipt)
+                self.assertFalse(result["available"])
+                self.assertTrue(result["failed_conditions"])
+                self.assertNotIn("ns_per_verified_operation", result)
+        evidence = self.evidence()
+        evidence["windows"][0]["after"]["cpu_time_ns"] += 200_001
+        result = probe.batch_interpret(evidence, receipt)
+        self.assertIn("largest empty gate", result["failed_conditions"][0])
+        self.assertNotIn("summed_cpu_ns", result)
+        evidence["windows"].pop()
+        with self.assertRaises(ValueError):
+            probe.batch_interpret(evidence, receipt)
+
+    def dialogue_values(self):
+        values, verified = [self.fixture()], 128
+        for kind, count in (("empty", 16), ("work", 5)):
+            for block in range(count):
+                values.append(dict(event="ready", kind=kind, block=block, verified=verified))
+                values.append(dict(event="measured", kind=kind, block=block, verified=verified))
+                verified += 10000 if kind == "work" else 0
+                values.append(dict(event="verified", kind=kind, block=block, verified=verified))
+        return values + [self.native()]
+
+    def dialogue_fixture(self, values=None):
+        child = SimpleNamespace(pid=222, args=["synthetic"], stdin=io.BytesIO(), stdout=SimpleNamespace(fileno=lambda: 88),
+                                wait=Mock(return_value=0))
+        timeline = []
+        values = iter(self.dialogue_values() if values is None else values)
+        def read(*args):
+            value = next(values)
+            timeline.append(value["event"])
+            return value
+        def send(child, value):
+            timeline.append(value.decode().strip())
+        clock = Mock(status=dict(available=True))
+        clock.snapshot.side_effect = lambda: timeline.append("cpu") or dict(available=False)
+        self.enterContext(patch("core_cost_probe.batch_read", side_effect=read))
+        self.enterContext(patch("core_cost_probe.batch_send", side_effect=send))
+        self.enterContext(patch("core_cost_probe.ProcessCpuClock", return_value=clock))
+        self.enterContext(patch("core_cost_probe.select.select", return_value=([child.stdout], [], [])))
+        self.enterContext(patch("core_cost_probe.os.read", return_value=b""))
+        return child, timeline
+
+    def test_gate_order_all_windows_verify_after_cpu_and_no_clock_poll_reap(self):
+        child, timeline = self.dialogue_fixture()
+        evidence = dict(windows=[])
+        self.assertIsNone(probe.batch_dialogue(child, "unprotected", probe.time.monotonic() + 5,
+                                              io.BytesIO(), evidence))
+        self.assertEqual(len(evidence["windows"]), 21)
+        self.assertEqual(timeline[:2], ["start", "fixture"])
+        expected = ["ready", "cpu", "run", "measured", "cpu", "verify", "verified"]
+        self.assertEqual(timeline[2:-2], expected * 21)
+        self.assertEqual(timeline[-2:], ["complete", "exit"])
+        child.wait.assert_not_called()  # Only the reserved lifetime reaps after the dialogue.
+
+    def test_wrong_gate_or_failed_verification_aborts_before_later_work(self):
+        values = self.dialogue_values()
+        values[3] = dict(values[3], event="failed-authentication")
+        child, timeline = self.dialogue_fixture(values)
+        with self.assertRaisesRegex(ValueError, "gate order"):
+            probe.batch_dialogue(child, "unprotected", probe.time.monotonic() + 5, io.BytesIO(), dict(windows=[]))
+        self.assertNotIn("exit", timeline)
+        child.wait.assert_not_called()
+
+    def test_control_read_refuses_eof_partial_oversize_timeout_and_bad_json(self):
+        child = SimpleNamespace(stdout=SimpleNamespace(fileno=lambda: 88))
+        cases = [(b"", EOFError), (b'{"event":', EOFError), (b"x" * 2048, ValueError), (b"bad\n", ValueError)]
+        for raw, error in cases:
+            parts = iter(bytes([byte]) for byte in raw)
+            with self.subTest(raw=raw[:20]), patch("core_cost_probe.select.select", return_value=([88], [], [])), \
+                    patch("core_cost_probe.os.read", side_effect=lambda *args: next(parts, b"")), self.assertRaises(error):
+                probe.batch_read(child, probe.time.monotonic() + 1, io.BytesIO())
+        with patch("core_cost_probe.select.select", return_value=([], [], [])), self.assertRaises(TimeoutError):
+            probe.batch_read(child, probe.time.monotonic() + 1, io.BytesIO())
+
+    def test_worker_uses_owned_spawn_registration_and_preserves_primary_on_cleanup_failure(self):
+        # Reuse credential, resource, clock and launch guards from the old worker fixture.
+        old, _ = ProbeTests.worker_fixture(self, phase=0)
+        directory = self.root / probe.BATCH_PLAN[0][0]
+        old.rename(directory)
+        child = SimpleNamespace(pid=222, stdin=io.BytesIO(), stdout=io.BytesIO())
+        custody = dict(pid=222, pgrp=222, session=222, starttime=91)
+        def launch(*args, **kwargs):
+            self.assertTrue((directory / "worker.json").exists())
+            self.assertTrue((directory / "launch-intent.json").exists())
+            self.assertEqual(args[0][-1], "--batch-cpu")
+            self.assertNotIn("start_new_session", kwargs)  # spawn owns session creation.
+            self.assertEqual(kwargs["file_limit"], 8192)
+            return child
+        def dialogue(*args):
+            self.assertTrue((directory / "owned-child.json").exists())
+            raise EOFError("original verification failure")
+        lifetime = Mock()
+        lifetime.stop.side_effect = RuntimeError("cleanup failed")
+        with patch("core_cost_probe.spawn", side_effect=launch), \
+                patch("core_cost_probe.batch_pidfds_required"), \
+                patch("core_cost_probe.proc_identity", side_effect=lambda pid: OWNED.copy() if pid == OWNED["pid"] else custody), \
+                patch("core_cost_probe.batch_dialogue", side_effect=dialogue), \
+                patch("core_cost_probe.BatchLifetime", return_value=lifetime):
+            with self.assertRaisesRegex(EOFError, "original verification") as raised:
+                probe.batch_worker(self.root, 0)
+        self.assertTrue(child.stdin.closed)
+        self.assertTrue(raised.exception.cleanup_unresolved)
+        receipt = probe.load(directory / "bench-0.json")
+        self.assertFalse(receipt["complete"])
+        self.assertTrue(receipt["cleanup_unresolved"])
+        self.assertNotIn("whole_process_cpu_ns_per_verified_exchange", receipt)
+        self.assertTrue((directory / "cpu-windows.json").exists())
+
+    def test_worker_death_before_and_after_registration_cannot_certify_survivors(self):
+        directory = self.root / "batch-u-before"
+        directory.mkdir()
+        probe.save_batch(directory / "worker.json", OWNED)
+        probe.save_batch(directory / "launch-intent.json", dict(parent_pid=OWNED["pid"]))
+        with patch("core_cost_probe.batch_cleanup_marker") as cleanup:
+            with self.assertRaisesRegex(RuntimeError, "during child registration"):
+                probe.cleanup_batch(directory, False)
+            cleanup.assert_called_once_with(directory / "worker.json")
+        probe.save_batch(directory / "owned-child.json", dict(pid=222, pgrp=222, session=222,
+                         starttime=91, parent_pid=OWNED["pid"], phase=directory.name))
+        with patch("core_cost_probe.batch_cleanup_marker") as cleanup:
+            probe.cleanup_batch(directory, False)
+            self.assertEqual([call.args[0].name for call in cleanup.call_args_list], ["worker.json", "owned-child.json"])
+        original = RuntimeError("cleanup unresolved: worker survives")
+        with patch("core_cost_probe.batch_cleanup_marker", side_effect=[original, RuntimeError("child survives")]) as cleanup:
+            with self.assertRaises(RuntimeError) as raised:
+                probe.cleanup_batch(directory, False)
+            self.assertIs(raised.exception, original)
+            self.assertEqual(cleanup.call_count, 2)
+            self.assertTrue(original.cleanup_unresolved)
+            self.assertIn("child survives", original.__notes__[0])
+
+    def test_batch_evidence_rejects_old_perf_quotas_and_keeps_original_inventory(self):
+        (self.root / "perf.data").write_bytes(b"old perf evidence")
+        probe.inventory(self.root)
+        with self.assertRaises(KeyError):
+            probe.inventory(self.root, batch_cpu=True)
+
+    def test_controller_runs_exact_four_process_cohort_and_withholds_until_settled(self):
+        output, lane, calls, build = self.controller_fixture()
+        def launch(argv, **kwargs):
+            phase = int(next(arg.split("=", 1)[1] for arg in argv if arg.startswith("CORE_COST_PHASE=")))
+            name, security, _ = probe.BATCH_PLAN[phase]
+            calls.append(name)
+            receipt = dict(self.receipt(), security=security, pid=222 + phase)
+            receipt.pop("cleanup_settled")  # Only the controller may add outer group settlement.
+            probe.save_batch(output / name / "bench-0.json", receipt)
+            probe.save_batch(output / name / "cpu-windows.json", self.evidence(security))
+            return 0
+        with patch("core_cost_probe.batch_run_command", side_effect=launch), \
+                patch("core_cost_probe.identity", side_effect=lambda path:
+                    dict(revision=probe.BATCH_CORE if path == probe.SUITE / "coaptic" else "b" * 40, status="")), \
+                patch("core_cost_probe.reports", side_effect=AssertionError("perf forbidden")):
+            probe.run(output, lane, batch_cpu=True)
+        self.assertEqual(calls, [name for name, _, _ in probe.BATCH_PLAN])
+        self.assertEqual(build.call_args.args[2]["CORE_COST_BATCH_CPU"], "1")
+        summary = probe.load(output / "summary.json")
+        self.assertEqual(summary["budget"]["complete_exchanges"], 200512)
+        self.assertEqual(summary["budget"]["maximum_live_benchmarks"], 1)
+        self.assertTrue(summary["complete"])
+        self.assertEqual(len(summary["server_app_driver_cpu"]), 4)
+        self.assertTrue(all(item["available"] for item in summary["server_app_driver_cpu"]))
+        self.assertEqual(summary["review"]["both_50_percent_targets"], "OPEN")
+        self.assertFalse(summary["review"]["performance_acceptance"])
+
+    def test_outer_cleanup_failure_blocks_interpretation_and_later_workers(self):
+        output, lane, calls, _ = self.controller_fixture()
+        error = RuntimeError("cleanup unresolved: registered child remains")
+        with patch("core_cost_probe.identity", side_effect=lambda path:
+                    dict(revision=probe.BATCH_CORE if path == probe.SUITE / "coaptic" else "b" * 40, status="")), \
+                patch("core_cost_probe.batch_run_command", side_effect=lambda argv, **kwargs: calls.append(argv) or 0), \
+                patch("core_cost_probe.cleanup_batch", side_effect=error), \
+                patch("core_cost_probe.batch_interpret", side_effect=AssertionError("interpretation forbidden")):
+            with self.assertRaises(RuntimeError) as raised:
+                probe.run(output, lane, batch_cpu=True)
+        self.assertIs(raised.exception, error)
+        self.assertEqual(len(calls), 1)
+        summary = probe.load(output / "summary.json")
+        self.assertFalse(summary["complete"])
+        self.assertTrue(summary["cleanup_unresolved"])
+        self.assertNotIn("server_app_driver_cpu", summary)
+
+
+class BatchOwnershipTests(unittest.TestCase):
+    def setUp(self):
+        self.batch_command = probe.batch_run_command
+        ProbeTests.setUp(self)
+    worker_fixture = ProbeTests.worker_fixture
+
+    def pidfds(self):
+        self.enterContext(patch("core_cost_probe.os.pidfd_open", return_value=57, create=True))
+        send = self.enterContext(patch("core_cost_probe.signal.pidfd_send_signal", create=True))
+        self.enterContext(patch("core_cost_probe.signal.SIGCHLD", 17, create=True))
+        self.enterContext(patch("core_cost_probe.signal.getsignal", return_value=probe.signal.SIG_DFL))
+        close = self.enterContext(patch("core_cost_probe.os.close"))
+        numeric = self.enterContext(patch("core_cost_probe.os.killpg", side_effect=AssertionError("numeric group signal forbidden"), create=True))
+        process = Mock(pid=222, returncode=None)
+        def wait(**kwargs):
+            process.returncode = 0
+            return 0
+        process.wait.side_effect = wait
+        return probe.OwnedProcess(process), send, close, numeric
+
+    def test_reaped_child_and_reused_group_never_authorize_a_signal(self):
+        child, send, close, numeric = self.pidfds()
+        lifetime = probe.BatchLifetime(child)
+        self.assertEqual(lifetime.wait(1), 0)
+        # A new unrelated group can now own the old number; no query or signal.
+        with patch("core_cost_probe.proc_identity", side_effect=AssertionError("stale PID consulted")):
+            lifetime.stop()
+        lifetime.close()
+        send.assert_not_called()
+        numeric.assert_not_called()
+        close.assert_called_once_with(57)
+
+    def test_unexpected_external_reap_is_fatal_without_signaling(self):
+        child, send, _, numeric = self.pidfds()
+        lifetime = probe.BatchLifetime(child)
+        child.process.returncode = 0
+        with self.assertRaisesRegex(RuntimeError, "reaped outside"):
+            lifetime.stop()
+        with self.assertRaisesRegex(RuntimeError, "unreaped owned"):
+            probe.BatchLifetime(child)
+        lifetime.close()
+        send.assert_not_called()
+        numeric.assert_not_called()
+
+    def test_all_stop_signals_use_reserved_fd_and_finish_before_reap(self):
+        child, send, _, numeric = self.pidfds()
+        lifetime = probe.BatchLifetime(child)
+        timeline = []
+        send.side_effect = lambda fd, sig: timeline.append((fd, sig))
+        child.process.wait.side_effect = lambda **kwargs: timeline.append("reap") or 0
+        with patch("core_cost_probe.select.select", side_effect=[([], [], []), ([], [], []),
+                     ([], [], []), ([57], [], [])]):
+            lifetime.stop()
+        lifetime.stop()
+        self.assertEqual(timeline, [(57, probe.signal.SIGTERM), (57, probe.signal.SIGKILL), "reap"])
+        numeric.assert_not_called()
+        lifetime.close()
+
+    def test_settled_worker_never_reopens_recycled_pid_markers(self):
+        _, send, _, numeric = self.pidfds()
+        probe.save_batch(self.root / "bench-0.json", dict(child_cleanup_settled=True))
+        probe.save_batch(self.root / "worker.json", OWNED)
+        probe.save_batch(self.root / "owned-child.json", dict(OWNED, pid=222))
+        with patch("core_cost_probe.proc_identity", side_effect=AssertionError("recycled PID read")), \
+                patch("core_cost_probe.batch_cleanup_marker", side_effect=AssertionError("stale marker cleanup")):
+            probe.cleanup_batch(self.root, True)
+        send.assert_not_called()
+        numeric.assert_not_called()
+
+    def test_live_marker_identity_checks_bracket_pidfd_acquisition(self):
+        _, send, close, numeric = self.pidfds()
+        marker = self.root / "worker.json"
+        probe.save_batch(marker, OWNED)
+        changed = dict(OWNED, starttime=1)
+        with patch("core_cost_probe.proc_identity", return_value=changed), \
+                patch("core_cost_probe.os.pidfd_open", create=True) as opened:
+            with self.assertRaisesRegex(RuntimeError, "identity changed"):
+                probe.batch_cleanup_marker(marker)
+            opened.assert_not_called()
+        with patch("core_cost_probe.proc_identity", side_effect=[OWNED, changed]):
+            with self.assertRaisesRegex(RuntimeError, "during pidfd acquisition"):
+                probe.batch_cleanup_marker(marker)
+        close.assert_called_once_with(57)
+        send.assert_not_called()
+        numeric.assert_not_called()
+
+    def test_marker_stop_uses_only_fd_and_does_not_signal_exited_leader(self):
+        _, send, _, numeric = self.pidfds()
+        marker = self.root / "owned-child.json"
+        probe.save_batch(marker, dict(pid=222, pgrp=222, session=222, starttime=91))
+        expected = probe.load(marker)
+        with patch("core_cost_probe.proc_identity", return_value=expected), \
+                patch("core_cost_probe.select.select", return_value=([57], [], [])):
+            probe.batch_cleanup_marker(marker)
+        send.assert_not_called()
+        numeric.assert_not_called()
+
+    def test_unavailable_pidfds_refuse_before_any_phase_child(self):
+        with patch("core_cost_probe.os.pidfd_open", None, create=True), self.assertRaisesRegex(RuntimeError, "pidfd APIs"):
+            self.batch_command(["never-executed"], timeout=1)
+        probe.spawn.assert_not_called()
+
+    def test_successful_phase_wrapper_never_calls_generic_post_reap_stop(self):
+        child, send, _, numeric = self.pidfds()
+        with patch("core_cost_probe.spawn", return_value=child):
+            self.assertEqual(self.batch_command(["synthetic"], timeout=20), 0)
+        send.assert_not_called()
+        numeric.assert_not_called()
+        probe.run_owned.assert_not_called()
+
+    def test_phase_timeout_keeps_primary_and_independent_handle_close(self):
+        child, _, _, _ = self.pidfds()
+        original = subprocess.TimeoutExpired("fixed batch wrapper", 20)
+        lifetime = Mock()
+        lifetime.wait.side_effect = original
+        lifetime.stop.side_effect = PermissionError("pidfd signal denied")
+        with patch("core_cost_probe.spawn", return_value=child), \
+                patch("core_cost_probe.BatchLifetime", return_value=lifetime):
+            with self.assertRaises(subprocess.TimeoutExpired) as raised:
+                self.batch_command(["synthetic"], timeout=20)
+        self.assertIs(raised.exception, original)
+        self.assertTrue(original.cleanup_unresolved)
+        self.assertIn("pidfd signal denied", original.__notes__[0])
+        lifetime.close.assert_called_once()
+
+    def test_pipe_close_failure_still_stops_original_process_and_closes_handles(self):
+        child = SimpleNamespace(stdin=Mock(closed=False), stdout=Mock())
+        original = BrokenPipeError("EOF close failed")
+        child.stdin.close.side_effect = original
+        lifetime = Mock()
+        lifetime.stop.side_effect = RuntimeError("native process unresolved")
+        with self.assertRaises(BrokenPipeError) as raised:
+            probe.batch_release_child(child, lifetime)
+        self.assertIs(raised.exception, original)
+        self.assertTrue(original.cleanup_unresolved)
+        self.assertIn("native process unresolved", original.__notes__[0])
+        lifetime.stop.assert_called_once()
+        lifetime.close.assert_called_once()
+        child.stdout.close.assert_called_once()
+
+    def test_batch_success_retains_lifetime_scope_and_original_default(self):
+        old, _ = self.worker_fixture(phase=0)
+        directory = self.root / probe.BATCH_PLAN[0][0]
+        old.rename(directory)
+        child = SimpleNamespace(pid=222, stdin=io.BytesIO(), stdout=io.BytesIO())
+        custody = dict(pid=222, pgrp=222, session=222, starttime=91)
+        with patch("core_cost_probe.spawn", return_value=child), \
+                patch("core_cost_probe.batch_pidfds_required"), \
+                patch("core_cost_probe.BatchLifetime") as lifetime, \
+                patch("core_cost_probe.proc_identity", side_effect=lambda pid: OWNED.copy() if pid == OWNED["pid"] else custody), \
+                patch("core_cost_probe.batch_dialogue"), patch("core_cost_probe.batch_finish", return_value=0):
+            probe.batch_worker(self.root, 0)
+        receipt = probe.load(directory / "bench-0.json")
+        self.assertTrue(receipt["complete"])
+        self.assertEqual(receipt["scope"], probe.BATCH_LIFETIME_SCOPE)
+        self.assertNotIn("calibration", receipt["scope"])
+        self.assertEqual(probe.cpu_receipt(USAGE, {key:value*2 for key,value in USAGE.items()})["scope"], probe.SCOPE)
+        lifetime.return_value.stop.assert_called_once()
+        lifetime.return_value.close.assert_called_once()
+
+
+@unittest.skipUnless(sys.platform == "linux" and os.environ.get("CORE_COST_BATCH_FAILURE_TEST_BINARY"),
+                     "requires explicit existing Linux batch fixture and runtime grant")
+class BatchNativeCustodyTests(unittest.TestCase):
+    def killed_worker(self, stage):
+        # Real separate-session native child, killed worker and closed control
+        # pipe: prove EOF before registration as well as registered group sweep.
+        from linux_cpu import spawn
+        binary = Path(os.environ["CORE_COST_BATCH_FAILURE_TEST_BINARY"]).resolve(strict=True)
+        before = probe.digest(binary)
+        script = '''
+import json, os, signal, subprocess, sys
+from pathlib import Path
+from core_cost_probe import proc_identity, save_batch
+from linux_cpu import spawn
+root, binary, stage = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+child = spawn([binary, "50000", "oscore", "--batch-cpu"], file_limit=8192,
+              stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+owned = proc_identity(child.pid)
+owned.update(parent_pid=os.getpid(), phase="failure-test")
+if stage == "after":
+    save_batch(root / "owned-child.json", owned)
+print(json.dumps(owned), flush=True)
+signal.pause()
+'''
+        with tempfile.TemporaryDirectory() as temporary:
+            directory, worker, observed, primary = Path(temporary), None, None, None
+            lifetime, native_fd, native_ended = None, None, False
+            try:
+                worker = spawn([sys.executable, "-B", "-c", script, str(directory), str(binary), stage],
+                               file_limit=8192, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, env={**os.environ,
+                                   "PYTHONPATH": str(Path(probe.__file__).parent)})
+                lifetime = probe.BatchLifetime(worker)
+                observed = probe.batch_read(worker, probe.time.monotonic() + 5, io.BytesIO())
+                self.assertEqual(observed["parent_pid"], worker.pid)
+                self.assertEqual(observed["pid"], observed["pgrp"])
+                self.assertEqual(observed["pid"], observed["session"])
+                self.assertEqual((directory / "owned-child.json").exists(), stage == "after")
+                # Observer custody is independent of the production registration
+                # marker; it lets the test prove no unregistered survivor.
+                probe.save_new(directory / "observer.json", observed)
+                native_fd = os.pidfd_open(observed["pid"], 0)
+                self.assertEqual(probe.proc_identity(observed["pid"]),
+                                 {key: observed[key] for key in ("pid", "pgrp", "session", "starttime")})
+                probe.signal.pidfd_send_signal(lifetime.fd, probe.signal.SIGKILL)
+                lifetime.wait(2)
+                native_ended = bool(probe.select.select([native_fd], [], [], 3)[0])
+                self.assertTrue(native_ended, "single native child survived worker death and control EOF")
+                self.assertEqual(probe.digest(binary), before)
+            except BaseException as error:
+                primary = error
+                raise
+            finally:
+                actions = []
+                if lifetime is not None:
+                    actions.extend((lifetime.stop, lifetime.close))
+                if native_fd is not None:
+                    if not native_ended:
+                        actions.append(lambda: probe.batch_stop_fd(native_fd))
+                    actions.append(lambda: os.close(native_fd))
+                for cleanup in actions:
+                    try:
+                        cleanup()
+                    except BaseException as error:
+                        if primary is None:
+                            raise
+                        primary.add_note("failure test cleanup: " + str(error)[:512])
+                if worker is not None:
+                    worker.stdout.close()
+
+    def test_kill_worker_before_child_registration_leaves_no_survivor(self):
+        self.killed_worker("before")
+
+    def test_kill_worker_after_child_registration_leaves_no_survivor(self):
+        self.killed_worker("after")
 
 
 if __name__ == "__main__":
