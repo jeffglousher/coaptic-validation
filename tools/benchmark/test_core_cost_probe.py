@@ -591,16 +591,16 @@ class BatchProbeTests(unittest.TestCase):
     @staticmethod
     def native(security="unprotected"):
         return dict(event="complete", mode="server-app-batch-cpu", security=security,
-                    operations=50000, warmup=128, verified=50128, work_batches=5,
-                    batch_operations=10000, empty_gates=16, internal_datagrams=100256,
+                    operations=50000, warmup=128, verified=50128, work_batches=1,
+                    batch_operations=50000, empty_gates=16, internal_datagrams=100256,
                     udp_datagrams=0, black_box=True)
 
     @staticmethod
     def fixture(security="unprotected"):
-        return dict(event="fixture", security=security, requested_bytes=30_043_568, row_bytes=3000,
+        return dict(event="fixture", security=security, requested_bytes=28_443_568, row_bytes=568,
                     row_metadata_bytes=56, request_ref_bytes=16, optional_request_ref_bytes=17,
-                    wire_bytes=29_440_000, app_heap_bytes=16000, app_inline_bytes=9600,
-                    fixture_inline_bytes=1584, scratch_allowance_bytes=16384, rows=10000, limit_bytes=32 * probe.MIB)
+                    wire_bytes=25_600_000, capture_datagram_bytes=256, app_datagram_bytes=1472, app_heap_bytes=16000, app_inline_bytes=9600,
+                    fixture_inline_bytes=1584, scratch_allowance_bytes=16384, rows=50000, limit_bytes=32 * probe.MIB)
 
     @staticmethod
     def evidence(security="unprotected"):
@@ -609,7 +609,7 @@ class BatchProbeTests(unittest.TestCase):
         base = dict(available=True, pid=222, parent_pid=12345, start_ticks=99, group=222,
                     session=222, clock_id=-123, glibc="2.39", reported_resolution_seconds=1e-9)
         windows = []
-        for kind, count in (("empty", 16), ("work", 5)):
+        for kind, count in (("empty", 16), ("work", 1)):
             for block in range(count):
                 before = dict(base, cpu_time_ns=1_000_000, snapshot_started_ns=1, snapshot_finished_ns=2)
                 after = dict(base, cpu_time_ns=1_000_000 + (10_000 if kind == "empty" else 20_000_000),
@@ -652,7 +652,8 @@ class BatchProbeTests(unittest.TestCase):
         probe.validate_fixture(self.fixture(), "unprotected")
         probe.validate_batch_complete(self.native(), "unprotected")
         for key, value in (("row_metadata_bytes", 65), ("requested_bytes", 32 * probe.MIB),
-                           ("request_ref_bytes", 100), ("rows", True), ("wire_bytes", 10)):
+                           ("request_ref_bytes", 100), ("rows", True), ("wire_bytes", 10),
+                           ("capture_datagram_bytes", 1472), ("app_datagram_bytes", 256)):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 probe.validate_fixture(dict(self.fixture(), **{key: value}), "unprotected")
         for key, value in (("verified", 50000), ("operations", True), ("internal_datagrams", 100257),
@@ -664,8 +665,8 @@ class BatchProbeTests(unittest.TestCase):
         receipt = self.receipt()
         result = probe.batch_interpret(self.evidence(), receipt)
         self.assertTrue(result["available"])
-        self.assertEqual(result["summed_cpu_ns"], 100_000_000)
-        self.assertEqual(result["ns_per_verified_operation"], 2000)
+        self.assertEqual(result["summed_cpu_ns"], 20_000_000)
+        self.assertEqual(result["ns_per_verified_operation"], 400)
         self.assertFalse(result["calibration_subtracted"])
         self.assertIn("server-App driver CPU window", result["scope"])
         for changes in (dict(complete=False), dict(returncode=7), dict(cleanup_settled=False)):
@@ -699,11 +700,11 @@ class BatchProbeTests(unittest.TestCase):
 
     def dialogue_values(self):
         values, verified = [self.fixture()], 128
-        for kind, count in (("empty", 16), ("work", 5)):
+        for kind, count in (("empty", 16), ("work", 1)):
             for block in range(count):
                 values.append(dict(event="ready", kind=kind, block=block, verified=verified))
                 values.append(dict(event="measured", kind=kind, block=block, verified=verified))
-                verified += 10000 if kind == "work" else 0
+                verified += 50000 if kind == "work" else 0
                 values.append(dict(event="verified", kind=kind, block=block, verified=verified))
         return values + [self.native()]
 
@@ -732,10 +733,10 @@ class BatchProbeTests(unittest.TestCase):
         evidence = dict(windows=[])
         self.assertIsNone(probe.batch_dialogue(child, "unprotected", probe.time.monotonic() + 5,
                                               io.BytesIO(), evidence))
-        self.assertEqual(len(evidence["windows"]), 21)
+        self.assertEqual(len(evidence["windows"]), 17)
         self.assertEqual(timeline[:2], ["start", "fixture"])
         expected = ["ready", "cpu", "run", "measured", "cpu", "verify", "verified"]
-        self.assertEqual(timeline[2:-2], expected * 21)
+        self.assertEqual(timeline[2:-2], expected * 17)
         self.assertEqual(timeline[-2:], ["complete", "exit"])
         child.wait.assert_not_called()  # Only the reserved lifetime reaps after the dialogue.
 

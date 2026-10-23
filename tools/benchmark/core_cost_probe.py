@@ -32,7 +32,8 @@ PLAN = (("u-before", "unprotected", 1), ("os-before", "oscore", 1),
         ("os-after", "oscore", 1), ("u-after", "unprotected", 1))
 BATCH_PLAN = (("batch-u-before", "unprotected", 1), ("batch-os-before", "oscore", 1),
               ("batch-os-after", "oscore", 1), ("batch-u-after", "unprotected", 1))
-BATCH_OPERATIONS, WORK_BATCHES, EMPTY_GATES = 10_000, 5, 16
+BATCH_OPERATIONS, WORK_BATCHES, EMPTY_GATES = 50_000, 1, 16
+CAPTURE_BYTES, APP_DATAGRAM_BYTES = 256, 1472
 BATCH_SCOPE = ("server-App driver CPU window; includes monotonic clock/gates/loop and receive/send "
                "copies plus all App::poll work; excludes client preparation/verification and socket "
                "wakeups. Empty controls retained, never subtracted. Reported resolution is not accuracy. "
@@ -319,14 +320,17 @@ def batch_expect(value, event, kind, block, verified):
 def validate_fixture(value, security):
     fields = ("requested_bytes", "row_bytes", "row_metadata_bytes", "request_ref_bytes",
               "optional_request_ref_bytes", "wire_bytes", "app_heap_bytes", "app_inline_bytes",
-              "fixture_inline_bytes", "scratch_allowance_bytes", "rows", "limit_bytes")
+              "fixture_inline_bytes", "scratch_allowance_bytes", "rows", "limit_bytes",
+              "capture_datagram_bytes", "app_datagram_bytes")
     if (set(value) != set(fields) | {"event", "security"}
             or value.get("event") != "fixture" or value.get("security") != security
             or any(type(value.get(key)) is not int or value[key] <= 0 for key in fields)
-            or value["rows"] != BATCH_OPERATIONS or value["wire_bytes"] != 29_440_000
+            or value["rows"] != BATCH_OPERATIONS or value["wire_bytes"] != 25_600_000
+            or value["capture_datagram_bytes"] != CAPTURE_BYTES
+            or value["app_datagram_bytes"] != APP_DATAGRAM_BYTES
             or value["limit_bytes"] != 32 * MIB or value["scratch_allowance_bytes"] != 16 * 1024
             or value["row_metadata_bytes"] > 64
-            or value["row_bytes"] != 2 * 1472 + value["row_metadata_bytes"]
+            or value["row_bytes"] != 2 * CAPTURE_BYTES + value["row_metadata_bytes"]
             or not value["request_ref_bytes"] <= value["optional_request_ref_bytes"] <= value["row_metadata_bytes"]
             or value["requested_bytes"] != value["row_bytes"] * BATCH_OPERATIONS
                 + sum(value[key] for key in ("app_heap_bytes", "app_inline_bytes", "fixture_inline_bytes",

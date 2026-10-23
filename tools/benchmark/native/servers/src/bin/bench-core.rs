@@ -192,17 +192,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // Diagnostic storage only. App pools, Calls and security bindings stay unchanged.
-const BATCH_OPS: usize = 10_000;
-const WORK_BATCHES: usize = 5;
+const BATCH_OPS: usize = 50_000;
+const WORK_BATCHES: usize = 1;
 const EMPTY_GATES: usize = 16;
 const WIRE: usize = 1472;
+// Only this fixed 64-byte fixture uses smaller capture rows; App I/O stays WIRE.
+const CAPTURE_BYTES: usize = 256;
 const FIXTURE_LIMIT: usize = 32 * 1024 * 1024;
 type Failure = Box<dyn std::error::Error>;
 type CoreApp = App<coaptic::profiles::Default, CoreIo, 1, true, coaptic::storage::AllocMemory>;
 
 struct BatchRow {
-    request: [u8; WIRE],
-    response: [u8; WIRE],
+    request: [u8; CAPTURE_BYTES],
+    response: [u8; CAPTURE_BYTES],
     request_len: usize,
     response_len: usize,
     binding: Option<coaptic::oscore::RequestRef>,
@@ -212,8 +214,8 @@ struct BatchRow {
 impl BatchRow {
     fn empty() -> Self {
         Self {
-            request: [0; WIRE],
-            response: [0; WIRE],
+            request: [0; CAPTURE_BYTES],
+            response: [0; CAPTURE_BYTES],
             request_len: 0,
             response_len: 0,
             binding: None,
@@ -256,7 +258,7 @@ impl BatchRow {
         context: &mut Option<coaptic::oscore::SecurityContext>,
         opened: &mut [u8; WIRE],
     ) -> Result<(), Failure> {
-        if self.request_len == 0 || !(1..=WIRE).contains(&self.response_len) {
+        if self.request_len == 0 || !(1..=CAPTURE_BYTES).contains(&self.response_len) {
             return Err("missing/consumed response".into());
         }
         let wire = decode(black_box(&self.response[..self.response_len]))?;
@@ -303,7 +305,7 @@ struct BatchFixture {
 
 fn batch_layout(app: &CoreApp) -> Result<(usize, usize, usize), Failure> {
     let metadata = std::mem::size_of::<BatchRow>()
-        .checked_sub(2 * WIRE)
+        .checked_sub(2 * CAPTURE_BYTES)
         .ok_or("row layout")?;
     // Includes Option<RequestRef>, lengths, global MID and enclosing padding.
     if metadata > 64 {
@@ -341,7 +343,7 @@ fn batch_drive(app: &mut CoreApp, rows: &mut [BatchRow], clock: Instant) -> Resu
         let io = app.transport_mut();
         if io.input_len.is_some()
             || io.output_len.is_some()
-            || !(1..=WIRE).contains(&row.request_len)
+            || !(1..=CAPTURE_BYTES).contains(&row.request_len)
             || row.response_len != 0
         {
             return Err("unexpected input/extra response".into());
@@ -357,7 +359,7 @@ fn batch_drive(app: &mut CoreApp, rows: &mut [BatchRow], clock: Instant) -> Resu
             return Err("request was not consumed".into());
         }
         let n = io.output_len.take().ok_or("missing response")?;
-        if !(1..=WIRE).contains(&n) {
+        if !(1..=CAPTURE_BYTES).contains(&n) {
             return Err("oversize response".into());
         }
         row.response[..n].copy_from_slice(black_box(&io.output[..n]));
@@ -417,7 +419,7 @@ fn batch_run(
     let mut output = std::io::stdout().lock();
     writeln!(
         output,
-        "{{\"event\":\"fixture\",\"security\":\"{security}\",\"requested_bytes\":{requested_bytes},\"row_bytes\":{},\"row_metadata_bytes\":{metadata_bytes},\"request_ref_bytes\":{},\"optional_request_ref_bytes\":{},\"wire_bytes\":29440000,\"app_heap_bytes\":{app_heap_bytes},\"app_inline_bytes\":{},\"fixture_inline_bytes\":{},\"scratch_allowance_bytes\":16384,\"rows\":10000,\"limit_bytes\":33554432}}",
+        "{{\"event\":\"fixture\",\"security\":\"{security}\",\"requested_bytes\":{requested_bytes},\"row_bytes\":{},\"row_metadata_bytes\":{metadata_bytes},\"request_ref_bytes\":{},\"optional_request_ref_bytes\":{},\"wire_bytes\":25600000,\"capture_datagram_bytes\":256,\"app_datagram_bytes\":1472,\"app_heap_bytes\":{app_heap_bytes},\"app_inline_bytes\":{},\"fixture_inline_bytes\":{},\"scratch_allowance_bytes\":16384,\"rows\":50000,\"limit_bytes\":33554432}}",
         std::mem::size_of::<BatchRow>(),
         std::mem::size_of::<coaptic::oscore::RequestRef>(),
         std::mem::size_of::<Option<coaptic::oscore::RequestRef>>(),
@@ -462,7 +464,7 @@ fn batch_run(
     }
     writeln!(
         output,
-        "{{\"event\":\"complete\",\"mode\":\"server-app-batch-cpu\",\"security\":\"{security}\",\"operations\":50000,\"warmup\":128,\"verified\":{verified},\"work_batches\":5,\"batch_operations\":10000,\"empty_gates\":16,\"internal_datagrams\":100256,\"udp_datagrams\":0,\"black_box\":true}}"
+        "{{\"event\":\"complete\",\"mode\":\"server-app-batch-cpu\",\"security\":\"{security}\",\"operations\":50000,\"warmup\":128,\"verified\":{verified},\"work_batches\":1,\"batch_operations\":50000,\"empty_gates\":16,\"internal_datagrams\":100256,\"udp_datagrams\":0,\"black_box\":true}}"
     )?;
     output.flush()?;
     batch_gate(&mut input, b"exit\n")?;
@@ -640,7 +642,7 @@ mod batch_tests {
                 match fault {
                     0 => row.response_len = 0,
                     1 => row.response_len = 1,
-                    2 => row.response_len = WIRE + 1,
+                    2 => row.response_len = CAPTURE_BYTES + 1,
                     3 => row.response[row.response_len - 1] ^= 1,
                     4 => row.operation += 1,
                     5 => {
@@ -666,6 +668,11 @@ mod batch_tests {
         let mut row = BatchRow::empty();
         row.prepare(0, &mut context).unwrap();
         assert!(row.prepare(1, &mut context).is_err());
+        let valid_len = row.request_len;
+        row.request_len = CAPTURE_BYTES + 1;
+        assert!(batch_drive(&mut app, std::slice::from_mut(&mut row), Instant::now()).is_err());
+        assert!(app.transport().input_len.is_none());
+        row.request_len = valid_len;
         assert!(
             app.transport_mut()
                 .send(Endpoint::v4([127, 0, 0, 2], 30000), b"x")
@@ -728,7 +735,8 @@ mod batch_tests {
         }
         assert!(batch_gate(&mut &b"run\n"[..], b"run\n").is_ok());
         assert!(batch_gate(&mut &b""[..], b"oversize").is_err());
-        assert_eq!(2 * BATCH_OPS * WIRE, 29_440_000);
+        assert_eq!(2 * BATCH_OPS * CAPTURE_BYTES, 25_600_000);
+        assert_eq!(WIRE, 1472);
         assert_eq!(BATCH_OPS * WORK_BATCHES, 50_000);
         let mut context = None;
         let mut row = BatchRow::empty();
