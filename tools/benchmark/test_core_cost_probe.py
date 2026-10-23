@@ -2,15 +2,19 @@
 
 Two real custody/EOF checks require an explicitly supplied existing Linux
 binary in CORE_COST_BATCH_FAILURE_TEST_BINARY; never built or enabled here.
+Privileged group/production-chain checks require COAPTIC_PRIVILEGED_CLEANUP_TESTS=1
+and existing noninteractive sudo/perf; missing prerequisites then fail the suite.
 """
 import hashlib
 import io
 import json
 import os
+import shutil
 import stat
 from pathlib import Path
 import subprocess
 import sys
+import time
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -59,6 +63,7 @@ class ProbeTests(unittest.TestCase):
         for phase, (_, _, count) in enumerate(probe.PLAN):
             argv = probe.phase_command(self.root, phase, 1001, 1002)
             self.assertEqual(argv[:4], ["sudo", "-n", "--", "prlimit"])
+            self.assertIn("--foreground", argv)
             for value in ("--reuid=1001", "--regid=1002", "--clear-groups", "--inh-caps=-all",
                           "--ambient-caps=-all", "--bounding-set=-all", "--no-new-privs"):
                 self.assertIn(value, argv)
@@ -164,11 +169,12 @@ class ProbeTests(unittest.TestCase):
     def test_oscore_worker_uses_fresh_processes_in_one_recorded_group(self):
         directory, children = self.worker_fixture(phase=3)
         with patch("core_cost_probe.os.getpgrp", return_value=12000, create=True), \
+                patch("core_cost_probe.proc_identity", return_value={**OWNED, "pgrp": 12000}), \
                 patch("core_cost_probe.os.setpgid", create=True) as group:
             probe.worker(self.root, 3)
-        group.assert_called_once_with(0, 0)
+        group.assert_not_called()
         self.assertEqual(len(children), 8)
-        self.assertEqual(probe.load(directory / "worker.json")["pgrp"], OWNED["pid"])
+        self.assertEqual(probe.load(directory / "worker.json")["pgrp"], 12000)
         self.assertEqual(len({child.pid for child in children}), 8)
 
     def test_failed_child_receipt_retained_without_success_cost(self):
@@ -197,24 +203,46 @@ class ProbeTests(unittest.TestCase):
         children[0].terminate.assert_called_once()
         children[0].kill.assert_called_once()
 
-    def test_owned_group_identity_and_unresolved_cleanup(self):
-        marker = self.root / "worker.json"
-        probe.save_new(marker, OWNED)
-        with patch("core_cost_probe.os.getpgrp", return_value=1, create=True), \
-                patch("core_cost_probe.proc_identity", return_value={**OWNED, "starttime": 1}), \
-                patch("core_cost_probe.os.killpg", create=True) as kill:
-            with self.assertRaisesRegex(RuntimeError, "identity changed"):
-                probe.cleanup_group(marker)
-            kill.assert_not_called()
-        with patch("core_cost_probe.os.getpgrp", return_value=1, create=True), \
-                patch("core_cost_probe.proc_identity", return_value=OWNED), \
-                patch("core_cost_probe.os.killpg", create=True), patch("core_cost_probe.time.sleep"):
-            with self.assertRaisesRegex(RuntimeError, "survives KILL"):
-                probe.cleanup_group(marker)
-        with patch("core_cost_probe.os.getpgrp", return_value=1, create=True), \
-                patch("core_cost_probe.proc_identity", side_effect=FileNotFoundError), \
-                patch("core_cost_probe.os.killpg", side_effect=ProcessLookupError, create=True):
-            probe.cleanup_group(marker)
+    def test_worker_keeps_primary_when_child_cleanup_and_receipt_retention_fail(self):
+        directory, children = self.worker_fixture(phase=0)
+        original = subprocess.TimeoutExpired("primary native timeout", 5)
+        cleanup = PermissionError("native cleanup refused")
+        spawn = probe.subprocess.Popen.side_effect
+
+        def failing(*args, **kwargs):
+            child = spawn(*args, **kwargs)
+            child.poll.return_value = None
+            child.wait.side_effect = [original, cleanup]
+            return child
+
+        save = probe.save_new
+        def retain(path, value):
+            if Path(path).name == "bench-0.json":
+                self.assertTrue(value["cleanup_unresolved"])
+                raise OSError("receipt disk failure")
+            return save(path, value)
+
+        with patch("core_cost_probe.subprocess.Popen", side_effect=failing), \
+                patch("core_cost_probe.save_new", side_effect=retain):
+            with self.assertRaises(subprocess.TimeoutExpired) as raised:
+                probe.worker(self.root, 0)
+        self.assertIs(raised.exception, original)
+        self.assertTrue(original.cleanup_unresolved)
+        self.assertEqual(len(original.__notes__), 2)
+        self.assertIn("native cleanup refused", original.__notes__[0])
+        self.assertIn("receipt disk failure", original.__notes__[1])
+        children[0].terminate.assert_called_once()
+
+    def test_stale_worker_marker_is_never_used_for_original_cleanup(self):
+        # Even an identity-matching replacement cannot grant signaling custody.
+        probe.save_new(self.root / "worker.json", OWNED)
+        with patch("core_cost_probe.run_owned", return_value=0), \
+                patch("core_cost_probe.proc_identity", side_effect=AssertionError("stale marker queried")), \
+                patch("core_cost_probe.os.killpg", side_effect=AssertionError("stale marker signaled"), create=True):
+            record = {"command": ["synthetic wrapper"]}
+            probe.execute_phase(self.root, record, 1, 1001, 1002, io.BytesIO())
+        self.assertTrue(record["cleanup_settled"])
+        self.assertFalse(hasattr(probe, "cleanup_group"))
 
     def test_reports_keep_unfiltered_evidence_and_pid_filtered_callers(self):
         with patch("core_cost_probe.flat_report", return_value={"available": True}) as flat, \
@@ -264,6 +292,40 @@ class ProbeTests(unittest.TestCase):
                 patch("core_cost_probe.directory_bytes", return_value=5 * 1024 * probe.MIB):
             with self.assertRaisesRegex(ValueError, "4 GiB"):
                 probe.build(self.root, self.root, {}, "x86_64-unknown-linux-gnu")
+
+    def test_build_clean_exit_uses_bounded_logging_and_joins_watchdog(self):
+        with patch("core_cost_probe.run_logged") as logged, \
+                patch("core_cost_probe.directory_bytes", return_value=0):
+            probe.build(self.root, self.root, {}, "unused-host")
+        self.assertFalse(logged.call_args.kwargs["cancel"].is_set())
+        self.assertEqual(logged.call_args.kwargs["limit"], 2 * probe.MIB)
+        self.assertEqual(logged.call_args.kwargs["timeout"], 900)
+
+    def test_build_watchdog_requests_owner_cancellation_and_keeps_budget_reason(self):
+        def logged(argv, stream, *, cancel, **kwargs):
+            self.assertTrue(cancel.wait(2), "watchdog cancellation deadline")
+            raise InterruptedError("logged command cancelled")
+        with patch("core_cost_probe.run_logged", side_effect=logged), \
+                patch("core_cost_probe.directory_bytes", side_effect=[0, 5 * 1024 * probe.MIB]), \
+                patch("core_cost_probe.os.killpg", side_effect=AssertionError("watchdog signals forbidden"), create=True):
+            with self.assertRaises(InterruptedError) as raised:
+                probe.build(self.root, self.root, {}, "unused-host")
+        self.assertIn("build lane exceeds 4 GiB", raised.exception.__notes__[0])
+        self.assertFalse(getattr(raised.exception, "cleanup_unresolved", False))
+
+    def test_build_keeps_primary_when_watchdog_join_is_unresolved(self):
+        original = KeyboardInterrupt("primary build interruption")
+        watcher = Mock(ident=123)
+        watcher.is_alive.return_value = True
+        with patch("core_cost_probe.run_logged", side_effect=original), \
+                patch("core_cost_probe.directory_bytes", return_value=0), \
+                patch("core_cost_probe.threading.Thread", return_value=watcher):
+            with self.assertRaises(KeyboardInterrupt) as raised:
+                probe.build(self.root, self.root, {}, "unused-host")
+        self.assertIs(raised.exception, original)
+        self.assertTrue(original.cleanup_unresolved)
+        self.assertIn("cleanup unresolved: build watchdog", original.__notes__[0])
+        watcher.join.assert_called_once_with(timeout=5)
 
     def capture_permissions(self):
         """Model root:root0600 plus EACCES, not a runner-owned tempfile shortcut."""
@@ -353,7 +415,7 @@ class ProbeTests(unittest.TestCase):
         def launch(argv, **kwargs):
             if "chown" in argv:
                 events.append("handoff")
-                self.assertEqual(events, ["recorder reaped", "worker cleanup", "handoff"])
+                self.assertEqual(events, ["recorder reaped", "handoff"])
                 owners[path] = (1001, 1002)
                 return 0
             events.append("recorder reaped")
@@ -361,7 +423,6 @@ class ProbeTests(unittest.TestCase):
 
         record = {"command": ["synthetic recorder"]}
         with patch("core_cost_probe.run_owned", side_effect=launch), \
-                patch("core_cost_probe.cleanup_group", side_effect=lambda _: events.append("worker cleanup")), \
                 (self.root / "perf-command.log").open("xb") as log:
             with self.assertRaises(subprocess.TimeoutExpired) as raised:
                 probe.execute_phase(self.root, record, 8, 1001, 1002, log)
@@ -385,6 +446,7 @@ class ProbeTests(unittest.TestCase):
         self.assertEqual(len(calls), 4)
         for argv, kwargs in calls[1:]:
             self.assertEqual(argv[:4], ["sudo", "-n", "--", "prlimit"])
+            self.assertIn("--foreground", argv)
             self.assertLess(argv.index("prlimit"), argv.index("--as=536870912:536870912"))
             self.assertLess(argv.index("--as=536870912:536870912"), argv.index("perf"))
             self.assertIn("--fsize=", " ".join(argv))
@@ -474,7 +536,6 @@ class ProbeTests(unittest.TestCase):
         self.enterContext(patch("core_cost_probe.command", side_effect=command))
         build_mock = self.enterContext(patch("core_cost_probe.build", side_effect=build))
         self.enterContext(patch("core_cost_probe.run_owned", side_effect=launch))
-        self.enterContext(patch("core_cost_probe.cleanup_group"))
         self.enterContext(patch("core_cost_probe.reports", return_value={"flat": {"available": True},
                                                                        "samples.txt": {"returncode": 0}}))
         return output, lane, calls, build_mock
@@ -538,27 +599,30 @@ class ProbeTests(unittest.TestCase):
         self.assertFalse((output / "index.json").exists())
         self.assertTrue((output / "index-error.json").exists())
 
-    def test_cleanup_failure_remains_primary_if_handoff_and_inventory_also_fail(self):
+    def test_wrapper_cleanup_failure_remains_primary_and_stops_campaign(self):
         output, lane, calls, _ = self.controller_fixture(transfer_refused=True)
-        error = RuntimeError("cleanup unresolved: owned worker remains")
-        def unresolved(marker):
-            if marker.parent.name == "u-profile":
-                raise error
+        error = RuntimeError("cleanup unresolved: owned wrapper remains")
+        launch = probe.run_owned.side_effect
 
-        with patch("core_cost_probe.cleanup_group", side_effect=unresolved):
+        def unresolved(argv, **kwargs):
+            if "CORE_COST_PHASE=2" in argv:
+                raise error
+            return launch(argv, **kwargs)
+
+        with patch("core_cost_probe.run_owned", side_effect=unresolved):
             with self.assertRaises(RuntimeError) as raised:
                 probe.run(output, lane)
         self.assertIs(raised.exception, error)
-        self.assertEqual(calls, ["u-before", "os-before", "u-profile"])
+        self.assertEqual(calls, ["u-before", "os-before"])
         self.assertTrue(probe.load(output / "summary.json")["cleanup_unresolved"])
-        self.assertTrue(any("ownership transfer refused" in note for note in error.__notes__))
-        self.assertEqual(probe.load(output / "u-profile/capture-access.json")["returncode"], 71)
+        self.assertFalse(probe.load(output / "u-profile/capture-access.json")["recorder_settled"])
+        self.assertFalse(probe.load(output / "u-profile/phase.json")["cleanup_settled"])
 
     def test_unsettled_recorder_prevents_any_capture_handoff(self):
         error = RuntimeError("cleanup unresolved: recorder remains")
         record = {"command": ["synthetic recorder"]}
         with patch("core_cost_probe.run_owned", side_effect=error), \
-                patch("core_cost_probe.cleanup_group"), patch("core_cost_probe.capture_access") as access, \
+                patch("core_cost_probe.capture_access") as access, \
                 (self.root / "perf-command.log").open("xb") as log:
             with self.assertRaises(RuntimeError) as raised:
                 probe.execute_phase(self.root, record, 8, 1001, 1002, log)
@@ -993,6 +1057,19 @@ class BatchOwnershipTests(unittest.TestCase):
         self.assertIn("pidfd signal denied", original.__notes__[0])
         lifetime.close.assert_called_once()
 
+    def test_missing_pidfd_lifetime_closes_eof_and_explicitly_reaps_without_group_signals(self):
+        child, send, _, numeric = self.pidfds()
+        child.process.stdin = Mock(closed=False)
+        child.process.stdout = Mock()
+        child.wait = Mock(side_effect=AssertionError("generic wait only observes"))
+        probe.batch_release_child(child, None)
+        child.stdin.close.assert_called_once()
+        child.stdout.close.assert_called_once()
+        child.process.wait.assert_called_once_with(timeout=1)
+        self.assertTrue(child.stopped)
+        send.assert_not_called()
+        numeric.assert_not_called()
+
     def test_pipe_close_failure_still_stops_original_process_and_closes_handles(self):
         child = SimpleNamespace(stdin=Mock(closed=False), stdout=Mock())
         original = BrokenPipeError("EOF close failed")
@@ -1104,6 +1181,471 @@ signal.pause()
 
     def test_kill_worker_after_child_registration_leaves_no_survivor(self):
         self.killed_worker("after")
+
+
+@unittest.skipUnless(os.environ.get("COAPTIC_PRIVILEGED_CLEANUP_TESTS") == "1",
+                     "set COAPTIC_PRIVILEGED_CLEANUP_TESTS=1 on a Linux NOPASSWD sudo/perf runner")
+class PrivilegedCleanupTests(unittest.TestCase):
+    """Real tools, fixed source stub, no counters/builds/policy changes.
+
+    Teardown never reopens a numeric marker or signals a group: owned input EOF
+    or an abort file releases fixtures independently of the implementation under
+    test. Every fixture additionally has a finite lifetime, including root ones.
+    pidfds are observation-only here, not permission to signal root processes.
+    """
+    @classmethod
+    def setUpClass(cls):
+        import linux_cpu as cpu
+        cls.cpu = cpu
+        if (sys.platform != "linux" or not callable(getattr(os, "pidfd_open", None))
+                or not callable(getattr(os, "waitid", None)) or not hasattr(os, "WNOWAIT")):
+            raise AssertionError("privileged cleanup opt-in requires Linux pidfds and waitid WNOWAIT")
+        if os.getuid() <= 0 or os.getgid() <= 0:
+            raise AssertionError("mixed-UID proof requires an ordinary runner, not root")
+        missing = [name for name in ("sudo", "prlimit", "timeout", "perf", "setpriv", "kill")
+                   if shutil.which(name) is None]
+        if missing:
+            raise AssertionError("privileged cleanup opt-in missing prerequisites: " + ", ".join(missing))
+        # --null opens no performance counters. Do this before any campaign;
+        # explicit opt-in must not turn missing sudo/perf into a passing skip.
+        check = subprocess.run(probe.prefix(probe.META, 3) + ["perf", "stat", "--null", "--", "true"],
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=10, start_new_session=True)
+        if check.returncode:
+            raise AssertionError("privileged cleanup opt-in requires working sudo -n and perf stat --null")
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.addCleanup(self.temporary.cleanup)
+        self.children, self.fds = [], []
+        # This session is unrelated to all test groups. EOF, not a signal,
+        # releases it; its alarm also bounds lifetime after test-runner failure.
+        sentinel_code = "import select,signal,sys; signal.alarm(30); select.select([sys.stdin],[],[],25)"
+        self.sentinel = subprocess.Popen([sys.executable, "-B", "-c", sentinel_code],
+                                         stdin=subprocess.PIPE, start_new_session=True)
+        self.addCleanup(self.release)
+
+    def release(self):
+        failures = []
+        # No call to stop(), no numeric group signaling and no marker-derived
+        # cleanup. Let EOF/abort or the fixtures' own alarms settle everything.
+        (self.root / "abort").touch()
+        for child in self.children:
+            if child.stdin is not None:
+                child.stdin.close()
+        for child in self.children:
+            try:
+                child.process.wait(timeout=20)
+            except BaseException as error:
+                failures.append(error)
+        for fd in self.fds:
+            if not probe.select.select([fd], [], [], 15)[0]:
+                failures.append(AssertionError("finite fixture failed independent teardown deadline"))
+            os.close(fd)
+        alive = self.sentinel.poll() is None
+        self.sentinel.stdin.close()
+        self.sentinel.wait(timeout=3)
+        self.assertTrue(alive, "unrelated sentinel exited during owned cleanup")
+        if failures:
+            raise failures[0]
+
+    def registration(self, child, path):
+        deadline = time.monotonic() + 5
+        while not path.exists():
+            if child.poll() is not None or time.monotonic() >= deadline:
+                self.fail("privileged fixture registration deadline/early wrapper exit")
+            time.sleep(.01)
+        value = probe.load(path)
+        fd = os.pidfd_open(value["pid"], 0)
+        self.fds.append(fd)
+        self.assertEqual(probe.proc_identity(value["pid"]),
+                         {key: value[key] for key in ("pid", "pgrp", "session", "starttime")})
+        self.assertEqual(value["pgrp"], child.group)
+        self.assertEqual(value["session"], child.group)
+        return value, fd
+
+    def test_partial_unprivileged_group_success_still_kills_root_term_resistant_member(self):
+        root_code = """
+import ctypes, json, os, pathlib, select, signal, sys, threading
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+signal.signal(signal.SIGHUP, signal.SIG_IGN)
+signal.alarm(12)
+fields=pathlib.Path('/proc/self/stat').read_text().rsplit(')',1)[1].split()
+value=dict(pid=os.getpid(),pgrp=os.getpgrp(),session=os.getsid(0),starttime=int(fields[19]),uid=os.getuid())
+path=pathlib.Path(sys.argv[1]); temporary=path.with_suffix('.tmp')
+ready=threading.Event()
+def member_thread():
+    ready.set()
+    select.select([sys.stdin],[],[],10)  # EOF is independent, bounded teardown.
+threading.Thread(target=member_thread).start()
+if not ready.wait(1):
+    raise RuntimeError('thread readiness deadline')
+temporary.write_text(json.dumps(value)); temporary.rename(path)
+ctypes.CDLL(None).pthread_exit(None)  # Only TGID leader exits; member thread stays live.
+"""
+        argv = probe.prefix(probe.META, 15) + [sys.executable, "-B", "-c", root_code,
+                                              str(self.root / "root-member.json")]
+        leader = ("import signal,subprocess,sys; signal.alarm(18); "
+                  "sys.exit(subprocess.Popen(" + repr(argv) + ").wait())")
+        child = self.cpu.spawn([sys.executable, "-B", "-c", leader], stdin=subprocess.PIPE,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.children.append(child)
+        value, fd = self.registration(child, self.root / "root-member.json")
+        self.assertEqual(value["uid"], 0)
+        deadline = time.monotonic() + 2
+        while probe.bounded_read(f"/proc/{value['pid']}/stat", 4096).rsplit(b")", 1)[1].split()[0] != b"Z":
+            self.assertLess(time.monotonic(), deadline, "TGID leader did not exit with active member thread")
+            time.sleep(.01)
+        value["tgid_leader_state"] = "Z"
+        self.assertFalse(probe.select.select([fd], [], [], 0)[0], "zombie leader concealed a live thread")
+        # The real unprivileged syscall succeeds because it reaches the ordinary
+        # leader. It cannot reach the root-owned, TERM-resistant group member.
+        os.killpg(child.group, probe.signal.SIGTERM)
+        child.wait(timeout=2)  # Non-reaping; the group number is still reserved.
+        self.assertIsNone(child.process.returncode)
+        self.assertFalse(probe.select.select([fd], [], [], 0)[0], "root member did not survive local signal")
+        self.cpu.stop(child, elevated=True)
+        self.assertTrue(child.stopped)
+        self.assertTrue(probe.select.select([fd], [], [], 0)[0], "root member was alive when cleanup claimed settlement")
+        self.assertIsNone(self.sentinel.poll())
+        print("mixed-UID reserved-group proof: " + json.dumps(value, sort_keys=True))
+
+    def production_phase(self, hanging):
+        import textwrap
+        directory = self.root / "u-before"
+        directory.mkdir()
+        native = self.root / "native-source-stub"
+        # The native substitute is only fixed Python source. The production
+        # worker, credential validation and every external wrapper remain real.
+        native.write_text("#!" + sys.executable + "\n" + textwrap.dedent("""
+            import json, os, pathlib, resource, signal, time
+            signal.alarm(12)
+            root=pathlib.Path(__file__).parent
+            hanging=HANGING
+            if hanging:
+                signal.signal(signal.SIGTERM,signal.SIG_IGN)
+            ancestry=[]; pid=os.getpid()
+            for _ in range(24):
+                path=pathlib.Path('/proc')/str(pid)
+                fields=(path/'stat').read_text().rsplit(')',1)[1].split()
+                row=dict(pid=pid,pgrp=int(fields[2]),session=int(fields[3]),starttime=int(fields[19]),
+                         uid=int(next(line for line in (path/'status').read_text().splitlines()
+                                      if line.startswith('Uid:')).split()[1]),
+                         argv=(path/'cmdline').read_bytes()[:8192].decode().split('\\0')[:-1])
+                ancestry.append(row)
+                if int(fields[2]) == pid or int(fields[1]) <= 1:
+                    break
+                pid=int(fields[1])
+            value=dict(ancestry[0],ancestry=ancestry,uid=os.getuid(),gid=os.getgid(),
+                       as_limit=list(resource.getrlimit(resource.RLIMIT_AS)),
+                       fsize_limit=list(resource.getrlimit(resource.RLIMIT_FSIZE)))
+            temporary=root/'native.tmp'; temporary.write_text(json.dumps(value))
+            temporary.rename(root/'native.json')
+            deadline=time.monotonic()+8
+            while not (root/'release').exists() or hanging:
+                if (root/'abort').exists() or time.monotonic() >= deadline:
+                    raise SystemExit(0)
+                time.sleep(.01)
+            print(json.dumps(dict(operations=50000,warmup=128,security='unprotected',black_box=True,
+                                  measurement='poll wall clock',latencies_ns=[1000]*50000,
+                                  clock_calibration_ns=[20]*4096)))
+            """).replace("HANGING", repr(hanging)))
+        native.chmod(0o700)
+        probe.save_new(self.root / "build.json", dict(uid=os.getuid(), gid=os.getgid(),
+            binary=str(native), binary_sha256=probe.digest(native)))
+        argv = probe.phase_command(self.root, 0, os.getuid(), os.getgid())
+        # Use the actual clean production phase command and add a real perf
+        # wrapper with no counters, keeping sudo/prlimit/timeout/setpriv intact.
+        index = argv.index("setpriv")
+        argv[index:index] = ["perf", "stat", "--null", "--"]
+        record, observed = dict(command=argv), {}
+        real_spawn, real_run = self.cpu.spawn, probe.run_owned
+
+        def tracked_spawn(command, **kwargs):
+            child = real_spawn(command, **kwargs)
+            if command == argv:
+                self.children.append(child)
+                observed["native"], observed["fd"] = self.registration(child, self.root / "native.json")
+                observed["group"] = child.group
+                (self.root / "release").touch()
+            return child
+
+        def run(command, **kwargs):
+            if hanging:
+                kwargs["timeout"] = .05  # Force the real outer watchdog after registration.
+            return real_run(command, **kwargs)
+
+        with patch.object(self.cpu, "spawn", side_effect=tracked_spawn), \
+                patch.object(probe, "run_owned", side_effect=run), \
+                (self.root / "phase.log").open("wb") as log:
+            if hanging:
+                with self.assertRaises(subprocess.TimeoutExpired) as raised:
+                    probe.execute_phase(directory, record, 1, os.getuid(), os.getgid(), log)
+                self.assertFalse(getattr(raised.exception, "cleanup_unresolved", False))
+                self.assertEqual(record["recorder_error"]["error"], "TimeoutExpired")
+            else:
+                probe.execute_phase(directory, record, 1, os.getuid(), os.getgid(), log)
+                self.assertEqual(record["returncode"], 0)
+                self.assertTrue(probe.load(directory / "bench-0.json")["complete"])
+        self.assertTrue(record["cleanup_settled"])
+        self.assertTrue(self.children[0].stopped)
+        self.assertTrue(probe.select.select([observed["fd"]], [], [], 0)[0], "native was alive when phase claimed settlement")
+        worker = probe.load(directory / "worker.json")
+        self.assertEqual((worker["pgrp"], worker["session"]), (observed["group"], observed["group"]))
+        probe.validate_credentials(worker["credentials"], os.getuid(), os.getgid())
+        value = observed["native"]
+        self.assertEqual((value["uid"], value["gid"]), (os.getuid(), os.getgid()))
+        self.assertEqual(value["as_limit"], [536870912, 536870912])
+        self.assertEqual(value["fsize_limit"], [probe.BENCH, probe.BENCH])
+        for row in value["ancestry"]:
+            self.assertEqual((row["pgrp"], row["session"]), (observed["group"], observed["group"]))
+        commands = [row["argv"] for row in value["ancestry"] if row["argv"]]
+        self.assertTrue(any(Path(command[0]).name == "perf" and "--null" in command for command in commands))
+        self.assertTrue(any(Path(command[0]).name == "timeout" and "--foreground" in command for command in commands))
+        for row in value["ancestry"]:
+            if row["argv"] and Path(row["argv"][0]).name in ("perf", "timeout"):
+                self.assertEqual(row["uid"], 0)
+        self.assertTrue(any(row["pid"] == worker["pid"] for row in value["ancestry"]))
+        self.assertIsNone(self.sentinel.poll())
+        print("production wrapper proof: " + json.dumps(dict(command=argv, hanging=hanging,
+            cleanup_settled=record["cleanup_settled"], worker=worker, native=value), sort_keys=True))
+
+    def test_real_production_sudo_prlimit_timeout_perf_setpriv_worker_success(self):
+        self.production_phase(False)
+
+    def test_real_production_sudo_prlimit_timeout_perf_setpriv_worker_forced_timeout(self):
+        self.production_phase(True)
+
+
+@unittest.skipUnless(sys.platform == "linux" and callable(getattr(os, "pidfd_open", None)),
+                     "original worker/build ownership proof requires Linux")
+class OriginalOwnershipTests(unittest.TestCase):
+    def setUp(self):
+        import linux_cpu as cpu
+        self.cpu = cpu
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.sentinel = subprocess.Popen([sys.executable, "-B", "-c", "import time; time.sleep(30)"],
+                                         start_new_session=True)
+        self.addCleanup(self.release_sentinel)
+        self.native_fd = None
+        self.owned = []
+        self.addCleanup(self.release_owned)
+
+    def release_sentinel(self):
+        if self.sentinel.poll() is None:
+            self.sentinel.terminate()
+        self.sentinel.wait(timeout=2)
+
+    def release_owned(self):
+        try:
+            for child in self.owned:
+                self.cpu.stop(child)
+            if self.native_fd is not None:
+                try:
+                    probe.batch_stop_fd(self.native_fd)
+                finally:
+                    os.close(self.native_fd)
+        finally:
+            self.assertIsNone(self.sentinel.poll(), "unrelated session was signaled")
+
+    def tracked_spawn(self, argv, **kwargs):
+        child = self.real_spawn(argv, **kwargs)
+        self.owned.append(child)
+        deadline = time.monotonic() + 3
+        while True:
+            try:
+                native = json.loads((self.root / "native.json").read_bytes())
+                break
+            except (FileNotFoundError, json.JSONDecodeError):
+                if time.monotonic() >= deadline:
+                    self.fail("native registration deadline")
+                time.sleep(.01)
+        self.assertEqual(native["pgrp"], child.group)
+        self.assertEqual(native["session"], child.group)
+        if self.hanging:
+            self.native_fd = os.pidfd_open(native["pid"], 0)
+        return child
+
+    def original_phase(self, hanging):
+        import select
+        self.hanging = hanging
+        directory = self.root / "u-before"
+        directory.mkdir()
+        binary = self.root / "native-stub"
+        binary.write_text("#!" + sys.executable + "\n" +
+            "import json, os, pathlib, signal, sys, time\n" +
+            "import core_cost_probe as p\n" +
+            ("signal.signal(signal.SIGTERM, signal.SIG_IGN)\n" if hanging else "") +
+            "p.save_new(pathlib.Path(" + repr(str(self.root / "native.json")) + "), p.proc_identity(os.getpid()))\n" +
+            ("time.sleep(30)\n" if hanging else "print(" + repr(json.dumps(bench())) + ")\n"))
+        binary.chmod(0o700)
+        probe.save_new(self.root / "build.json", dict(uid=os.getuid(), gid=os.getgid(),
+            binary=str(binary), binary_sha256=probe.digest(binary)))
+        worker = ("import pathlib; import core_cost_probe as p; "
+                  "p.validate_credentials=lambda *a: None; p.worker(pathlib.Path(" + repr(str(self.root)) + "),0)")
+        # Keep an intermediate wrapper that reaps the worker. Only the original
+        # outer leader remains reserved when the final group signals are sent.
+        wrapper = ("import subprocess,sys; child=subprocess.Popen([sys.executable,'-B','-c'," +
+                   repr(worker) + "]); sys.exit(child.wait())")
+        command = ["timeout", "--foreground", "--signal=TERM", "--kill-after=1", "10",
+                   sys.executable, "-B", "-c", wrapper]
+        record = dict(command=command)
+        real_run = probe.run_owned
+        self.real_spawn = self.cpu.spawn
+
+        def run(argv, **kwargs):
+            kwargs.update(timeout=.05 if hanging else 5, elevated=False,
+                          cwd=Path(probe.__file__).parent,
+                          env={**os.environ, "PYTHONPATH": str(Path(probe.__file__).parent)})
+            return real_run(argv, **kwargs)
+
+        with patch.object(self.cpu, "spawn", side_effect=self.tracked_spawn), \
+                patch.object(probe, "run_owned", side_effect=run), \
+                patch.object(probe, "load", side_effect=AssertionError("parent reopened stale marker")), \
+                (self.root / "phase.log").open("wb") as log:
+            if hanging:
+                with self.assertRaises(subprocess.TimeoutExpired) as raised:
+                    probe.execute_phase(directory, record, 1, os.getuid(), os.getgid(), log)
+                self.assertFalse(getattr(raised.exception, "cleanup_unresolved", False))
+                self.assertEqual(record["recorder_error"]["error"], "TimeoutExpired")
+                self.assertTrue(select.select([self.native_fd], [], [], 2)[0], "native survives owner cleanup")
+            else:
+                probe.execute_phase(directory, record, 1, os.getuid(), os.getgid(), log)
+                self.assertEqual(record["returncode"], 0)
+        self.assertTrue(record["cleanup_settled"])
+        self.assertTrue(self.owned[0].stopped)
+        worker_marker = probe.load(directory / "worker.json")
+        self.assertEqual(worker_marker["pgrp"], self.owned[0].group)
+        if not hanging:
+            self.assertTrue(probe.load(directory / "bench-0.json")["complete"])
+        # A matching marker for an unrelated live session is still only data.
+        (directory / "worker.json").write_bytes(probe.bounded_bytes(probe.proc_identity(self.sentinel.pid), probe.META))
+        with patch.object(probe, "load", side_effect=AssertionError("stale replacement marker reopened")):
+            probe.execute_phase(directory, dict(command=[sys.executable, "-B", "-c", "pass"]),
+                                1, os.getuid(), os.getgid(), subprocess.DEVNULL)
+        self.assertIsNone(self.sentinel.poll())
+
+    def test_original_clean_worker_inherits_reserved_wrapper_group(self):
+        self.original_phase(False)
+
+    def test_original_timeout_kills_native_and_never_signals_marker_replacement(self):
+        self.original_phase(True)
+
+    def test_build_budget_abort_uses_actual_owner_cleanup_and_preserves_sentinel(self):
+        import select
+        self.hanging = True
+        script = ("import pathlib, signal, subprocess, sys, time; "
+                  "child=subprocess.Popen([sys.executable,'-B','-c',"
+                  "'import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); print(1,flush=True); time.sleep(30)'],"
+                  "stdout=subprocess.PIPE); child.stdout.readline(); "
+                  "import core_cost_probe as p; p.save_new(pathlib.Path(" +
+                  repr(str(self.root / "native.json")) + "),p.proc_identity(child.pid)); time.sleep(30)")
+        # Builder markers cannot authorize a watchdog thread to signal anything.
+        probe.save_new(self.root / "builder.json", probe.proc_identity(self.sentinel.pid))
+        real_logged, self.real_spawn = probe.run_logged, self.cpu.spawn
+
+        def logged(argv, stream, **kwargs):
+            kwargs.update(cwd=Path(probe.__file__).parent)
+            return real_logged([sys.executable, "-B", "-c", script], stream, **kwargs)
+
+        def lane_size(_):
+            return 5 * 1024 * probe.MIB if (self.root / "native.json").exists() else 0
+
+        with patch.object(self.cpu, "spawn", side_effect=self.tracked_spawn), \
+                patch.object(probe, "run_logged", side_effect=logged), \
+                patch.object(probe, "directory_bytes", side_effect=lane_size), \
+                patch.object(probe, "load", side_effect=AssertionError("builder marker reopened")):
+            with self.assertRaises(InterruptedError) as raised:
+                probe.build(self.root, self.root, {}, "unused-host")
+        self.assertFalse(getattr(raised.exception, "cleanup_unresolved", False))
+        self.assertIn("build lane exceeds 4 GiB", raised.exception.__notes__[0])
+        self.assertTrue(self.owned[0].stopped)
+        self.assertTrue(select.select([self.native_fd], [], [], 2)[0], "budget-aborted child survives")
+        self.assertIsNone(self.sentinel.poll())
+
+
+@unittest.skipUnless(sys.platform == "linux" and callable(getattr(os, "pidfd_open", None)),
+                     "production marker/error cleanup requires Linux pidfds")
+class ProductionMarkerCleanupTests(unittest.TestCase):
+    def test_phase_timeout_runs_actual_registered_marker_cleanup_and_keeps_primary(self):
+        # Stdlib-only subprocesses exercise execute_phase -> cleanup_batch ->
+        # batch_cleanup_marker, rather than treating native control EOF as proof.
+        import select
+        worker_code = """
+import os, pathlib, subprocess, sys, time
+import core_cost_probe as p
+root=pathlib.Path(sys.argv[1])
+child=subprocess.Popen([sys.executable, '-B', '-c', 'import time; time.sleep(5)'],
+                       start_new_session=True, stdin=subprocess.DEVNULL)
+p.save_batch(root/'worker.json', p.proc_identity(os.getpid()))
+owned=p.proc_identity(child.pid)
+owned.update(parent_pid=os.getpid(), phase=root.name)
+p.save_batch(root/'owned-child.json', owned)
+print(child.pid, flush=True)
+time.sleep(5)
+"""
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary) / "u-clean-0"
+            directory.mkdir()
+            sentinel = subprocess.Popen([sys.executable, "-B", "-c", "import time; time.sleep(5)"],
+                                        start_new_session=True)
+            worker, native_fd = None, None
+            try:
+                worker = subprocess.Popen([sys.executable, "-B", "-c", worker_code, str(directory)],
+                                          start_new_session=True, stdout=subprocess.PIPE, text=True)
+                self.assertTrue(select.select([worker.stdout], [], [], 3)[0], "worker registration deadline")
+                native = int(worker.stdout.readline(64))
+                native_fd = os.pidfd_open(native, 0)
+                original = subprocess.TimeoutExpired("phase wrapper", 20)
+                record = dict(command=["synthetic fixed wrapper"])
+                with patch.object(probe, "batch_run_command", side_effect=original), \
+                        patch.object(probe.os, "killpg", side_effect=AssertionError("numeric marker signal forbidden")):
+                    with self.assertRaises(subprocess.TimeoutExpired) as raised:
+                        probe.execute_phase(directory, record, 1, os.getuid(), os.getgid(), io.BytesIO(), batch_cpu=True)
+                self.assertIs(raised.exception, original)
+                self.assertFalse(getattr(original, "cleanup_unresolved", False))
+                self.assertTrue(record["cleanup_settled"])
+                self.assertEqual(record["recorder_error"]["error"], "TimeoutExpired")
+                worker.wait(timeout=2)
+                self.assertTrue(select.select([native_fd], [], [], 2)[0], "registered child exit deadline")
+                self.assertIsNone(sentinel.poll())
+                # A now-stale receipt must not reopen the old numeric identities.
+                with patch.object(probe.os, "pidfd_open", side_effect=AssertionError("stale marker reopened")):
+                    probe.save_batch(directory / "bench-0.json", dict(child_cleanup_settled=True))
+                    probe.cleanup_batch(directory, True)
+            finally:
+                if worker is not None:
+                    if worker.poll() is None:
+                        worker.kill()
+                    worker.wait(timeout=2)
+                    worker.stdout.close()
+                if native_fd is not None:
+                    try:
+                        probe.batch_stop_fd(native_fd)
+                    finally:
+                        os.close(native_fd)
+                if sentinel.poll() is None:
+                    sentinel.terminate()
+                sentinel.wait(timeout=2)
+
+    def test_exited_marker_does_not_signal_or_acquire_recycled_numeric_identity(self):
+        child = subprocess.Popen([sys.executable, "-B", "-c", "import time; time.sleep(.1)"],
+                                 start_new_session=True)
+        with tempfile.TemporaryDirectory() as temporary:
+            marker = Path(temporary) / "worker.json"
+            try:
+                probe.save_batch(marker, probe.proc_identity(child.pid))
+                child.wait(timeout=2)
+                with patch.object(probe.os, "pidfd_open", side_effect=AssertionError("exited PID reopened")), \
+                        patch.object(probe.os, "killpg", side_effect=AssertionError("numeric signal forbidden")):
+                    probe.batch_cleanup_marker(marker)
+            finally:
+                if child.poll() is None:
+                    child.terminate()
+                child.wait(timeout=2)
 
 
 if __name__ == "__main__":

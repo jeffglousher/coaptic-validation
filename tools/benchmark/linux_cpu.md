@@ -693,6 +693,33 @@ descendants have terminated. Full descendant containment has not been qualified;
 it would require separate work beyond this bounded reporting change.
 Client/server cleanup attempts run independently, and cleanup errors retain
 `result.json` and `perf.json`.
+
+Exit observations use Linux `waitid(WNOWAIT)`: the sole owner retains the
+unreaped direct leader through the final group signal, then reaps it. Already
+reaped/non-waitable leaders and non-default SIGCHLD handling refuse numeric group
+signaling. Elevated cleanup always invokes the privileged TERM and KILL helper;
+unprivileged group-signal success alone does not prove privileged members were
+reached. Helper refusal remains fatal even when other cleanup actions succeed.
+After KILL, bounded process pidfds observe complete thread-group exit before the
+reserved leader is reaped or capture handoff is permitted. A zombie thread-group
+leader alone is insufficient. Two `/proc` censuses allow at most 4,096 entries
+each, 4 KiB per stat, 64 retained pidfds and one five-second observation deadline;
+mount visibility input is limited to 64 KiB. These are external runner cleanup
+resources, with at most one directory and one stat handle in addition to pidfds;
+they add no server transport owner or per-operation worker. Proc visibility,
+namespace, membership, acquisition or exit uncertainty refuses settlement. The
+deadline is checked between bounded syscalls and is not a hard real-time promise.
+The original core probe keeps its worker in that reserved wrapper group with
+`timeout --foreground`; worker/builder markers no longer authorize signals.
+The build watchdog requests cancellation from the sole process owner. The
+separate batch probe retains its pidfd/control-EOF custody protocol.
+
+The manual workflow opts into bounded Linux mixed-UID and production launcher
+success/timeout tests with `COAPTIC_PRIVILEGED_CLEANUP_TESTS=1`. Missing privileged
+test prerequisites fail this opt-in rather than count as passing skips. These
+tests and the direct transport tests must execute before the comparison; portable
+mock tests alone do not establish production cleanup or descendant containment.
+
 Unresolved termination of the client, server, perf, report or any helper aborts
 the remaining campaign after retaining the window and append-only index. `summary.json` records
 `campaign_complete=false` and `cleanup_unresolved=true`; no stratum emits a
@@ -739,3 +766,53 @@ stacks, allocator/kernel costs and whole RAM remain unknown. Existing selectors,
 defaults, all, capacities, authentication and guards are unchanged. This
 unmeasured fixture supports a same-core explicit adapter comparison; it claims no
 CPU gain, causal stage/kernel result or completion of either 50% target.
+
+### Bounded Linux direct receive control
+
+Explicit `coaptic-mio-direct` uses Linux `recvfrom(MSG_TRUNC | MSG_DONTWAIT)`
+through pinned safe Rustix bindings. It receives into the borrowed Engine RX
+slot and refuses a returned original datagram length larger than that slot.
+There is no adapter packet scratch, submitted completion, retained pointer,
+worker thread, ring or future. Kernel access ends before the synchronous call
+returns; cancellation and forgotten-future safety do not rely on Drop. Sends
+use the same immediate Mio send_to path and Engine exact-length checks.
+
+Both Mio kinds share one 32-pass drain/deadline loop. Consumed oversize input
+continues draining until actual WouldBlock or the existing 32-pass checkpoint;
+an oversize prefix is never parsed. Previously, this fixture exited on oversize
+receive errors. The shared loop now preserves service and RX-slot recovery for
+this specific input failure. Other transport failures remain explicit.
+
+The experiment retains the same App capacities and adds no packet, selector or
+runtime owner. Each startup ledger records enclosing App and adapter layouts,
+separate Poll/Events owners and eight-event capacity. Scratch is nested in the
+adapter, itself nested in App: never add those sizes again. Events heap, existing
+App heap and representation storage, allocator overhead, peak stack and kernel
+socket/epoll memory require separate accounting; null fields mean unknown.
+There is one server OS thread and no offloaded worker CPU. This is not a complete
+memory requirement or a demonstrated CPU gain.
+
+The bounded comparison uses identical core
+`b9b83d8663cbdcb7a80bf143670a05019f25cf25` for both labels, keeping the retained
+syn-2 native lock compatible with the original runtime baseline and both existing
+core-probe modes. Core main's later syn-3 manifest requires a separate reviewed
+lock selection before comparing across that dependency boundary; do not silently
+update a locked measurement. Use the committed companion revision containing this
+control, a frozen baseline client, both security modes, 64/1024 B, 4,000/s, C1 CON,
+twelve seconds and two rotated pairs, with perf and detailed diagnostics off:
+
+```sh
+python3 tools/benchmark/linux_cpu.py \
+  --baseline-sha b9b83d8663cbdcb7a80bf143670a05019f25cf25 \
+  --candidate-sha b9b83d8663cbdcb7a80bf143670a05019f25cf25 \
+  --build-lane /existing/compatible/cargo-lane --output /fresh/evidence/direct-rx \
+  --server-kind coaptic-mio --candidate-server-kind coaptic-mio-direct \
+  --sizes 64,1024 --rates 4000 --seconds 12 --repeats 2 \
+  --concurrency 1 --message-type con
+```
+
+The manual workflow runs Linux direct receive, authenticated operation,
+saturation/error-recovery tests and strict Clippy before measurement. An
+ineligible or latency-failing cell remains failed; no replacement cohort or
+transport percentage follows from it. Two-pair host evidence cannot complete
+both representative #650 targets. Keep Mio as the reference and existing defaults.

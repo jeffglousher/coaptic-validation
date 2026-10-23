@@ -32,12 +32,12 @@ on:
         description: Same host adapter for both core revisions
         type: choice
         default: coaptic-reusable
-        options: [coaptic-reusable, coaptic-mio, coaptic-ready, coaptic-async, coaptic-blocking, coaptic-staged-ready, coaptic-staged-mio, all]
+        options: [coaptic-reusable, coaptic-mio, coaptic-ready, coaptic-async, coaptic-blocking, coaptic-staged-ready, coaptic-staged-mio, coaptic-mio-direct, all]
       candidate_server_kind:
         description: Same adapter, or explicit scheduling comparison requiring identical core SHAs
         type: choice
         default: same
-        options: [same, coaptic-reusable, coaptic-mio, coaptic-ready, coaptic-async, coaptic-blocking, coaptic-staged-ready, coaptic-staged-mio]
+        options: [same, coaptic-reusable, coaptic-mio, coaptic-ready, coaptic-async, coaptic-blocking, coaptic-staged-ready, coaptic-staged-mio, coaptic-mio-direct]
       perf:
         description: Additional bounded perf record and stat passes (permission refusal retained)
         type: boolean
@@ -114,15 +114,36 @@ jobs:
         with:
           toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
       - name: Python checks and one runner build lane
+        env:
+          COAPTIC_PRIVILEGED_CLEANUP_TESTS: '1'
         run: |
           mkdir -p "$RUNNER_TEMP/cpu-build-lane" "$RUNNER_TEMP/cpu-setup-logs"
           python3 -m venv "$RUNNER_TEMP/cpu-venv"
           "$RUNNER_TEMP/cpu-venv/bin/pip" install 'psutil==7.0.0' >"$RUNNER_TEMP/cpu-setup-logs/python.log" 2>&1
           "$RUNNER_TEMP/cpu-venv/bin/python" -m unittest discover -s tools/benchmark -p 'test_linux*.py'
           "$RUNNER_TEMP/cpu-venv/bin/python" -m unittest discover -s tools/benchmark -p 'test_native_diagnostic.py'
+          PYTHONPATH=tools/benchmark "$RUNNER_TEMP/cpu-venv/bin/python" -B -m unittest \
+            test_core_cost_probe test_perf_sampling_probe
           # Never change perf_event_paranoid or install a kernel/profiling service.
           # Missing perf/sudo, unsupported events and permission refusal are raw artifacts.
           { command -v perf; perf --version; command -v prlimit; uname -a; } >"$RUNNER_TEMP/cpu-setup-logs/perf-tools.log" 2>&1 || true
+      - name: Direct Linux transport proof before its comparison
+        if: inputs.server_kind == 'coaptic-mio-direct' || inputs.candidate_server_kind == 'coaptic-mio-direct'
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/cpu-build-lane
+          CARGO_INCREMENTAL: '0'
+          CARGO_BUILD_JOBS: '2'
+          CARGO_PROFILE_RELEASE_DEBUG: '1'
+          CARGO_PROFILE_RELEASE_STRIP: none
+          RUSTFLAGS: -C force-frame-pointers=yes
+          RUSTC: rustc
+        run: |
+          cargo test --manifest-path tools/benchmark/native/Cargo.toml --release --locked \
+            -p bench-rust-server --bin bench-rust-server direct_udp::tests \
+            >"$RUNNER_TEMP/cpu-setup-logs/direct-tests.log" 2>&1
+          cargo clippy --manifest-path tools/benchmark/native/Cargo.toml --release --locked \
+            -p bench-rust-server --bin bench-rust-server -- -D warnings \
+            >"$RUNNER_TEMP/cpu-setup-logs/direct-clippy.log" 2>&1
       - name: Sequential source-matched builds, clean windows, then profiling
         run: |
           options=()

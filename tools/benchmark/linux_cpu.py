@@ -44,7 +44,7 @@ PROFILE_SECONDS = 5
 PERF_REPORT_SECONDS = 30
 PERF_FILES_PER_SLOT = 3  # Data/stat output, command/version log, record report.
 KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready")
-EXPLICIT_KINDS = (*KINDS, "coaptic-async", "coaptic-blocking", "coaptic-staged-ready", "coaptic-staged-mio")
+EXPLICIT_KINDS = (*KINDS, "coaptic-async", "coaptic-blocking", "coaptic-staged-ready", "coaptic-staged-mio", "coaptic-mio-direct")
 FLAGS = {"RUSTUP_TOOLCHAIN": "1.99.0", "RUSTC": "rustc",
          "RUSTFLAGS": "-C force-frame-pointers=yes", "CARGO_PROFILE_RELEASE_DEBUG": "1",
          "CARGO_PROFILE_RELEASE_STRIP": "none", "CARGO_INCREMENTAL": "0",
@@ -380,17 +380,63 @@ def retain_report(path, raw, operations):
 
 
 class OwnedProcess:
-    """Only processes launched in a fresh session may be group-signalled."""
+    """Fresh-session child with non-reaping exit observations.
+
+    One owner/waiter must retain the direct child through stop's final group
+    signals and member exit observation. A pidfd reserves a process, not its
+    numeric process group; keeping the unreaped leader reserves both identifiers
+    even after leader exit.
+    Callers must not poll/wait the underlying Popen outside final settlement.
+    This does not contain descendants that leave the session/group.
+    """
     def __init__(self, process):
         self.process = process
         self.group = process.pid
         self.stopped = False
+        self._exitcode = None
 
     def __getattr__(self, name):
         return getattr(self.process, name)
 
+    @property
+    def returncode(self):
+        return self.process.returncode if self.process.returncode is not None else self._exitcode
+
+    def _reserved(self):
+        if self.stopped or self.process.returncode is not None:
+            raise RuntimeError("cleanup unresolved: owned leader already reaped")
+        if signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL:
+            raise RuntimeError("cleanup unresolved: default SIGCHLD required to reserve leader")
+        # ECHILD also refuses an external waitpid or automatic reaping. Never
+        # infer ownership from a cached PID or an empty-group observation.
+        try:
+            status = os.waitid(os.P_PID, self.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+        except ChildProcessError as error:
+            raise RuntimeError("cleanup unresolved: owned leader no longer waitable") from error
+        if status is not None:
+            self._exitcode = status.si_status if status.si_code == os.CLD_EXITED else -status.si_status
+        return self._exitcode
+
+    def poll(self):
+        if self.stopped:
+            return self.process.returncode
+        return self._reserved()
+
+    def wait(self, timeout=None):
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while (code := self.poll()) is None:
+            remaining = None if deadline is None else deadline - time.monotonic()
+            if remaining is not None and remaining <= 0:
+                raise subprocess.TimeoutExpired(self.args, timeout)
+            time.sleep(.01 if remaining is None else min(.01, remaining))
+        return code
+
 
 def spawn(argv, *, file_limit=WINDOW_LIMIT, **kwargs):
+    if (sys.platform != "linux" or not callable(getattr(os, "pidfd_open", None))
+            or not callable(getattr(os, "waitid", None)) or not hasattr(os, "WNOWAIT")
+            or signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL):
+        raise RuntimeError("owned process groups require Linux pidfds, waitid WNOWAIT and default SIGCHLD")
     def limit_output():
         import resource
         resource.setrlimit(resource.RLIMIT_FSIZE, (file_limit, file_limit))
@@ -402,27 +448,178 @@ def spawn(argv, *, file_limit=WINDOW_LIMIT, **kwargs):
 def signal_group(child, sig, elevated):
     if not isinstance(child, OwnedProcess) or child.group <= 1 or child.group == os.getpgrp():
         raise ValueError("refusing to signal an unowned process group")
+    child._reserved()
     try:
         os.killpg(child.group, sig)
     except ProcessLookupError:
-        return
+        if not elevated:
+            return
     except PermissionError:
         if not elevated:
             raise
-        # Only owned perf capture/report groups opt into elevated signaling.
+    if elevated:
+        # killpg success means at least one member received the signal, not
+        # every member. A caller-owned leader can mask surviving root-owned
+        # perf/sudo descendants. Always signal with privilege while the original
+        # leader still reserves the group; helper refusal/failure is fatal.
+        # Only explicitly elevated owned groups may invoke this helper.
+        child._reserved()
         run_owned(["sudo", "-n", "--", "kill", f"-{signal.Signals(sig).name[3:]}",
                    "--", f"-{child.group}"], timeout=5, stdout=subprocess.DEVNULL,
                   stderr=subprocess.DEVNULL)
 
 
-def group_alive(child):
+# These are host-side cleanup ceilings, not automatically growing inventories.
+GROUP_SCAN_ENTRIES, GROUP_MEMBERS, GROUP_EXIT_SECONDS = 4096, 64, 5
+
+
+def _group_proc_visible():
+    """Refuse a filtered/wrong-namespace proc census rather than infer emptiness."""
+    if os.readlink("/proc/self") != str(os.getpid()):
+        raise RuntimeError("cleanup unresolved: proc PID namespace differs")
+    lines = bounded_read("/proc/mounts", 64 * 1024).split(b"\n", 257)
+    if len(lines) > 257:
+        raise RuntimeError("cleanup unresolved: proc mount census capacity")
+    mounts = []
+    for line in lines:
+        fields = line.split(None, 6)
+        if not fields:
+            continue
+        if len(fields) != 6:
+            raise ValueError("cleanup unresolved: malformed proc mounts")
+        if fields[1] == b"/proc":
+            mounts.append(fields)
+    if len(mounts) != 1 or mounts[0][2] != b"proc":
+        raise RuntimeError("cleanup unresolved: missing unique proc mount")
+    for option in mounts[0][3].split(b","):
+        if option.startswith(b"hidepid") and option not in (b"hidepid=0", b"hidepid=off"):
+            raise RuntimeError("cleanup unresolved: filtered proc mount")
+
+
+def _group_stat(stream, pid):
+    # The open stat inode stays bound to its original task across PID reuse.
+    raw = stream.read(4097)
+    if len(raw) > 4096 or not raw.endswith(b"\n"):
+        raise ValueError("cleanup unresolved: proc stat byte allowance/completeness")
+    head, separator, tail = raw.rpartition(b")")
+    fields = tail.split()
+    if (not separator or not head.startswith(str(pid).encode() + b" (")
+            or not 20 <= len(fields) <= 64 or len(fields[0]) != 1
+            or fields[0] not in b"RSDZTWtXxKIP"
+            or any(not fields[index].isdigit() for index in (2, 3, 19))):
+        raise ValueError("cleanup unresolved: malformed proc stat")
+    group, session, start = (int(fields[index]) for index in (2, 3, 19))
+    if not 0 <= group < 2**31 or not 0 <= session < 2**31 or not 0 <= start < 2**64:
+        raise ValueError("cleanup unresolved: proc identity outside bounds")
+    return pid, group, session, start
+
+
+def wait_group_exit(child):
+    """Observe exit of the killed, inherited group before releasing its leader.
+
+    Scope: the fresh session's original group in this PID namespace, under one
+    owner/waiter. No escaped groups/sessions, namespace changes or external joins
+    are supported. Successful final group KILL prevents its members completing
+    new forks (Linux copy_process checks fatal signals under tasklist/sighand
+    locks); the second complete census refuses newly discovered membership.
+    This is not an arbitrary-descendant containment or atomic /proc snapshot.
+
+    Two scans: <=8192 directory entries, <=4096 bytes/stat, <=64 process pidfds
+    plus one stat and one directory handle; <=64KiB mount input. One five-second
+    deadline includes scans/polling; each proc read and parse is size bounded.
+    Flags=0 observes the entire thread group, even with a zombie TGID leader.
+    No per-PID signals, and an observation never authorizes a later signal.
+    """
+    if (not isinstance(child, OwnedProcess) or child.group <= 1 or child.group == os.getpgrp()
+            or sys.platform != "linux" or not callable(getattr(os, "pidfd_open", None))):
+        raise RuntimeError("cleanup unresolved: group exit requires owned Linux group and pidfds")
+    child._reserved()
+    deadline = time.monotonic() + GROUP_EXIT_SECONDS
+    observed, handles, primary = {}, [], None
+
+    def budget():
+        child._reserved()
+        if time.monotonic() >= deadline:
+            raise TimeoutError("cleanup unresolved: owned group exit deadline")
+
+    def scan(final):
+        leader_seen = False
+        with os.scandir("/proc") as entries:
+            for count, entry in enumerate(entries, 1):
+                budget()
+                if count > GROUP_SCAN_ENTRIES or len(entry.name) > 64:
+                    raise RuntimeError("cleanup unresolved: proc census capacity")
+                if not entry.name.isascii() or not entry.name.isdecimal():
+                    continue
+                pid = int(entry.name)
+                if not 0 < pid < 2**31:
+                    raise ValueError("cleanup unresolved: invalid proc PID")
+                try:
+                    stream = Path(entry.path, "stat").open("rb")
+                except FileNotFoundError:
+                    continue  # This proc entry already disappeared; never signal its number.
+                with stream:
+                    try:
+                        identity = _group_stat(stream, pid)
+                    except ProcessLookupError:
+                        continue  # Already-open proc inode lost its exited task.
+                    if identity[1] != child.group:
+                        continue
+                    if identity[2] != child.group or identity[3] <= 0:
+                        raise RuntimeError("cleanup unresolved: group session/identity changed")
+                    leader_seen |= pid == child.pid
+                    if pid in observed:
+                        if identity != observed[pid][0]:
+                            raise RuntimeError("cleanup unresolved: group member identity changed")
+                        continue
+                    if final:
+                        raise RuntimeError("cleanup unresolved: group membership changed after exit census")
+                    if len(observed) >= GROUP_MEMBERS:
+                        raise RuntimeError("cleanup unresolved: owned group member capacity")
+                    # Keep the original open proc inode across acquisition. A
+                    # path reread/starttime comparison alone cannot exclude a
+                    # recycled PID within the same clock tick. Races fail closed.
+                    fd = os.pidfd_open(pid, 0)
+                    handles.append(fd)  # Close independently even if validation fails.
+                    stream.seek(0)
+                    if _group_stat(stream, pid) != identity:
+                        raise RuntimeError("cleanup unresolved: member changed during pidfd acquisition")
+                    observed[pid] = identity, fd
+        budget()
+        if not leader_seen:
+            raise RuntimeError("cleanup unresolved: reserved leader missing from proc census")
+
     try:
-        os.killpg(child.group, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
+        _group_proc_visible()
+        scan(False)
+        pending = set(handles)
+        poller = select.poll()
+        for fd in pending:
+            poller.register(fd, select.POLLIN | select.POLLHUP)
+        while pending:
+            budget()
+            remaining_ms = max(1, min(50, int((deadline - time.monotonic()) * 1000)))
+            for fd, events in poller.poll(remaining_ms):
+                if fd not in pending or events & (select.POLLERR | select.POLLNVAL):
+                    raise RuntimeError("cleanup unresolved: pidfd observation failed")
+                if events & (select.POLLIN | select.POLLHUP):
+                    pending.remove(fd)
+                    poller.unregister(fd)
+        scan(True)
+    except BaseException as error:
+        primary = error
+    finally:
+        for fd in handles:
+            try:
+                os.close(fd)
+            except BaseException as error:
+                if primary is None:
+                    primary = error
+                else:
+                    primary.add_note("independent observer close: " + str(error)[:128])
+    if primary is not None:
+        primary.cleanup_unresolved = True
+        raise primary
 
 
 def stop(child, *, elevated=False):
@@ -433,20 +630,35 @@ def stop(child, *, elevated=False):
     if child.stopped:
         return
     try:
-        signal_group(child, signal.SIGTERM, elevated)
-    finally:
+        child._reserved()  # Refuse before any numeric group query/signal.
+    except BaseException as error:
+        error.cleanup_unresolved = True
+        raise
+    primary = None
+    actions = (lambda: signal_group(child, signal.SIGTERM, elevated),
+               lambda: child.wait(timeout=5),
+               lambda: signal_group(child, signal.SIGKILL, elevated),
+               lambda: wait_group_exit(child),
+               lambda: child.process.wait(timeout=5))
+    for index, action in enumerate(actions):
         try:
-            child.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            pass
-        finally:
-            # The leader can exit before rustc/linker or perf/sleep descendants.
-            # Always escalate the owned group, then reap the direct child.
-            try:
-                if group_alive(child):
-                    signal_group(child, signal.SIGKILL, elevated)
-            finally:
-                child.wait(timeout=5)
+            action()
+        except subprocess.TimeoutExpired as error:
+            # A live leader after TERM is expected; final reap timeout is fatal.
+            if index == 1:
+                continue
+            if primary is None:
+                primary = error
+            else:
+                primary.add_note("independent cleanup: " + str(error)[:512])
+        except BaseException as error:
+            if primary is None:
+                primary = error
+            else:
+                primary.add_note("independent cleanup: " + str(error)[:512])
+    if primary is not None:
+        primary.cleanup_unresolved = True
+        raise primary
     child.stopped = True
 
 
@@ -459,33 +671,39 @@ def run_owned(argv, *, timeout, check=True, elevated=False, **kwargs):
     except BaseException as error:
         try:
             stop(child, elevated=elevated)
-        except Exception as cleanup:
+        except BaseException as cleanup:
             error.add_note(f"owned process cleanup: {type(cleanup).__name__}: {str(cleanup)[:512]}")
             error.cleanup_unresolved = True
+            for note in getattr(cleanup, "__notes__", [])[:4]:
+                error.add_note("independent owned cleanup: " + str(note)[:512])
         raise
     else:
         try:
             stop(child, elevated=elevated)
-        except Exception as error:
+        except BaseException as error:
             error.cleanup_unresolved = True
             raise
         return code
 
 
-def run_logged(argv, stream, *, timeout, limit=BUILD_LOG_LIMIT, **kwargs):
-    """Cap retained output without limiting other files written by the child."""
+def run_logged(argv, stream, *, timeout, limit=BUILD_LOG_LIMIT, cancel=None, **kwargs):
+    """Cap output; an optional Event requests cancellation from the sole owner."""
     remaining = limit - stream.tell()
     if remaining < 0:
         raise ValueError("build log exceeds byte allowance")
     child = spawn(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                   file_limit=None, **kwargs)
     overflow = threading.Event()
+    abandon_output = threading.Event()
     reader_errors = []
 
     def copy_output():
         nonlocal remaining
         try:
-            while data := child.stdout.read(65536):
+            read = getattr(child.stdout, "read1", child.stdout.read)
+            while data := read(65536):
+                if abandon_output.is_set():
+                    return
                 kept = data[:remaining]
                 stream.write(kept)
                 stream.flush()
@@ -497,10 +715,13 @@ def run_logged(argv, stream, *, timeout, limit=BUILD_LOG_LIMIT, **kwargs):
             overflow.set()
 
     reader = threading.Thread(target=copy_output, daemon=True)
-    reader.start()
-    deadline = time.monotonic() + timeout
+    primary = None
     try:
+        reader.start()
+        deadline = time.monotonic() + timeout
         while True:
+            if cancel is not None and cancel.is_set():
+                raise InterruptedError("logged command cancelled")
             if overflow.is_set():
                 raise ValueError("build log exceeded byte allowance or output reader failed")
             remaining_seconds = deadline - time.monotonic()
@@ -508,22 +729,47 @@ def run_logged(argv, stream, *, timeout, limit=BUILD_LOG_LIMIT, **kwargs):
                 raise subprocess.TimeoutExpired(argv, timeout)
             try:
                 code = child.wait(timeout=min(.1, remaining_seconds))
+                if cancel is not None and cancel.is_set():
+                    raise InterruptedError("logged command cancelled")
                 break
             except subprocess.TimeoutExpired:
                 continue
+        if code:
+            raise subprocess.CalledProcessError(code, argv)
+    except BaseException as error:
+        primary = error
+        raise
     finally:
+        cleanup = None
+        # Reader settlement remains independent of stop/reap failure.
+        for action in (lambda: stop(child), lambda: reader.join(timeout=1)):
+            try:
+                action()
+            except BaseException as error:
+                if cleanup is None:
+                    cleanup = error
+                else:
+                    cleanup.add_note("independent log cleanup: " + str(error)[:512])
         try:
-            stop(child)
-        finally:
-            reader.join(timeout=1)
-            if not reader.is_alive():
-                child.stdout.close()
-    if reader.is_alive():
-        raise TimeoutError("build output reader cleanup deadline")
+            if reader.is_alive():
+                abandon_output.set()  # Refuse further output at the next read boundary.
+                raise TimeoutError("build output reader cleanup deadline")
+            child.stdout.close()
+        except BaseException as error:
+            if cleanup is None:
+                cleanup = error
+            else:
+                cleanup.add_note("output reader cleanup: " + str(error)[:512])
+        if cleanup is not None:
+            cleanup.cleanup_unresolved = True
+            if primary is None:
+                raise cleanup
+            primary.cleanup_unresolved = True
+            primary.add_note("owned log cleanup: " + str(cleanup)[:512])
+            for note in getattr(cleanup, "__notes__", [])[:4]:
+                primary.add_note("independent log cleanup: " + str(note)[:512])
     if overflow.is_set() or reader_errors:
         raise ValueError("build log exceeded byte allowance or output reader failed")
-    if code:
-        raise subprocess.CalledProcessError(code, argv)
 
 
 def command(argv, *, cwd=SUITE, timeout=60, env=None):

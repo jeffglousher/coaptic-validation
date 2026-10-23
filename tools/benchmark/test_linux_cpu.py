@@ -824,7 +824,7 @@ elif tool == "cargo" and args[0] == "build":
                 (suite / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "stable"\n')
 
                 def spawn(argv, *, file_limit, **kwargs):
-                    return cpu.OwnedProcess(subprocess.Popen([sys.executable, "-c", proxy, *argv], **kwargs))
+                    return subprocess.Popen([sys.executable, "-c", proxy, *argv], **kwargs)
 
                 with patch.dict(os.environ, TEST_RUSTUP_PROXY=proxy, RUSTC="wrong-compiler"), \
                         patch.object(cpu, "SUITE", suite), \
@@ -1523,6 +1523,16 @@ class CampaignTests(unittest.TestCase):
 
 class ProcessTests(unittest.TestCase):
     def setUp(self):
+        self.addCleanup(patch.stopall)
+        patch.object(cpu.sys, "platform", "linux").start()
+        patch.object(cpu.os, "pidfd_open", create=True).start()
+        patch.object(cpu, "wait_group_exit").start()  # Observer has its own fault/path tests below.
+        for name, value in (("P_PID", 1), ("WEXITED", 4), ("WNOHANG", 1),
+                            ("WNOWAIT", 0x1000000), ("CLD_EXITED", 1)):
+            patch.object(cpu.os, name, value, create=True).start()
+        self.waitid = patch.object(cpu.os, "waitid", return_value=SimpleNamespace(si_code=1, si_status=0), create=True).start()
+        patch.object(cpu.signal, "SIGCHLD", 17, create=True).start()
+        patch.object(cpu.signal, "getsignal", return_value=cpu.signal.SIG_DFL).start()
         # Exercise Linux signalling decisions on Windows without sending signals.
         if not hasattr(cpu.signal, "SIGKILL"):
             self.addCleanup(patch.stopall)
@@ -1531,12 +1541,12 @@ class ProcessTests(unittest.TestCase):
                          SimpleNamespace(name="SIGKILL" if value == 9 else "SIGTERM")).start()
 
     def owned(self):
-        process = Mock(pid=4321, returncode=0)
+        process = Mock(pid=4321, returncode=None)
         process.wait.return_value = 0
         return cpu.OwnedProcess(process)
 
     def test_every_spawn_owns_a_session_and_limits_regular_file_output(self):
-        process = Mock(pid=4321)
+        process = Mock(pid=4321, returncode=None)
         resource = Mock(RLIMIT_FSIZE=1)
         with patch.object(cpu.subprocess, "Popen", return_value=process) as popen, \
                 patch.dict(sys.modules, {"resource": resource}):
@@ -1545,6 +1555,12 @@ class ProcessTests(unittest.TestCase):
             self.assertTrue(popen.call_args.kwargs["start_new_session"])
             popen.call_args.kwargs["preexec_fn"]()
         resource.setrlimit.assert_called_once_with(1, (12345, 12345))
+
+    def test_spawn_refuses_missing_pidfd_prerequisite_before_launch(self):
+        with patch.object(cpu.os, "pidfd_open", None), patch.object(cpu.subprocess, "Popen") as launch:
+            with self.assertRaisesRegex(RuntimeError, "Linux pidfds"):
+                cpu.spawn(["must-not-launch"])
+        launch.assert_not_called()
 
     def test_build_log_quota_is_enforced_without_limiting_compiler_artifacts(self):
         for output in (b"small", b"x" * 100):
@@ -1564,31 +1580,152 @@ class ProcessTests(unittest.TestCase):
                 self.assertLessEqual(len(stream.getvalue()), 16)
                 stop.assert_called_once_with(child)
 
+    def test_logged_cancellation_uses_owner_cleanup_and_keeps_primary(self):
+        import threading
+        for cleanup_error in (None, PermissionError("KILL refused")):
+            with self.subTest(cleanup_error=cleanup_error):
+                cancel = threading.Event()
+                child = Mock(stdout=io.BytesIO(b""))
+                def wait(**kwargs):
+                    cancel.set()
+                    return 0  # Cancellation also wins a simultaneous clean exit.
+                child.wait.side_effect = wait
+                with patch.object(cpu, "spawn", return_value=child) as spawn, \
+                        patch.object(cpu, "stop", side_effect=cleanup_error) as stop:
+                    with self.assertRaisesRegex(InterruptedError, "cancelled") as raised:
+                        cpu.run_logged(["helper"], io.BytesIO(), timeout=1, cancel=cancel)
+                self.assertNotIn("cancel", spawn.call_args.kwargs)
+                stop.assert_called_once_with(child)
+                self.assertEqual(getattr(raised.exception, "cleanup_unresolved", False), cleanup_error is not None)
+                if cleanup_error is not None:
+                    self.assertIn("KILL refused", raised.exception.__notes__[0])
+
     def test_timeout_terminates_and_kills_owned_group_then_reaps(self):
         child = self.owned()
-        child.process.wait.side_effect = [cpu.subprocess.TimeoutExpired("cargo", 900),
-                                          cpu.subprocess.TimeoutExpired("cargo", 5), -9]
+        timeline = []
+        child.wait = Mock(side_effect=[cpu.subprocess.TimeoutExpired("cargo", 900),
+                                       cpu.subprocess.TimeoutExpired("cargo", 5)])
+        child.process.wait.side_effect = lambda **kw: timeline.append("reap") or -9
         with patch.object(cpu, "spawn", return_value=child), \
                 patch.object(cpu.os, "getpgrp", return_value=999, create=True), \
-                patch.object(cpu.os, "killpg", create=True) as kill:
-            with self.assertRaises(cpu.subprocess.TimeoutExpired):
+                patch.object(cpu.os, "killpg", side_effect=lambda group, sig: timeline.append(sig), create=True):
+            with self.assertRaises(cpu.subprocess.TimeoutExpired) as raised:
                 cpu.run_owned(["cargo", "build"], timeout=900)
-        self.assertEqual(kill.call_args_list, [unittest.mock.call(4321, cpu.signal.SIGTERM),
-                                               unittest.mock.call(4321, 0),
-                                               unittest.mock.call(4321, cpu.signal.SIGKILL)])
-        self.assertEqual(child.process.wait.call_args_list,
-                         [unittest.mock.call(timeout=900), unittest.mock.call(timeout=5), unittest.mock.call(timeout=5)])
+        self.assertFalse(getattr(raised.exception, "cleanup_unresolved", False))
+        self.assertEqual(timeline, [cpu.signal.SIGTERM, cpu.signal.SIGKILL, "reap"])
         self.assertTrue(child.stopped)
 
-    def test_exited_leader_does_not_leave_owned_descendants(self):
+    def test_exited_unreaped_leader_reserves_group_until_last_signal(self):
         child = self.owned()
+        timeline = []
+        child.process.wait.side_effect = lambda **kw: timeline.append("reap") or 0
         with patch.object(cpu.os, "getpgrp", return_value=999, create=True), \
-                patch.object(cpu.os, "killpg", create=True) as kill:
+                patch.object(cpu.os, "killpg", side_effect=lambda group, sig: timeline.append(sig), create=True):
+            self.assertEqual(child.poll(), 0)
+            self.assertEqual(child.wait(timeout=1), 0)
+            child.process.wait.assert_not_called()
             cpu.stop(child)
             cpu.stop(child)
-        self.assertEqual([call.args[1] for call in kill.call_args_list],
-                         [cpu.signal.SIGTERM, 0, cpu.signal.SIGKILL])
-        self.assertEqual(child.process.wait.call_count, 2)
+        self.assertEqual(timeline, [cpu.signal.SIGTERM, cpu.signal.SIGKILL, "reap"])
+
+    def test_reaped_or_no_longer_waitable_leader_never_signals_reused_group(self):
+        for external_reap in (False, True):
+            with self.subTest(external_reap=external_reap):
+                child = self.owned()
+                if external_reap:
+                    child.process.returncode = 0
+                with patch.object(cpu.os, "killpg", create=True) as numeric, \
+                        patch.object(cpu, "run_owned") as privileged, \
+                        patch.object(cpu.os, "waitid", side_effect=ChildProcessError, create=True), \
+                        patch.object(cpu.os, "getpgrp", return_value=999, create=True):
+                    with self.assertRaisesRegex(RuntimeError, "cleanup unresolved"):
+                        cpu.stop(child)
+                    with self.assertRaisesRegex(RuntimeError, "cleanup unresolved"):
+                        cpu.signal_group(child, cpu.signal.SIGTERM, True)
+                numeric.assert_not_called()
+                privileged.assert_not_called()
+                child.process.wait.assert_not_called()
+
+    def test_permission_and_kill_failure_still_attempt_escalation_and_reap(self):
+        child = self.owned()
+        primary = PermissionError("TERM refused")
+        with patch.object(cpu.os, "getpgrp", return_value=999, create=True), \
+                patch.object(cpu.os, "killpg", side_effect=[primary, OSError("KILL refused")], create=True) as kill:
+            with self.assertRaises(PermissionError) as raised:
+                cpu.stop(child)
+        self.assertIs(raised.exception, primary)
+        self.assertTrue(primary.cleanup_unresolved)
+        self.assertIn("KILL refused", primary.__notes__[0])
+        self.assertEqual([call.args[1] for call in kill.call_args_list], [cpu.signal.SIGTERM, cpu.signal.SIGKILL])
+        child.process.wait.assert_called_once_with(timeout=5)
+
+    def test_normal_run_observes_exit_then_signals_before_reap(self):
+        child = self.owned()
+        timeline = []
+        child.process.poll.side_effect = AssertionError("Popen poll would reap")
+        child.process.wait.side_effect = lambda **kw: timeline.append("reap") or 0
+        with patch.object(cpu, "spawn", return_value=child), \
+                patch.object(cpu.os, "getpgrp", return_value=999, create=True), \
+                patch.object(cpu.os, "killpg", side_effect=lambda group, sig: timeline.append(sig), create=True):
+            self.assertEqual(cpu.run_owned(["helper"], timeout=5), 0)
+        self.assertEqual(timeline, [cpu.signal.SIGTERM, cpu.signal.SIGKILL, "reap"])
+        child.process.poll.assert_not_called()
+        self.assertTrue(child.stopped)
+
+    def test_live_observation_timeout_does_not_reap(self):
+        child = self.owned()
+        self.waitid.return_value = None
+        self.assertIsNone(child.poll())
+        with self.assertRaises(cpu.subprocess.TimeoutExpired):
+            child.wait(timeout=0)
+        child.process.poll.assert_not_called()
+        child.process.wait.assert_not_called()
+
+    def test_reap_failure_keeps_fatal_status_and_no_signal_after_external_reap(self):
+        child = self.owned()
+        child.process.wait.side_effect = cpu.subprocess.TimeoutExpired("reap", 5)
+        with patch.object(cpu.os, "getpgrp", return_value=999, create=True), \
+                patch.object(cpu.os, "killpg", create=True) as numeric:
+            with self.assertRaises(cpu.subprocess.TimeoutExpired) as raised:
+                cpu.stop(child)
+            self.assertTrue(raised.exception.cleanup_unresolved)
+            self.assertFalse(child.stopped)
+            child.process.returncode = -9  # An outside waiter now releases its PID.
+            with self.assertRaisesRegex(RuntimeError, "already reaped"):
+                cpu.stop(child)
+        self.assertEqual(numeric.call_count, 2)
+
+    def test_logged_primary_survives_stop_and_reader_failures(self):
+        child = Mock(stdout=io.BytesIO(b""))
+        original = KeyboardInterrupt()
+        child.wait.side_effect = original
+        reader = Mock()
+        reader.is_alive.return_value = True
+        with patch.object(cpu, "spawn", return_value=child), \
+                patch.object(cpu.threading, "Thread", return_value=reader), \
+                patch.object(cpu, "stop", side_effect=PermissionError("TERM refused")), \
+                self.assertRaises(KeyboardInterrupt) as raised:
+            cpu.run_logged(["helper"], io.BytesIO(), timeout=1)
+        self.assertIs(raised.exception, original)
+        self.assertTrue(original.cleanup_unresolved)
+        self.assertIn("TERM refused", original.__notes__[0])
+        self.assertIn("reader cleanup deadline", original.__notes__[1])
+        reader.join.assert_called_once_with(timeout=1)
+        child.stdout.close()
+
+    def test_logged_reader_deadline_is_fatal_after_successful_exit(self):
+        child = Mock(stdout=io.BytesIO(b""))
+        child.wait.return_value = 0
+        reader = Mock()
+        reader.is_alive.return_value = True
+        with patch.object(cpu, "spawn", return_value=child), \
+                patch.object(cpu.threading, "Thread", return_value=reader), \
+                patch.object(cpu, "stop") as stop, \
+                self.assertRaisesRegex(TimeoutError, "reader cleanup deadline") as raised:
+            cpu.run_logged(["helper"], io.BytesIO(), timeout=1)
+        self.assertTrue(raised.exception.cleanup_unresolved)
+        stop.assert_called_once_with(child)
+        child.stdout.close()
 
     def test_unowned_groups_are_never_signalled(self):
         with patch.object(cpu.os, "getpgrp", return_value=4321, create=True), \
@@ -1600,25 +1737,82 @@ class ProcessTests(unittest.TestCase):
         kill.assert_not_called()
 
     def test_elevated_cleanup_targets_only_owned_group_and_escalates(self):
-        child = self.owned()
-        with patch.object(cpu.os, "getpgrp", return_value=999, create=True), \
-                patch.object(cpu.os, "killpg", side_effect=PermissionError, create=True), \
-                patch.object(cpu, "run_owned") as run:
-            cpu.stop(child, elevated=True)
-        self.assertEqual([call.args[0] for call in run.call_args_list],
-                         [["sudo", "-n", "--", "kill", "-TERM", "--", "-4321"],
-                          ["sudo", "-n", "--", "kill", "-KILL", "--", "-4321"]])
-        self.assertTrue(all(not call.kwargs.get("elevated", False) for call in run.call_args_list))
-        self.assertEqual(child.process.wait.call_count, 2)
+        for local_error in (None, PermissionError, ProcessLookupError):
+            with self.subTest(local_error=local_error):
+                child = self.owned()
+                with patch.object(cpu.os, "getpgrp", return_value=999, create=True), \
+                        patch.object(cpu.os, "killpg", side_effect=local_error, create=True), \
+                        patch.object(cpu, "run_owned") as run:
+                    cpu.stop(child, elevated=True)
+                self.assertEqual([call.args[0] for call in run.call_args_list],
+                                 [["sudo", "-n", "--", "kill", "-TERM", "--", "-4321"],
+                                  ["sudo", "-n", "--", "kill", "-KILL", "--", "-4321"]])
+                self.assertTrue(all(not call.kwargs.get("elevated", False) for call in run.call_args_list))
+                self.assertTrue(all(call.kwargs["timeout"] == 5 for call in run.call_args_list))
+                child.process.wait.assert_called_once_with(timeout=5)
+
+    def test_elevated_helper_failure_is_fatal_after_local_success_and_still_kills_reaps(self):
+        for error in (PermissionError("sudo refused"),
+                      cpu.subprocess.CalledProcessError(1, ["sudo", "kill"]),
+                      cpu.subprocess.TimeoutExpired(["sudo", "kill"], 5)):
+            with self.subTest(error=error):
+                child = self.owned()
+                timeline = []
+                def helper(argv, **kwargs):
+                    self.assertIsNone(child.process.returncode)
+                    timeline.append(argv[4])
+                    raise error
+                child.process.wait.side_effect = lambda **kw: timeline.append("reap") or 0
+                with patch.object(cpu.os, "getpgrp", return_value=999, create=True), \
+                        patch.object(cpu.os, "killpg", create=True) as local, \
+                        patch.object(cpu, "run_owned", side_effect=helper):
+                    with self.assertRaises(type(error)) as raised:
+                        cpu.stop(child, elevated=True)
+                self.assertIs(raised.exception, error)
+                self.assertTrue(error.cleanup_unresolved)
+                self.assertFalse(child.stopped)
+                self.assertEqual(timeline, ["-TERM", "-KILL", "reap"])
+                self.assertEqual(local.call_count, 2)
+                self.assertTrue(any("independent cleanup" in note for note in error.__notes__))
+
+    def test_real_cleanup_helper_refusal_blocks_production_capture_handoff_and_keeps_primary(self):
+        import core_cost_probe as probe
+        real_run = cpu.run_owned
+        for original in (None, cpu.subprocess.TimeoutExpired("perf", 70)):
+            with self.subTest(original=original), tempfile.TemporaryDirectory() as temporary:
+                child = self.owned()
+                child.wait = Mock(side_effect=[original if original is not None else 0, 0])
+                refused = PermissionError("sudo kill refused after local success")
+                record = dict(command=["perf"])
+                with patch.object(cpu, "spawn", return_value=child), \
+                        patch.object(cpu.os, "getpgrp", return_value=999, create=True), \
+                        patch.object(cpu.os, "killpg", create=True), \
+                        patch.object(cpu, "run_owned", side_effect=refused) as helper, \
+                        patch.object(probe, "run_owned", side_effect=real_run), \
+                        patch.object(probe, "capture_access") as handoff:
+                    with self.assertRaises(type(original or refused)) as raised:
+                        probe.execute_phase(Path(temporary), record, 8, 1001, 1002, io.BytesIO())
+                self.assertIs(raised.exception, original or refused)
+                self.assertTrue(raised.exception.cleanup_unresolved)
+                self.assertFalse(record["cleanup_settled"])
+                self.assertFalse(record["capture_access"]["recorder_settled"])
+                self.assertIn("handoff not attempted", record["capture_access"]["reason"])
+                handoff.assert_not_called()
+                self.assertEqual([call.args[0][4] for call in helper.call_args_list], ["-TERM", "-KILL"])
+                child.process.wait.assert_called_once_with(timeout=5)
 
     def test_perf_timeout_escalates_reaps_and_retains_failure(self):
         child = self.owned()
-        child.process.returncode = -9
-        child.process.wait.side_effect = [cpu.subprocess.TimeoutExpired("perf", 15),
-                                          cpu.subprocess.TimeoutExpired("perf", 5), -9]
+        child.wait = Mock(side_effect=[cpu.subprocess.TimeoutExpired("perf", 15),
+                                       cpu.subprocess.TimeoutExpired("perf", 5)])
+        def reap(**kwargs):
+            child.process.returncode = -9
+            return -9
+        child.process.wait.side_effect = reap
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             with mock_record_control(), patch.object(cpu, "spawn", return_value=child), \
+                    patch.object(cpu, "run_owned", return_value=0) as helper, \
                     patch.object(cpu.os, "getpgrp", return_value=999, create=True), \
                     patch.object(cpu.os, "killpg", create=True) as kill:
                 with cpu.perf_pass("record", 123, 5, root, 4096):
@@ -1628,7 +1822,8 @@ class ProcessTests(unittest.TestCase):
         self.assertFalse(result["available"])
         self.assertEqual(result["returncode"], -9)
         self.assertIn(unittest.mock.call(4321, cpu.signal.SIGKILL), kill.call_args_list)
-        self.assertEqual(child.process.wait.call_count, 3)
+        self.assertEqual([call.args[0][4] for call in helper.call_args_list], ["-TERM", "-KILL"])
+        self.assertEqual(child.process.wait.call_count, 1)
 
     def test_run_owned_elevation_is_cleanup_only_on_every_exit(self):
         for elevated in (None, False, True):
@@ -1701,6 +1896,255 @@ class ProcessTests(unittest.TestCase):
                                   unittest.mock.call(helper, elevated=False)])
 
 
+class GroupExitTests(unittest.TestCase):
+    @staticmethod
+    def stat(pid, *, group=4321, session=4321, start=123, state="S", threads=1):
+        fields = [state] + ["0"] * 19
+        fields[2], fields[3], fields[17], fields[19] = map(str, (group, session, threads, start))
+        return (str(pid) + " (name with ) spaces) " + " ".join(fields) + "\n").encode()
+
+    def setUp(self):
+        self.addCleanup(patch.stopall)
+        self.child = cpu.OwnedProcess(Mock(pid=4321, returncode=None))
+        self.child._reserved = Mock(return_value=0)
+        self.child.process.wait.return_value = 0
+        self.now = 0
+        self.rows = {pid: self.stat(pid) for pid in (4321, 4322)}
+        self.scans = [(4321, 4322), (4321, 4322)]
+        self.streams = []
+        self.directories = []
+        self.real_open, self.real_scandir, self.real_close = cpu.Path.open, cpu.os.scandir, cpu.os.close
+        self.real_visible = cpu._group_proc_visible
+        patch.object(cpu.sys, "platform", "linux").start()
+        patch.object(cpu.os, "getpgrp", return_value=999, create=True).start()
+        patch.object(cpu.signal, "SIGKILL", 9, create=True).start()
+        patch.object(cpu.signal, "Signals", side_effect=lambda value:
+                     SimpleNamespace(name="SIGKILL" if value == 9 else "SIGTERM")).start()
+        patch.object(cpu.time, "monotonic", side_effect=lambda: self.now).start()
+        self.visible = patch.object(cpu, "_group_proc_visible").start()
+        self.fdopen = patch.object(cpu.os, "pidfd_open", side_effect=lambda pid, flags: pid + 10000,
+                                   create=True).start()
+        self.close = patch.object(cpu.os, "close", side_effect=lambda fd:
+                                  None if fd in (14321, 14322) else self.real_close(fd)).start()
+        self.numeric = patch.object(cpu.os, "kill", side_effect=AssertionError("observer must not signal a PID")).start()
+        self.fd_signal = patch.object(cpu.signal, "pidfd_send_signal", create=True,
+                                      side_effect=AssertionError("observer must not signal a pidfd")).start()
+        self.census = patch.object(cpu.os, "scandir", side_effect=self.scan).start()
+        self.files = patch.object(cpu.Path, "open", lambda path, mode: self.open_stat(path, mode)).start()
+        self.poller = Mock()
+        self.registered = set()
+        self.poller.register.side_effect = lambda fd, events: self.registered.add(fd)
+        self.poller.unregister.side_effect = lambda fd: self.registered.remove(fd)
+        self.poller.poll.side_effect = self.ready
+        def make_poller():
+            self.registered.clear()
+            return self.poller
+        patch.object(cpu.select, "poll", side_effect=make_poller, create=True).start()
+        for name, value in (("POLLIN", 1), ("POLLHUP", 16), ("POLLERR", 8), ("POLLNVAL", 32)):
+            patch.object(cpu.select, name, value, create=True).start()
+
+    def scan(self, path):
+        if path != "/proc":
+            return self.real_scandir(path)
+        entries = [SimpleNamespace(name=str(pid), path="/proc/" + str(pid)) for pid in self.scans.pop(0)]
+        directory = MagicMock()
+        directory.__enter__.return_value = iter(entries)
+        self.directories.append(directory)
+        return directory
+
+    def open_stat(self, path, mode):
+        if path.name != "stat":
+            return self.real_open(path, mode)
+        pid = int(path.parts[-2])
+        value = self.rows[pid]
+        if isinstance(value, BaseException):
+            raise value
+        stream = io.BytesIO(value)
+        self.streams.append(stream)
+        return stream
+
+    def ready(self, milliseconds):
+        self.assertLessEqual(milliseconds, 50)
+        return [(fd, cpu.select.POLLIN) for fd in sorted(self.registered)]
+
+    def stalled(self, milliseconds):
+        self.now += 1
+        return []
+
+    def assert_closed(self, pids=(4321, 4322)):
+        self.assertEqual([call for call in self.close.call_args_list if call.args[0] in (14321, 14322)],
+                         [unittest.mock.call(pid + 10000) for pid in pids])
+        self.assertTrue(all(stream.closed for stream in self.streams))
+        self.assertTrue(all(directory.__exit__.call_count == 1 for directory in self.directories))
+        self.numeric.assert_not_called()
+        self.fd_signal.assert_not_called()
+
+    def test_two_complete_censuses_wait_all_process_pidfds_without_reaping_or_signaling(self):
+        cpu.wait_group_exit(self.child)
+        self.assertEqual(self.census.call_count, 2)
+        self.assertEqual(self.fdopen.call_args_list, [unittest.mock.call(4321, 0), unittest.mock.call(4322, 0)])
+        self.child.process.wait.assert_not_called()
+        self.assert_closed()
+
+    def test_zombie_leader_with_active_threads_must_wait_process_exit_not_stat_state(self):
+        self.rows[4322] = self.stat(4322, state="Z", threads=3)
+        self.poller.poll.side_effect = self.stalled
+        with self.assertRaisesRegex(TimeoutError, "group exit deadline") as raised:
+            cpu.wait_group_exit(self.child)
+        self.assertTrue(raised.exception.cleanup_unresolved)
+        self.assertLessEqual(self.poller.poll.call_count, 5)
+        self.assertEqual(self.census.call_count, 1)
+        self.assert_closed()
+
+    def test_group_exit_deadline_keeps_primary_and_blocks_actual_phase_capture_handoff(self):
+        import core_cost_probe as probe
+        real_run = cpu.run_owned
+        for original in (None, cpu.subprocess.TimeoutExpired("perf", 70)):
+            with self.subTest(original=original):
+                self.now = 0
+                self.scans = [(4321, 4322)]
+                self.close.reset_mock()
+                self.child.wait = Mock(side_effect=[original if original is not None else 0, 0])
+                self.child.process.wait.reset_mock()
+                self.poller.poll.side_effect = self.stalled
+                # A synthetic D-state member still has a live process pidfd
+                # after the direct leader exited and final KILL was delivered.
+                self.rows[4322] = self.stat(4322, state="D")
+                with tempfile.TemporaryDirectory() as temporary, \
+                        patch.object(cpu, "spawn", return_value=self.child), \
+                        patch.object(cpu, "run_owned", return_value=0), \
+                        patch.object(probe, "run_owned", side_effect=real_run), \
+                        patch.object(cpu.os, "killpg", create=True) as group_signal, \
+                        patch.object(probe, "capture_access") as handoff:
+                    record = dict(command=["perf"])
+                    with self.assertRaises(type(original) if original is not None else TimeoutError) as raised:
+                        probe.execute_phase(Path(temporary), record, 8, 1001, 1002, io.BytesIO())
+                if original is not None:
+                    self.assertIs(raised.exception, original)
+                self.assertTrue(raised.exception.cleanup_unresolved)
+                self.assertFalse(self.child.stopped)
+                self.assertFalse(record["cleanup_settled"])
+                self.assertFalse(record["capture_access"]["recorder_settled"])
+                handoff.assert_not_called()
+                self.assertEqual([call.args for call in group_signal.call_args_list],
+                                 [(4321, cpu.signal.SIGTERM), (4321, cpu.signal.SIGKILL)])
+                self.child.process.wait.assert_called_once_with(timeout=5)
+                self.assert_closed()
+
+    def test_observation_and_close_failures_still_close_every_handle_and_reap(self):
+        primary = OSError("pidfd poll failed")
+        self.poller.poll.side_effect = primary
+        self.close.side_effect = [OSError("first close failed"), None]
+        with patch.object(cpu.os, "killpg", create=True), self.assertRaises(OSError) as raised:
+            cpu.stop(self.child)
+        self.assertIs(raised.exception, primary)
+        self.assertTrue(primary.cleanup_unresolved)
+        self.assertIn("first close failed", primary.__notes__[0])
+        self.assertFalse(self.child.stopped)
+        self.child.process.wait.assert_called_once_with(timeout=5)
+        self.assert_closed()
+
+    def test_final_census_new_fork_or_changed_identity_is_fatal(self):
+        for changed in (False, True):
+            with self.subTest(changed=changed):
+                self.scans = [(4321,), (4321, 4322)]
+                self.close.reset_mock()
+                if changed:
+                    self.rows[4321] = self.stat(4321, start=124)
+                    # Change only the final census, after the original pidfd exit.
+                    def ready(milliseconds):
+                        self.rows[4321] = self.stat(4321, start=125)
+                        return [(14321, cpu.select.POLLIN)]
+                    self.poller.poll.side_effect = ready
+                else:
+                    self.poller.poll.side_effect = lambda milliseconds: [(14321, cpu.select.POLLIN)]
+                with self.assertRaisesRegex(RuntimeError, "membership changed|identity changed"):
+                    cpu.wait_group_exit(self.child)
+                self.assert_closed((4321,))
+
+    def test_acquisition_recycle_or_disappearing_original_inode_fails_closed(self):
+        for second in (self.stat(4322, start=124), ProcessLookupError("old inode is gone")):
+            with self.subTest(second=second):
+                self.scans = [(4321, 4322)]
+                self.close.reset_mock()
+                stream = MagicMock()
+                stream.__enter__.return_value = stream
+                stream.read.side_effect = [self.stat(4322), second]
+                original = self.open_stat
+                def opened(path, mode):
+                    return stream if path.parts[-2] == "4322" else original(path, mode)
+                with patch.object(cpu.Path, "open", opened), self.assertRaises((RuntimeError, ProcessLookupError)):
+                    cpu.wait_group_exit(self.child)
+                self.assertEqual(stream.__enter__.call_count, 1)  # Same open inode on both reads.
+                stream.seek.assert_called_once_with(0)
+                self.assert_closed()
+
+    def test_proc_permission_malformed_oversize_and_missing_leader_fail_closed(self):
+        for value in (PermissionError("proc unreadable"), b"bad\n", b"x" * 4097,
+                      self.stat(4321, state="?"), self.stat(4321, session=999),
+                      self.stat(4321, group=999, session=999)):
+            with self.subTest(value=value):
+                self.scans = [(4321,)]
+                self.close.reset_mock()
+                self.rows[4321] = value
+                with self.assertRaises((PermissionError, ValueError, RuntimeError)):
+                    cpu.wait_group_exit(self.child)
+                self.assert_closed(())
+
+    def test_scan_and_member_capacity_refuse_without_expansion(self):
+        for setting in ("GROUP_SCAN_ENTRIES", "GROUP_MEMBERS"):
+            with self.subTest(setting=setting):
+                self.scans = [(4321, 4322)]
+                self.close.reset_mock()
+                with patch.object(cpu, setting, 1), self.assertRaisesRegex(RuntimeError, "capacity"):
+                    cpu.wait_group_exit(self.child)
+                self.assert_closed((4321,))
+
+    def test_pidfd_acquisition_poll_invalid_and_close_errors_are_fatal(self):
+        for failure in ("acquire", "invalid", "close"):
+            with self.subTest(failure=failure):
+                self.scans = [(4321, 4322), (4321, 4322)]
+                self.close.reset_mock()
+                self.close.side_effect = None
+                self.fdopen.side_effect = lambda pid, flags: pid + 10000
+                self.poller.poll.side_effect = self.ready
+                if failure == "acquire":
+                    self.fdopen.side_effect = [14321, PermissionError("pidfd refused")]
+                elif failure == "invalid":
+                    self.poller.poll.side_effect = lambda milliseconds: [(14321, cpu.select.POLLNVAL)]
+                else:
+                    self.close.side_effect = [OSError("close refused"), None]
+                with self.assertRaises((PermissionError, RuntimeError, OSError)) as raised:
+                    cpu.wait_group_exit(self.child)
+                self.assertTrue(raised.exception.cleanup_unresolved)
+                self.assert_closed((4321,) if failure == "acquire" else (4321, 4322))
+
+    def test_lost_leader_reservation_never_scans_or_signals_recycled_group(self):
+        self.child._reserved.side_effect = RuntimeError("owned leader already reaped")
+        with self.assertRaisesRegex(RuntimeError, "already reaped"):
+            cpu.wait_group_exit(self.child)
+        self.census.assert_not_called()
+        self.fdopen.assert_not_called()
+        self.assert_closed(())
+
+    def test_visibility_check_rejects_hidepid_wrong_namespace_and_mount_limits(self):
+        # Call the actual function, not the default visibility seam.
+        mount = b"proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0\n"
+        for link, raw, okay in (("123", mount, True), ("124", mount, False),
+                                ("123", mount.replace(b"rw,", b"rw,hidepid=2,"), False),
+                                ("123", mount.replace(b"rw,", b"rw,hidepid=0,"), True),
+                                ("123", b"malformed\n", False), ("123", mount * 258, False)):
+            with self.subTest(link=link, raw=raw[:80]), \
+                    patch.object(cpu.os, "readlink", return_value=link), \
+                    patch.object(cpu.os, "getpid", return_value=123), \
+                    patch.object(cpu, "bounded_read", return_value=raw):
+                if okay:
+                    self.real_visible()
+                else:
+                    with self.assertRaises((RuntimeError, ValueError)):
+                        self.real_visible()
+
+
 @unittest.skipUnless(sys.platform == "linux", "real session/file-limit checks require Linux")
 class LinuxProcessTests(unittest.TestCase):
     def test_real_owned_group_kills_term_resistant_descendant_and_preserves_other_session(self):
@@ -1729,6 +2173,25 @@ class LinuxProcessTests(unittest.TestCase):
                 cpu.stop(sentinel)
                 if child is not None:
                     child.stdout.close()
+
+    def test_real_normal_exit_keeps_leader_waitable_until_group_cleanup(self):
+        child = cpu.spawn([sys.executable, "-c", "pass"])
+        try:
+            self.assertEqual(child.wait(timeout=3), 0)
+            self.assertIsNone(child.process.returncode)
+            self.assertEqual(os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOWAIT).si_pid, child.pid)
+            cpu.stop(child)
+            self.assertEqual(child.process.returncode, 0)
+            with self.assertRaises(ChildProcessError):
+                os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+        finally:
+            cpu.stop(child)
+
+    def test_real_run_owned_normal_exit_and_timeout(self):
+        self.assertEqual(cpu.run_owned([sys.executable, "-c", "pass"], timeout=3), 0)
+        with self.assertRaises(cpu.subprocess.TimeoutExpired) as raised:
+            cpu.run_owned([sys.executable, "-c", "import time; time.sleep(30)"], timeout=.05)
+        self.assertFalse(getattr(raised.exception, "cleanup_unresolved", False))
 
     def test_real_child_file_output_cannot_exceed_its_quota(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -2089,7 +2552,7 @@ class ProcessCpuClockTests(unittest.TestCase):
                 clock.assert_not_called()
         for attribute, value in (("stopped", True), ("returncode", 0), ("pid", 124), ("group", 124)):
             with self.subTest(attribute=attribute), self.prepared() as (item, child, _, read, clock, _):
-                setattr(child, attribute, value)
+                setattr(child.process if attribute == "returncode" else child, attribute, value)
                 read.reset_mock()
                 self.assertFalse(item.snapshot()["available"])
                 read.assert_not_called()
