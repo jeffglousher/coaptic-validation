@@ -92,6 +92,50 @@ it at the candidate; use only an explicitly assigned checkout/lane. Output must
 be fresh and outside source. It fetches only the two specified core commits.
 Do not run concurrently with another lane consumer, compiler or timing campaign.
 
+
+### Optional clean-window process CPU clock
+
+Clean windows attempt a supplementary Linux process CPU clock for both the owned
+server and frozen client. The reviewed binding supports Linux x86_64 LP64 with
+glibc 2.39. Other ABIs and unavailable symbols or Python readers produce explicit
+unavailability. Resolve [`clock_getcpuclockid(pid)`](https://man7.org/linux/man-pages/man3/clock_getcpuclockid.3.html)
+once per child outside measurement and check its positive error return directly,
+without consulting `errno`. Python's `clock_getres` and `clock_gettime_ns` wrappers
+handle the native `timespec` layout. No clock ID arithmetic, PID zero, self clock,
+thread clock or wall clock substitution is used.
+
+One `process-cpu-clock.json` sidecar, capped at 4 KiB within the existing 96 MiB
+metadata allowance, retains setup, two raw readings per peer and CPU nanoseconds
+per verified operation. For 32 clean windows this reserves an additional 131,072
+bytes; the 96-window maximum adds 393,216 bytes without raising the global cap.
+The index retains only a filename. Original PID, start ticks, parent, group and
+session bracket every read. Helpers never poll or reap: the serial runner must
+remain the sole child reaper. The new before pair precedes the original psutil
+snapshots; the after pair follows the original after snapshots and resource
+timestamp. These serial observations include additional boundary and idle work.
+The workload, client traffic and per-operation instrumentation stay unchanged.
+
+The clock includes all process threads, excluding descendants and unattributed
+whole-machine interrupt or kernel-worker CPU. It supplies no user/system split.
+CPU can exceed wall time with multiple threads. Nanoseconds are output units;
+a reported 1 ns resolution does not establish 1 ns accuracy. Host variation
+remains. Keep process CPU, attached-thread schedstat and wall durations separate;
+their different observation windows do not support subtracting their values.
+
+Original tick CPU, the 20-tick minimum, workload, pacing, security, failure and
+cleanup gates, latency guards and aggregate ratios remain authoritative.
+Unavailability or sidecar retention errors cannot rescue an ineligible cohort.
+No supplementary aggregate ratio or retroactive precise value is emitted.
+Both representative 50% CPU/op targets remain open.
+
+The existing Python discovery includes one Linux-only real-binding smoke test.
+It skips Windows and unsupported ABIs. On the supported ABI, binding, identity,
+accounting and cleanup failures fail the test. One owned new-session Python child
+performs finite gated work targeting 20 ms of CPU, bounded by 20,000 blocks and a
+checked two-second work deadline. The test retains two raw clock readings in one
+bounded diagnostic receipt, with errors and cleanup state. It sends no UDP or
+capture traffic and establishes no workload CPU gain or clock accuracy claim.
+
 ### Compare scheduling at one core revision
 
 Use `--candidate-server-kind` to compare two explicit adapters at **identical core

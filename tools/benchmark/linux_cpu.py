@@ -34,6 +34,7 @@ PERF_BUDGET = 256 * MIB
 METADATA_BUDGET = 96 * MIB
 SUMMARY_LIMIT = 64 * 1024
 WINDOW_LIMIT = 16 * 1024
+PROCESS_CLOCK_LIMIT = 4096  # One optional clean-window sidecar.
 BUILD_LOG_LIMIT = 2 * MIB
 WARMUP = 20
 DATAGRAM_BUDGET = 60_000
@@ -125,6 +126,8 @@ def metadata_allowance(plan, seconds):
     for mode, _, cell, _ in plan:
         operations = cell[2] * (seconds if mode == "clean" else PROFILE_SECONDS)
         allowance += report_limit(operations) + 4 * WINDOW_LIMIT
+        if mode == "clean":
+            allowance += PROCESS_CLOCK_LIMIT
         if mode != "clean":
             allowance += WINDOW_LIMIT  # perf.json includes report status; output/log/report use separate quotas.
     if allowance > METADATA_BUDGET:
@@ -163,6 +166,133 @@ def digest(path):
 
 def save(path, value, limit=SUMMARY_LIMIT):
     Path(path).write_bytes(bounded_bytes(value, limit))
+
+
+class ProcessCpuClock:
+    """Optional owned-child CPU; never polls/reaps or derives clock IDs."""
+    def __init__(self, child):
+        self.child = child
+        self.status = {"available": False}
+        try:
+            if sys.platform != "linux" or platform.machine() != "x86_64":
+                raise OSError("process clock requires supported Linux x86_64")
+            import ctypes
+            if (ctypes.sizeof(ctypes.c_int), ctypes.sizeof(ctypes.c_long),
+                    ctypes.sizeof(ctypes.c_void_p)) != (4, 8, 8):
+                raise OSError("process clock requires Linux x86_64 LP64")
+            if not all(callable(getattr(time, name, None)) for name in ("clock_gettime_ns", "clock_getres")):
+                raise OSError("Python process-clock readers unavailable")
+            self.pid = child.pid
+            self.expected = self._identity()
+            # glibc 2.39 x86 headers: pid_t/clockid_t are signed int32.
+            # Python owns native timespec/time_t conversion; bind no such layout.
+            self.libc = ctypes.CDLL(None)
+            version = self.libc.gnu_get_libc_version
+            version.argtypes, version.restype = [], ctypes.c_char_p
+            self.status["glibc"] = version().decode("ascii")
+            if self.status["glibc"] != "2.39":
+                raise OSError("process clock requires reviewed glibc 2.39 ABI")
+            resolve = self.libc.clock_getcpuclockid
+            resolve.argtypes = [ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
+            resolve.restype = ctypes.c_int
+            clock_id = ctypes.c_int()
+            code = resolve(self.pid, ctypes.byref(clock_id))
+            if type(code) is not int or code < 0:
+                raise ValueError("invalid clock_getcpuclockid return code")
+            if code:
+                # Positive error number from this API; never consult errno.
+                raise OSError(code, "clock_getcpuclockid")
+            self.clock_id = clock_id.value
+            resolution = time.clock_getres(self.clock_id)
+            if (type(resolution) is not float or not math.isfinite(resolution)
+                    or not 0 < resolution <= 1):
+                raise ValueError("invalid process-clock resolution")
+            if self._identity() != self.expected:
+                raise ValueError("process identity changed during clock resolution")
+            self.status.update(available=True, **self.expected, clock_id=self.clock_id,
+                               reported_resolution_seconds=resolution)
+        except (OSError, ValueError, TypeError, OverflowError, AttributeError, ImportError) as error:
+            self._error(self.status, error)
+
+    @staticmethod
+    def _error(result, error):
+        result.update(available=False, error_type=type(error).__name__, reason=str(error)[:128])
+        if isinstance(error, OSError) and type(error.errno) is int:
+            result["error_code"] = error.errno
+
+    def _identity(self):
+        child, pid = self.child, self.pid
+        if (not isinstance(child, OwnedProcess) or type(pid) is not int
+                or not 1 < pid < 2**31 or pid == os.getpid()
+                or child.pid != pid or child.group != pid or child.stopped
+                or child.returncode is not None):
+            raise ValueError("process clock requires an unreaped owned child")
+        raw = bounded_read(Path(f"/proc/{pid}/stat"), 4096)
+        prefix, separator, rest = raw.partition(b" (")
+        _, closing, tail = rest.rpartition(b") ")
+        fields = tail.split()
+        if (not separator or not closing or prefix != str(pid).encode("ascii")
+                or len(fields) < 20 or fields[0] not in (b"R", b"S", b"D", b"T", b"t", b"W", b"K", b"P", b"I")
+                or any(not fields[i].isdigit() for i in (1, 2, 3, 19))):
+            raise ValueError("invalid process-clock source identity")
+        ppid, group, session, start = (int(fields[i]) for i in (1, 2, 3, 19))
+        if (ppid != os.getpid() or group != pid or session != pid or not 0 < start < 2**64):
+            raise ValueError("process-clock source is not the owned child session")
+        return dict(pid=pid, start_ticks=start, parent_pid=ppid, group=group, session=session)
+
+    def snapshot(self):
+        result = dict(self.status, available=False, snapshot_started_ns=time.monotonic_ns())
+        try:
+            if not self.status["available"]:
+                return result
+            if self._identity() != self.expected:
+                raise ValueError("process-clock source identity changed")
+            value = time.clock_gettime_ns(self.clock_id)
+            if type(value) is not int or not 0 <= value < 2**63:
+                raise ValueError("invalid process CPU nanoseconds")
+            result["cpu_time_ns"] = value
+            if self._identity() != self.expected:
+                raise ValueError("process-clock source identity changed during read")
+            result["available"] = True
+        except (OSError, ValueError, TypeError, OverflowError, AttributeError) as error:
+            self._error(result, error)
+        finally:
+            result["snapshot_finished_ns"] = time.monotonic_ns()
+            if result["snapshot_finished_ns"] < result["snapshot_started_ns"]:
+                result.update(available=False, reason="process-clock observation clock regressed")
+        return result
+
+
+def process_clock_delta(before, after, completed):
+    """Supplement only; caller already validated complete operations."""
+    result = {"available": False}
+    if type(completed) is not int or completed <= 0:
+        return {**result, "reason": "no verified denominator"}
+    if not before["available"] or not after["available"]:
+        return {**result, "reason": "process-clock snapshot unavailable"}
+    identity = ("pid", "start_ticks", "parent_pid", "group", "session", "clock_id",
+                "reported_resolution_seconds", "glibc")
+    if any(before[key] != after[key] for key in identity):
+        return {**result, "reason": "process-clock source changed"}
+    if not (before["snapshot_started_ns"] <= before["snapshot_finished_ns"]
+            <= after["snapshot_started_ns"] <= after["snapshot_finished_ns"]):
+        return {**result, "reason": "process-clock snapshot order regressed"}
+    value = after["cpu_time_ns"] - before["cpu_time_ns"]
+    if value <= 0:
+        return {**result, "reason": "nonpositive process CPU delta"}
+    # All-thread CPU can exceed wall time; no attached-thread scheduler clamp.
+    return dict(available=True, total_cpu_ns=value, verified_operations=completed,
+                ns_per_verified_operation=value / completed)
+
+
+def retain_process_clock(directory, evidence, result):
+    # Index carries a filename, never another copy of raw readings.
+    try:
+        save(directory / "process-cpu-clock.json", evidence, PROCESS_CLOCK_LIMIT)
+        result["process_cpu_clock_file"] = "process-cpu-clock.json"
+    except (OSError, ValueError) as error:
+        result["process_cpu_clock_error"] = {
+            "available": False, "error_type": type(error).__name__, "reason": str(error)[:128]}
 
 
 def scheduler_snapshot(pid):
@@ -997,6 +1127,11 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
               "concurrency": concurrency, "message_type": message_type,
               "load_before": os.getloadavg()}
     sut = child = None
+    clock_evidence = ({"schema": "coaptic-linux-process-cpu-clock/1",
+                       "backend": "clock_getcpuclockid + time.clock_gettime_ns/clock_getres",
+                       "scope": "whole process, all threads; excludes descendants and whole-machine work",
+                       "setup": None, "before": None, "after": None, "delta": None}
+                      if mode == "clean" else None)
     directory.mkdir()
     with tempfile.TemporaryDirectory(prefix="coaptic-cpu-key-") as temporary:
         credentials = Path(temporary) / "credentials"
@@ -1043,8 +1178,14 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                 result["server_resources"] = native.server_resources(
                     directory / "server.log", kind, deadline=time.monotonic() + 60, server=sut)
                 peers = {"server": psutil.Process(sut.pid), "client": psutil.Process(child.pid)}
+                clocks = ({name: ProcessCpuClock(proc) for name, proc in
+                           (("server", sut), ("client", child))} if mode == "clean" else {})
+                if clocks:
+                    clock_evidence["setup"] = {name: clock.status for name, clock in clocks.items()}
                 with perf_pass(mode, sut.pid, PROFILE_SECONDS, directory, quota, target=sut) as perf:
                     result["perf"] = perf
+                    if clocks:
+                        clock_evidence["before"] = {name: clock.snapshot() for name, clock in clocks.items()}
                     before = {name: native.snapshot(proc) for name, proc in peers.items()}
                     if mode == "record":
                         result["scheduler_before"] = scheduler_snapshot(sut.pid)
@@ -1056,6 +1197,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                     gate("measured", perf.deadline)
                     after = {name: native.snapshot(proc) for name, proc in peers.items()}
                     resource_ns = time.perf_counter_ns() - started
+                    if clocks:
+                        clock_evidence["after"] = {name: clock.snapshot() for name, clock in clocks.items()}
                     if mode == "record":
                         result["scheduler_after"] = scheduler_snapshot(sut.pid)
                         result["scheduler_delta"] = scheduler_delta(result["scheduler_before"],
@@ -1076,6 +1219,11 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                         raise RuntimeError("server exited during window")
                     result.update(before=before, after=after, resource_window_ns=resource_ns,
                                   cpu_cost=native.cpu_cost(before, after, report["completed"]))
+                    if clocks:
+                        clock_evidence["delta"] = {
+                            name: process_clock_delta(clock_evidence["before"][name],
+                                                      clock_evidence["after"][name], report["completed"])
+                            for name in clocks}
                     child.stdin.write("exit\n")
                     child.stdin.flush()
                     if child.wait(timeout=5):
@@ -1109,6 +1257,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                         result["load_after"] = os.getloadavg()
                     except OSError as error:
                         result["load_after_error"] = type(error).__name__
+                    if clock_evidence is not None:
+                        retain_process_clock(directory, clock_evidence, result)
                     save_window(directory, result)
     return result
 

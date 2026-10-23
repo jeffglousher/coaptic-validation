@@ -181,7 +181,7 @@ class ValidationTests(unittest.TestCase):
             self.assertEqual(len(plan) * cpu.WARMUP, 640)
             self.assertEqual(max((cpu.WARMUP + cell[2] * args.seconds) * ((cell[1] + 1023) // 1024)
                                  for _, _, cell, _ in plan), 20_020)
-            self.assertEqual(cpu.metadata_allowance(plan, args.seconds), 22_927_360)
+            self.assertEqual(cpu.metadata_allowance(plan, args.seconds), 23_058_432)
             self.assertNotIn(kind, cpu.KINDS)
             all_cells = cpu.configuration(options(server_kind="all", sizes="64", rates="100", perf=False))
             self.assertEqual({cell[3] for cell in all_cells}, set(cpu.KINDS))
@@ -213,7 +213,7 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(set(profile_sends), {59_520})
         self.assertEqual(cpu.DATAGRAM_BUDGET - max(profile_sends), 480)
         allowance = cpu.metadata_allowance(plan, args.seconds)
-        self.assertEqual(allowance, 21_542_080)
+        self.assertEqual(allowance, 21_574_848)
         quota = min(8 * cpu.MIB, (cpu.PERF_BUDGET - cpu.METADATA_BUDGET)
                     // (cpu.PERF_FILES_PER_SLOT * slots))
         self.assertEqual(quota, 6_990_506)
@@ -1096,12 +1096,37 @@ class AggregationTests(unittest.TestCase):
             self.assertIsNone(summary[0]["server_cpu_ratio"])
             self.assertNotIn("cpu_ns_per_verified_operation", summary[0])
 
+    def test_process_clock_supplement_neither_changes_ratios_nor_rescues_refused_pairs(self):
+        cases = [self.pairs()]
+        for changes in ({"passed": False}, {"cleanup_unresolved": True}):
+            refused = self.pairs()
+            refused[0].update(changes)
+            cases.append(refused)
+        low_ticks = self.pairs()
+        low_ticks[0]["cpu_cost"]["server"]["total_seconds"] = .01
+        cases.append(low_ticks)
+        late = self.pairs()
+        late[0]["report"]["pacing_missed_period_operations"] = 11
+        cases.append(late)
+        for values in cases:
+            expected = cpu.aggregate(values, 2, .01)
+            eligibility = [cpu.accepted(item, .01) for item in values]
+            for supplement in ({"available": False}, {"available": True, "total_cpu_ns": 0},
+                               {"available": True, "server_cpu_ratio": 0.0001}):
+                augmented = deepcopy(values)
+                for item in augmented:
+                    item.update(process_cpu_clock_file="never-open-this-file.json",
+                                process_cpu_clock=supplement)
+                self.assertEqual(cpu.aggregate(augmented, 2, .01), expected)
+                self.assertEqual([cpu.accepted(item, .01) for item in augmented], eligibility)
+
 
 class MetadataTests(unittest.TestCase):
     def test_campaign_maxima_fit_reserve_even_at_maximum_sample_width(self):
         maximum = (22 * 2_000_000 + 192 * (cpu.SUMMARY_LIMIT + 4 * cpu.WINDOW_LIMIT)
-                   + 96 * cpu.WINDOW_LIMIT + 7 * cpu.SUMMARY_LIMIT + 2 * cpu.BUILD_LOG_LIMIT)
-        self.assertEqual(maximum, 75_391_744)
+                   + 96 * cpu.WINDOW_LIMIT + 7 * cpu.SUMMARY_LIMIT + 2 * cpu.BUILD_LOG_LIMIT
+                   + 96 * cpu.PROCESS_CLOCK_LIMIT)
+        self.assertEqual(maximum, 75_784_960)
         self.assertLessEqual(maximum, cpu.METADATA_BUDGET)
 
     def test_valid_high_sample_campaign_has_explicit_safe_reserve(self):
@@ -1729,7 +1754,7 @@ class SchedulerAccountingTests(unittest.TestCase):
 
 class RetentionTests(unittest.TestCase):
     def exercise(self, report, *, invalid=True, cleanup_errors=None, tail_error=None, mode="clean", timeline=None,
-                 scheduler_snapshots=None):
+                 scheduler_snapshots=None, clock_output=None, gate_error=None, server_exited=False):
         report = dict(report, warmup=cpu.WARMUP)
         timeline = [] if timeline is None else timeline
         native = Mock()
@@ -1738,6 +1763,8 @@ class RetentionTests(unittest.TestCase):
         def line(*args):
             value = next(replies)
             timeline.append("read_report" if value.startswith("{") else value)
+            if value == "measured" and gate_error is not None:
+                raise gate_error
             return value
         native.control_line.side_effect = line
         native.validate_report.side_effect = ValueError("incomplete operations") if invalid else None
@@ -1750,6 +1777,8 @@ class RetentionTests(unittest.TestCase):
         for child in (server, client):
             child.poll.return_value = None
             child.wait.return_value = 0
+        if server_exited:
+            server.poll.side_effect = [None, 1]
         client.stderr.read.return_value = "raw native failure\n"
         client.stdin.write.side_effect = lambda text: timeline.append(text.rstrip())
         profiler = Mock(returncode=255)
@@ -1777,10 +1806,19 @@ class RetentionTests(unittest.TestCase):
                     patch.object(cpu.os, "getloadavg", return_value=(0, 0, 0), create=True):
                 result = cpu.window(Path("server"), Path("client"),
                                     ("oscore", 64, 100, "coaptic-reusable"), 10, out, mode=mode)
-            self.assertEqual(json.loads((out / "client.json").read_text()), report)
+            if gate_error is None:
+                self.assertEqual(json.loads((out / "client.json").read_text()), report)
+                self.assertEqual(result["report"], cpu.report_summary(report))
+                self.assertNotIn("latencies_ns", result["report"])
+            else:
+                self.assertFalse((out / "client.json").exists())
+                self.assertNotIn("report", result)
             self.assertEqual(json.loads((out / "result.json").read_text()), json.loads(json.dumps(result)))
-            self.assertEqual(result["report"], cpu.report_summary(report))
-            self.assertNotIn("latencies_ns", result["report"])
+            if mode == "clean":
+                sidecar = out / "process-cpu-clock.json"
+                self.assertLessEqual(sidecar.stat().st_size, cpu.PROCESS_CLOCK_LIMIT)
+                if clock_output is not None:
+                    clock_output.update(json.loads(sidecar.read_text()))
             if not tail_error:
                 self.assertIn("raw native failure", (out / "client.stderr").read_text())
             self.assertEqual(stop.call_args_list,
@@ -1791,7 +1829,8 @@ class RetentionTests(unittest.TestCase):
             self.assertNotIn("credentials", {p.name for p in out.iterdir()})
             command = client.stdin.write.call_args_list
             self.assertEqual([call.args[0] for call in command],
-                             ["run\n", "report\n"] + ([] if invalid else ["exit\n"]))
+                             ["run\n"] if gate_error is not None else
+                             ["run\n", "report\n"] + ([] if invalid or server_exited else ["exit\n"]))
             self.assertLessEqual((out / "result.json").stat().st_size, cpu.WINDOW_LIMIT)
             timeout = native.control_line.call_args_list[1].args[1]
             self.assertTrue(0 < timeout < 15 if mode == "record" else timeout == 60)
@@ -1866,6 +1905,346 @@ class RetentionTests(unittest.TestCase):
                                    mode=mode, scheduler_snapshots=[])
             self.assertNotIn("scheduler_before", result)
             self.assertNotIn("scheduler_after", result)
+
+
+class ProcessCpuClockTests(unittest.TestCase):
+    @staticmethod
+    def stat(pid=123, start=900, threads=1, state=b"S", ppid=567, group=123, session=123):
+        fields = [state] + [b"0"] * 19
+        for index, value in ((1, ppid), (2, group), (3, session), (17, threads), (19, start)):
+            fields[index] = str(value).encode()
+        return str(pid).encode() + b" (owned ) name with ( spaces) " + b" ".join(fields)
+
+    @staticmethod
+    def reading(value=100, *, pid=123, started=10, finished=20):
+        return dict(available=True, pid=pid, start_ticks=900, parent_pid=567, group=pid, session=pid,
+                    clock_id=-12345, glibc="2.39", reported_resolution_seconds=1e-9,
+                    cpu_time_ns=value, snapshot_started_ns=started, snapshot_finished_ns=finished)
+
+    @contextmanager
+    def prepared(self, *, code=0, resolution=1e-9, version=b"2.39", pid=123,
+                 system="linux", machine="x86_64", widths=(4, 8, 8), missing=None, readers=True,
+                 owned=True):
+        # Model the declared C interface without loading/calling native code on Windows.
+        class CInt:
+            def __init__(self):
+                self.value = 0
+        long_type, pointer_type, char_pointer_type = object(), object(), object()
+        def resolve(target, output):
+            output.value = -12345  # Opaque fixture ID, never computed from a PID.
+            return code
+        libc = SimpleNamespace(gnu_get_libc_version=Mock(return_value=version),
+                               clock_getcpuclockid=Mock(side_effect=resolve))
+        if missing is not None:
+            delattr(libc, missing)
+        ctypes = SimpleNamespace(c_int=CInt, c_long=long_type, c_void_p=pointer_type,
+                                 c_char_p=char_pointer_type, POINTER=Mock(return_value=pointer_type),
+                                 byref=lambda value: value,
+                                 sizeof=lambda kind: dict(zip((CInt, long_type, pointer_type), widths))[kind],
+                                 CDLL=Mock(return_value=libc),
+                                 get_errno=Mock(side_effect=AssertionError("errno must not be consulted")))
+        process = Mock(pid=pid, returncode=None)
+        process.poll.side_effect = AssertionError("clock helper must not poll/reap")
+        process.wait.side_effect = AssertionError("clock helper must not wait/reap")
+        child = cpu.OwnedProcess(process) if owned else process
+        clock = Mock(return_value=100)
+        with patch.dict(sys.modules, {"ctypes": ctypes}), patch.object(cpu.sys, "platform", system), \
+                patch.object(cpu.platform, "machine", return_value=machine), \
+                patch.object(cpu.os, "getpid", return_value=567), \
+                patch.object(cpu, "bounded_read", return_value=self.stat()) as read, \
+                patch.object(cpu.time, "clock_getres", Mock(return_value=resolution) if readers else None, create=True), \
+                patch.object(cpu.time, "clock_gettime_ns", clock if readers else None, create=True), \
+                patch.object(cpu.time, "monotonic_ns", return_value=100):
+            try:
+                yield cpu.ProcessCpuClock(child), child, libc, read, clock, ctypes
+            finally:
+                process.poll.assert_not_called()
+                process.wait.assert_not_called()
+                ctypes.get_errno.assert_not_called()
+
+    def test_unsupported_capabilities_and_missing_apis_are_explicit(self):
+        for options in (dict(system="win32"), dict(machine="aarch64"), dict(widths=(4, 4, 4)),
+                        dict(version=b"2.40"), dict(missing="gnu_get_libc_version"),
+                        dict(missing="clock_getcpuclockid"), dict(readers=False)):
+            with self.subTest(options=options), self.prepared(**options) as (item, _, _, _, clock, ctypes):
+                self.assertFalse(item.status["available"])
+                self.assertIn("reason", item.status)
+                clock.assert_not_called()
+                if options.get("system") == "win32" or options.get("machine") == "aarch64":
+                    ctypes.CDLL.assert_not_called()
+        with patch.object(cpu.sys, "platform", "linux"), \
+                patch.object(cpu.platform, "machine", return_value="x86_64"), \
+                patch.dict(sys.modules, {"ctypes": None}):
+            self.assertFalse(cpu.ProcessCpuClock(Mock()).status["available"])
+
+    def test_lookup_positive_errors_ignore_poisoned_errno_and_never_read_clock(self):
+        for code in (1, 3, 38):  # EPERM, ESRCH, ENOSYS.
+            with self.subTest(code=code), self.prepared(code=code) as (item, _, libc, _, clock, _):
+                self.assertFalse(item.status["available"])
+                self.assertEqual(item.status["error_code"], code)
+                libc.clock_getcpuclockid.assert_called_once()
+                clock.assert_not_called()
+        with self.prepared(code=-1) as (item, *_):
+            self.assertFalse(item.status["available"])
+            self.assertNotIn("error_code", item.status)
+
+    def test_bad_unowned_and_reaped_targets_do_not_get_sampled(self):
+        for options in (dict(pid=0), dict(pid=1), dict(pid=-1), dict(pid=True), dict(pid=567),
+                        dict(pid=2**31), dict(owned=False)):
+            with self.subTest(options=options), self.prepared(**options) as (item, _, libc, read, clock, _):
+                self.assertFalse(item.status["available"])
+                libc.clock_getcpuclockid.assert_not_called()
+                read.assert_not_called()
+                clock.assert_not_called()
+        for attribute, value in (("stopped", True), ("returncode", 0), ("pid", 124), ("group", 124)):
+            with self.subTest(attribute=attribute), self.prepared() as (item, child, _, read, clock, _):
+                setattr(child, attribute, value)
+                read.reset_mock()
+                self.assertFalse(item.snapshot()["available"])
+                read.assert_not_called()
+                clock.assert_not_called()
+
+    def test_source_identity_is_guarded_before_and_after_native_read(self):
+        invalid = [b"bad stat", self.stat(pid=124), self.stat(start=0), self.stat(ppid=568),
+                   self.stat(group=124), self.stat(session=124)]
+        invalid += [self.stat(state=state) for state in (b"Z", b"X", b"x", b"?", b"BAD")]
+        for raw in invalid:
+            with self.subTest(raw=raw), self.prepared() as (item, _, _, read, clock, _):
+                read.return_value = raw
+                self.assertFalse(item.snapshot()["available"])
+                clock.assert_not_called()
+        with self.prepared() as (item, _, _, read, clock, _):
+            read.side_effect = [self.stat(), self.stat(start=901)]
+            sampled = item.snapshot()
+            self.assertFalse(sampled["available"])
+            self.assertEqual(sampled["cpu_time_ns"], 100)
+            clock.assert_called_once()
+        with self.prepared() as (item, _, _, read, clock, _):
+            read.side_effect = OSError("stat disappeared")
+            self.assertFalse(item.snapshot()["available"])
+            clock.assert_not_called()
+
+    def test_two_exact_reads_support_all_threads_and_cpu_greater_than_wall(self):
+        with self.prepared() as (item, _, libc, read, clock, _), \
+                patch.object(cpu.time, "monotonic_ns", side_effect=(1, 2, 3, 4)):
+            self.assertTrue(item.status["available"])
+            read.return_value = self.stat(threads=4)
+            clock.side_effect = (100, 1100)
+            before, after = item.snapshot(), item.snapshot()
+            delta = cpu.process_clock_delta(before, after, 10)
+            self.assertTrue(delta["available"])
+            self.assertEqual(delta["total_cpu_ns"], 1000)
+            self.assertEqual(delta["ns_per_verified_operation"], 100)
+            self.assertEqual(clock.call_count, 2)
+            libc.clock_getcpuclockid.assert_called_once()
+            self.assertEqual(read.call_count, 6)
+            self.assertTrue(all(call.args == (Path("/proc/123/stat"), 4096) for call in read.call_args_list))
+            encoded = cpu.bounded_bytes(dict(before=before, after=after, delta=delta), cpu.PROCESS_CLOCK_LIMIT)
+            self.assertNotIn(b"samples", encoded)
+
+    def test_resolution_and_python_nanosecond_faults_are_unavailable(self):
+        for resolution in (0.0, -1.0, float("nan"), float("inf"), 2.0, True, 1, None):
+            with self.subTest(resolution=resolution), self.prepared(resolution=resolution) as (item, *_):
+                self.assertFalse(item.status["available"])
+        for value in (-1, True, 1.5, 2**63, None):
+            with self.subTest(value=value), self.prepared() as (item, _, _, _, clock, _):
+                clock.return_value = value
+                self.assertFalse(item.snapshot()["available"])
+        with self.prepared() as (item, _, _, _, clock, _):
+            clock.side_effect = OSError(3, "clock target gone")
+            self.assertEqual(item.snapshot()["error_code"], 3)
+        with self.prepared() as (item, *_), patch.object(cpu.time, "monotonic_ns", side_effect=(2, 1)):
+            self.assertFalse(item.snapshot()["available"])
+
+    def test_delta_refuses_counter_order_identity_and_denominator_faults(self):
+        before, after = self.reading(), self.reading(1100, started=30, finished=40)
+        for changes in ({"cpu_time_ns": 99}, {"cpu_time_ns": 100}, {"pid": 124}, {"start_ticks": 901},
+                        {"parent_pid": 568}, {"group": 124}, {"session": 124}, {"clock_id": -999},
+                        {"reported_resolution_seconds": 1e-6}, {"glibc": "unknown"},
+                        {"available": False}, {"snapshot_started_ns": 19}, {"snapshot_finished_ns": 29}):
+            with self.subTest(changes=changes):
+                self.assertFalse(cpu.process_clock_delta(before, dict(after, **changes), 10)["available"])
+        self.assertFalse(cpu.process_clock_delta(dict(before, available=False), after, 10)["available"])
+        for completed in (0, -1, True, 1.5):
+            self.assertFalse(cpu.process_clock_delta(before, after, completed)["available"])
+
+    def test_sidecar_is_bounded_separate_and_retention_errors_do_not_change_primary_result(self):
+        before, after = self.reading(), self.reading(1100, started=30, finished=40)
+        evidence = dict(setup={name: dict(before, reason="x" * 128) for name in ("server", "client")},
+                        before={name: before for name in ("server", "client")},
+                        after={name: after for name in ("server", "client")},
+                        delta={name: cpu.process_clock_delta(before, after, 10) for name in ("server", "client")})
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            result = {"passed": True, "cpu_cost": {"server": {"total_seconds": 1}}}
+            cpu.retain_process_clock(directory, evidence, result)
+            path = directory / result["process_cpu_clock_file"]
+            self.assertLessEqual(path.stat().st_size, 4096)
+            self.assertEqual(json.loads(path.read_text()), evidence)
+            self.assertNotIn("cpu_time_ns", json.dumps(result))
+            original = path.read_bytes()
+            for error in (OSError("disk refused"), ValueError("metadata over bound")):
+                unchanged = deepcopy(result)
+                with patch.object(cpu, "save", side_effect=error):
+                    cpu.retain_process_clock(directory, evidence, unchanged)
+                self.assertFalse(unchanged["process_cpu_clock_error"]["available"])
+                self.assertTrue(unchanged["passed"])
+                self.assertEqual(unchanged["cpu_cost"], result["cpu_cost"])
+            cpu.retain_process_clock(directory, {"huge": "x" * 4096}, result)
+            self.assertFalse(result["process_cpu_clock_error"]["available"])
+            self.assertEqual(path.read_bytes(), original)
+
+    def clocks(self, timeline, *, unavailable=False):
+        pending = iter(("server", "client"))
+        def resolve(child):
+            name = next(pending)
+            timeline.append("resolve_" + name)
+            pid = 123 if name == "server" else 124
+            readings = iter((self.reading(pid=pid), self.reading(1100, pid=pid, started=30, finished=40)))
+            def snapshot():
+                timeline.append("clock_" + name)
+                return {"available": False, "reason": "mock unavailable"} if unavailable else next(readings)
+            return SimpleNamespace(status={"available": not unavailable}, snapshot=snapshot)
+        return resolve
+
+    def test_clean_phase_order_places_reads_outside_original_resource_pair(self):
+        timeline, evidence = [], {}
+        ticks = iter(("resource_start", "resource_finish"))
+        def wall():
+            timeline.append(next(ticks))
+            return 100
+        with patch.object(cpu, "ProcessCpuClock", side_effect=self.clocks(timeline)), \
+                patch.object(cpu.time, "perf_counter_ns", side_effect=wall):
+            result = RetentionTests.exercise(self, dict(completed=10, latencies_ns=[12] * 10),
+                                            invalid=False, timeline=timeline, clock_output=evidence)
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["cpu_cost"]["server"]["total_seconds"], 1)
+        self.assertEqual(timeline, ["ready", "resolve_server", "resolve_client", "clock_server", "clock_client",
+                                    "snapshot", "snapshot", "resource_start", "run", "measured",
+                                    "snapshot", "snapshot", "resource_finish", "clock_server", "clock_client",
+                                    "report", "read_report", "exit"])
+        self.assertEqual(set(evidence["before"]), {"server", "client"})
+        for name in ("server", "client"):
+            self.assertEqual(evidence["before"][name]["cpu_time_ns"], 100)
+            self.assertEqual(evidence["after"][name]["cpu_time_ns"], 1100)
+            self.assertEqual(evidence["delta"][name]["total_cpu_ns"], 1000)
+
+    def test_unavailable_clock_and_partial_or_failed_windows_keep_original_gates(self):
+        report = dict(completed=10, latencies_ns=[12] * 10)
+        for options in (dict(invalid=False), dict(invalid=True),
+                        dict(invalid=False, gate_error=OSError("measured gate closed")),
+                        dict(invalid=False, server_exited=True),
+                        dict(invalid=False, cleanup_errors=[RuntimeError("client not reaped"), None])):
+            timeline, evidence = [], {}
+            with self.subTest(options=options), \
+                    patch.object(cpu, "ProcessCpuClock", side_effect=self.clocks(timeline, unavailable=True)):
+                result = RetentionTests.exercise(self, report, timeline=timeline, clock_output=evidence, **options)
+            self.assertIsNotNone(evidence["before"])
+            if options.get("gate_error"):
+                self.assertIsNone(evidence["after"])
+            if options == {"invalid": False}:
+                self.assertTrue(result["passed"])
+                self.assertFalse(evidence["delta"]["server"]["available"])
+                self.assertEqual(result["cpu_cost"]["server"]["total_seconds"], 1)
+            else:
+                self.assertFalse(result["passed"])
+                if not options.get("cleanup_errors"):
+                    self.assertIsNone(evidence["delta"])
+            if options.get("cleanup_errors"):
+                self.assertTrue(cpu.unresolved_cleanup(result))
+
+    def test_profiles_never_prepare_process_clocks(self):
+        with patch.object(cpu, "ProcessCpuClock", side_effect=AssertionError("profile must not prepare clocks")):
+            for mode in ("record", "stat"):
+                result = RetentionTests.exercise(self, dict(completed=10, latencies_ns=[12] * 10),
+                                                invalid=False, mode=mode)
+                self.assertNotIn("process_cpu_clock_file", result)
+
+    @unittest.skipUnless(sys.platform == "linux", "real process CPU binding requires Linux")
+    def test_linux_owned_child_process_clock_smoke(self):
+        import ctypes
+        if cpu.platform.machine() != "x86_64" or (ctypes.sizeof(ctypes.c_int), ctypes.sizeof(ctypes.c_long),
+                                                 ctypes.sizeof(ctypes.c_void_p)) != (4, 8, 8):
+            self.skipTest("unsupported process-clock ABI")
+        libc = ctypes.CDLL(None)
+        if not hasattr(libc, "gnu_get_libc_version"):
+            self.skipTest("unsupported non-glibc ABI")
+        version = libc.gnu_get_libc_version
+        version.argtypes, version.restype = [], ctypes.c_char_p
+        if version() != b"2.39":
+            self.skipTest("unsupported glibc version")
+        # A supported ABI must fail, rather than skip, on lookup/read/accounting errors.
+        script = """import json, os, sys, time
+print('ready', flush=True)
+assert sys.stdin.readline() == 'work\\n'
+start = time.process_time_ns()
+deadline = time.monotonic_ns() + 2_000_000_000
+value = 0
+ok = False
+for block in range(20_000):
+    for step in range(256):
+        value = (value * 1664525 + 1013904223) & 0xffffffff
+    used = time.process_time_ns() - start
+    if time.monotonic_ns() > deadline:
+        break
+    if used >= 20_000_000:
+        ok = True
+        break
+print(json.dumps(dict(phase='done', pid=os.getpid(), ok=ok, cpu_ns=used,
+                      blocks=block+1, checksum=value)), flush=True)
+assert sys.stdin.readline() == 'exit\\n'
+"""
+        evidence = dict(schema="process-clock-smoke/1", clock_accuracy="unknown", before=None, after=None,
+                        cleanup="unknown", error=None)
+        child = None
+        try:
+            child = cpu.spawn([sys.executable, "-u", "-B", "-c", script], stdin=cpu.subprocess.PIPE,
+                              stdout=cpu.subprocess.PIPE, stderr=cpu.subprocess.PIPE, text=True)
+            self.assertTrue(select.select([child.stdout], [], [], 3)[0], "ready deadline")
+            self.assertEqual(child.stdout.readline(128), "ready\n")
+            clock = cpu.ProcessCpuClock(child)
+            evidence["setup"] = clock.status
+            self.assertTrue(clock.status["available"], json.dumps(evidence))
+            evidence["before"] = clock.snapshot()
+            self.assertTrue(evidence["before"]["available"], json.dumps(evidence))
+            child.stdin.write("work\n")
+            child.stdin.flush()
+            self.assertTrue(select.select([child.stdout], [], [], 3)[0], "done deadline")
+            line = child.stdout.readline(4097)
+            self.assertTrue(len(line) <= 4096 and line.endswith("\n"), "bounded done record")
+            work = json.loads(line)
+            evidence["work"] = work
+            evidence["after"] = clock.snapshot()
+            self.assertTrue(work["ok"] and work["phase"] == "done" and work["pid"] == child.pid,
+                            json.dumps(evidence))
+            self.assertTrue(1 <= work["blocks"] <= 20_000 and work["cpu_ns"] >= 20_000_000)
+            self.assertTrue(evidence["after"]["available"], json.dumps(evidence))
+            delta = cpu.process_clock_delta(evidence["before"], evidence["after"], 1)
+            evidence["delta"] = delta
+            self.assertTrue(delta["available"] and delta["total_cpu_ns"] > 0, json.dumps(evidence))
+            self.assertGreater(clock.status["reported_resolution_seconds"], 0)
+            for snapshot in (evidence["before"], evidence["after"]):
+                self.assertEqual((snapshot["pid"], snapshot["session"], snapshot["start_ticks"]),
+                                 (child.pid, child.group, clock.status["start_ticks"]))
+            child.stdin.write("exit\n")
+            child.stdin.flush()
+            self.assertEqual(child.wait(timeout=3), 0)
+        except BaseException as error:
+            evidence["error"] = {"type": type(error).__name__, "reason": str(error)[:256]}
+            raise
+        finally:
+            try:
+                cpu.stop(child)
+                evidence["cleanup"] = {"stopped": child.stopped, "returncode": child.returncode} if child else "not started"
+            except Exception as error:
+                evidence["cleanup"] = {"error_type": type(error).__name__, "reason": str(error)[:256]}
+                raise
+            finally:
+                if child is not None:
+                    evidence["stderr"] = cpu.stderr_tail(child, 512).decode("utf-8", errors="replace")
+                    for stream in (child.stdin, child.stdout, child.stderr):
+                        stream.close()
+                print(cpu.bounded_bytes(evidence, 4096).decode("ascii"), end="")
 
 
 if __name__ == "__main__":
