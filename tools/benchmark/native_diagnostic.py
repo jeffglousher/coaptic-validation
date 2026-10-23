@@ -26,7 +26,8 @@ import sys
 import psutil
 
 
-SERVER_KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready", "coaptic-async", "coaptic-blocking")
+SERVER_KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready", "coaptic-async",
+                "coaptic-blocking", "coaptic-staged-ready")
 
 
 def server_resources(log_path, server_kind, *, deadline, server):
@@ -36,7 +37,7 @@ def server_resources(log_path, server_kind, *, deadline, server):
     Partial writes remain unparsed until newline. The independently opened reader
     never seeks or reads the file description inherited by the server.
     """
-    if server_kind not in ("coaptic-async", "coaptic-blocking"):
+    if server_kind not in ("coaptic-async", "coaptic-blocking", "coaptic-staged-ready"):
         return None
     if type(deadline) not in (int, float) or not math.isfinite(deadline):
         raise ValueError("server startup ledger needs a finite monotonic deadline")
@@ -92,6 +93,18 @@ def server_resources(log_path, server_kind, *, deadline, server):
             or any(key not in record or record[key] is not None
                    for key in ("runtime_heap_bytes", "runtime_stack_bytes"))):
         raise ValueError("invalid async server startup ledger")
+    if server_kind == "coaptic-staged-ready":
+        fields = ("staged_datagram_capacity", "stage_metadata_bytes", "driver_inline_bytes")
+        if (any(type(record.get(key)) is not int or not 0 < record[key] < 2**64
+                for key in fields)
+                or record["staged_datagram_capacity"] != 1
+                or record["stage_metadata_bytes"] > 64
+                or record["udp_scratch_bytes"] + record["stage_metadata_bytes"]
+                > record["adapter_inline_bytes"]
+                or record.get("send_policy") != "immediate_try_send_to"
+                or any(key in record for key in ("stage_cache_metadata_bytes", "read_timeout_max_us",
+                                                 "send_timeout_us", "timeouts_soft"))):
+            raise ValueError("invalid staged ready server startup ledger")
     return record
 
 

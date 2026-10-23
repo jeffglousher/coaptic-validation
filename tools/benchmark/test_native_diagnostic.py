@@ -25,6 +25,51 @@ class ReportTests(unittest.TestCase):
                     read_timeout_max_us=5000, send_timeout_us=1000, timeouts_soft=True,
                     runtime_heap_bytes=None, runtime_stack_bytes=None)
 
+    @classmethod
+    def staged_ready_record(cls):
+        return dict(cls.startup_record(), server_kind="coaptic-staged-ready",
+                    staged_datagram_capacity=1, stage_metadata_bytes=32,
+                    driver_inline_bytes=32, send_policy="immediate_try_send_to")
+
+    def test_staged_ready_ledger_preserves_ownership_bounds_and_immediate_send_policy(self):
+        valid = self.staged_ready_record()
+        changes = (dict(schema="coaptic-native-server-resources/1"),
+                   dict(server_kind="coaptic-ready"), dict(udp_scratch_bytes=2048),
+                   dict(staged_datagram_capacity=0), dict(staged_datagram_capacity=2),
+                   dict(staged_datagram_capacity=True), dict(stage_metadata_bytes=0),
+                   dict(stage_metadata_bytes=65), dict(stage_metadata_bytes=True),
+                   dict(driver_inline_bytes=0), dict(driver_inline_bytes=True),
+                   dict(driver_inline_bytes=2**64), dict(adapter_inline_bytes=2080),
+                   dict(app_including_adapter_bytes=2103), dict(adapter_inline_bytes=True),
+                   dict(loop_future_borrowing_app_bytes=0), dict(loop_future_borrowing_app_bytes=True),
+                   dict(loop_future_including_app_bytes=32000), dict(runtime_heap_bytes=0),
+                   dict(runtime_stack_bytes=0), dict(send_policy="blocking"),
+                   dict(stage_cache_metadata_bytes=32), dict(read_timeout_max_us=5000),
+                   dict(send_timeout_us=1000), dict(timeouts_soft=False))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "server.log"
+
+            def read(record):
+                path.write_bytes(json.dumps(record).encode() + b"\n")
+                return server_resources(path, "coaptic-staged-ready", deadline=0, server=None)
+
+            for future_bytes in (1, 16000, 32000):
+                record = dict(valid, loop_future_borrowing_app_bytes=future_bytes)
+                with self.subTest(future_bytes=future_bytes):
+                    self.assertEqual(read(record), record)
+            for change in changes:
+                with self.subTest(change=change), self.assertRaises(ValueError):
+                    read(dict(valid, **change))
+            for key in valid:
+                missing = dict(valid)
+                del missing[key]
+                with self.subTest(missing=key), self.assertRaises(ValueError):
+                    read(missing)
+            for raw in (b"[]\n", b"not-json\n", b"x" * 4096 + b"\n"):
+                path.write_bytes(raw)
+                with self.subTest(raw=raw[:10]), self.assertRaises(ValueError):
+                    server_resources(path, "coaptic-staged-ready", deadline=0, server=None)
+
     def test_blocking_startup_requires_bounded_metadata_and_declared_send_policy(self):
         valid = self.blocking_record()
         changes = (dict(schema="coaptic-native-server-resources/2"),
@@ -170,9 +215,11 @@ class ReportTests(unittest.TestCase):
         class SnapshotBoundary(Exception):
             pass
 
-        for kind, complete in ((kind, complete) for kind in ("coaptic-async", "coaptic-blocking")
+        records = {"coaptic-async": self.startup_record(), "coaptic-blocking": self.blocking_record(),
+                   "coaptic-staged-ready": self.staged_ready_record()}
+        for kind, complete in ((kind, complete) for kind in records
                                for complete in (True, False)):
-            record = self.startup_record() if kind == "coaptic-async" else self.blocking_record()
+            record = records[kind]
             line = json.dumps(record).encode() + b"\n"
             with self.subTest(kind=kind, complete=complete):
                 clock, output = [0.0], {}
@@ -227,12 +274,12 @@ class ReportTests(unittest.TestCase):
                 probe.sendto.assert_not_called()
 
     def test_async_kind_passes_bounds_before_any_credentials_or_socket(self):
-        with patch("native_diagnostic.tempfile.TemporaryDirectory",
-                   side_effect=RuntimeError("launch boundary")) as launch:
-            with self.assertRaisesRegex(RuntimeError, "launch boundary"):
-                measure("missing", "missing", 64, 2, 0, 1000, "spin", "oscore",
-                        server_kind="coaptic-async")
-            launch.assert_called_once()
+        for kind in ("coaptic-async", "coaptic-staged-ready"):
+            with self.subTest(kind=kind), patch("native_diagnostic.tempfile.TemporaryDirectory",
+                                              side_effect=RuntimeError("launch boundary")) as launch:
+                with self.assertRaisesRegex(RuntimeError, "launch boundary"):
+                    measure("missing", "missing", 64, 2, 0, 1000, "spin", "oscore", server_kind=kind)
+                launch.assert_called_once()
         with patch("native_diagnostic.tempfile.TemporaryDirectory") as launch:
             with self.assertRaisesRegex(ValueError, "bounds"):
                 measure("missing", "missing", 64, 2, 0, 1000, "spin", "oscore",
@@ -241,7 +288,7 @@ class ReportTests(unittest.TestCase):
 
     def test_cli_preserves_default_and_explicit_selection(self):
         with tempfile.TemporaryDirectory() as directory:
-            for kind in (None, "coaptic-async", "coaptic-blocking"):
+            for kind in (None, "coaptic-async", "coaptic-blocking", "coaptic-staged-ready"):
                 output = Path(directory) / ((kind or "default") + ".json")
                 argv = ["native_diagnostic.py", "--server", "server", "--client", "client",
                         "--output", str(output), "--policy", "spin", "--security", "oscore"]

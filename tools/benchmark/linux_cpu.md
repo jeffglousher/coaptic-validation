@@ -97,7 +97,8 @@ Do not run concurrently with another lane consumer, compiler or timing campaign.
 Use `--candidate-server-kind` to compare two explicit adapters at **identical core
 SHAs**. Combining adapter and core changes, `all`, or identical adapter names is
 refused before builds. Defaults and the three adapters selected by `all` stay
-unchanged; `coaptic-async` and `coaptic-blocking` must be selected explicitly. The manual workflow's
+unchanged; `coaptic-async`, `coaptic-blocking` and `coaptic-staged-ready` must be
+selected explicitly. The manual workflow's
 `candidate_server_kind` defaults to `same` and exposes the same restriction.
 
 For example, compare the current Tokio polling loop with native async App
@@ -160,6 +161,47 @@ least 59,520 sends with warmup. Existing live send, sample, cleanup and artifact
 bounds still apply. Authentication and complete response verification remain
 required; neither a successful finite proof nor adapter selection establishes a
 CPU reduction target.
+
+The explicit `coaptic-staged-ready` fixture stages an actual nonblocking receive
+in ReadyUdp's existing 2049-byte scratch before App polling. Empty transport
+probes do not run App maintenance. One staged datagram adds capacity beyond the
+unchanged Engine RX pool; it survives RX refusal and pins. N+1 truncation checks
+use the configured receive capacity, and only WouldBlock means empty. Sends
+delegate to the original immediate `try_send_to`, without writable waits, retries
+or socket timeouts. Fresh time and due/local work are checked before receiving
+and after readiness wakes. Every 32 work turns yields, including empty probes
+and immediate readiness returns. External application signals, pin releases and
+policy changes still need an independent wake source; this fixture uses static
+handlers.
+
+Its flushed `coaptic-native-server-resources/2` startup line declares staging
+capacity one, Stage metadata bytes, the immediate send policy, adapter/App sizes,
+and separate Driver and borrowing-loop-future sizes. Scratch and Stage belong
+to the adapter, which belongs to App. The loop future borrows App and Driver;
+the complete outer setup future is not measured. Test counters compile out of
+ordinary builds, whose layouts are reported directly at startup. Do not add
+nested sizes or infer whole-system RAM: core/body heap, runtime allocations,
+allocator, outer future, thread/polling stacks and kernel costs remain unknown.
+The bounded startup parser rejects blocking timeout-policy fields for this mode.
+
+For one clean same-core scheduling comparison, leave profiling off:
+
+```sh
+CORE_SHA=b428572774ae4e57259f562b38e268f40fcadd7b
+python3 tools/benchmark/linux_cpu.py \
+  --baseline-sha "$CORE_SHA" --candidate-sha "$CORE_SHA" \
+  --build-lane /existing/compatible/cargo-lane --output /fresh/evidence/staged-ready-ab \
+  --sizes 64,1024 --rates 4000 --seconds 5 --repeats 4 \
+  --server-kind coaptic-ready --candidate-server-kind coaptic-staged-ready
+```
+
+This plans four security/body cells, 32 clean windows, 160 scheduled seconds and
+640,000 measured operations, plus 640 warmups. Each fresh socket needs at least
+20,020 outbound datagrams, with retries subject to the live 60,000-send ceiling.
+The same companion/core/compiler/locks and frozen baseline client drive both
+adapters with existing AB/BA rotation. Eligibility and latency guards remain
+unchanged; keep failures and withhold ineligible cohort ratios. Selection and
+finite correctness checks establish no CPU gain or representative 50% target.
 
 Each security/body/rate/adapter/concurrency/message-type cell defaults to sequential
 complete CON GETs, one outstanding Call, 20 warmups, a 3s per-operation deadline
