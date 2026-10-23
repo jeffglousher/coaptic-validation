@@ -282,12 +282,15 @@ impl Driver {
                 return Ok(Turn::Stop);
             };
             let local_ready = local(app);
-            let ready = Self::work_ready(app, now, local_ready);
-            if ready {
+            if app.transport().stage != Stage::Empty || local_ready {
                 return self.poll(app, clock(), after);
             }
-            let due = app
-                .next_poll_at(now)
+            // Nothing mutates App between this classification and the wait bound.
+            let opportunity = app.next_poll_at(now);
+            if opportunity.is_some_and(|due| due <= now) {
+                return self.poll(app, clock(), after);
+            }
+            let due = opportunity
                 .map(|due| {
                     self.epoch
                         .checked_add(Duration::from_millis(due))
@@ -659,7 +662,8 @@ mod tests {
                 &mut app,
                 |_| false,
                 || times.next().unwrap(),
-                async |socket, _| {
+                async |socket, deadline| {
+                    assert_eq!(deadline, Some(epoch + Duration::from_millis(due)));
                     sender.send_to(&[0x40, 0, 0, 1], local).unwrap();
                     tokio::time::timeout(Duration::from_millis(100), socket.readable())
                         .await
@@ -752,6 +756,44 @@ mod tests {
                 .is_err()
         );
         assert_eq!(app.transport().inner.counts.unwrap().app_polls, 1);
+
+        // A deadline reached during the empty probe must poll before waiting.
+        let mut app = fixture(transport().await);
+        tokio::time::timeout(
+            Duration::from_millis(100),
+            app.transport().inner.socket.writable(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let due = pending(&mut app, peer);
+        let mut driver = Driver::new(
+            &mut app,
+            epoch,
+            Some(epoch + Duration::from_millis(due + 1000)),
+        )
+        .unwrap();
+        let mut times = [
+            epoch,
+            epoch + Duration::from_millis(due),
+            epoch + Duration::from_millis(due + 1),
+        ]
+        .into_iter();
+        assert_eq!(
+            driver
+                .turn_with(
+                    &mut app,
+                    |_| false,
+                    || times.next().unwrap(),
+                    async |_, _| panic!("elapsed deadline must not wait"),
+                )
+                .await
+                .unwrap(),
+            Turn::Polled(due + 1)
+        );
+        assert_eq!((driver.counts.probes, driver.counts.empty), (1, 1));
+        assert_eq!(app.metrics().con_retransmit, 1);
+        assert_eq!(app.metrics().rx_accepted, 0);
     }
 
     #[tokio::test(flavor = "current_thread")]
