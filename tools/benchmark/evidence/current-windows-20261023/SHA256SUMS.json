@@ -1,4 +1,8 @@
 {
+  ".gitattributes": {
+    "bytes": 33,
+    "sha256": "dabe63faea541789c0deeb5fe96af06fc5174e1131f20f58ca4e9959befa7631"
+  },
   "build.json": {
     "bytes": 1484,
     "sha256": "02051f839d3edd843ca010c9a795263ea51bdd5c4f8f2f4180f5a02b4afc0501"
