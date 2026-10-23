@@ -124,7 +124,7 @@ jobs:
           "$RUNNER_TEMP/cpu-venv/bin/python" -m unittest discover -s tools/benchmark -p 'test_linux*.py'
           "$RUNNER_TEMP/cpu-venv/bin/python" -m unittest discover -s tools/benchmark -p 'test_native_diagnostic.py'
           PYTHONPATH=tools/benchmark "$RUNNER_TEMP/cpu-venv/bin/python" -B -m unittest \
-            test_core_cost_probe test_perf_sampling_probe
+            test_core_cost_probe test_perf_sampling_probe test_native_lock
           # Never change perf_event_paranoid or install a kernel/profiling service.
           # Missing perf/sudo, unsupported events and permission refusal are raw artifacts.
           { command -v perf; perf --version; command -v prlimit; uname -a; } >"$RUNNER_TEMP/cpu-setup-logs/perf-tools.log" 2>&1 || true
@@ -139,12 +139,29 @@ jobs:
           RUSTFLAGS: -C force-frame-pointers=yes
           RUSTC: rustc
         run: |
-          cargo test --manifest-path tools/benchmark/native/Cargo.toml --release --locked \
-            -p bench-rust-server --bin bench-rust-server direct_udp::tests \
-            >"$RUNNER_TEMP/cpu-setup-logs/direct-tests.log" 2>&1
-          cargo clippy --manifest-path tools/benchmark/native/Cargo.toml --release --locked \
-            -p bench-rust-server --bin bench-rust-server -- -D warnings \
-            >"$RUNNER_TEMP/cpu-setup-logs/direct-clippy.log" 2>&1
+          PYTHONPATH=tools/benchmark python3 -B - <<'PY'
+          import os
+          from pathlib import Path
+          from linux_cpu import SUITE, identity, run_logged, save
+          from native_lock import native_lock
+          before = identity(SUITE), identity(SUITE / 'coaptic')
+          if any(source['status'] for source in before):
+              raise ValueError('direct preflight requires clean sources')
+          logs = Path(os.environ['RUNNER_TEMP']) / 'cpu-setup-logs'
+          with native_lock(SUITE / 'coaptic') as lock_input:
+              for name, command in (
+                  ('direct-tests', ['cargo', 'test', '--manifest-path', 'tools/benchmark/native/Cargo.toml',
+                                   '--release', '--locked', '-p', 'bench-rust-server', '--bin',
+                                   'bench-rust-server', 'direct_udp::tests']),
+                  ('direct-clippy', ['cargo', 'clippy', '--manifest-path', 'tools/benchmark/native/Cargo.toml',
+                                    '--release', '--locked', '-p', 'bench-rust-server', '--bin',
+                                    'bench-rust-server', '--', '-D', 'warnings'])):
+                  with (logs / (name + '.log')).open('wb') as log:
+                      run_logged(command, log, cwd=SUITE, timeout=900)
+          if (identity(SUITE), identity(SUITE / 'coaptic')) != before:
+              raise ValueError('direct preflight source identity changed')
+          save(logs / 'direct-lock-input.json', dict(suite=before[0], core=before[1], native_lock_input=lock_input))
+          PY
       - name: Sequential source-matched builds, clean windows, then profiling
         run: |
           options=()

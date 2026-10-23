@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 import io
 import itertools
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -17,12 +18,24 @@ from unittest.mock import patch
 from unittest.mock import MagicMock, Mock
 
 import linux_cpu as cpu
+from test_native_lock import BASE as LOCK_BASE, SYN3 as LOCK_SYN3, MANIFEST as IO_MANIFEST
 
 
 HOST = "x86_64-unknown-linux-gnu"
 RUSTC_VERSION = (f"rustc 1.99.0 (111111111 2026-10-01)\ncommit-hash: {'1' * 40}\n"
                  f"host: {HOST}\nrelease: 1.99.0\nLLVM version: 22.1.0")
 CARGO_VERSION = f"cargo 1.99.0 (222222222 2026-10-01)\ncommit-hash: {'2' * 40}\nrelease: 1.99.0"
+
+
+def native_inputs(suite, requirement="2"):
+    native = suite / "tools/benchmark/native"
+    native.mkdir(parents=True, exist_ok=True)
+    (native / "Cargo.lock").write_bytes(LOCK_BASE)
+    (native / "Cargo.syn3.lock").write_bytes(LOCK_SYN3)
+    manifest = suite / "coaptic/crates/coaptic-io/Cargo.toml"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_bytes(IO_MANIFEST.replace(b'version = "2"', f'version = "{requirement}"'.encode()))
+    return native
 
 
 def options(**overrides):
@@ -742,6 +755,80 @@ os.close(writer)
 
 
 class BuildTests(unittest.TestCase):
+    def test_selected_input_reaches_cargo_and_restores_before_acceptance_or_failure(self):
+        for requirement, selected in (("2", LOCK_BASE), ("3", LOCK_SYN3)):
+            for failed in (False, True):
+                with self.subTest(requirement=requirement, failed=failed), tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    suite, lane, out = root / "source", root / "lane", root / "evidence"
+                    native = native_inputs(suite, requirement)
+                    out.mkdir()
+                    revision = "a" * 40
+                    failure = subprocess.CalledProcessError(1, ["cargo", "build", "--locked"])
+
+                    def identity(path):
+                        if path == suite:
+                            return dict(revision="f" * 40, status="" if (native / "Cargo.lock").read_bytes() == LOCK_BASE else " M Cargo.lock")
+                        return dict(revision=revision, status="")
+
+                    def compile(argv, stream, **kwargs):
+                        if argv[0] != "cargo":
+                            return
+                        self.assertIn("--locked", argv)
+                        self.assertEqual((native / "Cargo.lock").read_bytes(), selected)
+                        if failed:
+                            raise failure
+                        destination = lane / HOST / "release"
+                        destination.mkdir(parents=True)
+                        for name in ("bench-rust-server", "bench-native-client"):
+                            (destination / name).write_bytes(name.encode())
+
+                    with patch.object(cpu, "SUITE", suite), \
+                            patch.object(cpu, "identity", side_effect=identity), \
+                            patch.object(cpu, "command", side_effect=[RUSTC_VERSION, CARGO_VERSION]), \
+                            patch.object(cpu, "run_logged", side_effect=compile), \
+                            patch.object(cpu, "digest", return_value="other-input-hash"):
+                        if failed:
+                            with self.assertRaises(subprocess.CalledProcessError) as caught:
+                                cpu.build(options(build_lane=lane), "baseline", revision, out)
+                            self.assertIs(caught.exception, failure)
+                            self.assertFalse((out / "binaries").exists())
+                            record = json.loads((out / "build-baseline.json").read_text())
+                        else:
+                            record = cpu.build(options(build_lane=lane), "baseline", revision, out)
+                            self.assertEqual(record["suite"]["status"], "")
+                            self.assertEqual(record["native_lock_sha256"], hashlib.sha256(selected).hexdigest())
+                    self.assertEqual((native / "Cargo.lock").read_bytes(), LOCK_BASE)
+                    self.assertEqual(record["native_lock_input"]["selected_sha256"], hashlib.sha256(selected).hexdigest())
+
+    def test_dirty_suite_refuses_before_checkout_or_compiler(self):
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(cpu, "identity", return_value=dict(status=" M Cargo.lock")), \
+                patch.object(cpu, "command") as command, patch.object(cpu, "run_logged") as logged:
+            with self.assertRaisesRegex(ValueError, "dirty suite"):
+                cpu.build(options(build_lane=Path(temporary)), "baseline", "a" * 40, Path(temporary))
+            command.assert_not_called()
+            logged.assert_not_called()
+
+    def test_lock_matching_allows_only_selections_from_the_same_input_pair(self):
+        def record(requirement):
+            selected = LOCK_BASE if requirement == "2" else LOCK_SYN3
+            return dict(native_lock_sha256=hashlib.sha256(selected).hexdigest(), native_lock_input=dict(
+                syn_requirement=requirement, selected_sha256=hashlib.sha256(selected).hexdigest(),
+                canonical_base_sha256=hashlib.sha256(LOCK_BASE).hexdigest(), syn3_sha256=hashlib.sha256(LOCK_SYN3).hexdigest()))
+
+        for baseline, candidate in itertools.product(("2", "3"), repeat=2):
+            cpu.matching_lock_inputs(record(baseline), record(candidate))
+        for field in ("syn_requirement", "selected_sha256", "canonical_base_sha256", "syn3_sha256"):
+            changed = record("3")
+            changed["native_lock_input"][field] = "unexpected"
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                cpu.matching_lock_inputs(record("2"), changed)
+        changed = record("3")
+        changed["native_lock_sha256"] = "restored-baseline-hash"
+        with self.assertRaisesRegex(ValueError, "selected input"):
+            cpu.matching_lock_inputs(record("2"), changed)
+
     def test_explicit_host_target_ignores_configured_target_and_stale_top_level_binaries(self):
         host, configured = "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"
         revision = "a" * 40
@@ -755,6 +842,7 @@ class BuildTests(unittest.TestCase):
             for name in names:
                 (lane / "release" / name).write_bytes(b"stale host binary")
                 (lane / configured / "release" / name).write_bytes(b"configured cross binary")
+            native_inputs(suite)
 
             def compile(argv, stream, **kwargs):
                 if argv[0] == "cargo":
@@ -821,6 +909,7 @@ elif tool == "cargo" and args[0] == "build":
                 suite, lane, out = root / "source", root / "lane", root / "evidence"
                 suite.mkdir()
                 out.mkdir()
+                native_inputs(suite)
                 (suite / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "stable"\n')
 
                 def spawn(argv, *, file_limit, **kwargs):
@@ -1299,6 +1388,8 @@ class CampaignTests(unittest.TestCase):
 
             def build(args, label, revision, out, *, expected=None):
                 return dict(core=dict(revision=revision), native_lock_sha256="lock", flags=cpu.FLAGS,
+                            native_lock_input=dict(syn_requirement="2", selected_sha256="lock",
+                                                   canonical_base_sha256="lock", syn3_sha256="syn3"),
                             native_manifest_sha256="manifest", rustc="rustc", cargo="cargo",
                             target=label if target_mismatch else "x86_64-unknown-linux-gnu",
                             binaries={name: dict(path=str(out / label / name))

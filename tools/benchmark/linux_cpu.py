@@ -28,6 +28,8 @@ import tempfile
 import threading
 import time
 
+from native_lock import native_lock
+
 
 MIB = 1024 * 1024
 PERF_BUDGET = 256 * MIB
@@ -809,6 +811,9 @@ def hardware():
 
 def build(args, label, revision, out, *, expected=None):
     core = SUITE / "coaptic"
+    suite_before = identity(SUITE)
+    if suite_before["status"]:
+        raise ValueError("refusing to build a dirty suite checkout")
     if identity(core)["status"]:
         raise ValueError("refusing to replace a dirty core checkout")
     log = out / f"build-{label}.log"
@@ -843,20 +848,32 @@ def build(args, label, revision, out, *, expected=None):
             if actual != expected[field]:
                 raise ValueError("build configuration differs before build: " + field)
     with log.open("wb") as stream:
-        for argv in (["git", "-C", str(core), "fetch", "--depth", "1", "origin", revision],
-                     ["git", "-C", str(core), "checkout", "--detach", revision],
-                     ["cargo", "build", "--release", "--locked", "--target", host, "--manifest-path",
-                      "tools/benchmark/native/Cargo.toml", "-p", "bench-rust-server",
-                      "--bin", "bench-rust-server", "--bin", "bench-native-client"]):
+        def invoke(argv):
             line = (json.dumps(argv) + "\n").encode("utf-8")
             if stream.tell() + len(line) > BUILD_LOG_LIMIT:
                 raise ValueError("build log exceeds byte allowance")
             stream.write(line)
             stream.flush()
             run_logged(argv, stream, cwd=SUITE, env=env, timeout=900)
+        for argv in (["git", "-C", str(core), "fetch", "--depth", "1", "origin", revision],
+                     ["git", "-C", str(core), "checkout", "--detach", revision]):
+            invoke(argv)
+        source = identity(core)
+        if source["revision"] != revision or source["status"]:
+            raise ValueError("selected core identity differs before build")
+        with native_lock(core, SUITE / "tools/benchmark/native") as lock_input:
+            versions["native_lock_input"] = lock_input
+            save(version_path, versions)
+            invoke(["cargo", "build", "--release", "--locked", "--target", host, "--manifest-path",
+                    "tools/benchmark/native/Cargo.toml", "-p", "bench-rust-server",
+                    "--bin", "bench-rust-server", "--bin", "bench-native-client"])
+    # The selected lock is restored and verified before source/binary acceptance.
     source = identity(core)
     if source["revision"] != revision or source["status"]:
         raise ValueError("core identity changed during build")
+    suite_after = identity(SUITE)
+    if suite_after != suite_before:
+        raise ValueError("suite identity changed during build")
     destination = out / "binaries" / label
     destination.mkdir(parents=True)
     binaries = {}
@@ -867,13 +884,29 @@ def build(args, label, revision, out, *, expected=None):
         target = destination / name
         shutil.copy2(origin, target)
         binaries[name] = {"path": str(target), "sha256": digest(target), "bytes": target.stat().st_size}
-    record = {"core": source, "suite": identity(SUITE), "binaries": binaries,
-              "native_lock_sha256": digest(SUITE / "tools/benchmark/native/Cargo.lock"),
+    record = {"core": source, "suite": suite_after, "binaries": binaries,
+              "native_lock_sha256": lock_input["selected_sha256"], "native_lock_input": lock_input,
               "core_lock_sha256": digest(core / "Cargo.lock"), "flags": FLAGS,
               "native_manifest_sha256": digest(SUITE / "tools/benchmark/native/Cargo.toml"),
               "target": host, "rustc": rustc, "cargo": cargo}
     save(out / f"build-{label}.json", record)
     return record
+
+
+def matching_lock_inputs(baseline, candidate):
+    """Both builds must select from the same validated, committed input pair."""
+    for build_record in (baseline, candidate):
+        selected = build_record["native_lock_input"]
+        requirement = selected["syn_requirement"]
+        if requirement not in ("2", "3"):
+            raise ValueError("unsupported recorded native lock requirement")
+        expected = selected["canonical_base_sha256"] if requirement == "2" else selected["syn3_sha256"]
+        if (selected["selected_sha256"] != expected
+                or build_record["native_lock_sha256"] != expected):
+            raise ValueError("recorded native lock differs from selected input")
+    for field in ("canonical_base_sha256", "syn3_sha256"):
+        if baseline["native_lock_input"][field] != candidate["native_lock_input"][field]:
+            raise ValueError("native lock input pair differs: " + field)
 
 
 def perf_command(mode, pid, seconds, output, quota, *, event="cpu-clock", control_paths=None):
@@ -1686,7 +1719,8 @@ def run(args):
         save(out / "manifest.json", manifest)
         baseline = build(args, "baseline", args.baseline_sha, out)
         candidate = build(args, "candidate", args.candidate_sha, out, expected=baseline)
-        for field in ("native_lock_sha256", "native_manifest_sha256", "target", "rustc", "cargo", "flags"):
+        matching_lock_inputs(baseline, candidate)
+        for field in ("native_manifest_sha256", "target", "rustc", "cargo", "flags"):
             if baseline[field] != candidate[field]:
                 raise ValueError("build configuration differs: " + field)
         # Use the SAME baseline client for both servers: core/client work cannot silently move.

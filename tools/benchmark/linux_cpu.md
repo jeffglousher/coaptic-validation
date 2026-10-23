@@ -795,9 +795,8 @@ memory requirement or a demonstrated CPU gain.
 The bounded comparison uses identical core
 `b9b83d8663cbdcb7a80bf143670a05019f25cf25` for both labels, keeping the retained
 syn-2 native lock compatible with the original runtime baseline and both existing
-core-probe modes. Core main's later syn-3 manifest requires a separate reviewed
-lock selection before comparing across that dependency boundary; do not silently
-update a locked measurement. Use the committed companion revision containing this
+core-probe modes. Core main's later syn-3 manifest uses the separate source-specific
+input described below; do not silently update a locked measurement. Use the committed companion revision containing this
 control, a frozen baseline client, both security modes, 64/1024 B, 4,000/s, C1 CON,
 twelve seconds and two rotated pairs, with perf and detailed diagnostics off:
 
@@ -816,3 +815,35 @@ saturation/error-recovery tests and strict Clippy before measurement. An
 ineligible or latency-failing cell remains failed; no replacement cohort or
 transport percentage follows from it. Two-pair host evidence cannot complete
 both representative #650 targets. Keep Mio as the reference and existing defaults.
+
+### Source-specific native lock inputs
+
+The accepted original core and `b9b83d8` require syn 2 in `coaptic-io`; current
+core requires syn 3. Keep `native/Cargo.lock` as the original input and
+`native/Cargo.syn3.lock` as a separate committed input. They differ only in the
+`coaptic-io` dependency edge, from syn 2.0.119 to 3.0.9; both package records
+already exist. Both inputs retain LF bytes across normal Git checkouts.
+
+After verifying the selected immutable core checkout, the build reads that core's
+`crates/coaptic-io/Cargo.toml`. Only exact syn requirements `2` and `3` are
+supported. It validates the input relationship, temporarily installs the selected
+bytes, and runs the same Cargo command with `--locked`. No resolution/update
+fallback exists. Success, Cargo failure and ordinary interruption all verify and
+restore the original input before clean-source identity or binary acceptance.
+Unexpected concurrent canonical edits remain untouched and refuse acceptance.
+Failed restoration remains fatal; abrupt process death may leave a dirty lock,
+which the next invocation must refuse rather than repair automatically.
+
+Each build records `native_lock_input`: selected path and actual selected SHA256,
+both committed input digests and the selected core manifest digest. The existing
+`native_lock_sha256` is the digest Cargo actually consumed, not the original lock
+after restoration. Paired builds must select from the same validated input pair;
+compiler, target, release flags and native manifest matching stay unchanged. The
+baseline-built client remains frozen for both labels. Direct transport preflight
+uses the same selector and restores source before measurement.
+
+Source and lane exclusivity are caller requirements: this is not a concurrent
+writer or crash-recovery protocol. Fixture tests do not substitute for actual
+locked builds. The fixed old-source `core_cost_probe.py` modes keep their original
+lock and source pins. Other preparation helpers do not acquire syn-3 support from
+this change.
