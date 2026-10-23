@@ -22,7 +22,7 @@ from linux_cpu import (FLAGS, SUITE, bounded_bytes, bounded_read, command, diges
                        hardware, identity, run_logged, run_owned)
 
 MIB = 1024 * 1024
-CORE = "7a40e698a6240ff9eb0951d15c668308cb13a55c"
+CORE = "ff08926422d570602069d2231a555559d1154f3f"
 OPERATIONS, WARMUP = 50_000, 128
 PLAN = (("u-before", "unprotected", 1), ("os-before", "oscore", 1),
         ("u-profile", "unprotected", 8), ("os-profile", "oscore", 8),

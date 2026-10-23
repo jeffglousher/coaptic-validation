@@ -24,7 +24,7 @@ jobs:
         with:
           persist-credentials: false
           repository: jeffglousher/coaptic
-          ref: 7a40e698a6240ff9eb0951d15c668308cb13a55c
+          ref: ff08926422d570602069d2231a555559d1154f3f
           path: coaptic
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
         with:
