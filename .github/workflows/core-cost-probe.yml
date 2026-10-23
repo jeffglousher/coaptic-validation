@@ -1,0 +1,53 @@
+name: Manual fixed socket-free core cost diagnosis
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: manual-linux-cpu
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.0
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          repository: jeffglousher/coaptic
+          ref: 7a40e698a6240ff9eb0951d15c668308cb13a55c
+          path: coaptic
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
+      - name: Isolated stdlib tests with bounded retained log
+        run: |
+          mkdir "$RUNNER_TEMP/core-cost-probe-evidence"
+          PYTHONPATH=tools/benchmark python3 -B - <<'PY'
+          import os, sys
+          from pathlib import Path
+          from linux_cpu import run_logged
+          with (Path(os.environ['RUNNER_TEMP']) / 'core-cost-probe-evidence/tests.log').open('xb') as log:
+              run_logged([sys.executable, '-B', '-m', 'unittest', 'test_core_cost_probe'], log,
+                         timeout=90, limit=64 * 1024)
+          PY
+      - name: One build and six fixed diagnostic phases
+        # No apt/pip install, policy change, cache install, UDP or device action.
+        run: python3 -B tools/benchmark/core_cost_probe.py
+      - name: Retain diagnosis or explicit refusal
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-cost-probe-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/core-cost-probe-evidence
+          if-no-files-found: warn
+          retention-days: 14
