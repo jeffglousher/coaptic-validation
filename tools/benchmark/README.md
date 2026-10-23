@@ -329,7 +329,7 @@ plugtest and device qualification retain their own acceptance and reports.
 
 `native_diagnostic.py` measures Coaptic at both ends, including established
 OSCORE. It is separate from the independent comparator campaign. Select
-`--server-kind coaptic-reusable|coaptic-mio|coaptic-ready|coaptic-async|coaptic-blocking`,
+`--server-kind coaptic-reusable|coaptic-mio|coaptic-ready|coaptic-async|coaptic-blocking|coaptic-staged-mio`,
 `--rate OPS_PER_SEC`
 and `--cpu-gated` for matched-load process CPU windows. The readiness fixtures
 now accept the same ephemeral OSCORE credentials and wait for App protocol
@@ -477,3 +477,14 @@ separates Cargo targets by source revision, records every command and retains
 failed logs. It compiles the retained exact size probe and the explicit entropy
 layout probe, then runs the unchanged profiler for only 64-byte and 64-KiB
 complete bodies. It does not run a benchmark campaign or the full test suite.
+
+
+Explicit coaptic-staged-mio combines direct Mio readiness with one staged receive
+in the sole 2049-byte scratch, beyond the unchanged four Engine RX slots. Actual
+empty probes skip App maintenance; other receive errors stay App handled, and
+sends retain immediate refusal/short-send handling. Fresh App eligibility and a
+thread yield every 32 total turns bound the control checkpoint; production has
+no finite horizon. Its schema-2 startup ledger reports nested Stage/adapter/App
+and separate Driver inline sizes; runtime allocations and whole RAM remain
+unknown. See [the control description](linux_cpu.md#explicit-staged-mio-control);
+this mode is unmeasured and leaves existing defaults and all unchanged.

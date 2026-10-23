@@ -19,6 +19,7 @@
 //! with soft socket timeouts and a distinct synchronous send congestion policy.
 //! `coaptic-staged-ready` stages a nonblocking receive in the same reusable scratch
 //! before polling App, preserving ready's immediate try_send_to congestion policy.
+//! Explicit coaptic-staged-mio combines staging with direct Mio and immediate send_to.
 #![forbid(unsafe_code)]
 macro_rules! conn_as_any {
     () => {
@@ -35,6 +36,7 @@ macro_rules! conn_as_any {
 mod coap_dtls;
 #[path = "../../../../interop/dtls_listener.rs"]
 mod dtls_listener;
+mod staged_mio;
 mod staged_ready;
 mod staged_udp;
 use coap_lite::{CoapOption, MessageClass, MessageType, Packet, ResponseType};
@@ -698,7 +700,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if !(5..=7).contains(&args.len()) {
         return Err(
-            "usage: bench-rust-server coaptic-small|coaptic|coaptic-reusable|coaptic-ready|coaptic-staged-ready|coaptic-mio|coaptic-async|coaptic-blocking|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]]".into(),
+            "usage: bench-rust-server coaptic-small|coaptic|coaptic-reusable|coaptic-ready|coaptic-staged-ready|coaptic-staged-mio|coaptic-mio|coaptic-async|coaptic-blocking|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]]".into(),
         );
     }
     let rx_bytes: usize = args
@@ -726,6 +728,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 | "coaptic-reusable"
                 | "coaptic-ready"
                 | "coaptic-staged-ready"
+                | "coaptic-staged-mio"
                 | "coaptic-mio"
                 | "coaptic-async"
                 | "coaptic-blocking"
@@ -741,6 +744,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 | "coaptic-reusable"
                 | "coaptic-ready"
                 | "coaptic-staged-ready"
+                | "coaptic-staged-mio"
                 | "coaptic-mio"
                 | "coaptic-async"
                 | "coaptic-blocking"
@@ -808,6 +812,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         "coap-lite-codec" => codec_server(&address, body),
         "coaptic-blocking" => staged_udp::serve(&address, size, rx_bytes, context),
+        "coaptic-staged-mio" => staged_mio::serve(&address, size, rx_bytes, context),
         "coaptic-mio" => mio_server(&address, size, rx_bytes, context),
         "coaptic-ready" => tokio::runtime::Builder::new_current_thread()
             .enable_all()

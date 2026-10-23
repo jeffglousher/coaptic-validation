@@ -166,30 +166,31 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(sum(cell[2] * args.seconds for _, _, cell, _ in plan), 1_536_000)
         self.assertEqual(max(cpu.WARMUP + cell[2] * args.seconds for _, _, cell, _ in plan), 48_020)
 
-    def test_staged_ready_is_explicit_and_its_paired_plan_keeps_existing_budgets(self):
-        args = options(sizes="64,1024", rates="4000", seconds=5, repeats=4, perf=False,
-                       server_kind="coaptic-ready", candidate_server_kind="coaptic-staged-ready",
-                       candidate_sha="a" * 40)
-        cells = cpu.configuration(args)
-        plan = cpu.rotation(args, cells)
-        self.assertEqual(len(cells), 4)
-        self.assertEqual(len(plan), 32)
-        self.assertTrue(all(mode == "clean" for mode, *_ in plan))
-        self.assertEqual(len(plan) * args.seconds, 160)
-        self.assertEqual(sum(cell[2] * args.seconds for _, _, cell, _ in plan), 640_000)
-        self.assertEqual(len(plan) * cpu.WARMUP, 640)
-        self.assertEqual(max((cpu.WARMUP + cell[2] * args.seconds) * ((cell[1] + 1023) // 1024)
-                             for _, _, cell, _ in plan), 20_020)
-        self.assertEqual(cpu.metadata_allowance(plan, args.seconds), 22_927_360)
-        self.assertNotIn("coaptic-staged-ready", cpu.KINDS)
-        all_cells = cpu.configuration(options(server_kind="all", sizes="64", rates="100", perf=False))
-        self.assertEqual({cell[3] for cell in all_cells}, set(cpu.KINDS))
-        selected = cpu.configuration(options(server_kind="coaptic-staged-ready", perf=False))
-        self.assertEqual({cell[3] for cell in selected}, {"coaptic-staged-ready"})
-        for change in (dict(candidate_sha="b" * 40), dict(server_kind="all"),
-                       dict(server_kind="coaptic-staged-ready")):
-            with self.subTest(change=change), self.assertRaisesRegex(ValueError, "adapter comparison"):
-                cpu.configuration(options(**(vars(args) | change)))
+    def test_staged_kinds_are_explicit_and_paired_plans_keep_existing_budgets(self):
+        for kind in ("coaptic-staged-ready", "coaptic-staged-mio"):
+            args = options(sizes="64,1024", rates="4000", seconds=5, repeats=4, perf=False,
+                           server_kind="coaptic-ready", candidate_server_kind=kind,
+                           candidate_sha="a" * 40)
+            cells = cpu.configuration(args)
+            plan = cpu.rotation(args, cells)
+            self.assertEqual(len(cells), 4)
+            self.assertEqual(len(plan), 32)
+            self.assertTrue(all(mode == "clean" for mode, *_ in plan))
+            self.assertEqual(len(plan) * args.seconds, 160)
+            self.assertEqual(sum(cell[2] * args.seconds for _, _, cell, _ in plan), 640_000)
+            self.assertEqual(len(plan) * cpu.WARMUP, 640)
+            self.assertEqual(max((cpu.WARMUP + cell[2] * args.seconds) * ((cell[1] + 1023) // 1024)
+                                 for _, _, cell, _ in plan), 20_020)
+            self.assertEqual(cpu.metadata_allowance(plan, args.seconds), 22_927_360)
+            self.assertNotIn(kind, cpu.KINDS)
+            all_cells = cpu.configuration(options(server_kind="all", sizes="64", rates="100", perf=False))
+            self.assertEqual({cell[3] for cell in all_cells}, set(cpu.KINDS))
+            selected = cpu.configuration(options(server_kind=kind, perf=False))
+            self.assertEqual({cell[3] for cell in selected}, {kind})
+            for change in (dict(candidate_sha="b" * 40), dict(server_kind="all"),
+                           dict(server_kind=kind)):
+                with self.subTest(change=change), self.assertRaisesRegex(ValueError, "adapter comparison"):
+                    cpu.configuration(options(**(vars(args) | change)))
 
     def test_user_profile_density_plan_keeps_existing_budgets(self):
         core = "183b4b9141d4d8a520713292132f3d2608180a1f"

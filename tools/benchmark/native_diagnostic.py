@@ -27,7 +27,7 @@ import psutil
 
 
 SERVER_KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready", "coaptic-async",
-                "coaptic-blocking", "coaptic-staged-ready")
+                "coaptic-blocking", "coaptic-staged-ready", "coaptic-staged-mio")
 
 
 def server_resources(log_path, server_kind, *, deadline, server):
@@ -37,7 +37,7 @@ def server_resources(log_path, server_kind, *, deadline, server):
     Partial writes remain unparsed until newline. The independently opened reader
     never seeks or reads the file description inherited by the server.
     """
-    if server_kind not in ("coaptic-async", "coaptic-blocking", "coaptic-staged-ready"):
+    if server_kind not in ("coaptic-async", "coaptic-blocking", "coaptic-staged-ready", "coaptic-staged-mio"):
         return None
     if type(deadline) not in (int, float) or not math.isfinite(deadline):
         raise ValueError("server startup ledger needs a finite monotonic deadline")
@@ -77,6 +77,29 @@ def server_resources(log_path, server_kind, *, deadline, server):
                 or any(key not in record or record[key] is not None
                        for key in ("runtime_heap_bytes", "runtime_stack_bytes"))):
             raise ValueError("invalid blocking server startup ledger")
+        return record
+    if server_kind == "coaptic-staged-mio":
+        fields = ("udp_scratch_bytes", "staged_datagram_capacity", "stage_metadata_bytes",
+                  "driver_inline_bytes", "adapter_inline_bytes", "app_including_adapter_bytes")
+        if (record.get("schema") != "coaptic-native-server-resources/2"
+                or record.get("server_kind") != server_kind
+                or any(type(record.get(key)) is not int or not 0 < record[key] < 2**64
+                       for key in fields)
+                or record["udp_scratch_bytes"] != 2049
+                or record["staged_datagram_capacity"] != 1
+                or record["stage_metadata_bytes"] > 64
+                or not record["udp_scratch_bytes"] + record["stage_metadata_bytes"]
+                <= record["adapter_inline_bytes"] <= record["app_including_adapter_bytes"]
+                or record.get("send_policy") != "immediate_send_to"
+                or any(key in record for key in ("loop_future_borrowing_app_bytes",
+                                                 "loop_future_including_app_bytes",
+                                                 "stage_cache_metadata_bytes", "read_timeout_max_us",
+                                                 "send_timeout_us", "timeouts_soft"))
+                or any(key not in record or record[key] is not None
+                       for key in ("runtime_heap_bytes", "runtime_stack_bytes"))
+                or any(type(record.get(key)) is not str or not 0 < len(record[key]) <= 1024
+                       for key in ("nesting", "limits"))):
+            raise ValueError("invalid staged Mio server startup ledger")
         return record
     if record.get("schema") != "coaptic-native-server-resources/2":
         raise ValueError("async server startup ledger requires borrowing schema coaptic-native-server-resources/2")
