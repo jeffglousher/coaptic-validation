@@ -59,6 +59,26 @@ jobs:
           else
             python3 -B tools/benchmark/core_cost_probe.py
           fi
+      - name: Batch native custody checks
+        if: inputs.mode == 'server-app-batch-cpu'
+        run: |
+          PYTHONPATH=tools/benchmark python3 -B - <<'PY'
+          import os, sys, subprocess
+          from pathlib import Path
+          from core_cost_probe import load, digest, batch_run_command
+          root = Path(os.environ['RUNNER_TEMP']) / 'core-cost-probe-evidence'
+          config = load(root / 'probe/build.json')
+          binary = Path(config['binary'])
+          if digest(binary) != config['binary_sha256']:
+              raise ValueError('native custody binary identity changed')
+          # Append within the original shared 64 KiB test-log allowance.
+          with (root / 'tests.log').open('ab') as log:
+              batch_run_command([sys.executable, '-B', '-m', 'unittest',
+                                 'test_core_cost_probe.BatchNativeCustodyTests'],
+                                timeout=30, file_limit=64 * 1024,
+                                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                env={**os.environ, 'CORE_COST_BATCH_FAILURE_TEST_BINARY': str(binary)})
+          PY
       - name: Retain diagnosis or explicit refusal
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
