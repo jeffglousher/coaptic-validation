@@ -340,7 +340,7 @@ pub(super) fn serve(
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
 
     fn transport() -> StagedUdp {
@@ -699,7 +699,7 @@ mod tests {
         }
     }
 
-    fn context(server: bool) -> SecurityContext {
+    pub(crate) fn context(server: bool) -> SecurityContext {
         SecurityContext::derive(coaptic::oscore::DeriveParams {
             master_secret: &[1; 16],
             master_salt: &[2; 8],
@@ -786,7 +786,7 @@ mod tests {
 
     // Reuse the same authenticated four-operation client proof for both drivers.
     // The caller supplies the real driver step, not a second benchmark runner.
-    fn verify_four<T: DatagramIo<Error = io::Error>>(
+    pub(crate) fn verify_four<T: DatagramIo<Error = io::Error>>(
         mut server: App<coaptic::profiles::Default, T, 1, true, AllocMemory>,
         peer: Endpoint,
         epoch: Instant,

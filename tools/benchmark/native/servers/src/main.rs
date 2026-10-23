@@ -33,6 +33,8 @@ macro_rules! conn_as_any {
 mod coap_dtls;
 #[path = "../../../../interop/dtls_listener.rs"]
 mod dtls_listener;
+#[cfg(test)]
+mod staged_ready;
 mod staged_udp;
 use coap_lite::{CoapOption, MessageClass, MessageType, Packet, ResponseType};
 use coaptic::oscore::{DeriveParams, SecurityContext};
