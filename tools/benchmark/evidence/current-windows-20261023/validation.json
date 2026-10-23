@@ -1,0 +1,15 @@
+{
+  "audit_checks": 16817,
+  "capture_cases": 76,
+  "capture_passes": 76,
+  "authenticated_OSCORE_grades": 24,
+  "DTLS_framing_grades": 16,
+  "UI_views_checked": 90,
+  "desktop_width": 728,
+  "mobile_width": 360,
+  "canvas_sha256": "bc623e0c0ae38741071c3853b26262c0819f1f6d86d02d4c266613bf3bf239cf",
+  "active_benchmark_processes": [],
+  "core_head": "b9b83d8663cbdcb7a80bf143670a05019f25cf25",
+  "core_status": "",
+  "unrelated_probe_source_preserved": "M .github/workflows/core-cost-probe.yml\n M tools/benchmark/core_cost_probe.py\n M tools/benchmark/native/servers/src/bin/bench-core.rs\n M tools/benchmark/test_core_cost_probe.py"
+}

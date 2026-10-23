@@ -11,7 +11,10 @@ endpoint, not a complete competing server stack. HTTP/3 uses quic-go with a
 verified fixture certificate and TLS 1.3. These are pinned candidates, not a
 claim that each is its language's fastest library.
 
-Current results and complete raw sessions: [protected and unprotected Windows sitrep](evidence/comprehensive-windows-20261022/README.md).
+Current rankings and complete cell receipts:
+[October 23 Windows comparison](evidence/current-windows-20261023/README.md).
+The [October 22 sitrep](evidence/comprehensive-windows-20261022/README.md) retains
+the earlier campaign and methodology.
 
 ## Current SmallDevice quick check
 
@@ -57,8 +60,6 @@ Setup and compilation are outside timing. Use Python 3.10+, the repository's
 Rust toolchain, Go 1.26.2+, and CMake 3.20+ with a C compiler. Go dependencies and
 the isolated Rust benchmark workspace have committed lockfiles; none enter
 the production Coaptic dependency graph. Go 1.26.0/1.26.1 have a known Windows
-network-I/O runtime regression; use a patched toolchain, as required by go.mod
-([upstream fix](https://github.com/golang/go/issues/78041)). Go 1.26.0/1.26.1 have a known Windows
 network-I/O runtime regression; use a patched toolchain, as required by go.mod
 ([upstream fix](https://github.com/golang/go/issues/78041)).
 

@@ -1,0 +1,42 @@
+{
+  "schema": "coaptic-evidence-publication/1",
+  "copied_verbatim": {
+    "rankings.json": {
+      "bytes": 649219,
+      "sha256": "f2d42224d29a8854a71a05b13a77c7e8f0380c2a2339349ce3600cb88b212d4d"
+    },
+    "rankings.csv": {
+      "bytes": 102385,
+      "sha256": "3d6248b17d8f7d2f284b98396dbabc78e955129eb7e7d77311844c6dd302840c"
+    },
+    "report.html": {
+      "bytes": 82611,
+      "sha256": "19727698f34eaae74b6fe27f5fd0710055c11aa7519d8acdb58d89ffd797cf1f"
+    },
+    "cost-evidence.json": {
+      "bytes": 870,
+      "sha256": "fa7f3243421fe745edc8bee182d8e84f1cbdf33ead9fd083c663aeaa5f52aca3"
+    },
+    "current-host.json": {
+      "bytes": 301,
+      "sha256": "0b23353f7a0398a16decc372fa59d0965d5e5f0b18d5d3a3f06b46eeac00605a"
+    },
+    "sources.json": {
+      "bytes": 524,
+      "sha256": "f9ab6050778420446229b8f419eb5067ac81aeec928548c1e70c689207510be1"
+    }
+  },
+  "cells": {
+    "count": 2610,
+    "format": "JSONL gzip; decoded receipt objects preserve all recorded fields and samples",
+    "original_byte_hash": "Each record includes the SHA256 of the original private cell file; JSON reserialization changes byte formatting."
+  },
+  "derived": {
+    "validation.json": "Original validation receipt with local Canvas path removed.",
+    "build.json": "Original build receipt with binary paths reduced to filenames and shared lane size omitted."
+  },
+  "private_original_index_sha256": "be05044f569a62e0f2dfe018fab06b179b97ba7826e53c4a7375c0744f4c17f3",
+  "private_omissions": "Captures and fixture credentials, executables, local coordination, private paths, operational logs, and partial idle experiment are retained privately. No enrolled device state is published.",
+  "auxiliary_failures": "Capture setup initially failed before traffic, then all 76 capture cases passed. Optional idle probe emitted four unprotected deltas, then timed out on protected readiness before idle measurement; protected idle qualification is unavailable.",
+  "limits": "Closed-loop rankings do not establish server saturation, clean server CPU/op, whole-RAM requirements, or either 50% CPU target."
+}
