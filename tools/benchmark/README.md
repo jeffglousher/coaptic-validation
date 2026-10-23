@@ -357,6 +357,14 @@ runner validates the complete ledger before timing, including zero warmup.
 Finite correctness checks establish no CPU gain. Select the mode explicitly;
 default adapters and the `all` selection are unchanged.
 
+The server unit tests opt into fixed, saturating transport call counters with
+`cargo test --release --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server --bin bench-rust-server finite_ -- --nocapture`.
+They reuse the four-operation proof per security mode for ready/staged drivers,
+plus two idle turns. Counts exclude setup and compile out of ordinary binaries.
+They count logical calls, including cancelled readiness waits; Tokio can return
+WouldBlock from cached readiness without a receive syscall. The 64-turn and
+checked one-second proof limits do not establish CPU cost, cause or gain.
+
 The [source-matched Linux control](https://github.com/jeffglousher/coaptic-validation/actions/runs/39843237773)
 compares ready/blocking at core `120a622`, companion `d4f585a`, C1 CON and
 4,000 operations/s. All 32 clean windows qualify. Server CPU/op fell

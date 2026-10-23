@@ -282,10 +282,33 @@ fn coaptic_server<T: DatagramIo<Error = std::io::Error>>(
     }
 }
 
+// Opt-in, fixed storage in unit tests only. These are logical call counts, not
+// syscall counts: Tokio may return WouldBlock from its cached readiness alone.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct TransportCounts {
+    app_polls: u32,
+    recv_calls: u32,
+    recv_empty: u32,
+    socket_recv_calls: u32,
+    socket_send_calls: u32,
+    readable_waits: u32,
+    read_timeout_sets: u32,
+}
+
+#[cfg(test)]
+impl TransportCounts {
+    fn inc(value: &mut u32) {
+        *value = value.saturating_add(1);
+    }
+}
+
 struct ReadyUdp {
     socket: tokio::net::UdpSocket,
     scratch: [u8; 2049],
     received: bool,
+    #[cfg(test)]
+    counts: Option<TransportCounts>,
 }
 
 fn receive_guarded(
@@ -327,15 +350,33 @@ impl coaptic::storage::DatagramTransport for ReadyUdp {
 }
 impl DatagramIo for ReadyUdp {
     fn recv(&mut self, buf: &mut [u8]) -> Result<Option<(usize, Endpoint)>, Self::Error> {
+        #[cfg(test)]
+        if let Some(counts) = &mut self.counts {
+            TransportCounts::inc(&mut counts.recv_calls);
+        }
         self.received = false;
         let result = receive_guarded(buf, &mut self.scratch, |scratch| {
+            #[cfg(test)]
+            if let Some(counts) = &mut self.counts {
+                TransportCounts::inc(&mut counts.socket_recv_calls);
+            }
             self.socket.try_recv_from(scratch)
         });
+        #[cfg(test)]
+        if let Some(counts) = &mut self.counts
+            && matches!(result, Ok(None))
+        {
+            TransportCounts::inc(&mut counts.recv_empty);
+        }
         self.received = result.as_ref().is_ok_and(Option::is_some);
         result
     }
 
     fn send(&mut self, dest: Endpoint, bytes: &[u8]) -> Result<usize, Self::Error> {
+        #[cfg(test)]
+        if let Some(counts) = &mut self.counts {
+            TransportCounts::inc(&mut counts.socket_send_calls);
+        }
         self.socket
             .try_send_to(bytes, std::net::SocketAddr::from(dest))
     }
@@ -397,6 +438,8 @@ async fn async_udp_server(
         socket: tokio::net::UdpSocket::bind(address).await?,
         scratch: [0; 2049],
         received: false,
+        #[cfg(test)]
+        counts: None,
     };
     let adapter_bytes = std::mem::size_of_val(&io);
     let mut app = bind_fixture(io, bytes, rx_bytes, context)?;
@@ -482,6 +525,49 @@ fn mio_server(
     }
 }
 
+fn ready_burst(
+    app: &mut AsyncUdpApp,
+    started: Instant,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    for _ in 0..32 {
+        #[cfg(test)]
+        if let Some(counts) = &mut app.transport_mut().counts {
+            TransportCounts::inc(&mut counts.app_polls);
+        }
+        match app.poll(started.elapsed().as_millis() as u64) {
+            Ok(()) | Err(coaptic::app::Error::Oscore(_)) => {}
+            Err(error) => return Err(error.into()),
+        }
+        if !app.transport().received {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+async fn ready_wait(
+    app: &mut AsyncUdpApp,
+    started: Instant,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let now_ms = started.elapsed().as_millis() as u64;
+    #[cfg(test)]
+    if let Some(counts) = &mut app.transport_mut().counts {
+        TransportCounts::inc(&mut counts.readable_waits);
+    }
+    match app.next_poll_at(now_ms) {
+        Some(due) => {
+            let deadline = started + Duration::from_millis(due);
+            if let Ok(ready) =
+                tokio::time::timeout_at(deadline.into(), app.transport().socket.readable()).await
+            {
+                ready?;
+            }
+        }
+        None => app.transport().socket.readable().await?,
+    }
+    Ok(())
+}
+
 async fn ready_server(
     address: &str,
     bytes: usize,
@@ -492,35 +578,14 @@ async fn ready_server(
         socket: tokio::net::UdpSocket::bind(address).await?,
         scratch: [0; 2049],
         received: false,
+        #[cfg(test)]
+        counts: None,
     };
     let mut app = bind_fixture(io, bytes, rx_bytes, context)?;
     let started = Instant::now();
     loop {
-        let mut idle = false;
-        for _ in 0..32 {
-            match app.poll(started.elapsed().as_millis() as u64) {
-                Ok(()) | Err(coaptic::app::Error::Oscore(_)) => {}
-                Err(error) => return Err(error.into()),
-            }
-            if !app.transport().received {
-                idle = true;
-                break;
-            }
-        }
-        if idle {
-            let now_ms = started.elapsed().as_millis() as u64;
-            match app.next_poll_at(now_ms) {
-                Some(due) => {
-                    let deadline = started + Duration::from_millis(due);
-                    if let Ok(ready) =
-                        tokio::time::timeout_at(deadline.into(), app.transport().socket.readable())
-                            .await
-                    {
-                        ready?;
-                    }
-                }
-                None => app.transport().socket.readable().await?,
-            }
+        if ready_burst(&mut app, started)? {
+            ready_wait(&mut app, started).await?;
         } else {
             tokio::task::yield_now().await;
         }
@@ -773,7 +838,47 @@ mod tests {
             socket: tokio::net::UdpSocket::bind(host).await.unwrap(),
             scratch: [0; 2049],
             received: false,
+            counts: None,
         }
+    }
+
+    #[test]
+    fn finite_ready_idle_call_counts_and_wait_cancellation() {
+        let mut saturated = u32::MAX;
+        TransportCounts::inc(&mut saturated);
+        assert_eq!(saturated, u32::MAX);
+        assert!(std::mem::size_of::<Option<TransportCounts>>() <= 32);
+        async_runtime().block_on(async {
+            let mut io = async_test_io("127.0.0.1:0").await;
+            assert!(io.counts.is_none());
+            io.counts = Some(TransportCounts::default());
+            let mut app = bind_fixture(io, 64, 1472, None).unwrap();
+            let epoch = Instant::now();
+            for _ in 0..2 {
+                assert!(ready_burst(&mut app, epoch).unwrap());
+            }
+            assert!(
+                tokio::time::timeout(Duration::from_millis(1), ready_wait(&mut app, epoch))
+                    .await
+                    .is_err()
+            );
+            let counts = app.transport().counts.unwrap();
+            assert_eq!(
+                counts,
+                TransportCounts {
+                    app_polls: 2,
+                    recv_calls: 2,
+                    recv_empty: 2,
+                    socket_recv_calls: 2,
+                    readable_waits: 1,
+                    ..TransportCounts::default()
+                }
+            );
+            assert_eq!(app.metrics().rx_accepted, 0);
+            println!(
+                "ready idle, two finite bursts + one cancelled wait, logical calls: {counts:?}"
+            );
+        });
     }
 
     #[test]
@@ -1042,6 +1147,7 @@ mod tests {
                             socket,
                             scratch: [0; 2049],
                             received: false,
+                            counts: None,
                         };
                         let mut buf = vec![0; capacity];
                         for size in [capacity, capacity + 1, capacity + 8, 3] {
