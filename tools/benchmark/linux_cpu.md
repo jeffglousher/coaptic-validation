@@ -93,6 +93,81 @@ be fresh and outside source. It fetches only the two specified core commits.
 Do not run concurrently with another lane consumer, compiler or timing campaign.
 
 
+### Optional C1 admission-interval diagnostic
+
+`--admission-diagnostics` is explicitly opt-in in the native client,
+`native_diagnostic.py` and this runner; the workflow boolean defaults to false.
+Use it to inspect the interval missing from an RTT-only C1 trace. It requires
+an explicit rate and concurrency 1. The campaign also requires **identical full
+core SHAs**, one explicit adapter for both labels (`candidate_server_kind=same`
+in the workflow), and **perf=false**. Profiling with this diagnostic is refused
+before setup/builds. Existing clean defaults and eligibility gates stay unchanged.
+
+For example, with committed clean source and an assigned compatible lane:
+
+```sh
+python3 tools/benchmark/linux_cpu.py \
+  --baseline-sha 7ab6949d9604133c7f8ed8904e424b8657630d50 \
+  --candidate-sha 7ab6949d9604133c7f8ed8904e424b8657630d50 \
+  --build-lane /existing/compatible/cargo-lane \
+  --output /fresh/evidence/admission-intervals \
+  --sizes 64,1024 --rates 4000 --seconds 12 --repeats 4 \
+  --server-kind coaptic-mio --concurrency 1 --message-type con \
+  --admission-diagnostics
+```
+
+Both labels run the same instrumentation with the frozen baseline client.
+The 32 windows retain all 1,536,000 measured operations plus 640 warmups, with
+48,020 minimum sends per socket. This is a diagnostic cohort. CPU aggregates
+always set `comparable=false` and `server_cpu_ratio=null`, even if every original
+gate passes. Any instrumented window vetoes ratios throughout a mixed campaign;
+do not combine diagnostic and clean observations. Raw CPU readings, latencies,
+startup refusals and operation failures remain available for inspection.
+
+Definitions use the existing Instants, with no additional per-operation clock:
+
+- `A`: admission `now`, before request construction/send, also the latency origin.
+- `C`: previous successful fully authenticated, completely verified, in-deadline
+  completion. Warmup is excluded by a fresh measured-window state.
+- `D`: the absolute scheduled operation start; `P=floor(1e9/rate)` nanoseconds,
+  matching the existing missed-period test.
+- `E=A-max(D,C)`, using saturating durations. For admissions with C,
+  `prior_forced_missed` counts `C-D>=P`. Otherwise a missed start `A-D>=P`
+  increments `crossed_missed` in the selected residual bucket.
+- `idle_sleep` and `no_idle_sleep` partition admissions with C by whether the
+  existing idle sleep branch was traversed since C. Each retains admission count,
+  positive residual count, crossed misses, total E and maximum E. Traversal counts
+  even if the existing sleep clock yields a zero-duration sleep. The active-Call
+  `sleep1` poll policy is not this idle branch.
+- First admission has no C: `first_admissions`, `first_missed` and
+  `first_lateness_ns=A-D` account for it explicitly, outside the residual buckets.
+  First misses + prior-forced misses + both crossed-miss counts reconcile exactly
+  with the original missed-start count. All diagnostic admissions reconcile with
+  the original pre-send `attempted` count, including a subsequent send refusal.
+  Early schedule checks and deadline refusals before that boundary add no counters.
+
+C retains earlier admission debt; a short preceding RTT does not remove it.
+These are local interval categories, **not causal sleep, server or VM shares**.
+E includes unmeasured caller/scheduler work between those timestamps. Branch
+traversal does not measure sleep duration or sleep overhead, and prior-forced
+misses do not establish a root cause. No pacer defect, CPU reduction, latency
+acceptance or whole-RAM claim follows. Send/poll order, pacing waits, authentication,
+nonce/replay state, deadlines, cancellation and normal latency sampling are unchanged.
+
+Storage is fixed local counters plus one previous Instant and a traversal flag;
+all diagnostic arithmetic saturates. The optional JSON member is serialized only
+after measurement and is bounded to 2 KiB including its key/comma, even at maximum
+u64/u128 widths. `storage_bytes` and `option_storage_bytes` record actual compiled
+layouts; neither is a whole-stack or whole-process memory measurement. The
+disabled native report has no added member and does no detailed interval work.
+The runner records the selection and limits in its request/manifest. The 2 KiB
+is carved from the existing 64 KiB raw-report fixed reserve: 63,488 bytes for
+ordinary fields/newline plus 2,048 bytes for the optional member. Summary base
+fields are separately checked within 6 KiB, leaving 2 KiB inside their existing
+8 KiB bound; result/index entries retain their existing 16 KiB caps. The
+32-window metadata allowance remains 42,770,432 bytes. No reserve, artifact,
+send, sample or campaign ceiling is raised.
+
 ### Optional clean-window process CPU clock
 
 Clean windows attempt a supplementary Linux process CPU clock for both the owned
@@ -588,7 +663,9 @@ and rejects totals above a **96 MiB metadata reserve**. This is a checked bound,
 not an estimate based on typical latency widths. At most 192 total windows and
 96 profile passes (at most 48 record reports) fit the clean-window/repeat
 constraints. Even the combination of those maxima with 2M samples needs at most
-75391744 metadata bytes; report status fits the existing capped `perf.json`.
+75,784,960 metadata bytes including 96 process-clock sidecars; the optional
+admission member uses the existing fixed report/summary reserves and adds no
+allowance. Report status fits the existing capped `perf.json`.
 Each perf data/stat output has a hard `RLIMIT_FSIZE` applied **after sudo**;
 its command/version log and privileged report have the same quota. Reserve
 **three file quotas per profile pass**, conservatively including a report quota

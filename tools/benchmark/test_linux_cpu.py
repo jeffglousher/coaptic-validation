@@ -27,6 +27,7 @@ CARGO_VERSION = f"cargo 1.99.0 (222222222 2026-10-01)\ncommit-hash: {'2' * 40}\n
 
 def options(**overrides):
     values = dict(sizes="64,1024", rates="100,1000", seconds=10,
+                  admission_diagnostics=False,
                   repeats=4, server_kind="coaptic-reusable", perf=True, concurrency=1, message_type="con",
                   candidate_server_kind=None, baseline_sha="a" * 40, candidate_sha="b" * 40)
     values.update(overrides)
@@ -70,6 +71,30 @@ def mock_record_control(timeline=None):
 
 
 class ValidationTests(unittest.TestCase):
+    def test_admission_preflight_requires_same_full_core_adapter_c1_and_no_perf(self):
+        selected = dict(admission_diagnostics=True, candidate_sha="a" * 40, perf=False,
+                        server_kind="coaptic-mio", sizes="64,1024", rates="4000", seconds=12)
+        args = options(**selected)
+        plan = cpu.rotation(args, cpu.configuration(args))
+        self.assertEqual(len(plan), 32)
+        self.assertTrue(all(mode == "clean" for mode, *_ in plan))
+        self.assertEqual(sum(cell[2] * args.seconds for _, _, cell, _ in plan), 1_536_000)
+        self.assertEqual(cpu.metadata_allowance(plan, args.seconds), 42_770_432)
+        for changes in (dict(candidate_sha="b" * 40), dict(candidate_sha="a" * 39),
+                        dict(perf=True), dict(concurrency=2, message_type="non"),
+                        dict(server_kind="all"), dict(candidate_server_kind="coaptic-ready"),
+                        dict(rates="0"), dict(admission_diagnostics=1),
+                        dict(rates="6000", seconds=10), dict(rates="5000", seconds=12, repeats=8)):
+            with self.subTest(changes=changes), patch.object(cpu, "build") as build, \
+                    self.assertRaises((ValueError, argparse.ArgumentTypeError)):
+                cpu.run(options(**(selected | changes)))
+            build.assert_not_called()
+        parsed = cpu.argument_parser().parse_args(["--baseline-sha", "a" * 40, "--candidate-sha", "a" * 40,
+                                                  "--build-lane", "unused", "--output", "unused"])
+        self.assertFalse(parsed.admission_diagnostics)
+        parsed.admission_diagnostics = True
+        cpu.configuration(parsed)
+
     def test_only_immutable_full_commits(self):
         self.assertEqual(cpu.sha40("A" * 40), "a" * 40)
         for value in ("main", "a" * 39, "g" * 40, "a" * 41, " a" * 20,
@@ -1003,6 +1028,33 @@ class AggregationTests(unittest.TestCase):
         self.assertEqual(baseline["p99_latency_ns"], 1000)
         self.assertEqual(summary["observed_peak_pending"], {"baseline": [1, 1], "candidate": [1, 1]})
 
+    def test_admission_instrumentation_vetoes_ratios_and_any_mixed_campaign(self):
+        original = self.pairs()
+        expected = cpu.aggregate(original, 2, .01)
+        self.assertTrue(expected[0]["comparable"])
+        self.assertEqual(expected[0]["server_cpu_ratio"], .5)
+        for placement in ("flag", "report", "both"):
+            values = deepcopy(original)
+            if placement in ("flag", "both"):
+                values[0]["admission_diagnostics"] = True
+            if placement in ("report", "both"):
+                values[0]["report"]["admission_diagnostics"] = {}
+            self.assertFalse(cpu.accepted(values[0], .01))
+            # Also veto an otherwise complete unrelated clean stratum, so a
+            # mixed campaign cannot produce a clean-looking selected ratio.
+            values += [observation(self.root, label, repeat, size=1024)
+                       for repeat in range(2) for label in ("baseline", "candidate")]
+            with patch.object(cpu, "report_latencies") as latencies:
+                summaries = cpu.aggregate(values, 2, .01)
+            latencies.assert_not_called()
+            self.assertEqual(len(summaries), 2)
+            for summary in summaries:
+                self.assertFalse(summary["comparable"])
+                self.assertIsNone(summary["server_cpu_ratio"])
+                self.assertNotIn("cpu_ns_per_verified_operation", summary)
+                self.assertTrue(summary["admission_diagnostics"])
+        self.assertEqual(cpu.aggregate(original, 2, .01), expected)
+
     def test_same_source_adapter_pairs_are_explicit_and_reject_wrong_execution(self):
         kinds = ("coaptic-ready", "coaptic-async")
         values = self.pairs()
@@ -1122,6 +1174,24 @@ class AggregationTests(unittest.TestCase):
 
 
 class MetadataTests(unittest.TestCase):
+    def test_admission_member_fits_carved_report_and_existing_window_reserves(self):
+        import native_diagnostic as native
+        from test_native_diagnostic import ReportTests
+        self.assertEqual(cpu.ADMISSION_DIAGNOSTIC_LIMIT, native.ADMISSION_DIAGNOSTIC_LIMIT)
+        self.assertEqual(cpu.REPORT_BASE_FIELDS_LIMIT + cpu.ADMISSION_DIAGNOSTIC_LIMIT, cpu.SUMMARY_LIMIT)
+        report = ReportTests.admission_report()
+        diagnostic = report["admission_diagnostics"]
+        report["latencies_ns"] = [2**64 - 1] * 59_980
+        raw = json.dumps(report, separators=(",", ":"))
+        self.assertLessEqual(len(raw) + 1, cpu.report_limit(59_980))
+        self.assertEqual(cpu.report_limit(59_980), 65536 + 22 * 59_980)
+        summary = cpu.report_summary(report)
+        self.assertEqual(summary["admission_diagnostics"], diagnostic)
+        self.assertLessEqual(len(cpu.bounded_bytes(summary, cpu.WINDOW_LIMIT // 2)), 8192)
+        bad = dict(report, extra="x" * (cpu.WINDOW_LIMIT // 2 - cpu.ADMISSION_DIAGNOSTIC_LIMIT))
+        with self.assertRaises(ValueError):
+            cpu.report_summary(bad)
+
     def test_campaign_maxima_fit_reserve_even_at_maximum_sample_width(self):
         maximum = (22 * 2_000_000 + 192 * (cpu.SUMMARY_LIMIT + 4 * cpu.WINDOW_LIMIT)
                    + 96 * cpu.WINDOW_LIMIT + 7 * cpu.SUMMARY_LIMIT + 2 * cpu.BUILD_LOG_LIMIT
@@ -1754,7 +1824,8 @@ class SchedulerAccountingTests(unittest.TestCase):
 
 class RetentionTests(unittest.TestCase):
     def exercise(self, report, *, invalid=True, cleanup_errors=None, tail_error=None, mode="clean", timeline=None,
-                 scheduler_snapshots=None, clock_output=None, gate_error=None, server_exited=False):
+                 scheduler_snapshots=None, clock_output=None, gate_error=None, server_exited=False,
+                 admission_diagnostics=False):
         report = dict(report, warmup=cpu.WARMUP)
         timeline = [] if timeline is None else timeline
         native = Mock()
@@ -1798,14 +1869,19 @@ class RetentionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             out = Path(temporary) / "window"
             with mock_record_control(timeline), patch.dict(sys.modules, {"psutil": Mock(), "native_diagnostic": native}), \
-                    patch.object(cpu, "spawn", side_effect=[server, client, profiler]), \
+                    patch.object(cpu, "spawn", side_effect=[server, client, profiler]) as spawn, \
                     patch.object(cpu, "stop", side_effect=cleanup_errors) as stop, \
                     patch.object(cpu, "stderr_tail", return_value=b"raw native failure\n", side_effect=tail_error), \
                     patch.object(cpu.socket, "socket", side_effect=[reserve, probe]), \
                     patch.object(cpu, "scheduler_snapshot", side_effect=scheduler), \
                     patch.object(cpu.os, "getloadavg", return_value=(0, 0, 0), create=True):
                 result = cpu.window(Path("server"), Path("client"),
-                                    ("oscore", 64, 100, "coaptic-reusable"), 10, out, mode=mode)
+                                    ("oscore", 64, 100, "coaptic-reusable"), 10, out, mode=mode,
+                                    admission_diagnostics=admission_diagnostics)
+            self.assertEqual(spawn.call_args_list[1].args[0].count("--admission-diagnostics"),
+                             int(admission_diagnostics))
+            if gate_error is None:
+                self.assertEqual(native.validate_report.call_args.args[-1], admission_diagnostics)
             if gate_error is None:
                 self.assertEqual(json.loads((out / "client.json").read_text()), report)
                 self.assertEqual(result["report"], cpu.report_summary(report))
@@ -1840,6 +1916,21 @@ class RetentionTests(unittest.TestCase):
         result = self.exercise(dict(completed=9, requested_operations=10, failure="body mismatch",
                                     latencies_ns=[1234] * 9))
         self.assertFalse(result["passed"])
+
+    def test_admission_selection_and_raw_failure_survive_window_retention(self):
+        for invalid in (False, True):
+            result = self.exercise(dict(completed=9, requested_operations=10, failure="body mismatch",
+                                        admission_diagnostics={"raw": "malformed"}, latencies_ns=[1234] * 9),
+                                   invalid=invalid, admission_diagnostics=True)
+            self.assertTrue(result["admission_diagnostics"])
+            self.assertFalse(cpu.accepted(result, .01))
+            self.assertEqual(result["passed"], not invalid)
+        with patch.object(cpu, "spawn") as spawn:
+            for mode in ("record", "stat"):
+                with self.assertRaisesRegex(ValueError, "unprofiled"):
+                    cpu.window(None, None, ("oscore", 64, 100, "coaptic-mio"), 10, None,
+                               mode=mode, admission_diagnostics=True)
+        spawn.assert_not_called()
 
     def test_client_and_server_cleanup_errors_do_not_skip_each_other_or_evidence(self):
         errors = [cpu.subprocess.TimeoutExpired("client", 5), RuntimeError("server stop failed")]

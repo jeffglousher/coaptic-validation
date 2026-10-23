@@ -112,6 +112,7 @@ struct RunOptions {
     rate: Option<u32>,
     concurrency: usize,
     message_type: MessageType,
+    admission_diagnostics: bool,
 }
 impl Default for RunOptions {
     fn default() -> Self {
@@ -120,6 +121,7 @@ impl Default for RunOptions {
             rate: None,
             concurrency: 1,
             message_type: MessageType::Con,
+            admission_diagnostics: false,
         }
     }
 }
@@ -131,6 +133,13 @@ fn run_options(args: &mut Vec<String>) -> Result<RunOptions, &'static str> {
     let mut index = 1;
     while index < args.len() {
         match args[index].as_str() {
+            "--admission-diagnostics" => {
+                if options.admission_diagnostics {
+                    return Err("duplicate admission diagnostics");
+                }
+                options.admission_diagnostics = true;
+                args.remove(index);
+            }
             "--gated" | "--cpu-gated" => {
                 if options.gate != GateMode::None {
                     return Err("select only one measurement gate");
@@ -192,6 +201,9 @@ fn run_options(args: &mut Vec<String>) -> Result<RunOptions, &'static str> {
             "concurrent CON refused: per-endpoint NSTART=1; explicitly select --message-type non",
         );
     }
+    if options.admission_diagnostics && (options.rate.is_none() || options.concurrency != 1) {
+        return Err("admission diagnostics require paced concurrency 1");
+    }
     Ok(options)
 }
 
@@ -221,6 +233,94 @@ struct PendingCall {
 }
 
 #[derive(Default, Debug)]
+struct AdmissionResidual {
+    admissions: u64,
+    positive: u64,
+    crossed_missed: u64,
+    total_ns: u128,
+    max_ns: u128,
+}
+
+impl AdmissionResidual {
+    fn record(&mut self, residual: Duration, crossed: bool) {
+        self.admissions = self.admissions.saturating_add(1);
+        self.positive = self.positive.saturating_add(u64::from(!residual.is_zero()));
+        self.crossed_missed = self.crossed_missed.saturating_add(u64::from(crossed));
+        let ns = residual.as_nanos();
+        self.total_ns = self.total_ns.saturating_add(ns);
+        self.max_ns = self.max_ns.max(ns);
+    }
+
+    fn json(&self) -> String {
+        format!(
+            "{{\"admissions\":{},\"positive\":{},\"crossed_missed\":{},\"total_ns\":{},\"max_ns\":{}}}",
+            self.admissions, self.positive, self.crossed_missed, self.total_ns, self.max_ns
+        )
+    }
+}
+
+/// Local C1 intervals, not causal shares: C retains all earlier admission debt.
+/// Admission uses the existing pre-send attempted/pacing boundary, including a
+/// subsequent send refusal. Only fully verified, in-deadline replies advance C.
+#[derive(Default, Debug)]
+struct AdmissionDiagnostics {
+    previous_completion: Option<Instant>,
+    idle_sleep_traversed: bool,
+    admissions: u64,
+    first_admissions: u64,
+    first_missed: u64,
+    first_lateness_ns: u128,
+    prior_forced_missed: u64,
+    idle_sleep: AdmissionResidual,
+    no_idle_sleep: AdmissionResidual,
+}
+
+impl AdmissionDiagnostics {
+    fn completed(&mut self, completed: Instant) {
+        self.previous_completion = Some(completed);
+        self.idle_sleep_traversed = false;
+    }
+
+    fn record(&mut self, admission: Instant, scheduled: Instant, period: Duration) {
+        self.admissions = self.admissions.saturating_add(1);
+        let missed = admission.saturating_duration_since(scheduled) >= period;
+        let Some(completed) = self.previous_completion else {
+            self.first_admissions = self.first_admissions.saturating_add(1);
+            self.first_missed = self.first_missed.saturating_add(u64::from(missed));
+            self.first_lateness_ns = self
+                .first_lateness_ns
+                .saturating_add(admission.saturating_duration_since(scheduled).as_nanos());
+            return;
+        };
+        let forced = completed.saturating_duration_since(scheduled) >= period;
+        self.prior_forced_missed = self.prior_forced_missed.saturating_add(u64::from(forced));
+        let residual = admission.saturating_duration_since(scheduled.max(completed));
+        let bucket = if self.idle_sleep_traversed {
+            &mut self.idle_sleep
+        } else {
+            &mut self.no_idle_sleep
+        };
+        bucket.record(residual, missed && !forced);
+    }
+
+    // Called only after measurement. No per-operation serialization/allocation.
+    fn json(&self) -> String {
+        format!(
+            ",\"admission_diagnostics\":{{\"schema\":\"coaptic-admission-interval/1\",\"storage_bytes\":{},\"option_storage_bytes\":{},\"admissions\":{},\"first_admissions\":{},\"first_missed\":{},\"first_lateness_ns\":{},\"prior_forced_missed\":{},\"idle_sleep\":{},\"no_idle_sleep\":{}}}",
+            std::mem::size_of::<Self>(),
+            std::mem::size_of::<Option<Self>>(),
+            self.admissions,
+            self.first_admissions,
+            self.first_missed,
+            self.first_lateness_ns,
+            self.prior_forced_missed,
+            self.idle_sleep.json(),
+            self.no_idle_sleep.json(),
+        )
+    }
+}
+
+#[derive(Default, Debug)]
 struct Window {
     attempted: usize,
     cancelled_inflight: usize,
@@ -230,6 +330,7 @@ struct Window {
     pacing_lateness_ns: u128,
     pacing_max_lateness_ns: u128,
     peak_pending: usize,
+    admission_diagnostics: Option<AdmissionDiagnostics>,
 }
 
 // One App owns all Calls, security bindings and the sender sequence. No worker
@@ -248,7 +349,12 @@ fn run_window<T: DatagramIo>(
     started: Instant,
     timings: &mut Vec<u64>,
 ) -> Window {
-    let mut window = Window::default();
+    let mut window = Window {
+        admission_diagnostics: options
+            .admission_diagnostics
+            .then(AdmissionDiagnostics::default),
+        ..Window::default()
+    };
     let mut pending: [Option<PendingCall>; MAX_CONCURRENCY] = [None; MAX_CONCURRENCY];
     let mut active = 0;
     while timings.len() < operations && window.failure.is_none() {
@@ -292,6 +398,9 @@ fn run_window<T: DatagramIo>(
                     break;
                 }
                 timings.push(completed.duration_since(p.started).as_nanos() as u64);
+                if let Some(diagnostic) = &mut window.admission_diagnostics {
+                    diagnostic.completed(completed);
+                }
                 *slot = None;
                 active -= 1;
             }
@@ -319,6 +428,9 @@ fn run_window<T: DatagramIo>(
                     usize::from(lateness >= scheduled_offset(1, rate));
                 window.pacing_lateness_ns += ns;
                 window.pacing_max_lateness_ns = window.pacing_max_lateness_ns.max(ns);
+                if let Some(diagnostic) = &mut window.admission_diagnostics {
+                    diagnostic.record(now, scheduled, scheduled_offset(1, rate));
+                }
             }
             window.attempted += 1;
             let request = client.get("bench").to(peer);
@@ -357,6 +469,10 @@ fn run_window<T: DatagramIo>(
             // No Call needs service. Pacing can sleep until the absolute next
             // admission; while Calls are live, only the selected poll policy waits.
             if let Some(rate) = options.rate {
+                if let Some(diagnostic) = &mut window.admission_diagnostics {
+                    // Traversal includes sleep(Duration::ZERO); no extra clock.
+                    diagnostic.idle_sleep_traversed = true;
+                }
                 std::thread::sleep(
                     (started + scheduled_offset(window.attempted, rate))
                         .saturating_duration_since(Instant::now()),
@@ -405,7 +521,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = run_options(&mut args)?;
     let gated = options.gate != GateMode::None;
     if !(8..=9).contains(&args.len()) {
-        return Err("usage: bench-native-client PORT BYTES OPERATIONS WARMUP TIMEOUT_MS spin|sleep1 unprotected|oscore [CREDENTIALS] [--gated|--cpu-gated] [--rate OPS_PER_SEC] [--concurrency 1..4] [--message-type con|non]".into());
+        return Err("usage: bench-native-client PORT BYTES OPERATIONS WARMUP TIMEOUT_MS spin|sleep1 unprotected|oscore [CREDENTIALS] [--gated|--cpu-gated] [--rate OPS_PER_SEC] [--concurrency 1..4] [--message-type con|non] [--admission-diagnostics]".into());
     }
     let port: u16 = args[1].parse()?;
     let size: usize = args[2].parse()?;
@@ -474,6 +590,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let timeout = Duration::from_millis(timeout_ms);
     let warm_options = RunOptions {
         rate: None,
+        admission_diagnostics: false,
         ..options
     };
     let warm = run_window(
@@ -546,8 +663,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let message_type = options.message_type.name();
     let pending_call_metadata_bytes = std::mem::size_of::<[Option<PendingCall>; MAX_CONCURRENCY]>();
     let rx_body_slots = capacities.rx_body_slots.unwrap();
+    let admission_json = window
+        .admission_diagnostics
+        .as_ref()
+        .map_or_else(String::new, AdmissionDiagnostics::json);
     println!(
-        "{{\"schema\":\"coaptic-native-complete/1\",\"bytes\":{size},\"requested_operations\":{operations},\"attempted\":{attempted},\"completed\":{completed},\"failed\":{failed},\"unattempted\":{unattempted},\"failure\":{failure_json},\"concurrency\":{concurrency},\"message_type\":\"{message_type}\",\"peak_pending\":{peak_pending},\"cancelled_inflight\":{cancelled_inflight},\"pending_call_metadata_bytes\":{pending_call_metadata_bytes},\"rx_body_slots\":{rx_body_slots},\"total_sent_datagrams\":{total_sent_datagrams},\"warmup\":{warmup},\"elapsed_ns\":{elapsed},\"scheduled_rate_ops_per_second\":{rate_json},\"achieved_ops_per_second\":{achieved_rate},\"scheduled_dispatch_span_ns\":{span_json},\"pacing_late_operations\":{pacing_late_operations},\"pacing_missed_period_operations\":{pacing_missed_period_operations},\"pacing_total_lateness_ns\":{pacing_lateness_ns},\"pacing_max_lateness_ns\":{pacing_max_lateness_ns},\"pacing_dropped_operations\":0,\"pacing_semantics\":\"absolute operation-start deadlines; bounded outstanding Calls; late starts catch up without dropping; elapsed includes pacing; latencies exclude pacing\",\"received_datagrams\":{received},\"sent_datagrams\":{sent},\"latencies_ns\":{timings:?},\"core_heap_limit_bytes\":{heap_limit},\"app_inline_bytes\":{app_inline_bytes},\"verification_heap_bytes\":{verification_heap_bytes},\"timing_heap_bytes\":{timing_heap_bytes},\"udp_scratch_bytes\":1473,\"policy\":\"{}\",\"security\":\"{}\",\"measurement\":\"Coaptic client/server diagnostic; complete authenticated body verification; setup excluded; no durable recovery; heap request excludes allocator overhead; App inline includes UDP scratch\"}}",
+        "{{\"schema\":\"coaptic-native-complete/1\",\"bytes\":{size},\"requested_operations\":{operations},\"attempted\":{attempted},\"completed\":{completed},\"failed\":{failed},\"unattempted\":{unattempted},\"failure\":{failure_json},\"concurrency\":{concurrency},\"message_type\":\"{message_type}\",\"peak_pending\":{peak_pending},\"cancelled_inflight\":{cancelled_inflight},\"pending_call_metadata_bytes\":{pending_call_metadata_bytes},\"rx_body_slots\":{rx_body_slots},\"total_sent_datagrams\":{total_sent_datagrams},\"warmup\":{warmup},\"elapsed_ns\":{elapsed},\"scheduled_rate_ops_per_second\":{rate_json},\"achieved_ops_per_second\":{achieved_rate},\"scheduled_dispatch_span_ns\":{span_json},\"pacing_late_operations\":{pacing_late_operations},\"pacing_missed_period_operations\":{pacing_missed_period_operations},\"pacing_total_lateness_ns\":{pacing_lateness_ns},\"pacing_max_lateness_ns\":{pacing_max_lateness_ns},\"pacing_dropped_operations\":0,\"pacing_semantics\":\"absolute operation-start deadlines; bounded outstanding Calls; late starts catch up without dropping; elapsed includes pacing; latencies exclude pacing\",\"received_datagrams\":{received},\"sent_datagrams\":{sent},\"latencies_ns\":{timings:?},\"core_heap_limit_bytes\":{heap_limit},\"app_inline_bytes\":{app_inline_bytes},\"verification_heap_bytes\":{verification_heap_bytes},\"timing_heap_bytes\":{timing_heap_bytes},\"udp_scratch_bytes\":1473,\"policy\":\"{}\",\"security\":\"{}\",\"measurement\":\"Coaptic client/server diagnostic; complete authenticated body verification; setup excluded; no durable recovery; heap request excludes allocator overhead; App inline includes UDP scratch\"{admission_json}}}",
         args[6], args[7]
     );
     std::io::stdout().flush()?;
@@ -1060,6 +1181,173 @@ mod tests {
         assert_eq!(
             scheduled_offset(1_000_000, 1_000_000),
             Duration::from_secs(1)
+        );
+    }
+
+    #[test]
+    fn admission_diagnostics_require_explicit_paced_c1_and_reject_duplicates() {
+        assert!(
+            !run_options(&mut args(&["client"]))
+                .unwrap()
+                .admission_diagnostics
+        );
+        let selected = run_options(&mut args(&[
+            "client",
+            "--admission-diagnostics",
+            "--rate",
+            "4000",
+        ]))
+        .unwrap();
+        assert!(selected.admission_diagnostics);
+        for values in [
+            vec!["client", "--admission-diagnostics"],
+            vec![
+                "client",
+                "--admission-diagnostics",
+                "--rate",
+                "4000",
+                "--concurrency",
+                "2",
+                "--message-type",
+                "non",
+            ],
+            vec![
+                "client",
+                "--rate",
+                "4000",
+                "--admission-diagnostics",
+                "--admission-diagnostics",
+            ],
+        ] {
+            assert!(run_options(&mut args(&values)).is_err());
+        }
+    }
+
+    #[test]
+    fn admission_first_and_new_window_have_no_previous_completion_or_warmup() {
+        let origin = Instant::now();
+        let period = Duration::from_nanos(10);
+        let mut diagnostic = AdmissionDiagnostics::default();
+        diagnostic.record(origin + period, origin, period);
+        assert_eq!(diagnostic.first_admissions, 1);
+        assert_eq!(diagnostic.first_missed, 1); // A-D == P.
+        assert_eq!(diagnostic.first_lateness_ns, 10);
+        assert_eq!(diagnostic.no_idle_sleep.admissions, 0);
+        diagnostic.completed(origin + period);
+        let mut reset = AdmissionDiagnostics::default(); // Every run_window starts fresh.
+        assert_eq!(reset.admissions, 0);
+        assert!(reset.previous_completion.is_none());
+        assert!(!reset.idle_sleep_traversed);
+        reset.record(origin, origin, period);
+        assert_eq!(reset.first_admissions, 1);
+        assert_eq!(reset.first_missed, 0);
+        assert_eq!(reset.first_lateness_ns, 0);
+        assert!(!RunOptions::default().admission_diagnostics);
+    }
+
+    #[test]
+    fn admission_prior_completion_carries_debt_and_equal_period_is_forced() {
+        let origin = Instant::now();
+        let period = Duration::from_nanos(10);
+        let mut diagnostic = AdmissionDiagnostics::default();
+        // C includes earlier admission delay, even with a short preceding RTT.
+        diagnostic.completed(origin + Duration::from_nanos(35));
+        diagnostic.record(origin + Duration::from_nanos(37), origin + period, period);
+        diagnostic.completed(origin + Duration::from_nanos(38));
+        diagnostic.record(
+            origin + Duration::from_nanos(38),
+            origin + Duration::from_nanos(28),
+            period,
+        );
+        assert_eq!(diagnostic.prior_forced_missed, 2); // Second C-D == P.
+        assert_eq!(diagnostic.no_idle_sleep.crossed_missed, 0);
+        assert_eq!(diagnostic.no_idle_sleep.admissions, 2);
+        assert_eq!(diagnostic.no_idle_sleep.positive, 1);
+        assert_eq!(diagnostic.no_idle_sleep.total_ns, 2);
+        assert_eq!(diagnostic.no_idle_sleep.max_ns, 2);
+    }
+
+    #[test]
+    fn admission_residual_crossings_include_no_sleep_and_zero_duration_sleep() {
+        let origin = Instant::now();
+        let period = Duration::from_nanos(10);
+        let mut diagnostic = AdmissionDiagnostics::default();
+        for traversed in [false, true] {
+            diagnostic.completed(origin + Duration::from_nanos(4));
+            diagnostic.idle_sleep_traversed = traversed;
+            diagnostic.record(origin + Duration::from_nanos(20), origin + period, period);
+        }
+        // A checked the deadline early but the existing sleep clock may find
+        // zero duration. Traversal is still true; elapsed sleep is not measured.
+        diagnostic.completed(origin);
+        diagnostic.idle_sleep_traversed = true;
+        diagnostic.record(origin + period, origin + period, period);
+        assert_eq!(diagnostic.prior_forced_missed, 0);
+        assert_eq!(diagnostic.no_idle_sleep.crossed_missed, 1);
+        assert_eq!(diagnostic.idle_sleep.crossed_missed, 1);
+        assert_eq!(diagnostic.idle_sleep.admissions, 2);
+        assert_eq!(diagnostic.idle_sleep.positive, 1);
+        assert_eq!(diagnostic.idle_sleep.total_ns, 10);
+        diagnostic.completed(origin + period);
+        assert!(!diagnostic.idle_sleep_traversed);
+        diagnostic.record(origin + period, origin + period, period);
+        assert_eq!(diagnostic.no_idle_sleep.admissions, 2);
+    }
+
+    #[test]
+    fn admission_counters_saturate_and_report_member_is_bounded() {
+        let origin = Instant::now();
+        let mut bucket = AdmissionResidual {
+            admissions: u64::MAX,
+            positive: u64::MAX,
+            crossed_missed: u64::MAX,
+            total_ns: u128::MAX,
+            max_ns: u128::MAX,
+        };
+        bucket.record(Duration::from_nanos(1), true);
+        assert_eq!(bucket.admissions, u64::MAX);
+        assert_eq!(bucket.positive, u64::MAX);
+        assert_eq!(bucket.crossed_missed, u64::MAX);
+        assert_eq!(bucket.total_ns, u128::MAX);
+        assert_eq!(bucket.max_ns, u128::MAX);
+        let mut diagnostic = AdmissionDiagnostics {
+            admissions: u64::MAX,
+            first_admissions: u64::MAX,
+            first_missed: u64::MAX,
+            first_lateness_ns: u128::MAX,
+            prior_forced_missed: u64::MAX,
+            idle_sleep: bucket,
+            no_idle_sleep: AdmissionResidual::default(),
+            ..AdmissionDiagnostics::default()
+        };
+        diagnostic.record(
+            origin + Duration::from_nanos(1),
+            origin,
+            Duration::from_nanos(1),
+        );
+        assert_eq!(diagnostic.admissions, u64::MAX);
+        assert_eq!(diagnostic.first_admissions, u64::MAX);
+        assert_eq!(diagnostic.first_missed, u64::MAX);
+        assert_eq!(diagnostic.first_lateness_ns, u128::MAX);
+        diagnostic.completed(origin + Duration::from_nanos(1));
+        diagnostic.record(
+            origin + Duration::from_nanos(1),
+            origin,
+            Duration::from_nanos(1),
+        );
+        assert_eq!(diagnostic.prior_forced_missed, u64::MAX);
+        diagnostic.no_idle_sleep = AdmissionResidual {
+            admissions: u64::MAX,
+            positive: u64::MAX,
+            crossed_missed: u64::MAX,
+            total_ns: u128::MAX,
+            max_ns: u128::MAX,
+        };
+        assert!(diagnostic.json().len() <= 2048);
+        eprintln!(
+            "admission diagnostic compiled storage: {} bytes, Option {} bytes",
+            std::mem::size_of::<AdmissionDiagnostics>(),
+            std::mem::size_of::<Option<AdmissionDiagnostics>>()
         );
     }
     #[test]
