@@ -1,6 +1,8 @@
 """Isolated stdlib checks. No Cargo, perf, sudo or real child processes."""
+import hashlib
 import json
 import os
+import stat
 from pathlib import Path
 import subprocess
 import sys
@@ -210,7 +212,7 @@ class ProbeTests(unittest.TestCase):
             probe.cleanup_group(marker)
 
     def test_reports_keep_unfiltered_evidence_and_pid_filtered_callers(self):
-        with patch("core_cost_probe.perf_report", return_value={"available": True}) as flat, \
+        with patch("core_cost_probe.flat_report", return_value={"available": True}) as flat, \
                 patch("core_cost_probe.run_owned", return_value=0) as run:
             with (self.root / "perf-command.log").open("xb") as log:
                 probe.reports(self.root, [{"pid": 123}, {"pid": 456}], log)
@@ -227,7 +229,7 @@ class ProbeTests(unittest.TestCase):
                 self.assertTrue(item.kwargs["elevated"])
 
     def test_unresolved_flat_report_cleanup_stops_other_readouts(self):
-        with patch("core_cost_probe.perf_report", return_value={"available": False, "cleanup_unresolved": True}), \
+        with patch("core_cost_probe.flat_report", return_value={"available": False, "cleanup_unresolved": True}), \
                 patch("core_cost_probe.run_owned") as run:
             with (self.root / "perf-command.log").open("xb") as log:
                 with self.assertRaisesRegex(RuntimeError, "cleanup unresolved"):
@@ -258,7 +260,158 @@ class ProbeTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "4 GiB"):
                 probe.build(self.root, self.root, {}, "x86_64-unknown-linux-gnu")
 
-    def controller_fixture(self, fail=False):
+    def capture_permissions(self):
+        """Model root:root0600 plus EACCES, not a runner-owned tempfile shortcut."""
+        owners = {}
+        original_stat, original_open = Path.lstat, Path.open
+
+        def capture_stat(path, *args, **kwargs):
+            info = original_stat(path, *args, **kwargs)
+            if path in owners:
+                values = list(info)
+                values[0], values[4], values[5] = stat.S_IFREG | 0o600, *owners[path]
+                return os.stat_result(values)
+            return info
+
+        def capture_open(path, mode="r", *args, **kwargs):
+            if path in owners and "r" in mode and owners[path][0] != 1001:
+                raise PermissionError("root-owned0600 capture is unreadable to runner")
+            return original_open(path, mode, *args, **kwargs)
+
+        self.enterContext(patch.object(Path, "lstat", capture_stat))
+        self.enterContext(patch.object(Path, "open", capture_open))
+        return owners
+
+    def test_root_owned_capture_transferred_and_runner_read_is_verified(self):
+        path = self.root / "perf.data"
+        path.write_bytes(b"partial sample data")
+        owners = self.capture_permissions()
+        owners[path] = (0, 0)
+        self.assertEqual(path.lstat().st_uid, 0)
+        self.assertEqual(stat.S_IMODE(path.lstat().st_mode), 0o600)
+        with self.assertRaises(PermissionError):
+            path.read_bytes()
+        untouched = self.root / "unrelated"
+        untouched.write_bytes(b"preserve")
+
+        def chown(argv, **kwargs):
+            self.assertEqual(argv[-5:], ["chown", "--no-dereference", "--", "1001:1002", str(path)])
+            self.assertLess(argv.index("sudo"), argv.index("--as=536870912:536870912"))
+            self.assertEqual(kwargs["timeout"], 15)
+            owners[path] = (1001, 1002)
+            return 0
+
+        state = {}
+        with patch("core_cost_probe.run_owned", side_effect=chown), \
+                (self.root / "transfer.log").open("xb") as log:
+            probe.capture_access(self.root, 1001, 1002, log, state)
+        self.assertTrue(state["readable"])
+        self.assertEqual(state["owner_before"], 0)
+        self.assertEqual(state["owner_after"], 1001)
+        self.assertEqual(path.read_bytes(), b"partial sample data")
+        self.assertEqual(untouched.read_bytes(), b"preserve")
+
+    def test_success_status_without_runner_readability_is_refused(self):
+        path = self.root / "perf.data"
+        path.write_bytes(b"partial")
+        owners = self.capture_permissions()
+        owners[path] = (0, 0)
+        with patch("core_cost_probe.run_owned", return_value=0), \
+                (self.root / "transfer.log").open("xb") as log:
+            with self.assertRaisesRegex(ValueError, "identity/ownership"):
+                probe.capture_access(self.root, 1001, 1002, log, {})
+
+    def test_unexpected_capture_is_never_privileged_or_modified(self):
+        path = self.root / "perf.data"
+        path.write_bytes(b"preserve")
+        info = path.lstat()
+        for mode, links, owner in ((stat.S_IFLNK, 1, 0), (stat.S_IFREG, 2, 0), (stat.S_IFREG, 1, 7000)):
+            values = list(info)
+            values[0], values[3], values[4] = mode | 0o600, links, owner
+            with self.subTest(mode=mode, links=links, owner=owner), \
+                    patch.object(Path, "lstat", return_value=os.stat_result(values)), \
+                    patch("core_cost_probe.run_owned") as run, \
+                    (self.root / "guard.log").open("ab") as log:
+                with self.assertRaisesRegex(ValueError, "unexpected capture"):
+                    probe.capture_access(self.root, 1001, 1002, log, {})
+                run.assert_not_called()
+        self.assertEqual(path.read_bytes(), b"preserve")
+
+    def test_settled_timeout_hands_off_partial_capture_and_preserves_timeout(self):
+        path = self.root / "perf.data"
+        path.write_bytes(b"partial after timeout")
+        owners = self.capture_permissions()
+        owners[path] = (0, 0)
+        events = []
+        error = subprocess.TimeoutExpired("synthetic recorder", 70)
+
+        def launch(argv, **kwargs):
+            if "chown" in argv:
+                events.append("handoff")
+                self.assertEqual(events, ["recorder reaped", "worker cleanup", "handoff"])
+                owners[path] = (1001, 1002)
+                return 0
+            events.append("recorder reaped")
+            raise error  # run_owned's successful cleanup leaves no unresolved flag.
+
+        record = {"command": ["synthetic recorder"]}
+        with patch("core_cost_probe.run_owned", side_effect=launch), \
+                patch("core_cost_probe.cleanup_group", side_effect=lambda _: events.append("worker cleanup")), \
+                (self.root / "perf-command.log").open("xb") as log:
+            with self.assertRaises(subprocess.TimeoutExpired) as raised:
+                probe.execute_phase(self.root, record, 8, 1001, 1002, log)
+        self.assertIs(raised.exception, error)
+        self.assertTrue(probe.load(self.root / "capture-access.json")["readable"])
+        self.assertEqual(path.read_bytes(), b"partial after timeout")
+
+    def test_all_three_executed_readouts_have_post_elevation_as_bound(self):
+        calls = []
+
+        def readout(argv, **kwargs):
+            calls.append((argv, kwargs))
+            kwargs["stdout"].write(b"retained text; CPU mode/throttling unknown\n")
+            return 0
+
+        with patch("core_cost_probe.run_owned", side_effect=readout), \
+                (self.root / "perf-command.log").open("xb") as log:
+            result = probe.reports(self.root, [{"pid": 123}], log)
+        self.assertEqual(calls[0][0], ["perf", "--version"])
+        self.assertEqual(calls[0][1]["timeout"], 5)
+        self.assertEqual(len(calls), 4)
+        for argv, kwargs in calls[1:]:
+            self.assertEqual(argv[:4], ["sudo", "-n", "--", "prlimit"])
+            self.assertLess(argv.index("prlimit"), argv.index("--as=536870912:536870912"))
+            self.assertLess(argv.index("--as=536870912:536870912"), argv.index("perf"))
+            self.assertIn("--fsize=", " ".join(argv))
+            self.assertTrue(kwargs["elevated"])
+        flat, kwargs = calls[1]
+        self.assertEqual(kwargs["timeout"], 30)
+        self.assertEqual(flat[flat.index("--kill-after=5") + 1], "25")
+        self.assertIn("--no-children", flat)
+        self.assertIn("--no-inline", flat)
+        self.assertEqual(result["flat"]["address_space_limit_bytes"], 512 * probe.MIB)
+        self.assertTrue(result["flat"]["available"])
+
+    def test_local_flat_timeout_preserves_cleanup_metadata_and_stops_readouts(self):
+        error = subprocess.TimeoutExpired("owned flat report", 30)
+        error.cleanup_unresolved = True
+
+        def readout(argv, **kwargs):
+            if argv == ["perf", "--version"]:
+                return 0
+            raise error
+
+        with patch("core_cost_probe.run_owned", side_effect=readout) as run, \
+                (self.root / "perf-command.log").open("xb") as log:
+            with self.assertRaisesRegex(RuntimeError, "cleanup unresolved"):
+                probe.reports(self.root, [{"pid": 123}], log)
+        self.assertEqual(run.call_count, 2)
+        state = probe.load(self.root / "flat-status.json")
+        self.assertTrue(state["deadline_exceeded"])
+        self.assertTrue(state["cleanup_unresolved"])
+        self.assertFalse(state["available"])
+
+    def controller_fixture(self, fail=False, partial_phase=None, transfer_refused=False):
         output, lane = self.root / "output", self.root / "lane"
         host = "x86_64-unknown-linux-gnu"
         compiled = lane / host / "release/bench-core"
@@ -273,18 +426,32 @@ class ProbeTests(unittest.TestCase):
             return "synthetic version"
 
         calls = []
+        owners = self.capture_permissions()
+        self.capture_owners = owners
 
         def launch(argv, **kwargs):
+            if "chown" in argv:
+                if transfer_refused:
+                    return 71
+                owners[Path(argv[-1])] = (1001, 1002)
+                return 0
             phase = int(next(arg.split("=", 1)[1] for arg in argv if arg.startswith("CORE_COST_PHASE=")))
             name, security, count = probe.PLAN[phase]
             calls.append(name)
             if fail:
                 return 77
+            if partial_phase == phase:
+                path = output / name / "perf.data"
+                path.write_bytes(b"partial nonzero-return capture")
+                owners[path] = (0, 0)
+                return 77
             for i in range(count):
                 probe.save_new(output / name / f"bench-{i}.json",
                                {"pid": 20000 + 8 * phase + i, "complete": True, "security": security})
             if count == 8:
-                (output / name / "perf.data").write_bytes(b"synthetic capture, not a profile")
+                path = output / name / "perf.data"
+                path.write_bytes(b"synthetic capture, not a profile")
+                owners[path] = (0, 0)
             return 0
 
         self.enterContext(patch("core_cost_probe.sys.platform", "linux"))
@@ -296,7 +463,9 @@ class ProbeTests(unittest.TestCase):
         self.enterContext(patch("core_cost_probe.hardware", return_value={"synthetic": True}))
         self.enterContext(patch("core_cost_probe.identity", side_effect=lambda path:
             {"revision": probe.CORE if path == probe.SUITE / "coaptic" else "b" * 40, "status": ""}))
-        self.enterContext(patch("core_cost_probe.digest", return_value="c" * 64))
+        original_digest = probe.digest
+        self.enterContext(patch("core_cost_probe.digest", side_effect=lambda path:
+            original_digest(path) if Path(path).is_relative_to(self.root) else "c" * 64))
         self.enterContext(patch("core_cost_probe.command", side_effect=command))
         build_mock = self.enterContext(patch("core_cost_probe.build", side_effect=build))
         self.enterContext(patch("core_cost_probe.run_owned", side_effect=launch))
@@ -315,9 +484,18 @@ class ProbeTests(unittest.TestCase):
         self.assertTrue(state["complete"])
         self.assertEqual(state["review"]["both_50_percent_targets"], "OPEN")
         self.assertIn("source-guided", state["review"]["status"])
+        self.assertTrue(state["review"]["status"].startswith("inconclusive"))
+        self.assertIn("unknown", state["review"]["evidence_limits"])
         self.assertNotIn("CARGO_ENCODED_RUSTFLAGS", build.call_args.args[2])
         self.assertEqual(build.call_args.args[2]["RUSTFLAGS"], probe.FLAGS["RUSTFLAGS"])
-        self.assertEqual(probe.load(output / "index.json")["index_excludes_itself"], True)
+        index = json.loads((output / "index.json").read_bytes())
+        self.assertTrue(index["index_excludes_itself"])
+        self.assertNotIn("index.json", [row["path"] for row in index["files"]])
+        for row in index["files"]:
+            data = (output / row["path"]).read_bytes()
+            self.assertEqual(row["bytes"], len(data), row["path"])
+            self.assertEqual(row["sha256"], hashlib.sha256(data).hexdigest(), row["path"])
+        self.assertEqual(index["bytes_before_index"], sum(row["bytes"] for row in index["files"]))
 
     def test_controller_retains_refusal_and_never_replaces_the_phase(self):
         output, lane, calls, _ = self.controller_fixture(fail=True)
@@ -327,6 +505,61 @@ class ProbeTests(unittest.TestCase):
         self.assertFalse(probe.load(output / "summary.json")["complete"])
         self.assertEqual(probe.load(output / "u-before/phase.json")["returncode"], 77)
         self.assertTrue((output / "index.json").exists())
+
+    def test_partial_nonzero_capture_is_handed_off_before_failure_inventory(self):
+        output, lane, calls, _ = self.controller_fixture(partial_phase=2)
+        with self.assertRaises(FileNotFoundError):
+            probe.run(output, lane)
+        self.assertEqual(calls, ["u-before", "os-before", "u-profile"])
+        path = output / "u-profile/perf.data"
+        self.assertEqual(self.capture_owners[path], (1001, 1002))
+        self.assertEqual(path.read_bytes(), b"partial nonzero-return capture")
+        self.assertTrue(probe.load(output / "u-profile/capture-access.json")["readable"])
+        self.assertEqual(probe.load(output / "u-profile/phase.json")["returncode"], 77)
+        self.assertTrue((output / "index.json").exists())
+
+    def test_transfer_refusal_stops_campaign_and_retains_primary_error(self):
+        output, lane, calls, _ = self.controller_fixture(transfer_refused=True)
+        with self.assertRaisesRegex(PermissionError, "ownership transfer refused"):
+            probe.run(output, lane)
+        self.assertEqual(calls, ["u-before", "os-before", "u-profile"])
+        access = probe.load(output / "u-profile/capture-access.json")
+        self.assertFalse(access["readable"])
+        self.assertEqual(access["returncode"], 71)
+        self.assertEqual(self.capture_owners[output / "u-profile/perf.data"], (0, 0))
+        summary = probe.load(output / "summary.json")
+        self.assertEqual(summary["error"], "PermissionError")
+        self.assertIn("ownership transfer refused", summary["reason"])
+        self.assertFalse((output / "index.json").exists())
+        self.assertTrue((output / "index-error.json").exists())
+
+    def test_cleanup_failure_remains_primary_if_handoff_and_inventory_also_fail(self):
+        output, lane, calls, _ = self.controller_fixture(transfer_refused=True)
+        error = RuntimeError("cleanup unresolved: owned worker remains")
+        def unresolved(marker):
+            if marker.parent.name == "u-profile":
+                raise error
+
+        with patch("core_cost_probe.cleanup_group", side_effect=unresolved):
+            with self.assertRaises(RuntimeError) as raised:
+                probe.run(output, lane)
+        self.assertIs(raised.exception, error)
+        self.assertEqual(calls, ["u-before", "os-before", "u-profile"])
+        self.assertTrue(probe.load(output / "summary.json")["cleanup_unresolved"])
+        self.assertTrue(any("ownership transfer refused" in note for note in error.__notes__))
+        self.assertEqual(probe.load(output / "u-profile/capture-access.json")["returncode"], 71)
+
+    def test_unsettled_recorder_prevents_any_capture_handoff(self):
+        error = RuntimeError("cleanup unresolved: recorder remains")
+        record = {"command": ["synthetic recorder"]}
+        with patch("core_cost_probe.run_owned", side_effect=error), \
+                patch("core_cost_probe.cleanup_group"), patch("core_cost_probe.capture_access") as access, \
+                (self.root / "perf-command.log").open("xb") as log:
+            with self.assertRaises(RuntimeError) as raised:
+                probe.execute_phase(self.root, record, 8, 1001, 1002, log)
+        self.assertIs(raised.exception, error)
+        access.assert_not_called()
+        self.assertFalse(probe.load(self.root / "capture-access.json")["recorder_settled"])
 
     def test_workflow_is_manual_serial_and_retains_failure_without_installs(self):
         workflow = (Path(probe.__file__).resolve().parents[2] / ".github/workflows/core-cost-probe.yml").read_text()

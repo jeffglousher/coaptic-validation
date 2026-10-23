@@ -19,7 +19,7 @@ import threading
 import time
 
 from linux_cpu import (FLAGS, SUITE, bounded_bytes, bounded_read, command, digest,
-                       hardware, identity, perf_report, run_logged, run_owned)
+                       hardware, identity, run_logged, run_owned)
 
 MIB = 1024 * 1024
 CORE = "7a40e698a6240ff9eb0951d15c668308cb13a55c"
@@ -34,11 +34,14 @@ LIMITS = {"perf.data": DATA, "perf-command.log": DATA,
 SCOPE = ("Whole benchmark-process lifetime CPU, including exec/setup, calibration, "
          "warmups, client prepare/crypto/verify, App, loop clocks and JSON writes; "
          "not isolated server CPU. Poll samples are wall time; calibration is never subtracted.")
-REVIEW = {"status": "requires source-guided App-root/callchain review",
+REVIEW = {"status": "inconclusive; requires source-guided App-root/callchain review",
           "minimum_app_samples_per_mode": 200, "minimum_per_four_process_half": 50,
           "minimum_hotspot_self_samples": 30,
           "rules": "Keep unknown/loss/throttle evidence. Shared crypto names do not identify server work. "
                    "Count each sample once; do not sum Children or multiply shares by whole-process CPU.",
+          "evidence_limits": "Text readouts do not establish zero throttling or explicit CPU mode; "
+                             "floor prerequisites remain unknown. Linux UID drop, exec inheritance, limits, "
+                             "groups and symbolization remain unverified until integration.",
           "both_50_percent_targets": "OPEN"}
 
 
@@ -212,8 +215,123 @@ def phase_command(root, phase, uid, gid):
                    str(Path(sys.executable).resolve()), "-B", str(Path(__file__).resolve())]
 
 
+def capture_access(directory, uid, gid, log, state):
+    """Hand only this terminated recorder's regular, singly linked file to its runner."""
+    path = directory / "perf.data"
+    try:
+        before = path.lstat()
+    except FileNotFoundError:
+        state.update(present=False, readable=False)
+        return
+    state.update(present=True, readable=False, owner_before=before.st_uid,
+                 mode_before=stat.S_IMODE(before.st_mode), bytes=before.st_size)
+    if (uid <= 0 or gid <= 0 or not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+            or before.st_uid not in (0, uid) or before.st_size > DATA):
+        raise ValueError("refusing ownership transfer of unexpected capture")
+    if (before.st_uid, before.st_gid) != (uid, gid):
+        argv = prefix(META, 5) + ["chown", "--no-dereference", "--", f"{uid}:{gid}", str(path)]
+        state["command"] = argv
+        state["returncode"] = run_owned(argv, timeout=15, check=False, elevated=True,
+            file_limit=META, stdin=subprocess.DEVNULL, stdout=log, stderr=log)
+        if state["returncode"]:
+            raise PermissionError("capture ownership transfer refused")
+    after = path.lstat()
+    if ((before.st_dev, before.st_ino, before.st_size) != (after.st_dev, after.st_ino, after.st_size)
+            or not stat.S_ISREG(after.st_mode) or after.st_nlink != 1
+            or (after.st_uid, after.st_gid) != (uid, gid)):
+        raise ValueError("capture identity/ownership changed during handoff")
+    with path.open("rb") as stream:
+        stream.read(1)  # Prove actual runner access, not just a successful chown status.
+    state.update(readable=True, owner_after=after.st_uid)
+
+
+def execute_phase(directory, record, count, uid, gid, log):
+    primary, recorder_settled = None, False
+
+    def failure(error, label):
+        nonlocal primary
+        record[label] = {"error": type(error).__name__, "reason": str(error)[:512]}
+        unresolved = "cleanup unresolved" in str(error) or getattr(error, "cleanup_unresolved", False)
+        if primary is None:
+            primary = error
+        else:
+            primary.add_note(label + ": " + str(error)[:512])
+        if unresolved:
+            primary.cleanup_unresolved = True
+
+    try:
+        record["returncode"] = run_owned(record["command"], timeout=70 if count == 8 else 20,
+            check=False, elevated=True, file_limit=DATA, stdin=subprocess.DEVNULL, stdout=log, stderr=log)
+        recorder_settled = True
+    except BaseException as error:
+        recorder_settled = not ("cleanup unresolved" in str(error) or getattr(error, "cleanup_unresolved", False))
+        failure(error, "recorder_error")
+    try:
+        cleanup_group(directory / "worker.json")
+    except BaseException as error:
+        failure(error, "worker_cleanup_error")
+    if count == 8:
+        access = record["capture_access"] = {"recorder_settled": recorder_settled}
+        try:
+            if recorder_settled:
+                capture_access(directory, uid, gid, log, access)
+            else:
+                access["reason"] = "handoff not attempted: recorder termination unresolved"
+        except BaseException as error:
+            failure(error, "capture_access_error")
+        try:
+            save_new(directory / "capture-access.json", access)
+        except Exception as error:
+            failure(error, "capture_access_retention_error")
+    if primary is not None:
+        raise primary
+
+
+def flat_report(directory, quota, log):
+    """Local fixed variant of linux_cpu.perf_report with a post-sudo AS limit.
+
+    Keep its version query, 25/30-second watchdogs, fsize, flat options and
+    refusal/cleanup metadata. No global executor patch or framework/API change.
+    """
+    path = directory / "perf-report.txt"
+    argv = prefix(quota, 25) + ["env", "DEBUGINFOD_URLS=", "perf", "report", "--stdio", "--header",
+        "--show-nr-samples", "--show-total-period", "--sort", "dso,symbol", "--no-children",
+        "--call-graph", "none", "--percent-limit", "0", "--stdio-color", "never", "--no-inline",
+        "--demangle", "--force", "--input", str(directory / "perf.data")]
+    version = ["perf", "--version"]
+    state = dict(available=False, command=argv, version_command=version, output_file=str(path),
+                 file_size_limit_bytes=quota, address_space_limit_bytes=512 * MIB,
+                 timeout_seconds=30, version_timeout_seconds=5,
+                 interpretation="flat sampled self costs; no stage timings; attribution inconclusive")
+    try:
+        with path.open("xb") as stream:
+            state["version_returncode"] = run_owned(version, timeout=5, check=False,
+                stdin=subprocess.DEVNULL, stdout=log, stderr=log, file_limit=quota)
+            state["returncode"] = run_owned(argv, timeout=30, check=False, elevated=True,
+                stdin=subprocess.DEVNULL, stdout=stream, stderr=stream, file_limit=quota,
+                env={**os.environ, "DEBUGINFOD_URLS": ""})
+    except Exception as error:
+        state.update(error_type=type(error).__name__, reason=str(error)[:512])
+        if isinstance(error, subprocess.TimeoutExpired):
+            state["deadline_exceeded"] = True
+        if getattr(error, "cleanup_unresolved", False):
+            state["cleanup_unresolved"] = True
+            state["cleanup_reason"] = "; ".join(getattr(error, "__notes__", []) or [str(error)])[:512]
+    finally:
+        try:
+            state["output_bytes"] = path.stat().st_size
+            state["command_log_bytes"] = os.fstat(log.fileno()).st_size
+        except OSError as error:
+            state.setdefault("error_type", type(error).__name__)
+            state.setdefault("reason", str(error)[:512])
+    state["available"] = (not state.get("error_type") and state.get("returncode") == 0
+                          and 0 < state.get("output_bytes", 0) < quota
+                          and state.get("command_log_bytes", quota) < quota)
+    return state
+
+
 def reports(directory, receipts, log):
-    result = {"flat": perf_report(directory, 2 * MIB, log)}
+    result = {"flat": flat_report(directory, 2 * MIB, log)}
     save_new(directory / "flat-status.json", result["flat"])
     if result["flat"].get("cleanup_unresolved"):
         raise RuntimeError("cleanup unresolved: flat perf report")
@@ -318,6 +436,7 @@ def run(root, lane):
              "budget": {"processes": 20, "measured_operations": 1_000_000, "warmup_operations": 2560,
                         "internal_datagrams": 2_005_120, "udp_datagrams": 0, "fresh_oscore_pairs": 10,
                         "artifact_bytes": 128 * MIB, "lane_bytes": 4 * 1024 * MIB}}
+    primary = None
     try:
         source = {"suite": identity(SUITE), "core": identity(SUITE / "coaptic")}
         if any(value["status"] for value in source.values()) or source["core"]["revision"] != CORE:
@@ -362,14 +481,10 @@ def run(root, lane):
             directory.mkdir(mode=0o700)
             record = {"name": name, "command": phase_command(root, phase, uid, gid), "complete": False}
             state["phases"].append(record)
+            phase_error = None
             try:
                 with (directory / "perf-command.log").open("xb") as log:
-                    try:
-                        record["returncode"] = run_owned(record["command"], timeout=70 if count == 8 else 20,
-                            check=False, elevated=True, file_limit=DATA, stdin=subprocess.DEVNULL,
-                            stdout=log, stderr=log)
-                    finally:
-                        cleanup_group(directory / "worker.json")
+                    execute_phase(directory, record, count, uid, gid, log)
                     receipts = [load(directory / f"bench-{i}.json") for i in range(count)]
                     record["benchmarks"] = receipts
                     if count == 8 and (directory / "perf.data").exists():
@@ -379,20 +494,40 @@ def run(root, lane):
                                 or any(r["returncode"] for key, r in record["reports"].items() if key != "flat"))):
                         raise ValueError("phase/refusal/readout failure: " + name)
                 record["complete"] = True
+            except BaseException as error:
+                phase_error = error
+                raise
             finally:
-                save_new(directory / "phase.json", record)
-                inventory(root)
+                try:
+                    save_new(directory / "phase.json", record)
+                    inventory(root)
+                except Exception as error:
+                    if phase_error is None:
+                        raise
+                    phase_error.add_note("phase retention: " + str(error)[:512])
         if digest(binary) != config["binary_sha256"] or source != {"suite": identity(SUITE), "core": identity(SUITE / "coaptic")}:
             raise ValueError("source/binary identity changed during probe")
         state["complete"] = True
     except BaseException as error:
+        primary = error
         state.update(error=type(error).__name__, reason=str(error)[:512],
+                     notes=[str(note)[:512] for note in getattr(error, "__notes__", [])[:4]],
                      cleanup_unresolved="cleanup unresolved" in str(error) or getattr(error, "cleanup_unresolved", False))
         raise
     finally:
-        save_new(root / "summary.json", state)
-        with (root / "index.json").open("xb") as stream:
-            stream.write(bounded_bytes(inventory(root), 2 * META))
+        try:
+            save_new(root / "summary.json", state)
+            index = bounded_bytes(inventory(root), 2 * META)  # Before creating index.json itself.
+            with (root / "index.json").open("xb") as stream:
+                stream.write(index)
+        except Exception as error:
+            if primary is None:
+                raise
+            primary.add_note("final inventory: " + str(error)[:512])
+            try:
+                save_new(root / "index-error.json", {"error": type(error).__name__, "reason": str(error)[:512]})
+            except Exception as retention:
+                primary.add_note("index failure receipt: " + str(retention)[:512])
 
 
 def main():
