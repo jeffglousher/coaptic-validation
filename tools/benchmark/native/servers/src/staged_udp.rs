@@ -4,6 +4,8 @@
 //! are soft OS bounds; synchronous sends keep App's entry-time commit semantics
 //! and are a different congestion policy from immediate WouldBlock.
 
+#[cfg(test)]
+use super::TransportCounts;
 use super::{AllocMemory, App, DatagramIo, Endpoint, SecurityContext, UdpSocket, bind_fixture};
 use coaptic::storage::{DatagramIoError, DatagramTransport};
 use std::{
@@ -40,6 +42,8 @@ struct StagedUdp {
     socket: UdpSocket,
     scratch: [u8; SCRATCH_BYTES],
     state: State,
+    #[cfg(test)]
+    counts: Option<TransportCounts>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -61,6 +65,8 @@ impl StagedUdp {
         socket.set_nonblocking(false)?;
         socket.set_write_timeout(Some(SEND_WAIT))?;
         let mut io = Self {
+            #[cfg(test)]
+            counts: None,
             socket,
             scratch: [0; SCRATCH_BYTES],
             state: State {
@@ -87,6 +93,10 @@ impl StagedUdp {
         }
         let micros = u32::try_from(micros).map_err(|_| io::ErrorKind::InvalidInput)?;
         if self.state.read_timeout_us == 0 || self.state.read_timeout_us > micros {
+            #[cfg(test)]
+            if let Some(counts) = &mut self.counts {
+                TransportCounts::inc(&mut counts.read_timeout_sets);
+            }
             set(&self.socket, Duration::from_micros(u64::from(micros)))?;
             self.state.read_timeout_us = micros;
         }
@@ -153,13 +163,17 @@ impl StagedUdp {
             std::thread::sleep(remaining.min(max_wait));
             return Ok(Wait::CloseDeadline);
         }
+        #[cfg(test)]
+        if let Some(counts) = &mut self.counts {
+            TransportCounts::inc(&mut counts.socket_recv_calls);
+        }
         let result = self.socket.recv_from(&mut self.scratch);
         self.stage_result(result);
         Ok(Wait::Receive)
     }
 
     fn send_with(
-        &self,
+        &mut self,
         peer: Endpoint,
         bytes: &[u8],
         send: impl FnOnce(&UdpSocket, &[u8], SocketAddr) -> io::Result<usize>,
@@ -171,6 +185,10 @@ impl StagedUdp {
         {
             return Err(io::ErrorKind::TimedOut.into());
         }
+        #[cfg(test)]
+        if let Some(counts) = &mut self.counts {
+            TransportCounts::inc(&mut counts.socket_send_calls);
+        }
         send(&self.socket, bytes, peer.into())
     }
 }
@@ -181,6 +199,10 @@ impl DatagramTransport for StagedUdp {
 
 impl DatagramIo for StagedUdp {
     fn recv(&mut self, bytes: &mut [u8]) -> io::Result<Option<(usize, Endpoint)>> {
+        #[cfg(test)]
+        if let Some(counts) = &mut self.counts {
+            TransportCounts::inc(&mut counts.recv_calls);
+        }
         // The extra scratch byte must distinguish every accepted packet from a
         // truncated oversized one. Keep the stage available on capacity refusal.
         if bytes.len() >= self.scratch.len() {
@@ -189,7 +211,13 @@ impl DatagramIo for StagedUdp {
         // Engine calls this only after acquiring RX. An admission failure never
         // reaches this take and therefore cannot overwrite the staged owner.
         match mem::replace(&mut self.state.stage, Stage::Empty) {
-            Stage::Empty => Ok(None),
+            Stage::Empty => {
+                #[cfg(test)]
+                if let Some(counts) = &mut self.counts {
+                    TransportCounts::inc(&mut counts.recv_empty);
+                }
+                Ok(None)
+            }
             Stage::Packet { len, peer } => {
                 let len = usize::from(len);
                 if len > bytes.len() {
@@ -268,6 +296,10 @@ fn step_with_clock(
     }
     let poll_ms = u64::try_from(after.duration_since(epoch).as_millis())
         .map_err(|_| app_io(io::ErrorKind::InvalidInput.into()))?;
+    #[cfg(test)]
+    if let Some(counts) = &mut app.transport_mut().counts {
+        TransportCounts::inc(&mut counts.app_polls);
+    }
     app.poll(poll_ms)?;
     Ok(Some(Step {
         #[cfg(test)]
@@ -752,8 +784,19 @@ mod tests {
         }
     }
 
-    #[test]
-    fn finite_verified_udp_proof_and_storage_receipt() {
+    // Reuse the same authenticated four-operation client proof for both drivers.
+    // The caller supplies the real driver step, not a second benchmark runner.
+    fn verify_four<T: DatagramIo<Error = io::Error>>(
+        mut server: App<coaptic::profiles::Default, T, 1, true, AllocMemory>,
+        peer: Endpoint,
+        epoch: Instant,
+        until: Instant,
+        protected: bool,
+        mut drive: impl FnMut(&mut App<coaptic::profiles::Default, T, 1, true, AllocMemory>),
+    ) -> (
+        App<coaptic::profiles::Default, T, 1, true, AllocMemory>,
+        [u32; 4],
+    ) {
         use coaptic::{Code, ContentFormat};
         const PAYLOAD: [u8; 64] = {
             let mut bytes = [0; 64];
@@ -766,88 +809,198 @@ mod tests {
         };
         assert_eq!(*super::super::BODY.get_or_init(|| &PAYLOAD), &PAYLOAD);
         assert!(mem::size_of::<State>() <= 64);
-        let mut results = [(0u32, 0u32, 0u32, 0u8); 2];
+        let client_context = context(false);
+        assert_ne!(client_context.sender_key(), context(true).sender_key());
+        let iv = *client_context.common_iv();
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        socket.set_nonblocking(true).unwrap();
+        let io = ClientIo {
+            io: coaptic::storage::UdpSocketIo::new(socket, [0; 1473]).unwrap(),
+            protected,
+            iv,
+            nonces: [[0; 13]; 4],
+            requests: [None; 4],
+            replies: [None; 4],
+            sent: 0,
+            received: 0,
+        };
+        let mut client = bind_fixture(io, 64, 1472, protected.then_some(client_context)).unwrap();
+        let mut turns = 0u8;
+        for index in 0..4 {
+            assert!(Instant::now() < until);
+            let call = client
+                .get("bench")
+                .to(peer)
+                .send(epoch.elapsed().as_millis() as u64)
+                .unwrap();
+            loop {
+                assert!(turns < 64 && Instant::now() < until, "finite proof budget");
+                turns += 1;
+                drive(&mut server);
+                client.poll(epoch.elapsed().as_millis() as u64).unwrap();
+                if let Some(response) = client.take_response(call) {
+                    let response = response.unwrap(); // includes OSCORE opening/authentication.
+                    assert_eq!(response.code(), Code::CONTENT);
+                    assert_eq!(response.format(), Some(ContentFormat::OCTET_STREAM));
+                    assert_eq!(response.etag_bytes(), Some(&b"fixture"[..]));
+                    assert!(!response.payload_truncated());
+                    assert_eq!(response.payload(), &PAYLOAD);
+                    assert_eq!(client.transport().requests[index], Some(call.token()));
+                    assert_eq!(client.transport().replies[index], Some(call.token()));
+                    break;
+                }
+            }
+        }
+        assert!(Instant::now() < until);
+        assert_eq!(client.transport().sent, 4);
+        assert_eq!(client.transport().received, 4);
+        let metrics = server.metrics();
+        assert_eq!(
+            (
+                metrics.rx_accepted,
+                metrics.tx_ok,
+                metrics.rx_error,
+                metrics.tx_fail
+            ),
+            (4, 4, 0, 0)
+        );
+        assert_eq!(server.engine_mut().rx_occupied(), 0);
+        (
+            server,
+            [
+                metrics.rx_accepted,
+                metrics.tx_ok,
+                metrics.progress,
+                u32::from(turns),
+            ],
+        )
+    }
+
+    #[test]
+    fn finite_ready_udp_call_counts() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        for protected in [false, true] {
+            let epoch = Instant::now();
+            let until = epoch + Duration::from_secs(1);
+            let io = runtime.block_on(async {
+                super::super::ReadyUdp {
+                    socket: tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap(),
+                    scratch: [0; SCRATCH_BYTES],
+                    received: false,
+                    counts: Some(TransportCounts::default()),
+                }
+            });
+            let peer = io.socket.local_addr().unwrap().into();
+            let server = bind_fixture(io, 64, 1472, protected.then(|| context(true))).unwrap();
+            let mut idle = false;
+            let (server, result) = verify_four(server, peer, epoch, until, protected, |server| {
+                runtime.block_on(async {
+                    if idle {
+                        tokio::time::timeout_at(
+                            until.into(),
+                            super::super::ready_wait(server, epoch),
+                        )
+                        .await
+                        .expect("finite readiness budget")
+                        .unwrap();
+                    }
+                    idle = super::super::ready_burst(server, epoch).unwrap();
+                    if !idle {
+                        tokio::task::yield_now().await;
+                    }
+                });
+            });
+            let counts = server.transport().counts.unwrap();
+            assert_eq!(counts.socket_send_calls, 4);
+            assert_eq!(counts.recv_calls, counts.socket_recv_calls);
+            assert_eq!(counts.recv_calls, counts.app_polls);
+            assert_eq!(counts.recv_calls - counts.recv_empty, 4);
+            assert!(counts.app_polls <= 64 * 32);
+            assert!(counts.readable_waits <= result[3]);
+            assert_eq!(counts.read_timeout_sets, 0);
+            print_counts("ready", protected, result, counts);
+        }
+    }
+
+    fn print_counts(driver: &str, protected: bool, result: [u32; 4], counts: TransportCounts) {
+        assert!(mem::size_of::<Option<TransportCounts>>() <= 32);
+        let receipt = format!(
+            "{{\"schema\":\"native-transport-calls/1\",\"driver\":\"{driver}\",\"protected\":{protected},\"verified\":4,\"warmup\":0,\"rx_tx_progress_turns\":{result:?},\"app_polls\":{},\"recv_calls\":{},\"recv_empty\":{},\"socket_recv_calls\":{},\"socket_send_calls\":{},\"readable_waits\":{},\"read_timeout_sets\":{},\"counter_option_bytes\":{},\"limits\":\"test-only opt-in saturating u32; setup excluded; 64 turns, 32 polls/ready burst, 1s checked wall budget with soft OS timeouts; logical calls, not syscalls/wakeups/time/cause/gain; Tokio cached readiness may skip recv syscall\"}}",
+            counts.app_polls,
+            counts.recv_calls,
+            counts.recv_empty,
+            counts.socket_recv_calls,
+            counts.socket_send_calls,
+            counts.readable_waits,
+            counts.read_timeout_sets,
+            mem::size_of::<Option<TransportCounts>>()
+        );
+        assert!(receipt.len() <= 2048);
+        println!("{receipt}");
+    }
+
+    #[test]
+    fn finite_staged_idle_call_counts() {
+        let mut io = transport();
+        io.counts = Some(TransportCounts::default());
+        let mut app = fixture(io);
+        let epoch = Instant::now();
+        for _ in 0..2 {
+            assert_eq!(
+                step(&mut app, epoch, false).unwrap().unwrap().wait,
+                Wait::Receive
+            );
+        }
+        let counts = app.transport().counts.unwrap();
+        assert_eq!(
+            counts,
+            TransportCounts {
+                app_polls: 2,
+                recv_calls: 2,
+                recv_empty: 2,
+                socket_recv_calls: 2,
+                ..TransportCounts::default()
+            }
+        );
+        assert_eq!(app.metrics().rx_accepted, 0);
+        println!("staged idle, two finite turns, setup excluded, logical calls: {counts:?}");
+    }
+
+    #[test]
+    fn finite_verified_udp_proof_and_storage_receipt() {
+        let mut results = [[0u32; 4]; 2];
         for (mode, protected) in [false, true].into_iter().enumerate() {
             let epoch = Instant::now();
             let until = epoch + Duration::from_secs(1);
-            let io = StagedUdp::new(UdpSocket::bind("127.0.0.1:0").unwrap(), Some(until)).unwrap();
-            let peer: Endpoint = io.socket.local_addr().unwrap().into();
-            let mut server = bind_fixture(io, 64, 1472, protected.then(|| context(true))).unwrap();
-            let client_context = context(false);
-            assert_ne!(client_context.sender_key(), context(true).sender_key());
-            let iv = *client_context.common_iv();
-            let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-            socket.set_nonblocking(true).unwrap();
-            let io = ClientIo {
-                io: coaptic::storage::UdpSocketIo::new(socket, [0; 1473]).unwrap(),
-                protected,
-                iv,
-                nonces: [[0; 13]; 4],
-                requests: [None; 4],
-                replies: [None; 4],
-                sent: 0,
-                received: 0,
-            };
-            let mut client =
-                bind_fixture(io, 64, 1472, protected.then_some(client_context)).unwrap();
-            let mut turns = 0u8;
-            for index in 0..4 {
-                assert!(Instant::now() < until);
-                let call = client
-                    .get("bench")
-                    .to(peer)
-                    .send(epoch.elapsed().as_millis() as u64)
-                    .unwrap();
-                loop {
-                    assert!(turns < 64 && Instant::now() < until, "finite proof budget");
-                    turns += 1;
-                    step(&mut server, epoch, false)
-                        .unwrap()
-                        .expect("finite server stopped before verification");
-                    client.poll(epoch.elapsed().as_millis() as u64).unwrap();
-                    if let Some(response) = client.take_response(call) {
-                        let response = response.unwrap(); // includes OSCORE opening/authentication.
-                        assert_eq!(response.code(), Code::CONTENT);
-                        assert_eq!(response.format(), Some(ContentFormat::OCTET_STREAM));
-                        assert_eq!(response.etag_bytes(), Some(&b"fixture"[..]));
-                        assert!(!response.payload_truncated());
-                        assert_eq!(response.payload(), &PAYLOAD);
-                        assert_eq!(client.transport().requests[index], Some(call.token()));
-                        assert_eq!(client.transport().replies[index], Some(call.token()));
-                        break;
-                    }
-                }
-            }
-            assert!(Instant::now() < until);
-            assert_eq!(client.transport().sent, 4);
-            assert_eq!(client.transport().received, 4);
-            let metrics = server.metrics();
-            assert_eq!(
-                (
-                    metrics.rx_accepted,
-                    metrics.tx_ok,
-                    metrics.rx_error,
-                    metrics.tx_fail
-                ),
-                (4, 4, 0, 0)
-            );
-            assert_eq!(server.engine_mut().rx_occupied(), 0);
-            results[mode] = (metrics.rx_accepted, metrics.tx_ok, metrics.progress, turns);
+            let mut io =
+                StagedUdp::new(UdpSocket::bind("127.0.0.1:0").unwrap(), Some(until)).unwrap();
+            assert!(io.counts.is_none());
+            io.counts = Some(TransportCounts::default()); // Excludes socket setup.
+            let peer = io.socket.local_addr().unwrap().into();
+            let server = bind_fixture(io, 64, 1472, protected.then(|| context(true))).unwrap();
+            let (server, result) = verify_four(server, peer, epoch, until, protected, |server| {
+                step(server, epoch, false)
+                    .unwrap()
+                    .expect("finite server stopped");
+            });
+            let counts = server.transport().counts.unwrap();
+            assert_eq!(counts.socket_send_calls, 4);
+            assert_eq!(counts.app_polls, result[3]);
+            assert!(counts.app_polls <= 64);
+            assert_eq!(counts.recv_calls, counts.app_polls);
+            assert_eq!(counts.recv_calls - counts.recv_empty, 4);
+            assert!(counts.socket_recv_calls <= counts.app_polls);
+            assert_eq!(counts.readable_waits, 0);
+            print_counts("staged", protected, result, counts);
+            results[mode] = result;
         }
         let receipt = format!(
-            "{{\"schema\":\"staged-udp-finite-proof/1\",\"verified_per_mode\":4,\"warmup\":0,\"unprotected\":{:?},\"oscore\":{:?},\"stage_bytes\":{},\"stage_cache_budget_bytes\":{},\"adapter_including_scratch_state_bytes\":{},\"app_including_adapter_bytes\":{},\"scratch_bytes\":2049,\"send_timeout_us\":1000,\"limits\":\"Windows layout only; nested owners do not sum; soft socket timeouts, sync entry-time commits; no CPU/peak-stack/whole-RAM claim\"}}",
-            [
-                results[0].0,
-                results[0].1,
-                results[0].2,
-                u32::from(results[0].3)
-            ],
-            [
-                results[1].0,
-                results[1].1,
-                results[1].2,
-                u32::from(results[1].3)
-            ],
+            "{{\"schema\":\"staged-udp-finite-proof/1\",\"verified_per_mode\":4,\"warmup\":0,\"unprotected\":{:?},\"oscore\":{:?},\"stage_bytes\":{},\"stage_cache_budget_bytes\":{},\"adapter_including_scratch_state_bytes\":{},\"app_including_adapter_bytes\":{},\"scratch_bytes\":2049,\"send_timeout_us\":1000,\"limits\":\"Test-build layout includes the counter option; nested owners do not sum; soft socket timeouts, sync entry-time commits; no CPU/peak-stack/whole-RAM claim\"}}",
+            results[0],
+            results[1],
             mem::size_of::<Stage>(),
             mem::size_of::<State>(),
             mem::size_of::<StagedUdp>(),
