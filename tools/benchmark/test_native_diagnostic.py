@@ -6,10 +6,116 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import MagicMock, Mock, patch
-from native_diagnostic import control_line, cpu_cost, main, measure, server_resources, validate_report
+from native_diagnostic import (ADMISSION_DIAGNOSTIC_LIMIT, control_line, cpu_cost, main, measure,
+                               server_resources, validate_admission_diagnostics, validate_report)
 
 
 class ReportTests(unittest.TestCase):
+    @staticmethod
+    def admission_report():
+        # First A-D=100; next C-D=300, E=700 crosses P=1000; last C-D=1000
+        # already forces a miss and E=0. Local debt is retained in C.
+        return dict(concurrency=1, scheduled_rate_ops_per_second=1_000_000,
+                    attempted=3, pacing_missed_period_operations=2,
+                    pacing_late_operations=3,
+                    pacing_total_lateness_ns=2100, pacing_max_lateness_ns=1000,
+                    admission_diagnostics=dict(schema="coaptic-admission-interval/1",
+                        storage_bytes=256, option_storage_bytes=256, admissions=3,
+                        first_admissions=1, first_missed=0, first_lateness_ns=100, prior_forced_missed=1,
+                        idle_sleep=dict(admissions=1, positive=1, crossed_missed=1, total_ns=700, max_ns=700),
+                        no_idle_sleep=dict(admissions=1, positive=0, crossed_missed=0, total_ns=0, max_ns=0)))
+
+    def test_admission_schema_types_bounds_and_counter_partitions(self):
+        report = self.admission_report()
+        validate_admission_diagnostics(report, True)
+        value = report["admission_diagnostics"]
+        for path, changes in (((), {"admissions": 4, "first_admissions": 0, "first_missed": 1,
+                                   "prior_forced_missed": 2, "first_lateness_ns": 1001,
+                                   "storage_bytes": 0, "option_storage_bytes": 2049,
+                                   "schema": "unknown", "extra": "x" * 2049}),
+                              (("idle_sleep",), {"admissions": 2, "positive": 0, "crossed_missed": 0,
+                                                "total_ns": 699, "max_ns": 701})):
+            for key, number in changes.items():
+                bad = copy.deepcopy(report)
+                target = bad["admission_diagnostics"]
+                for member in path:
+                    target = target[member]
+                target[key] = number
+                with self.subTest(path=path, key=key), self.assertRaises(ValueError):
+                    validate_admission_diagnostics(bad, True)
+        for name in (None, "idle_sleep", "no_idle_sleep"):
+            target = value if name is None else value[name]
+            for key in target:
+                if key in ("schema", "idle_sleep", "no_idle_sleep"):
+                    continue
+                for number in (True, -1, "1", 1.0, None, 2**(128 if key.endswith("_ns") else 64)):
+                    bad = copy.deepcopy(report)
+                    destination = bad["admission_diagnostics"] if name is None else bad["admission_diagnostics"][name]
+                    destination[key] = number
+                    with self.subTest(bucket=name, key=key, number=number), self.assertRaises(ValueError):
+                        validate_admission_diagnostics(bad, True)
+        for selection in (False, 1, None):
+            with self.assertRaises(ValueError):
+                validate_admission_diagnostics(report, selection)
+        for bad in (dict(report, concurrency=2), dict(report, scheduled_rate_ops_per_second=None),
+                    dict(report, pacing_missed_period_operations=1), dict(report, attempted=2),
+                    dict(report, pacing_total_lateness_ns=799), dict(report, pacing_max_lateness_ns=699),
+                    dict(report, admission_diagnostics=None)):
+            with self.assertRaises(ValueError):
+                validate_admission_diagnostics(bad, True)
+        for name in value:
+            bad = copy.deepcopy(report)
+            del bad["admission_diagnostics"][name]
+            with self.assertRaises(ValueError):
+                validate_admission_diagnostics(bad, True)
+
+    def test_admission_maximum_integer_width_fits_existing_2k_reserve(self):
+        value = self.admission_report()["admission_diagnostics"]
+        for key in value:
+            if type(value[key]) is int:
+                value[key] = 2**(128 if key.endswith("_ns") else 64) - 1
+        for name in ("idle_sleep", "no_idle_sleep"):
+            for key in value[name]:
+                value[name][key] = 2**(128 if key.endswith("_ns") else 64) - 1
+        addition = ',"admission_diagnostics":' + json.dumps(value, separators=(",", ":"))
+        self.assertLessEqual(len(addition.encode("ascii")), ADMISSION_DIAGNOSTIC_LIMIT)
+
+    def test_admission_optin_bounds_refuse_before_process_or_credentials(self):
+        for changes in (dict(rate=None), dict(concurrency=2, message_type="non"),
+                        dict(admission_diagnostics=1)):
+            selected = dict(rate=1000, admission_diagnostics=True) | changes
+            with patch("native_diagnostic.subprocess.Popen") as spawn, \
+                    patch("native_diagnostic.secrets.token_bytes") as key, self.assertRaises(ValueError):
+                measure("missing", "missing", 64, 2, 0, 1000, "spin", "oscore", **selected)
+            spawn.assert_not_called()
+            key.assert_not_called()
+
+    def test_admission_flag_reaches_client_only_when_explicit_and_keeps_startup_gate(self):
+        for selected in (False, True):
+            sut, child = Mock(pid=123), Mock(pid=124)
+            for process in (sut, child):
+                process.poll.return_value = None
+                process.wait.return_value = 0
+                process.terminate.side_effect = lambda p=process: setattr(p.poll, "return_value", 0)
+            reserve, probe = MagicMock(), MagicMock()
+            reserve.__enter__.return_value, probe.__enter__.return_value = reserve, probe
+            reserve.getsockname.return_value = ("127.0.0.1", 5683)
+            probe.bind.side_effect = OSError("bound")
+            with patch("native_diagnostic.subprocess.Popen", side_effect=(sut, child)) as spawn, \
+                    patch("native_diagnostic.socket.socket", side_effect=(reserve, probe)), \
+                    patch("native_diagnostic.secrets.token_bytes", return_value=b"fixture"), \
+                    patch("native_diagnostic.control_line", return_value="ready"), \
+                    patch("native_diagnostic.server_resources", side_effect=ValueError("startup refusal")), \
+                    patch("native_diagnostic.snapshot") as snapshot, \
+                    self.assertRaisesRegex(ValueError, "startup refusal"):
+                measure("server", "client", 64, 2, 0, 1000, "spin", "unprotected",
+                        rate=1000, admission_diagnostics=selected)
+            command = spawn.call_args_list[1].args[0]
+            self.assertEqual(command.count("--admission-diagnostics"), int(selected))
+            self.assertIn("--gated", command)
+            snapshot.assert_not_called()
+            child.stdin.write.assert_not_called()
+
     @staticmethod
     def startup_record():
         return dict(schema="coaptic-native-server-resources/2", server_kind="coaptic-async",
@@ -341,7 +447,13 @@ class ReportTests(unittest.TestCase):
                 with patch("sys.argv", argv), patch("native_diagnostic.measure", return_value={}) as run:
                     main()
                 self.assertEqual(run.call_args.kwargs["server_kind"], kind or "coaptic-reusable")
+                self.assertFalse(run.call_args.kwargs["admission_diagnostics"])
                 self.assertEqual(json.loads(output.read_text()), dict(passed=True))
+            argv += ["--admission-diagnostics", "--rate", "1000"]
+            argv[argv.index("--output") + 1] = str(Path(directory) / "admission.json")
+            with patch("sys.argv", argv), patch("native_diagnostic.measure", return_value={}) as run:
+                main()
+            self.assertTrue(run.call_args.kwargs["admission_diagnostics"])
 
     def test_control_lines_refuse_unbounded_or_incomplete_reports(self):
         self.assertEqual(control_line(io.StringIO("ready\n"), 1), "ready")
@@ -377,6 +489,10 @@ class ReportTests(unittest.TestCase):
                      core_heap_limit_bytes=1000, app_inline_bytes=1000,
                      verification_heap_bytes=128, timing_heap_bytes=16, udp_scratch_bytes=1473)
         validate_report(valid, 64, 2, "spin", "oscore")
+        with self.assertRaisesRegex(ValueError, "unrequested"):
+            validate_report(dict(valid, admission_diagnostics={}), 64, 2, "spin", "oscore")
+        with self.assertRaisesRegex(ValueError, "paced"):
+            validate_report(valid, 64, 2, "spin", "oscore", admission_diagnostics=True)
         for change in (dict(completed=1), dict(bytes=63), dict(security="unprotected"),
                        dict(policy="sleep1"), dict(latencies_ns=[20]),
                        dict(latencies_ns=[20, -1]), dict(latencies_ns=[True, 30]),

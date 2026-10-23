@@ -35,6 +35,8 @@ METADATA_BUDGET = 96 * MIB
 SUMMARY_LIMIT = 64 * 1024
 WINDOW_LIMIT = 16 * 1024
 PROCESS_CLOCK_LIMIT = 4096  # One optional clean-window sidecar.
+ADMISSION_DIAGNOSTIC_LIMIT = 2048  # Carved from the existing fixed report reserve.
+REPORT_BASE_FIELDS_LIMIT = SUMMARY_LIMIT - ADMISSION_DIAGNOSTIC_LIMIT
 BUILD_LOG_LIMIT = 2 * MIB
 WARMUP = 20
 DATAGRAM_BUDGET = 60_000
@@ -66,6 +68,15 @@ def selection(value, allowed=None):
 
 
 def configuration(args):
+    diagnostic = getattr(args, "admission_diagnostics", False)
+    if type(diagnostic) is not bool:
+        raise ValueError("admission diagnostics selection must be boolean")
+    if diagnostic:
+        if sha40(args.baseline_sha) != sha40(args.candidate_sha):
+            raise ValueError("admission diagnostics require identical full core SHAs")
+        if (args.candidate_server_kind is not None or args.server_kind not in EXPLICIT_KINDS
+                or args.concurrency != 1 or args.perf):
+            raise ValueError("admission diagnostics require one same adapter, paced C1 and perf disabled")
     if args.candidate_server_kind is not None:
         if (args.server_kind not in EXPLICIT_KINDS or args.candidate_server_kind not in EXPLICIT_KINDS
                 or args.server_kind == args.candidate_server_kind):
@@ -115,8 +126,9 @@ def rotation(args, cells):
 
 
 def report_limit(operations):
-    # u64 decimal <=20 bytes, plus comma/space; fixed fields get a separate 64KiB.
-    return SUMMARY_LIMIT + 22 * operations
+    # u64 decimal <=20 bytes, plus comma/space. Optional diagnostics use 2KiB
+    # inside the existing 64KiB fixed reserve; the campaign allowance is unchanged.
+    return REPORT_BASE_FIELDS_LIMIT + ADMISSION_DIAGNOSTIC_LIMIT + 22 * operations
 
 
 def metadata_allowance(plan, seconds):
@@ -1074,6 +1086,9 @@ def report_summary(report):
     if not isinstance(report, dict):
         raise ValueError("native report must be an object")
     summary = {key: value for key, value in report.items() if key != "latencies_ns"}
+    if "admission_diagnostics" in summary:
+        bounded_bytes({key: value for key, value in summary.items() if key != "admission_diagnostics"},
+                      WINDOW_LIMIT // 2 - ADMISSION_DIAGNOSTIC_LIMIT)
     bounded_bytes(summary, WINDOW_LIMIT // 2)
     values = report.get("latencies_ns", [])
     if (not isinstance(values, list)
@@ -1103,7 +1118,7 @@ def save_window(directory, result):
         identity_fields = {key: result[key] for key in
                            ("mode", "security", "bytes", "rate", "server_kind", "operations",
                             "concurrency", "message_type", "cleanup_errors", "revision_label",
-                            "core_sha", "repeat", "index", "comparison_type")
+                            "core_sha", "repeat", "index", "comparison_type", "admission_diagnostics")
                            if key in result}
         if unresolved_cleanup(result):
             identity_fields["cleanup_unresolved"] = True
@@ -1117,7 +1132,10 @@ def save_window(directory, result):
 
 
 def window(server, client, cell, operations, directory, mode="clean", quota=8 * MIB,
-           *, concurrency=1, message_type="con"):
+           *, concurrency=1, message_type="con", admission_diagnostics=False):
+    if type(admission_diagnostics) is not bool or (admission_diagnostics and
+            (mode != "clean" or concurrency != 1 or type(cell[2]) is not int or cell[2] <= 0)):
+        raise ValueError("admission diagnostics require an unprofiled paced C1 window")
     # Import lazily: argument validation/aggregation tests do not require psutil.
     import psutil
     import native_diagnostic as native
@@ -1126,6 +1144,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
               "rate": rate, "server_kind": kind, "operations": operations,
               "concurrency": concurrency, "message_type": message_type,
               "load_before": os.getloadavg()}
+    if admission_diagnostics:
+        result["admission_diagnostics"] = True
     sut = child = None
     clock_evidence = ({"schema": "coaptic-linux-process-cpu-clock/1",
                        "backend": "clock_getcpuclockid + time.clock_gettime_ns/clock_getres",
@@ -1145,6 +1165,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
         client_args = [str(client), str(port), str(size), str(operations), str(WARMUP), "3000", "spin", security,
                        "--cpu-gated", "--rate", str(rate),
                        "--concurrency", str(concurrency), "--message-type", message_type]
+        if admission_diagnostics:
+            client_args.append("--admission-diagnostics")
         if security == "oscore":
             server_args.append(str(credentials))
             client_args.insert(8, str(credentials))
@@ -1212,7 +1234,7 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                     report = json.loads(raw)
                     result["report"] = report_summary(report)
                     native.validate_report(report, size, operations, "spin", security, rate,
-                                           concurrency, message_type)
+                                           concurrency, message_type, admission_diagnostics)
                     if report["warmup"] != WARMUP:
                         raise ValueError("mismatched warmup")
                     if sut.poll() is not None:
@@ -1264,7 +1286,9 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
 
 
 def accepted(result, tick):
-    if not result.get("passed") or result["mode"] != "clean":
+    if (not result.get("passed") or result["mode"] != "clean"
+            or result.get("admission_diagnostics", False) is not False
+            or "admission_diagnostics" in result.get("report", {})):
         return False
     report = result["report"]
     concurrency, message_type = result.get("concurrency"), result.get("message_type")
@@ -1303,6 +1327,8 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
             groups.setdefault(key, []).append(item)
     output = []
     cleanup_failed = any(unresolved_cleanup(item) for item in results)
+    diagnostic = any(item.get("admission_diagnostics", False) is not False
+                     or "admission_diagnostics" in item.get("report", {}) for item in results)
     for key, items in groups.items():
         record = dict(zip(("security", "bytes", "rate", "server_kind", "concurrency", "message_type"), key))
         labels = {label: [i for i in items if i["revision_label"] == label]
@@ -1316,7 +1342,7 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
             label: [i.get("report", {}).get("peak_pending")
                     for i in sorted(group, key=lambda i: i["repeat"])]
             for label, group in labels.items()}
-        valid = campaign_complete and not cleanup_failed and all(
+        valid = campaign_complete and not cleanup_failed and not diagnostic and all(
                     len(group) == repeats and {i["repeat"] for i in group} == set(range(repeats))
                     and all(accepted(i, tick) for i in group) for group in labels.values())
         if adapter_pair:
@@ -1333,6 +1359,9 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
                 valid = False
         record.update(comparable=valid, server_cpu_ratio=None,
                       eligibility="complete campaign; resolved cleanup; all rotated pairs complete; achieved rates within5%; <=1% missed periods (minimum1); server CPU >=20 ticks/window")
+        if diagnostic:
+            record.update(admission_diagnostics=True,
+                          eligibility="admission instrumentation present; all CPU comparisons vetoed; no clean/diagnostic mixing")
         if valid:
             costs = {}
             for label, group in labels.items():
@@ -1352,9 +1381,10 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
 
 def run(args):
     cells = configuration(args)
+    diagnostic = getattr(args, "admission_diagnostics", False)
     adapter_pair = ((args.server_kind, args.candidate_server_kind)
                     if args.candidate_server_kind is not None else None)
-    comparison_type = "application_scheduling" if adapter_pair else "core_revision"
+    comparison_type = "admission_diagnostic" if diagnostic else ("application_scheduling" if adapter_pair else "core_revision")
     plan = rotation(args, cells)
     metadata_bytes = metadata_allowance(plan, args.seconds)
     perf_slots = sum(mode != "clean" for mode, _, _, _ in plan)
@@ -1380,6 +1410,7 @@ def run(args):
                                    "candidate_sha": args.candidate_sha, "cells": cells,
                                    "seconds": args.seconds, "repeats": args.repeats,
                                    "perf": args.perf, "concurrency": args.concurrency,
+                                   "admission_diagnostics": diagnostic,
                                    "message_type": args.message_type,
                                    "candidate_server_kind": args.candidate_server_kind,
                                    "comparison_type": comparison_type,
@@ -1400,6 +1431,10 @@ def run(args):
                 "cells": cells, "seconds": args.seconds, "repeats": args.repeats,
                 "concurrency": args.concurrency, "message_type": args.message_type,
                 "adapter_pair": adapter_pair, "comparison_type": comparison_type,
+                "admission_diagnostics": diagnostic,
+                "admission_diagnostic_limit_bytes": ADMISSION_DIAGNOSTIC_LIMIT,
+                "report_base_fields_limit_bytes": REPORT_BASE_FIELDS_LIMIT,
+                "admission_diagnostic_limits": "opt-in paced C1; pre-send attempts include send refusal; prior C carries earlier debt; residual/idle traversal are local intervals, not causal sleep/server/VM shares; no CPU comparison",
                 "rotation": "AB/BA by repeat and cell; all clean windows precede all profiling passes",
                 "limits": "selected bounded concurrency/message type complete loopback GET; Default/AllocMemory host fixture; one App/context/global sender sequence per window; OSCORE established only; process CPU includes IPC boundaries/idle; no interrupt attribution, EDHOC, saturation, device or50% target proof"}
         save(out / "manifest.json", manifest)
@@ -1418,7 +1453,8 @@ def run(args):
             actual_cell = (*cell[:3], adapter_pair[1 if label == "candidate" else 0]) if adapter_pair else cell
             result = window(server, client, actual_cell, cell[2] * (args.seconds if mode == "clean" else PROFILE_SECONDS),
                             out / f"window-{index:03}", mode, quota,
-                            concurrency=args.concurrency, message_type=args.message_type)
+                            concurrency=args.concurrency, message_type=args.message_type,
+                            admission_diagnostics=diagnostic)
             result.update(revision_label=label, core_sha=builds[label]["core"]["revision"], repeat=repeat,
                           server_sha256=digest(server), client_sha256=digest(client), index=index)
             result["comparison_type"] = comparison_type
@@ -1443,6 +1479,7 @@ def run(args):
                                                             campaign_complete=complete,
                                                             adapter_pair=adapter_pair) if results else [],
                                    "comparison_type": comparison_type,
+                                   "admission_diagnostics": diagnostic,
                                    "campaign_complete": complete, "cleanup_unresolved": cleanup_failed,
                                    "windows_recorded": len(results),
                                    "failed_windows": [r["index"] for r in results if not r["passed"]],
@@ -1468,6 +1505,8 @@ def argument_parser():
     parser.add_argument("--candidate-server-kind", choices=EXPLICIT_KINDS,
                         help="compare two adapters at identical core SHAs; otherwise both use --server-kind")
     parser.add_argument("--perf", action="store_true")
+    parser.add_argument("--admission-diagnostics", action="store_true",
+                        help="same-core, same-adapter paced C1 intervals; perf refused and CPU ratios vetoed")
     parser.add_argument("--concurrency", type=int, choices=range(1, 5), default=1)
     parser.add_argument("--message-type", choices=("con", "non"), default="con")
     return parser

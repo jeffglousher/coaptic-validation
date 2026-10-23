@@ -42,6 +42,10 @@ on:
         description: Additional bounded perf record and stat passes (permission refusal retained)
         type: boolean
         default: true
+      admission_diagnostics:
+        description: Local admission intervals; identical core/adapter and C1 required, perf must be false, CPU ratios vetoed
+        type: boolean
+        default: false
       client_concurrency:
         description: Outstanding client Calls (2..4 requires explicit non; CON NSTART=1)
         type: choice
@@ -74,6 +78,7 @@ jobs:
       SERVER_KIND: ${{ inputs.server_kind }}
       CANDIDATE_SERVER_KIND: ${{ inputs.candidate_server_kind }}
       PERF_ENABLED: ${{ inputs.perf }}
+      ADMISSION_DIAGNOSTICS: ${{ inputs.admission_diagnostics }}
       CLIENT_CONCURRENCY: ${{ inputs.client_concurrency }}
       MESSAGE_TYPE: ${{ inputs.message_type }}
     steps:
@@ -93,6 +98,7 @@ jobs:
               sizes=os.environ['RESPONSE_SIZES'], rates=os.environ['OFFERED_RATES'],
               seconds=int(os.environ['WINDOW_SECONDS']), repeats=int(os.environ['REPEATS']),
               server_kind=os.environ['SERVER_KIND'], perf=os.environ['PERF_ENABLED'] == 'true',
+              admission_diagnostics=os.environ['ADMISSION_DIAGNOSTICS'] == 'true',
               candidate_server_kind=(None if os.environ['CANDIDATE_SERVER_KIND'] == 'same'
                                      else os.environ['CANDIDATE_SERVER_KIND']),
               baseline_sha=os.environ['BASELINE_SHA'], candidate_sha=os.environ['CANDIDATE_SHA'],
@@ -121,6 +127,7 @@ jobs:
         run: |
           options=()
           if [[ "$PERF_ENABLED" == true ]]; then options+=(--perf); fi
+          if [[ "$ADMISSION_DIAGNOSTICS" == true ]]; then options+=(--admission-diagnostics); fi
           if [[ "$CANDIDATE_SERVER_KIND" != same ]]; then options+=(--candidate-server-kind "$CANDIDATE_SERVER_KIND"); fi
           "$RUNNER_TEMP/cpu-venv/bin/python" tools/benchmark/linux_cpu.py \
             --baseline-sha "$BASELINE_SHA" --candidate-sha "$CANDIDATE_SHA" \

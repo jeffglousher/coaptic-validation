@@ -178,8 +178,70 @@ def cpu_cost(before, after, completed):
     return result
 
 
+ADMISSION_DIAGNOSTIC_LIMIT = 2048  # Includes the report member name and comma.
+
+
+def validate_admission_diagnostics(report, selected=False):
+    """Bounded local-interval accounting; never a causal or CPU qualification."""
+    if type(selected) is not bool:
+        raise ValueError("admission diagnostics selection must be boolean")
+    if not selected:
+        if "admission_diagnostics" in report:
+            raise ValueError("unrequested admission diagnostics")
+        return
+    if (type(report.get("concurrency")) is not int or report["concurrency"] != 1
+            or type(report.get("scheduled_rate_ops_per_second")) is not int
+            or not 1 <= report["scheduled_rate_ops_per_second"] <= 1_000_000):
+        raise ValueError("admission diagnostics require paced concurrency 1")
+    value = report.get("admission_diagnostics")
+    counts = ("admissions", "first_admissions", "first_missed", "prior_forced_missed")
+    fields = {"schema", "storage_bytes", "option_storage_bytes", "first_lateness_ns",
+              "idle_sleep", "no_idle_sleep", *counts}
+    if (not isinstance(value, dict) or set(value) != fields
+            or value["schema"] != "coaptic-admission-interval/1"):
+        raise ValueError("malformed admission diagnostics schema")
+    for key in (*counts, "storage_bytes", "option_storage_bytes", "first_lateness_ns"):
+        if type(value[key]) is not int or not 0 <= value[key] < 2**(128 if key.endswith("_ns") else 64):
+            raise ValueError("invalid admission diagnostics counter")
+    if not 0 < value["storage_bytes"] <= value["option_storage_bytes"] <= ADMISSION_DIAGNOSTIC_LIMIT:
+        raise ValueError("invalid admission diagnostics storage")
+    for name in ("idle_sleep", "no_idle_sleep"):
+        bucket = value[name]
+        if not isinstance(bucket, dict) or set(bucket) != {"admissions", "positive", "crossed_missed", "total_ns", "max_ns"}:
+            raise ValueError("malformed admission residual schema")
+        for key, number in bucket.items():
+            if type(number) is not int or not 0 <= number < 2**(128 if key.endswith("_ns") else 64):
+                raise ValueError("invalid admission residual counter")
+        if (not bucket["crossed_missed"] <= bucket["positive"] <= bucket["admissions"]
+                or not bucket["positive"] <= bucket["total_ns"]
+                or not bucket["max_ns"] <= bucket["total_ns"] <= bucket["positive"] * bucket["max_ns"]
+                or bool(bucket["positive"]) != bool(bucket["max_ns"])):
+            raise ValueError("inconsistent admission residual accounting")
+    slept, awake = value["idle_sleep"], value["no_idle_sleep"]
+    count = value["admissions"]
+    period = 1_000_000_000 // report["scheduled_rate_ops_per_second"]
+    residual_total = slept["total_ns"] + awake["total_ns"]
+    if (type(report.get("attempted")) is not int or not 0 <= count == report["attempted"] <= 60_000
+            or value["first_admissions"] != int(count > 0)
+            or (count == 0 and value["first_lateness_ns"] != 0)
+            or value["first_missed"] > value["first_admissions"]
+            or value["first_missed"] != int(value["first_lateness_ns"] >= period)
+            or value["first_admissions"] + slept["admissions"] + awake["admissions"] != count
+            or value["prior_forced_missed"] > count - value["first_admissions"]
+            or value["first_missed"] + value["prior_forced_missed"]
+            + slept["crossed_missed"] + awake["crossed_missed"] != report["pacing_missed_period_operations"]
+            or residual_total + value["first_lateness_ns"] > report["pacing_total_lateness_ns"]
+            or slept["positive"] + awake["positive"] + int(value["first_lateness_ns"] > 0)
+            > report["pacing_late_operations"]
+            or max(slept["max_ns"], awake["max_ns"], value["first_lateness_ns"]) > report["pacing_max_lateness_ns"]):
+        raise ValueError("inconsistent admission diagnostics accounting")
+    encoded = json.dumps(value, separators=(",", ":"), ensure_ascii=True)
+    if len(encoded) + len(',"admission_diagnostics":') > ADMISSION_DIAGNOSTIC_LIMIT:
+        raise ValueError("admission diagnostics exceeds byte allowance")
+
+
 def validate_report(report, size, operations, policy, security, rate=None,
-                    concurrency=1, message_type="con"):
+                    concurrency=1, message_type="con", admission_diagnostics=False):
     if not isinstance(report, dict):
         raise ValueError("native diagnostic report must be an object")
     if (report.get("schema") != "coaptic-native-complete/1"
@@ -243,16 +305,19 @@ def validate_report(report, size, operations, policy, security, rate=None,
             or report["pacing_late_operations"] > operations
             or report["pacing_max_lateness_ns"] > report["pacing_total_lateness_ns"]):
         raise ValueError("inconsistent pacing accounting")
+    validate_admission_diagnostics(report, admission_diagnostics)
 
 
 def measure(server, client, size, operations, warmup, timeout_ms, policy, security,
             *, server_kind="coaptic-reusable", rate=None, cpu_gated=False,
-            phase_timeout_seconds=300, concurrency=1, message_type="con"):
+            phase_timeout_seconds=300, concurrency=1, message_type="con", admission_diagnostics=False):
     if not (1 <= size <= 65536 and 1 <= operations <= 60_000 and 0 <= warmup <= 1000
             and (operations + warmup) * ((size + 1023) // 1024) <= 60_000
             and 1 <= timeout_ms <= 60000 and policy in ("spin", "sleep1")
             and security in ("unprotected", "oscore")
             and type(concurrency) is int and 1 <= concurrency <= 4
+            and type(admission_diagnostics) is bool
+            and (not admission_diagnostics or (concurrency == 1 and rate is not None))
             and message_type in ("con", "non") and (concurrency == 1 or message_type == "non")
             and server_kind in SERVER_KINDS
             and type(phase_timeout_seconds) is int and 1 <= phase_timeout_seconds <= 3600
@@ -294,6 +359,8 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                 if rate is not None:
                     command.extend(["--rate", str(rate)])
                 command.extend(["--concurrency", str(concurrency), "--message-type", message_type])
+                if admission_diagnostics:
+                    command.append("--admission-diagnostics")
                 command.append("--cpu-gated" if cpu_gated else "--gated")
                 child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                          stderr=subprocess.PIPE, text=True)
@@ -319,7 +386,8 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                 if not output:
                     raise RuntimeError("client refused measured operation")
                 report = json.loads(output)
-                validate_report(report, size, operations, policy, security, rate, concurrency, message_type)
+                validate_report(report, size, operations, policy, security, rate, concurrency, message_type,
+                                admission_diagnostics)
                 if report["warmup"] != warmup:
                     raise ValueError("mismatched warmup")
                 if not cpu_gated:
@@ -337,6 +405,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                             server_kind=server_kind, requested_operations_per_second=rate,
                             server_resources=startup,
                             concurrency=concurrency, message_type=message_type,
+                            admission_diagnostics=admission_diagnostics,
                             phase_timeout_seconds=phase_timeout_seconds,
                             cpu_attribution_limit="OS-accounted process user and system CPU; quantized; IPC/snapshot boundary overhead included; machine-wide interrupts/DPCs and unrelated kernel work not attributed; client reported separately",
                             server_sha256=digest(server), client_sha256=digest(client),
@@ -360,7 +429,8 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                                        if report is not None else "no report; measured activity unknown"),
                     phase_timeout_seconds=phase_timeout_seconds,
                     size=size, operations=operations, policy=policy, security=security,
-                    concurrency=concurrency, message_type=message_type)
+                    concurrency=concurrency, message_type=message_type,
+                    admission_diagnostics=admission_diagnostics)
                 raise
             finally:
                 if child is not None and child.poll() is None:
@@ -373,6 +443,8 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server", type=Path, required=True)
+    parser.add_argument("--admission-diagnostics", action="store_true",
+                        help="paced C1 local admission intervals; instrumentation, not CPU qualification")
     parser.add_argument("--client", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--bytes", type=int, default=65536)
@@ -397,7 +469,8 @@ def main():
                          args.timeout_ms, args.policy, args.security,
                          server_kind=args.server_kind, rate=args.rate, cpu_gated=args.cpu_gated,
                          phase_timeout_seconds=args.phase_timeout_seconds,
-                         concurrency=args.concurrency, message_type=args.message_type)
+                         concurrency=args.concurrency, message_type=args.message_type,
+                         admission_diagnostics=args.admission_diagnostics)
     except Exception as error:
         args.output.write_text(json.dumps(dict(passed=False, error_type=type(error).__name__,
                                               reason=str(error),
