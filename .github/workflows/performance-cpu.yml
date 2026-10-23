@@ -113,6 +113,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
         with:
           toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
+          components: clippy
       - name: Python checks and one runner build lane
         env:
           COAPTIC_PRIVILEGED_CLEANUP_TESTS: '1'
