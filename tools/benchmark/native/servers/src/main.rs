@@ -17,6 +17,8 @@
 //! current-thread Tokio runtime and emits one startup inline-storage ledger.
 //! `coaptic-blocking` stages bounded synchronous receives before App polling,
 //! with soft socket timeouts and a distinct synchronous send congestion policy.
+//! `coaptic-staged-ready` stages a nonblocking receive in the same reusable scratch
+//! before polling App, preserving ready's immediate try_send_to congestion policy.
 #![forbid(unsafe_code)]
 macro_rules! conn_as_any {
     () => {
@@ -33,7 +35,6 @@ macro_rules! conn_as_any {
 mod coap_dtls;
 #[path = "../../../../interop/dtls_listener.rs"]
 mod dtls_listener;
-#[cfg(test)]
 mod staged_ready;
 mod staged_udp;
 use coap_lite::{CoapOption, MessageClass, MessageType, Packet, ResponseType};
@@ -697,7 +698,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if !(5..=7).contains(&args.len()) {
         return Err(
-            "usage: bench-rust-server coaptic-small|coaptic|coaptic-reusable|coaptic-ready|coaptic-mio|coaptic-async|coaptic-blocking|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]]".into(),
+            "usage: bench-rust-server coaptic-small|coaptic|coaptic-reusable|coaptic-ready|coaptic-staged-ready|coaptic-mio|coaptic-async|coaptic-blocking|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]]".into(),
         );
     }
     let rx_bytes: usize = args
@@ -724,6 +725,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 | "coaptic"
                 | "coaptic-reusable"
                 | "coaptic-ready"
+                | "coaptic-staged-ready"
                 | "coaptic-mio"
                 | "coaptic-async"
                 | "coaptic-blocking"
@@ -738,6 +740,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 | "coaptic"
                 | "coaptic-reusable"
                 | "coaptic-ready"
+                | "coaptic-staged-ready"
                 | "coaptic-mio"
                 | "coaptic-async"
                 | "coaptic-blocking"
@@ -810,6 +813,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .enable_all()
             .build()?
             .block_on(ready_server(&address, size, rx_bytes, context)),
+        "coaptic-staged-ready" => tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?
+            .block_on(staged_ready::serve(&address, size, rx_bytes, context)),
         "coaptic-async" => tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?

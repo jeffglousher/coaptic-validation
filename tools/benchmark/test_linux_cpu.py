@@ -166,6 +166,31 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(sum(cell[2] * args.seconds for _, _, cell, _ in plan), 1_536_000)
         self.assertEqual(max(cpu.WARMUP + cell[2] * args.seconds for _, _, cell, _ in plan), 48_020)
 
+    def test_staged_ready_is_explicit_and_its_paired_plan_keeps_existing_budgets(self):
+        args = options(sizes="64,1024", rates="4000", seconds=5, repeats=4, perf=False,
+                       server_kind="coaptic-ready", candidate_server_kind="coaptic-staged-ready",
+                       candidate_sha="a" * 40)
+        cells = cpu.configuration(args)
+        plan = cpu.rotation(args, cells)
+        self.assertEqual(len(cells), 4)
+        self.assertEqual(len(plan), 32)
+        self.assertTrue(all(mode == "clean" for mode, *_ in plan))
+        self.assertEqual(len(plan) * args.seconds, 160)
+        self.assertEqual(sum(cell[2] * args.seconds for _, _, cell, _ in plan), 640_000)
+        self.assertEqual(len(plan) * cpu.WARMUP, 640)
+        self.assertEqual(max((cpu.WARMUP + cell[2] * args.seconds) * ((cell[1] + 1023) // 1024)
+                             for _, _, cell, _ in plan), 20_020)
+        self.assertEqual(cpu.metadata_allowance(plan, args.seconds), 22_927_360)
+        self.assertNotIn("coaptic-staged-ready", cpu.KINDS)
+        all_cells = cpu.configuration(options(server_kind="all", sizes="64", rates="100", perf=False))
+        self.assertEqual({cell[3] for cell in all_cells}, set(cpu.KINDS))
+        selected = cpu.configuration(options(server_kind="coaptic-staged-ready", perf=False))
+        self.assertEqual({cell[3] for cell in selected}, {"coaptic-staged-ready"})
+        for change in (dict(candidate_sha="b" * 40), dict(server_kind="all"),
+                       dict(server_kind="coaptic-staged-ready")):
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, "adapter comparison"):
+                cpu.configuration(options(**(vars(args) | change)))
+
     def test_user_profile_density_plan_keeps_existing_budgets(self):
         core = "183b4b9141d4d8a520713292132f3d2608180a1f"
         args = options(sizes="64", rates="11900", seconds=2, repeats=2, perf=True,
@@ -1161,7 +1186,8 @@ class MetadataTests(unittest.TestCase):
 
 class CampaignTests(unittest.TestCase):
     def exercise(self, *, failure_index=None, oversize=False, target_mismatch=False, report_error=None,
-                 report_error_command="report", adapter_comparison=False, startup_refusal=None):
+                 report_error_command="report", adapter_comparison=False, startup_refusal=None,
+                 adapter_candidate="coaptic-async"):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             suite, lane, out = root / "source", root / "lane", root / "evidence"
@@ -1170,7 +1196,7 @@ class CampaignTests(unittest.TestCase):
             args = options(sizes="64", rates="100", repeats=2, build_lane=lane, output=out,
                            baseline_sha="a" * 40, candidate_sha="b" * 40)
             if adapter_comparison:
-                args.server_kind, args.candidate_server_kind = "coaptic-ready", "coaptic-async"
+                args.server_kind, args.candidate_server_kind = "coaptic-ready", adapter_candidate
                 args.candidate_sha = args.baseline_sha
             calls = []
             real_window = cpu.window
@@ -1312,12 +1338,14 @@ class CampaignTests(unittest.TestCase):
             return summary, calls
 
     def test_adapter_campaign_executes_both_selected_fixtures_with_one_frozen_client(self):
-        summary, calls = self.exercise(adapter_comparison=True)
-        self.assertEqual(len(calls), 16)
-        self.assertEqual(summary["comparison_type"], "application_scheduling")
-        self.assertTrue(all(item["comparable"] for item in summary["comparisons"]))
-        for item in summary["comparisons"]:
-            self.assertEqual(item["server_kinds"], dict(baseline="coaptic-ready", candidate="coaptic-async"))
+        for candidate in ("coaptic-async", "coaptic-staged-ready"):
+            with self.subTest(candidate=candidate):
+                summary, calls = self.exercise(adapter_comparison=True, adapter_candidate=candidate)
+                self.assertEqual(len(calls), 16)
+                self.assertEqual(summary["comparison_type"], "application_scheduling")
+                self.assertTrue(all(item["comparable"] for item in summary["comparisons"]))
+                for item in summary["comparisons"]:
+                    self.assertEqual(item["server_kinds"], dict(baseline="coaptic-ready", candidate=candidate))
 
     def test_cleanup_failure_aborts_after_first_window_even_with_oversize_metadata(self):
         for oversize in (False, True):

@@ -1,4 +1,4 @@
-//! Finite TEST-ONLY nonblocking receive staging; there is no server selector.
+//! Explicit nonblocking staged receive fixture, sharing its finite proof driver.
 //!
 //! ReadyUdp owns the sole socket and 2049-byte scratch. Stage owns one extra
 //! datagram beyond Engine RX, even though its payload reuses that scratch.
@@ -17,15 +17,19 @@
 //! refusal and short sends, no writable wait, retry or socket timeout.
 //!
 //! Every work turn, including an empty probe/immediate wait, counts toward a
-//! yield after 32 turns and a finite 64-turn/checked one-second proof budget.
+//! yield after 32 turns. Ordinary service has no stop horizon; finite tests use
+//! a checked one-second deadline and a test-only 64-turn budget.
 //! Cancellation of the borrowed driver cannot consume during readiness waits;
 //! any received item already belongs to the adapter. Saturation is surfaced,
 //! never a successful busy loop. This static fixture has no external signals;
 //! new signals, pin releases and policy changes still require separate wakes
-//! under App::next_poll_at's contract. Sizes here describe nested test objects,
-//! not production RAM, whole-system memory or peak stack. No CPU gain is claimed.
+//! under App::next_poll_at's contract. The startup ledger measures inline owners
+//! in the compiled fixture, not whole-system memory or peak stack. Test counters
+//! and helpers compile out of ordinary builds. No CPU gain is claimed.
 
-use super::{AllocMemory, App, DatagramIo, Endpoint, ReadyUdp, TransportCounts, bind_fixture};
+#[cfg(test)]
+use super::TransportCounts;
+use super::{AllocMemory, App, DatagramIo, Endpoint, ReadyUdp, SecurityContext, bind_fixture};
 use coaptic::storage::{DatagramIoError, DatagramTransport};
 use std::{
     io, mem,
@@ -105,6 +109,7 @@ impl DatagramTransport for StagedReady {
 
 impl DatagramIo for StagedReady {
     fn recv(&mut self, output: &mut [u8]) -> io::Result<Option<(usize, Endpoint)>> {
+        #[cfg(test)]
         if let Some(counts) = &mut self.inner.counts {
             TransportCounts::inc(&mut counts.recv_calls);
         }
@@ -116,6 +121,7 @@ impl DatagramIo for StagedReady {
         // are consumed normally, so the next valid datagram can recover.
         let result = match mem::replace(&mut self.stage, Stage::Empty) {
             Stage::Empty => {
+                #[cfg(test)]
                 if let Some(counts) = &mut self.inner.counts {
                     TransportCounts::inc(&mut counts.recv_empty);
                 }
@@ -138,6 +144,7 @@ impl DatagramIo for StagedReady {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Default)]
 struct Counts {
     turns: u32,
@@ -149,7 +156,9 @@ struct Counts {
 
 struct Driver {
     epoch: Instant,
-    until: Instant,
+    until: Option<Instant>,
+    turns_since_yield: u8,
+    #[cfg(test)]
     counts: Counts,
 }
 
@@ -161,12 +170,14 @@ enum Turn {
 }
 
 impl Driver {
-    fn new(app: &mut StagedApp, epoch: Instant, until: Instant) -> io::Result<Self> {
+    fn new(app: &mut StagedApp, epoch: Instant, until: Option<Instant>) -> io::Result<Self> {
         let capacity = app.engine_mut().capacities().rx_datagram_bytes;
         super::guarded_scratch(capacity, &mut app.transport_mut().inner.scratch)?;
         Ok(Self {
             epoch,
             until,
+            turns_since_yield: 0,
+            #[cfg(test)]
             counts: Counts::default(),
         })
     }
@@ -180,7 +191,10 @@ impl Driver {
             .ok_or_else(|| app_io(io::ErrorKind::InvalidInput.into()))?;
         let millis = u64::try_from(elapsed.as_millis())
             .map_err(|_| app_io(io::ErrorKind::InvalidInput.into()))?;
-        Ok((time < self.until).then_some(millis))
+        Ok(self
+            .until
+            .is_none_or(|until| time < until)
+            .then_some(millis))
     }
 
     fn work_ready(app: &mut StagedApp, now: u64, local: bool) -> bool {
@@ -198,6 +212,7 @@ impl Driver {
         let Some(now) = self.sample(time, previous)? else {
             return Ok(Turn::Stop);
         };
+        #[cfg(test)]
         if let Some(counts) = &mut app.transport_mut().inner.counts {
             TransportCounts::inc(&mut counts.app_polls);
         }
@@ -212,14 +227,14 @@ impl Driver {
             app,
             |_| false,
             Instant::now,
-            async |socket, deadline| match tokio::time::timeout_at(
-                deadline.into(),
-                socket.readable(),
-            )
-            .await
-            {
-                Ok(result) => result,
-                Err(_) => Ok(()),
+            async |socket, deadline| match deadline {
+                Some(deadline) => {
+                    match tokio::time::timeout_at(deadline.into(), socket.readable()).await {
+                        Ok(result) => result,
+                        Err(_) => Ok(()),
+                    }
+                }
+                None => socket.readable().await,
             },
         )
         .await
@@ -231,12 +246,18 @@ impl Driver {
         app: &mut StagedApp,
         mut local: impl FnMut(&mut StagedApp) -> bool,
         mut clock: impl FnMut() -> Instant,
-        mut wait: impl AsyncFnMut(&tokio::net::UdpSocket, Instant) -> io::Result<()>,
+        mut wait: impl AsyncFnMut(&tokio::net::UdpSocket, Option<Instant>) -> io::Result<()>,
     ) -> Result<Turn, AppError> {
-        if self.counts.turns >= 64 {
+        #[cfg(test)]
+        if self.until.is_some() && self.counts.turns >= 64 {
             return Ok(Turn::Stop);
         }
-        self.counts.turns += 1;
+        // A cancelled wait may leave the 32nd turn unfinished. Yield before the
+        // next turn as well as after completed turns, keeping this counter bounded.
+        self.yield_if_due().await;
+        self.turns_since_yield += 1;
+        #[cfg(test)]
+        TransportCounts::inc(&mut self.counts.turns);
         let result = async {
             let before = clock();
             let Some(now) = self.sample(before, self.epoch)? else {
@@ -248,12 +269,14 @@ impl Driver {
                 return self.poll(app, clock(), before);
             }
             let capacity = app.engine_mut().capacities().rx_datagram_bytes;
-            self.counts.probes += 1;
+            #[cfg(test)]
+            TransportCounts::inc(&mut self.counts.probes);
             app.transport_mut().probe(capacity).map_err(app_io)?;
             if app.transport().stage != Stage::Empty {
                 return self.poll(app, clock(), before);
             }
-            self.counts.empty += 1;
+            #[cfg(test)]
+            TransportCounts::inc(&mut self.counts.empty);
             let after = clock();
             let Some(now) = self.sample(after, before)? else {
                 return Ok(Turn::Stop);
@@ -263,16 +286,20 @@ impl Driver {
             if ready {
                 return self.poll(app, clock(), after);
             }
-            let deadline = app
+            let due = app
                 .next_poll_at(now)
                 .map(|due| {
                     self.epoch
                         .checked_add(Duration::from_millis(due))
                         .ok_or_else(|| app_io(io::ErrorKind::InvalidInput.into()))
                 })
-                .transpose()?
-                .map_or(self.until, |due| due.min(self.until));
-            self.counts.waits += 1;
+                .transpose()?;
+            let deadline = match (due, self.until) {
+                (Some(due), Some(until)) => Some(due.min(until)),
+                (due, until) => due.or(until),
+            };
+            #[cfg(test)]
+            TransportCounts::inc(&mut self.counts.waits);
             wait(&app.transport().inner.socket, deadline)
                 .await
                 .map_err(app_io)?;
@@ -289,632 +316,799 @@ impl Driver {
             }
         }
         .await;
-        if self.counts.turns.is_multiple_of(32) {
-            self.counts.yields += 1;
-            tokio::task::yield_now().await;
-        }
+        self.yield_if_due().await;
         result
     }
-}
 
-async fn transport() -> StagedReady {
-    StagedReady {
-        inner: ReadyUdp {
-            socket: tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap(),
-            scratch: [0; 2049],
-            received: false,
-            counts: Some(TransportCounts::default()),
-        },
-        stage: Stage::Empty,
+    async fn yield_if_due(&mut self) {
+        if self.turns_since_yield == 32 {
+            self.turns_since_yield = 0;
+            #[cfg(test)]
+            TransportCounts::inc(&mut self.counts.yields);
+            tokio::task::yield_now().await;
+        }
     }
 }
 
-fn fixture(io: StagedReady) -> StagedApp {
-    bind_fixture(io, 64, 1472, None).unwrap()
+async fn run(app: &mut StagedApp, driver: &mut Driver) -> Result<(), AppError> {
+    loop {
+        match driver.turn(app).await? {
+            Turn::Stop => return Ok(()),
+            Turn::Idle | Turn::Polled(_) => {}
+        }
+    }
 }
 
-async fn readable(io: &StagedReady) {
-    tokio::time::timeout(Duration::from_millis(100), io.inner.socket.readable())
-        .await
-        .expect("finite readiness")
-        .unwrap();
+fn write_resources(output: &mut impl io::Write, loop_future_bytes: usize) -> io::Result<()> {
+    assert!((1..=64).contains(&mem::size_of::<Stage>()));
+    assert!((1..=128).contains(&mem::size_of::<Driver>()));
+    // Fixed text and bounded integer formatting keep this startup record <4096B.
+    writeln!(
+        output,
+        "{{\"schema\":\"coaptic-native-server-resources/2\",\"server_kind\":\"coaptic-staged-ready\",\"udp_scratch_bytes\":2049,\"staged_datagram_capacity\":1,\"stage_metadata_bytes\":{},\"driver_inline_bytes\":{},\"adapter_inline_bytes\":{},\"app_including_adapter_bytes\":{},\"loop_future_borrowing_app_bytes\":{loop_future_bytes},\"runtime_heap_bytes\":null,\"runtime_stack_bytes\":null,\"send_policy\":\"immediate_try_send_to\",\"nesting\":\"scratch and Stage inside adapter inside App; separate Driver and loop future borrowing App/Driver inside outer setup owner; do not sum nested owners\",\"limits\":\"inline component sizes only; one extra staged datagram beyond Engine RX; complete outer future, core heap, response body, runtime heap and stack, allocator and kernel costs excluded and unknown; no peak stack or CPU claim\"}}",
+        mem::size_of::<Stage>(),
+        mem::size_of::<Driver>(),
+        mem::size_of::<StagedReady>(),
+        mem::size_of::<StagedApp>()
+    )?;
+    output.flush()
 }
 
-fn pending(app: &mut StagedApp, peer: Endpoint) -> u64 {
-    use coaptic::message::{Message, MessageId, Type};
-    let slot = app.engine_mut().acquire_tx().unwrap();
-    let mid = MessageId::new(9);
-    app.engine_mut()
-        .encode_tx(
-            slot,
-            &Message::new(Type::Confirmable, coaptic::Code::GET, mid),
-        )
-        .unwrap();
-    app.engine_mut()
-        .record_pending_con(slot, peer, mid, 0, 0)
-        .unwrap();
-    app.next_timeout().unwrap()
+pub(super) async fn serve(
+    address: &str,
+    bytes: usize,
+    rx_bytes: usize,
+    context: Option<SecurityContext>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let io = StagedReady {
+        inner: ReadyUdp {
+            socket: tokio::net::UdpSocket::bind(address).await?,
+            scratch: [0; 2049],
+            received: false,
+            #[cfg(test)]
+            counts: None,
+        },
+        stage: Stage::Empty,
+    };
+    let mut app = bind_fixture(io, bytes, rx_bytes, context)?;
+    let mut driver = Driver::new(&mut app, Instant::now(), None)?;
+    let run = run(&mut app, &mut driver);
+    write_resources(&mut io::stdout().lock(), mem::size_of_val(&run))?;
+    run.await?;
+    Ok(())
 }
 
-#[test]
-fn finite_authenticated_four() {
-    use super::staged_udp::tests::{context, verify_four};
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-    for protected in [false, true] {
-        let epoch = Instant::now();
-        let until = epoch + Duration::from_secs(1);
-        let io = runtime.block_on(transport());
-        let peer = io.inner.socket.local_addr().unwrap().into();
-        let mut app = bind_fixture(io, 64, 1472, protected.then(|| context(true))).unwrap();
-        let mut driver = Driver::new(&mut app, epoch, until).unwrap();
-        let future = driver.turn(&mut app);
-        let future_bytes = mem::size_of_val(&future);
-        drop(future);
-        let (app, result) = verify_four(app, peer, epoch, until, protected, |app| {
-            assert_ne!(runtime.block_on(driver.turn(app)).unwrap(), Turn::Stop);
-        });
-        let counts = app.transport().inner.counts.unwrap();
-        assert_eq!(
-            (
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn transport() -> StagedReady {
+        StagedReady {
+            inner: ReadyUdp {
+                socket: tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap(),
+                scratch: [0; 2049],
+                received: false,
+                counts: Some(TransportCounts::default()),
+            },
+            stage: Stage::Empty,
+        }
+    }
+
+    fn fixture(io: StagedReady) -> StagedApp {
+        bind_fixture(io, 64, 1472, None).unwrap()
+    }
+
+    async fn readable(io: &StagedReady) {
+        tokio::time::timeout(Duration::from_millis(100), io.inner.socket.readable())
+            .await
+            .expect("finite readiness")
+            .unwrap();
+    }
+
+    fn pending(app: &mut StagedApp, peer: Endpoint) -> u64 {
+        use coaptic::message::{Message, MessageId, Type};
+        let slot = app.engine_mut().acquire_tx().unwrap();
+        let mid = MessageId::new(9);
+        app.engine_mut()
+            .encode_tx(
+                slot,
+                &Message::new(Type::Confirmable, coaptic::Code::GET, mid),
+            )
+            .unwrap();
+        app.engine_mut()
+            .record_pending_con(slot, peer, mid, 0, 0)
+            .unwrap();
+        app.next_timeout().unwrap()
+    }
+
+    #[test]
+    fn finite_authenticated_four() {
+        use super::super::staged_udp::tests::{context, verify_four};
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        for protected in [false, true] {
+            let epoch = Instant::now();
+            let until = epoch + Duration::from_secs(1);
+            let io = runtime.block_on(transport());
+            let peer = io.inner.socket.local_addr().unwrap().into();
+            let mut app = bind_fixture(io, 64, 1472, protected.then(|| context(true))).unwrap();
+            let mut driver = Driver::new(&mut app, epoch, Some(until)).unwrap();
+            let future = driver.turn(&mut app);
+            let future_bytes = mem::size_of_val(&future);
+            drop(future);
+            let (app, result) = verify_four(app, peer, epoch, until, protected, |app| {
+                assert_ne!(runtime.block_on(driver.turn(app)).unwrap(), Turn::Stop);
+            });
+            let counts = app.transport().inner.counts.unwrap();
+            assert_eq!(
+                (
+                    counts.app_polls,
+                    counts.recv_calls,
+                    counts.recv_empty,
+                    counts.socket_send_calls
+                ),
+                (4, 4, 0, 4)
+            );
+            assert_eq!(
+                (
+                    counts.socket_recv_calls,
+                    counts.readable_waits,
+                    counts.read_timeout_sets
+                ),
+                (0, 0, 0)
+            );
+            assert!(driver.counts.probes >= 4 && driver.counts.turns <= 64);
+            assert!(mem::size_of::<Stage>() <= 64);
+            let added = mem::size_of::<StagedReady>() - mem::size_of::<ReadyUdp>();
+            assert!(added <= 64);
+            println!(
+                "staged-ready protected={protected} verified=4 warmup=0 rx_tx_progress_client_turns={result:?} app_polls={} adapter_recv={} adapter_empty={} sends={} external_probes={} external_empty={} readable_waits={} work_turns={} yields={} stage_bytes={} added_adapter_bytes={added} adapter_bytes={} app_including_adapter_bytes={} borrowed_turn_future_bytes={future_bytes} driver_bytes={} driver_counter_bytes={} inner_counter_option_bytes={} staged_datagrams_beyond_engine_rx=1 send_waits=0; scratch inside ReadyUdp inside adapter inside App; future borrows App/Driver; driver includes its counters; inline test layouts only, not outer future/heap/runtime/stack/kernel/CPU",
                 counts.app_polls,
                 counts.recv_calls,
                 counts.recv_empty,
-                counts.socket_send_calls
-            ),
-            (4, 4, 0, 4)
-        );
-        assert_eq!(
-            (
-                counts.socket_recv_calls,
-                counts.readable_waits,
-                counts.read_timeout_sets
-            ),
-            (0, 0, 0)
-        );
-        assert!(driver.counts.probes >= 4 && driver.counts.turns <= 64);
-        assert!(mem::size_of::<Stage>() <= 64);
-        let added = mem::size_of::<StagedReady>() - mem::size_of::<ReadyUdp>();
-        assert!(added <= 64);
-        println!(
-            "staged-ready protected={protected} verified=4 warmup=0 rx_tx_progress_client_turns={result:?} app_polls={} adapter_recv={} adapter_empty={} sends={} external_probes={} external_empty={} readable_waits={} work_turns={} yields={} stage_bytes={} added_adapter_bytes={added} adapter_bytes={} app_including_adapter_bytes={} borrowed_turn_future_bytes={future_bytes} driver_bytes={} driver_counter_bytes={} inner_counter_option_bytes={} staged_datagrams_beyond_engine_rx=1 send_waits=0; scratch inside ReadyUdp inside adapter inside App; future borrows App/Driver; driver includes its counters; inline test layouts only, not outer future/heap/runtime/stack/kernel/CPU",
-            counts.app_polls,
-            counts.recv_calls,
-            counts.recv_empty,
-            counts.socket_send_calls,
-            driver.counts.probes,
-            driver.counts.empty,
-            driver.counts.waits,
-            driver.counts.turns,
-            driver.counts.yields,
-            mem::size_of::<Stage>(),
-            mem::size_of::<StagedReady>(),
-            mem::size_of::<StagedApp>(),
-            mem::size_of::<Driver>(),
-            mem::size_of::<Counts>(),
-            mem::size_of::<Option<TransportCounts>>()
-        );
-    }
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn guarded_packets_occupied_scratch_and_error_recovery() {
-    let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-    let peer: Endpoint = sender.local_addr().unwrap().into();
-    let payload = [0x39; 2056];
-    let mut output = [0xa5; 2049];
-    for capacity in [64, 1472, 2048] {
-        let mut io = transport().await;
-        let local = io.inner.socket.local_addr().unwrap();
-        for size in [capacity, capacity + 1, capacity + 8, 0, 3] {
-            sender.send_to(&payload[..size], local).unwrap();
-            readable(&io).await;
-            io.probe(capacity).unwrap();
-            assert_ne!(io.stage, Stage::Empty);
-            let staged = io.stage;
-            sender.send_to(b"next", local).unwrap();
-            let scratch = io.inner.scratch; // Test witness only, never adapter storage.
-            io.probe(capacity).unwrap();
-            assert_eq!(io.stage, staged);
-            assert_eq!(io.inner.scratch, scratch);
-            output.fill(0xa5);
-            assert_eq!(
-                io.recv(&mut output).unwrap_err().kind(),
-                io::ErrorKind::InvalidInput
+                counts.socket_send_calls,
+                driver.counts.probes,
+                driver.counts.empty,
+                driver.counts.waits,
+                driver.counts.turns,
+                driver.counts.yields,
+                mem::size_of::<Stage>(),
+                mem::size_of::<StagedReady>(),
+                mem::size_of::<StagedApp>(),
+                mem::size_of::<Driver>(),
+                mem::size_of::<Counts>(),
+                mem::size_of::<Option<TransportCounts>>()
             );
-            assert_eq!(io.stage, staged);
-            if size <= capacity {
-                if size > 0 {
-                    assert_eq!(
-                        io.recv(&mut output[..size - 1]).unwrap_err().kind(),
-                        io::ErrorKind::InvalidInput
-                    );
-                    assert_eq!(io.stage, staged);
-                    assert_eq!(io.inner.scratch, scratch);
-                }
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn guarded_packets_occupied_scratch_and_error_recovery() {
+        let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let peer: Endpoint = sender.local_addr().unwrap().into();
+        let payload = [0x39; 2056];
+        let mut output = [0xa5; 2049];
+        for capacity in [64, 1472, 2048] {
+            let mut io = transport().await;
+            let local = io.inner.socket.local_addr().unwrap();
+            for size in [capacity, capacity + 1, capacity + 8, 0, 3] {
+                sender.send_to(&payload[..size], local).unwrap();
+                readable(&io).await;
+                io.probe(capacity).unwrap();
+                assert_ne!(io.stage, Stage::Empty);
+                let staged = io.stage;
+                sender.send_to(b"next", local).unwrap();
+                let scratch = io.inner.scratch; // Test witness only, never adapter storage.
+                io.probe(capacity).unwrap();
+                assert_eq!(io.stage, staged);
+                assert_eq!(io.inner.scratch, scratch);
+                output.fill(0xa5);
                 assert_eq!(
-                    io.recv(&mut output[..capacity]).unwrap(),
-                    Some((size, peer))
+                    io.recv(&mut output).unwrap_err().kind(),
+                    io::ErrorKind::InvalidInput
                 );
-                assert_eq!(&output[..size], &payload[..size]);
-            } else {
-                // A larger destination cannot turn the N+1 prefix into success.
-                let larger = (capacity + 64).min(2048);
-                assert!(io.recv(&mut output[..larger]).is_err());
-                assert!(output.iter().all(|byte| *byte == 0xa5));
-            }
-            assert_eq!(io.stage, Stage::Empty);
-            readable(&io).await;
-            io.probe(capacity).unwrap();
-            assert_eq!(io.recv(&mut output[..capacity]).unwrap(), Some((4, peer)));
-            assert_eq!(&output[..4], b"next");
-        }
-        for kind in [
-            io::ErrorKind::TimedOut,
-            io::ErrorKind::Interrupted,
-            io::ErrorKind::ConnectionReset,
-        ] {
-            io.stage_result(Err(kind.into()));
-            assert_eq!(io.recv(&mut output[..capacity]).unwrap_err().kind(), kind);
-            sender.send_to(b"valid", local).unwrap();
-            readable(&io).await;
-            io.probe(capacity).unwrap();
-            assert_eq!(io.recv(&mut output[..capacity]).unwrap(), Some((5, peer)));
-        }
-        let raw = io::Error::from_raw_os_error(12345);
-        io.stage_result(Err(raw));
-        assert_eq!(
-            io.recv(&mut output[..capacity]).unwrap_err().raw_os_error(),
-            Some(12345)
-        );
-        io.stage_result(Err(io::ErrorKind::WouldBlock.into()));
-        assert_eq!(io.stage, Stage::Empty);
-    }
-    // App already rejects this configuration; the driver independently validates
-    // its supported guard before entering any turn.
-    assert!(bind_fixture(transport().await, 64, 2049, None).is_err());
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn rx_refusal_pins_release_and_stage_ownership() {
-    let mut io = transport().await;
-    io.inner.scratch[..4].copy_from_slice(&[0x40, 0, 0, 7]);
-    let peer = Endpoint::v4([127, 0, 0, 1], 9);
-    io.stage_result(Ok((4, peer.into())));
-    let mut engine = coaptic::storage::EngineBuilder::new()
-        .profile::<coaptic::profiles::Default>()
-        .block_wise(false)
-        .build(coaptic::storage::Memory::<coaptic::profiles::Default>::new())
-        .unwrap();
-    let held: [_; 4] = std::array::from_fn(|_| engine.acquire_rx().unwrap());
-    engine.write_rx(held[0], b"pinned", peer).unwrap();
-    {
-        let access = engine.access_rx(held[0]).unwrap();
-        assert!(access.is_pinned());
-        io.probe(1472).unwrap();
-        assert_eq!(access.as_bytes(), b"pinned");
-    }
-    assert!(!engine.rx_is_pinned(held[0]));
-    let stage = io.stage;
-    assert!(matches!(
-        engine.recv_from(&mut io),
-        Err(DatagramIoError::Saturated)
-    ));
-    assert_eq!(io.stage, stage);
-    assert_eq!(io.inner.counts.unwrap().recv_calls, 0);
-    for slot in held {
-        engine.release_rx(slot).unwrap();
-    }
-    let rx = engine.recv_from(&mut io).unwrap().unwrap();
-    assert_eq!(engine.access_rx(rx).unwrap().as_bytes(), &[0x40, 0, 0, 7]);
-    assert_eq!(io.stage, Stage::Empty);
-    engine.release_rx(rx).unwrap();
-
-    let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-    let peer: Endpoint = sender.local_addr().unwrap().into();
-    io.inner.scratch[..4].copy_from_slice(&[0x40, 0, 0, 8]);
-    io.stage_result(Ok((4, peer.into())));
-    let mut app = fixture(io);
-    // Setup only: an immediate send refusal would correctly outrank saturation.
-    tokio::time::timeout(
-        Duration::from_millis(100),
-        app.transport().inner.socket.writable(),
-    )
-    .await
-    .unwrap()
-    .unwrap();
-    let held: [_; 4] = std::array::from_fn(|_| {
-        let slot = app.engine_mut().acquire_rx().unwrap();
-        app.engine_mut()
-            .write_rx(slot, &[0x40, 0, 0, 9], peer)
-            .unwrap();
-        slot
-    });
-    let epoch = Instant::now();
-    let mut driver = Driver::new(&mut app, epoch, epoch + Duration::from_secs(1)).unwrap();
-    let refused = driver.turn(&mut app).await;
-    assert!(matches!(&refused, Err(AppError::Saturated)), "{refused:?}");
-    assert_ne!(app.transport().stage, Stage::Empty);
-    assert_eq!(driver.counts.probes, 0);
-    for slot in held {
-        if app.engine_mut().access_rx(slot).is_ok() {
-            app.engine_mut().release_rx(slot).unwrap();
-        }
-    }
-    driver.turn(&mut app).await.unwrap();
-    assert_eq!(app.transport().stage, Stage::Empty);
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn due_local_and_post_wait_time_precede_receive() {
-    let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-    let mut app = fixture(transport().await);
-    let local = app.transport().inner.socket.local_addr().unwrap();
-    let peer = sender.local_addr().unwrap().into();
-    let due = pending(&mut app, peer);
-    let epoch = Instant::now();
-    let mut driver =
-        Driver::new(&mut app, epoch, epoch + Duration::from_millis(due + 1000)).unwrap();
-    let mut times = [
-        epoch,
-        epoch,
-        epoch + Duration::from_millis(due),
-        epoch + Duration::from_millis(due + 1),
-    ]
-    .into_iter();
-    let result = driver
-        .turn_with(
-            &mut app,
-            |_| false,
-            || times.next().unwrap(),
-            async |socket, _| {
-                sender.send_to(&[0x40, 0, 0, 1], local).unwrap();
-                tokio::time::timeout(Duration::from_millis(100), socket.readable())
-                    .await
-                    .unwrap()
-            },
-        )
-        .await
-        .unwrap();
-    assert_eq!(result, Turn::Polled(due + 1));
-    assert_eq!(app.metrics().con_retransmit, 1);
-    assert_eq!(app.metrics().rx_accepted, 0);
-    assert_eq!((driver.counts.probes, driver.counts.empty), (1, 1));
-    // Still-readable socket also loses to explicit local and retained RX work.
-    driver
-        .turn_with(
-            &mut app,
-            |_| true,
-            || epoch + Duration::from_millis(due + 2),
-            async |_, _| panic!("local work must not wait"),
-        )
-        .await
-        .unwrap();
-    let slot = app.engine_mut().acquire_rx().unwrap();
-    app.engine_mut()
-        .write_rx(slot, &[0x40, 0, 0, 2], peer)
-        .unwrap();
-    driver
-        .turn_with(
-            &mut app,
-            |_| false,
-            || epoch + Duration::from_millis(due + 3),
-            async |_, _| panic!("retained work must not wait"),
-        )
-        .await
-        .unwrap();
-    assert_eq!(driver.counts.probes, 1);
-    assert_eq!(app.metrics().rx_accepted, 0);
-    driver
-        .turn_with(
-            &mut app,
-            |_| false,
-            || epoch + Duration::from_millis(due + 4),
-            async |_, _| panic!("registered packet"),
-        )
-        .await
-        .unwrap();
-    assert_eq!(app.metrics().rx_accepted, 1);
-
-    let mut app = fixture(transport().await);
-    let mut driver = Driver::new(&mut app, epoch, epoch + Duration::from_secs(1)).unwrap();
-    let signaled = std::cell::Cell::new(false);
-    let mut times = [
-        epoch,
-        epoch,
-        epoch + Duration::from_millis(17),
-        epoch + Duration::from_millis(18),
-    ]
-    .into_iter();
-    assert_eq!(
-        driver
-            .turn_with(
-                &mut app,
-                |_| signaled.get(),
-                || times.next().unwrap(),
-                async |_, _| {
-                    signaled.set(true);
-                    Ok(())
+                assert_eq!(io.stage, staged);
+                if size <= capacity {
+                    if size > 0 {
+                        assert_eq!(
+                            io.recv(&mut output[..size - 1]).unwrap_err().kind(),
+                            io::ErrorKind::InvalidInput
+                        );
+                        assert_eq!(io.stage, staged);
+                        assert_eq!(io.inner.scratch, scratch);
+                    }
+                    assert_eq!(
+                        io.recv(&mut output[..capacity]).unwrap(),
+                        Some((size, peer))
+                    );
+                    assert_eq!(&output[..size], &payload[..size]);
+                } else {
+                    // A larger destination cannot turn the N+1 prefix into success.
+                    let larger = (capacity + 64).min(2048);
+                    assert!(io.recv(&mut output[..larger]).is_err());
+                    assert!(output.iter().all(|byte| *byte == 0xa5));
                 }
-            )
-            .await
-            .unwrap(),
-        Turn::Polled(18)
-    );
-    assert_eq!(app.transport().inner.counts.unwrap().app_polls, 1);
-    let mut backwards = [
-        epoch + Duration::from_millis(6),
-        epoch + Duration::from_millis(5),
-    ]
-    .into_iter();
-    assert!(
-        driver
-            .turn_with(
-                &mut app,
-                |_| true,
-                || backwards.next().unwrap(),
-                async |_, _| Ok(())
-            )
-            .await
-            .is_err()
-    );
-    assert_eq!(app.transport().inner.counts.unwrap().app_polls, 1);
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn staged_error_progress_deadline_and_send_error_precedence() {
-    let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-    let peer = sender.local_addr().unwrap().into();
-    let mut app = fixture(transport().await);
-    // Prime setup readiness before creating the outbound Call; the driver and
-    // adapter still perform no send waits or retries.
-    tokio::time::timeout(
-        Duration::from_millis(100),
-        app.transport().inner.socket.writable(),
-    )
-    .await
-    .unwrap()
-    .unwrap();
-    let call = app.get("unused").deadline(10).to(peer).send(0).unwrap();
-    app.transport_mut()
-        .stage_result(Err(io::ErrorKind::TimedOut.into()));
-    let epoch = Instant::now();
-    let mut driver = Driver::new(&mut app, epoch, epoch + Duration::from_secs(1)).unwrap();
-    let mut times = [epoch, epoch + Duration::from_millis(17)].into_iter();
-    assert!(
-        matches!(driver.turn_with(&mut app, |_| false, || times.next().unwrap(), async |_, _| Ok(())).await,
-        Err(AppError::Io(DatagramIoError::Io(error))) if error.kind() == io::ErrorKind::TimedOut)
-    );
-    assert!(matches!(
-        app.take_response(call),
-        Some(Err(coaptic::CallFailure::DeadlineExceeded))
-    ));
-    assert_eq!(app.transport().stage, Stage::Empty);
-    let due = pending(&mut app, peer);
-    app.transport_mut()
-        .stage_result(Err(io::ErrorKind::ConnectionReset.into()));
-    let mut driver =
-        Driver::new(&mut app, epoch, epoch + Duration::from_millis(due + 100)).unwrap();
-    assert!(
-        matches!(driver.turn_with(&mut app, |_| false, || epoch + Duration::from_millis(due), async |_, _| Ok(())).await,
-        Err(AppError::Io(DatagramIoError::Io(error))) if error.kind() == io::ErrorKind::ConnectionReset)
-    );
-    assert_eq!(app.metrics().con_retransmit, 1);
-    assert_eq!(app.transport().stage, Stage::Empty);
-
-    struct Refuse(StagedReady);
-    impl DatagramTransport for Refuse {
-        type Error = io::Error;
-    }
-    impl DatagramIo for Refuse {
-        fn recv(&mut self, output: &mut [u8]) -> io::Result<Option<(usize, Endpoint)>> {
-            self.0.recv(output)
-        }
-        fn send(&mut self, _: Endpoint, _: &[u8]) -> io::Result<usize> {
-            Err(io::ErrorKind::WouldBlock.into())
-        }
-    }
-    let mut app = bind_fixture(Refuse(transport().await), 64, 1472, None).unwrap();
-    use coaptic::message::{Message, MessageId, Type};
-    let tx = app.engine_mut().acquire_tx().unwrap();
-    let mid = MessageId::new(9);
-    app.engine_mut()
-        .encode_tx(
-            tx,
-            &Message::new(Type::Confirmable, coaptic::Code::GET, mid),
-        )
-        .unwrap();
-    app.engine_mut()
-        .record_pending_con(tx, peer, mid, 0, 0)
-        .unwrap();
-    let due = app.next_timeout().unwrap();
-    app.transport_mut()
-        .0
-        .stage_result(Err(io::ErrorKind::ConnectionReset.into()));
-    assert!(
-        matches!(app.poll(due), Err(AppError::Io(DatagramIoError::Io(error))) if error.kind() == io::ErrorKind::WouldBlock)
-    );
-    assert_eq!(app.transport().0.stage, Stage::Empty); // Consumed RX error is never reinserted.
-    assert_eq!(app.metrics().rx_error, 1);
-    assert_eq!(app.metrics().tx_fail, 1);
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn retained_exact_tx_after_refusal_or_short_send() {
-    use coaptic::{
-        Code,
-        message::{Message, MessageId, Opt, Token, Type},
-    };
-    struct Refuse(StagedReady, bool);
-    impl DatagramTransport for Refuse {
-        type Error = io::Error;
-    }
-    impl DatagramIo for Refuse {
-        fn recv(&mut self, bytes: &mut [u8]) -> io::Result<Option<(usize, Endpoint)>> {
-            self.0.recv(bytes)
-        }
-        fn send(&mut self, _: Endpoint, bytes: &[u8]) -> io::Result<usize> {
-            if self.1 {
-                Ok(bytes.len() - 1)
-            } else {
-                Err(io::ErrorKind::WouldBlock.into())
+                assert_eq!(io.stage, Stage::Empty);
+                readable(&io).await;
+                io.probe(capacity).unwrap();
+                assert_eq!(io.recv(&mut output[..capacity]).unwrap(), Some((4, peer)));
+                assert_eq!(&output[..4], b"next");
             }
-        }
-    }
-    let peer = Endpoint::v4([127, 0, 0, 1], 9);
-    for protected in [false, true] {
-        let options = [Opt::uri_path("bench")];
-        let request = Message::new(Type::Confirmable, Code::GET, MessageId::new(11))
-            .with_token(Token::new(&[1]).unwrap())
-            .with_options(&options);
-        let mut wire = [0; 1472];
-        let n = if protected {
-            super::staged_udp::tests::context(false)
-                .protect_request(&request, &mut wire)
-                .unwrap()
-        } else {
-            coaptic::message::encode(&request, &mut wire).unwrap()
-        };
-        let mut app = fixture(transport().await);
-        let tx = app.engine_mut().acquire_tx().unwrap();
-        app.engine_mut().write_tx(tx, &wire[..n], peer).unwrap();
-        app.engine_mut()
-            .record_pending_con(tx, peer, MessageId::new(11), 0, 0)
-            .unwrap();
-        let before = app.engine_mut().pending_con(tx);
-        let mut io = Refuse(transport().await, false);
-        for short in [false, true] {
-            io.1 = short;
-            let error = app.engine_mut().send_tx(&mut io, tx).unwrap_err();
-            if short {
-                assert!(matches!(error, DatagramIoError::SendLength { .. }));
-            } else {
-                assert!(
-                    matches!(error, DatagramIoError::Io(error) if error.kind() == io::ErrorKind::WouldBlock)
-                );
+            for kind in [
+                io::ErrorKind::TimedOut,
+                io::ErrorKind::Interrupted,
+                io::ErrorKind::ConnectionReset,
+            ] {
+                io.stage_result(Err(kind.into()));
+                assert_eq!(io.recv(&mut output[..capacity]).unwrap_err().kind(), kind);
+                sender.send_to(b"valid", local).unwrap();
+                readable(&io).await;
+                io.probe(capacity).unwrap();
+                assert_eq!(io.recv(&mut output[..capacity]).unwrap(), Some((5, peer)));
             }
+            let raw = io::Error::from_raw_os_error(12345);
+            io.stage_result(Err(raw));
             assert_eq!(
-                app.engine_mut().access_tx(tx).unwrap().as_bytes(),
-                &wire[..n]
+                io.recv(&mut output[..capacity]).unwrap_err().raw_os_error(),
+                Some(12345)
             );
-            assert_eq!(app.engine_mut().pending_con(tx), before);
-            assert!(!app.engine_mut().tx_is_pinned(tx));
+            io.stage_result(Err(io::ErrorKind::WouldBlock.into()));
+            assert_eq!(io.stage, Stage::Empty);
         }
-        assert_eq!(app.metrics().tx_fail, 2);
-        // Actual send delegation leaves occupied receive scratch untouched.
-        let receiver = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-        io.0.inner.scratch[..3].copy_from_slice(b"rx!");
-        io.0.stage_result(Ok((3, peer.into())));
-        tokio::time::timeout(Duration::from_millis(100), io.0.inner.socket.writable())
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            io.0.send(receiver.local_addr().unwrap().into(), &wire[..n])
-                .unwrap(),
-            n
-        );
-        assert_eq!(&io.0.inner.scratch[..3], b"rx!");
-        assert_ne!(io.0.stage, Stage::Empty);
-        assert_eq!(io.0.inner.counts.unwrap().socket_send_calls, 1);
+        // App already rejects this configuration; the driver independently validates
+        // its supported guard before entering any turn.
+        assert!(bind_fixture(transport().await, 64, 2049, None).is_err());
     }
-}
 
-#[tokio::test(flavor = "current_thread")]
-async fn cancellation_and_expired_budget_preserve_ingress() {
-    use std::{
-        future::Future,
-        task::{Context, Poll, Waker},
-    };
-    let mut app = fixture(transport().await);
-    let epoch = Instant::now();
-    let mut driver = Driver::new(&mut app, epoch, epoch + Duration::from_secs(1)).unwrap();
-    {
-        let mut waiting = std::pin::pin!(driver.turn(&mut app));
+    #[tokio::test(flavor = "current_thread")]
+    async fn rx_refusal_pins_release_and_stage_ownership() {
+        let mut io = transport().await;
+        io.inner.scratch[..4].copy_from_slice(&[0x40, 0, 0, 7]);
+        let peer = Endpoint::v4([127, 0, 0, 1], 9);
+        io.stage_result(Ok((4, peer.into())));
+        let mut engine = coaptic::storage::EngineBuilder::new()
+            .profile::<coaptic::profiles::Default>()
+            .block_wise(false)
+            .build(coaptic::storage::Memory::<coaptic::profiles::Default>::new())
+            .unwrap();
+        let held: [_; 4] = std::array::from_fn(|_| engine.acquire_rx().unwrap());
+        engine.write_rx(held[0], b"pinned", peer).unwrap();
+        {
+            let access = engine.access_rx(held[0]).unwrap();
+            assert!(access.is_pinned());
+            io.probe(1472).unwrap();
+            assert_eq!(access.as_bytes(), b"pinned");
+        }
+        assert!(!engine.rx_is_pinned(held[0]));
+        let stage = io.stage;
         assert!(matches!(
-            waiting
-                .as_mut()
-                .poll(&mut Context::from_waker(Waker::noop())),
-            Poll::Pending
+            engine.recv_from(&mut io),
+            Err(DatagramIoError::Saturated)
         ));
+        assert_eq!(io.stage, stage);
+        assert_eq!(io.inner.counts.unwrap().recv_calls, 0);
+        for slot in held {
+            engine.release_rx(slot).unwrap();
+        }
+        let rx = engine.recv_from(&mut io).unwrap().unwrap();
+        assert_eq!(engine.access_rx(rx).unwrap().as_bytes(), &[0x40, 0, 0, 7]);
+        assert_eq!(io.stage, Stage::Empty);
+        engine.release_rx(rx).unwrap();
+
+        let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let peer: Endpoint = sender.local_addr().unwrap().into();
+        io.inner.scratch[..4].copy_from_slice(&[0x40, 0, 0, 8]);
+        io.stage_result(Ok((4, peer.into())));
+        let mut app = fixture(io);
+        // Setup only: an immediate send refusal would correctly outrank saturation.
+        tokio::time::timeout(
+            Duration::from_millis(100),
+            app.transport().inner.socket.writable(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let held: [_; 4] = std::array::from_fn(|_| {
+            let slot = app.engine_mut().acquire_rx().unwrap();
+            app.engine_mut()
+                .write_rx(slot, &[0x40, 0, 0, 9], peer)
+                .unwrap();
+            slot
+        });
+        let epoch = Instant::now();
+        let mut driver =
+            Driver::new(&mut app, epoch, Some(epoch + Duration::from_secs(1))).unwrap();
+        let refused = driver.turn(&mut app).await;
+        assert!(matches!(&refused, Err(AppError::Saturated)), "{refused:?}");
+        assert_ne!(app.transport().stage, Stage::Empty);
+        assert_eq!(driver.counts.probes, 0);
+        for slot in held {
+            if app.engine_mut().access_rx(slot).is_ok() {
+                app.engine_mut().release_rx(slot).unwrap();
+            }
+        }
+        driver.turn(&mut app).await.unwrap();
+        assert_eq!(app.transport().stage, Stage::Empty);
     }
-    assert_eq!(app.transport().stage, Stage::Empty);
-    assert_eq!(app.transport().inner.counts.unwrap().app_polls, 0);
-    let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-    sender
-        .send_to(
-            &[0x40, 0, 0, 7],
-            app.transport().inner.socket.local_addr().unwrap(),
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn due_local_and_post_wait_time_precede_receive() {
+        let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let mut app = fixture(transport().await);
+        let local = app.transport().inner.socket.local_addr().unwrap();
+        let peer = sender.local_addr().unwrap().into();
+        let due = pending(&mut app, peer);
+        let epoch = Instant::now();
+        let mut driver = Driver::new(
+            &mut app,
+            epoch,
+            Some(epoch + Duration::from_millis(due + 1000)),
         )
         .unwrap();
-    readable(app.transport()).await;
-    let mut times = [epoch, epoch + Duration::from_secs(1)].into_iter();
-    assert_eq!(
-        driver
+        let mut times = [
+            epoch,
+            epoch,
+            epoch + Duration::from_millis(due),
+            epoch + Duration::from_millis(due + 1),
+        ]
+        .into_iter();
+        let result = driver
             .turn_with(
                 &mut app,
                 |_| false,
                 || times.next().unwrap(),
-                async |_, _| Ok(())
+                async |socket, _| {
+                    sender.send_to(&[0x40, 0, 0, 1], local).unwrap();
+                    tokio::time::timeout(Duration::from_millis(100), socket.readable())
+                        .await
+                        .unwrap()
+                },
             )
             .await
-            .unwrap(),
-        Turn::Stop
-    );
-    let stage = app.transport().stage;
-    assert_ne!(stage, Stage::Empty); // Received before finite stop, retained without poll.
-    drop(driver.turn(&mut app));
-    assert_eq!(app.transport().stage, stage);
-    assert_eq!(app.transport().inner.counts.unwrap().recv_calls, 0);
-    let mut output = [0; 1472];
-    assert_eq!(app.transport_mut().recv(&mut output).unwrap().unwrap().0, 4);
-}
+            .unwrap();
+        assert_eq!(result, Turn::Polled(due + 1));
+        assert_eq!(app.metrics().con_retransmit, 1);
+        assert_eq!(app.metrics().rx_accepted, 0);
+        assert_eq!((driver.counts.probes, driver.counts.empty), (1, 1));
+        // Still-readable socket also loses to explicit local and retained RX work.
+        driver
+            .turn_with(
+                &mut app,
+                |_| true,
+                || epoch + Duration::from_millis(due + 2),
+                async |_, _| panic!("local work must not wait"),
+            )
+            .await
+            .unwrap();
+        let slot = app.engine_mut().acquire_rx().unwrap();
+        app.engine_mut()
+            .write_rx(slot, &[0x40, 0, 0, 2], peer)
+            .unwrap();
+        driver
+            .turn_with(
+                &mut app,
+                |_| false,
+                || epoch + Duration::from_millis(due + 3),
+                async |_, _| panic!("retained work must not wait"),
+            )
+            .await
+            .unwrap();
+        assert_eq!(driver.counts.probes, 1);
+        assert_eq!(app.metrics().rx_accepted, 0);
+        driver
+            .turn_with(
+                &mut app,
+                |_| false,
+                || epoch + Duration::from_millis(due + 4),
+                async |_, _| panic!("registered packet"),
+            )
+            .await
+            .unwrap();
+        assert_eq!(app.metrics().rx_accepted, 1);
 
-#[tokio::test(flavor = "current_thread")]
-async fn transport_only_false_readiness_yields_at_32_total_turns() {
-    use std::{
-        future::Future,
-        task::{Context, Poll, Waker},
-    };
-    let mut app = fixture(transport().await);
-    let epoch = Instant::now();
-    let mut driver = Driver::new(&mut app, epoch, epoch + Duration::from_secs(1)).unwrap();
-    {
-        let mut run = std::pin::pin!(async {
-            for _ in 0..64 {
+        let mut app = fixture(transport().await);
+        let mut driver =
+            Driver::new(&mut app, epoch, Some(epoch + Duration::from_secs(1))).unwrap();
+        let signaled = std::cell::Cell::new(false);
+        let mut times = [
+            epoch,
+            epoch,
+            epoch + Duration::from_millis(17),
+            epoch + Duration::from_millis(18),
+        ]
+        .into_iter();
+        assert_eq!(
+            driver
+                .turn_with(
+                    &mut app,
+                    |_| signaled.get(),
+                    || times.next().unwrap(),
+                    async |_, _| {
+                        signaled.set(true);
+                        Ok(())
+                    }
+                )
+                .await
+                .unwrap(),
+            Turn::Polled(18)
+        );
+        assert_eq!(app.transport().inner.counts.unwrap().app_polls, 1);
+        let mut backwards = [
+            epoch + Duration::from_millis(6),
+            epoch + Duration::from_millis(5),
+        ]
+        .into_iter();
+        assert!(
+            driver
+                .turn_with(
+                    &mut app,
+                    |_| true,
+                    || backwards.next().unwrap(),
+                    async |_, _| Ok(())
+                )
+                .await
+                .is_err()
+        );
+        assert_eq!(app.transport().inner.counts.unwrap().app_polls, 1);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn staged_error_progress_deadline_and_send_error_precedence() {
+        let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let peer = sender.local_addr().unwrap().into();
+        let mut app = fixture(transport().await);
+        // Prime setup readiness before creating the outbound Call; the driver and
+        // adapter still perform no send waits or retries.
+        tokio::time::timeout(
+            Duration::from_millis(100),
+            app.transport().inner.socket.writable(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let call = app.get("unused").deadline(10).to(peer).send(0).unwrap();
+        app.transport_mut()
+            .stage_result(Err(io::ErrorKind::TimedOut.into()));
+        let epoch = Instant::now();
+        let mut driver =
+            Driver::new(&mut app, epoch, Some(epoch + Duration::from_secs(1))).unwrap();
+        let mut times = [epoch, epoch + Duration::from_millis(17)].into_iter();
+        assert!(
+            matches!(driver.turn_with(&mut app, |_| false, || times.next().unwrap(), async |_, _| Ok(())).await,
+        Err(AppError::Io(DatagramIoError::Io(error))) if error.kind() == io::ErrorKind::TimedOut)
+        );
+        assert!(matches!(
+            app.take_response(call),
+            Some(Err(coaptic::CallFailure::DeadlineExceeded))
+        ));
+        assert_eq!(app.transport().stage, Stage::Empty);
+        let due = pending(&mut app, peer);
+        app.transport_mut()
+            .stage_result(Err(io::ErrorKind::ConnectionReset.into()));
+        let mut driver = Driver::new(
+            &mut app,
+            epoch,
+            Some(epoch + Duration::from_millis(due + 100)),
+        )
+        .unwrap();
+        assert!(
+            matches!(driver.turn_with(&mut app, |_| false, || epoch + Duration::from_millis(due), async |_, _| Ok(())).await,
+        Err(AppError::Io(DatagramIoError::Io(error))) if error.kind() == io::ErrorKind::ConnectionReset)
+        );
+        assert_eq!(app.metrics().con_retransmit, 1);
+        assert_eq!(app.transport().stage, Stage::Empty);
+
+        struct Refuse(StagedReady);
+        impl DatagramTransport for Refuse {
+            type Error = io::Error;
+        }
+        impl DatagramIo for Refuse {
+            fn recv(&mut self, output: &mut [u8]) -> io::Result<Option<(usize, Endpoint)>> {
+                self.0.recv(output)
+            }
+            fn send(&mut self, _: Endpoint, _: &[u8]) -> io::Result<usize> {
+                Err(io::ErrorKind::WouldBlock.into())
+            }
+        }
+        let mut app = bind_fixture(Refuse(transport().await), 64, 1472, None).unwrap();
+        use coaptic::message::{Message, MessageId, Type};
+        let tx = app.engine_mut().acquire_tx().unwrap();
+        let mid = MessageId::new(9);
+        app.engine_mut()
+            .encode_tx(
+                tx,
+                &Message::new(Type::Confirmable, coaptic::Code::GET, mid),
+            )
+            .unwrap();
+        app.engine_mut()
+            .record_pending_con(tx, peer, mid, 0, 0)
+            .unwrap();
+        let due = app.next_timeout().unwrap();
+        app.transport_mut()
+            .0
+            .stage_result(Err(io::ErrorKind::ConnectionReset.into()));
+        assert!(
+            matches!(app.poll(due), Err(AppError::Io(DatagramIoError::Io(error))) if error.kind() == io::ErrorKind::WouldBlock)
+        );
+        assert_eq!(app.transport().0.stage, Stage::Empty); // Consumed RX error is never reinserted.
+        assert_eq!(app.metrics().rx_error, 1);
+        assert_eq!(app.metrics().tx_fail, 1);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn retained_exact_tx_after_refusal_or_short_send() {
+        use coaptic::{
+            Code,
+            message::{Message, MessageId, Opt, Token, Type},
+        };
+        struct Refuse(StagedReady, bool);
+        impl DatagramTransport for Refuse {
+            type Error = io::Error;
+        }
+        impl DatagramIo for Refuse {
+            fn recv(&mut self, bytes: &mut [u8]) -> io::Result<Option<(usize, Endpoint)>> {
+                self.0.recv(bytes)
+            }
+            fn send(&mut self, _: Endpoint, bytes: &[u8]) -> io::Result<usize> {
+                if self.1 {
+                    Ok(bytes.len() - 1)
+                } else {
+                    Err(io::ErrorKind::WouldBlock.into())
+                }
+            }
+        }
+        let peer = Endpoint::v4([127, 0, 0, 1], 9);
+        for protected in [false, true] {
+            let options = [Opt::uri_path("bench")];
+            let request = Message::new(Type::Confirmable, Code::GET, MessageId::new(11))
+                .with_token(Token::new(&[1]).unwrap())
+                .with_options(&options);
+            let mut wire = [0; 1472];
+            let n = if protected {
+                super::super::staged_udp::tests::context(false)
+                    .protect_request(&request, &mut wire)
+                    .unwrap()
+            } else {
+                coaptic::message::encode(&request, &mut wire).unwrap()
+            };
+            let mut app = fixture(transport().await);
+            let tx = app.engine_mut().acquire_tx().unwrap();
+            app.engine_mut().write_tx(tx, &wire[..n], peer).unwrap();
+            app.engine_mut()
+                .record_pending_con(tx, peer, MessageId::new(11), 0, 0)
+                .unwrap();
+            let before = app.engine_mut().pending_con(tx);
+            let mut io = Refuse(transport().await, false);
+            for short in [false, true] {
+                io.1 = short;
+                let error = app.engine_mut().send_tx(&mut io, tx).unwrap_err();
+                if short {
+                    assert!(matches!(error, DatagramIoError::SendLength { .. }));
+                } else {
+                    assert!(
+                        matches!(error, DatagramIoError::Io(error) if error.kind() == io::ErrorKind::WouldBlock)
+                    );
+                }
+                assert_eq!(
+                    app.engine_mut().access_tx(tx).unwrap().as_bytes(),
+                    &wire[..n]
+                );
+                assert_eq!(app.engine_mut().pending_con(tx), before);
+                assert!(!app.engine_mut().tx_is_pinned(tx));
+            }
+            assert_eq!(app.metrics().tx_fail, 2);
+            // Actual send delegation leaves occupied receive scratch untouched.
+            let receiver = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+            io.0.inner.scratch[..3].copy_from_slice(b"rx!");
+            io.0.stage_result(Ok((3, peer.into())));
+            tokio::time::timeout(Duration::from_millis(100), io.0.inner.socket.writable())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                io.0.send(receiver.local_addr().unwrap().into(), &wire[..n])
+                    .unwrap(),
+                n
+            );
+            assert_eq!(&io.0.inner.scratch[..3], b"rx!");
+            assert_ne!(io.0.stage, Stage::Empty);
+            assert_eq!(io.0.inner.counts.unwrap().socket_send_calls, 1);
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cancellation_and_expired_budget_preserve_ingress() {
+        use std::{
+            future::Future,
+            task::{Context, Poll, Waker},
+        };
+        let mut app = fixture(transport().await);
+        let epoch = Instant::now();
+        let mut driver =
+            Driver::new(&mut app, epoch, Some(epoch + Duration::from_secs(1))).unwrap();
+        {
+            let mut waiting = std::pin::pin!(driver.turn(&mut app));
+            assert!(matches!(
+                waiting
+                    .as_mut()
+                    .poll(&mut Context::from_waker(Waker::noop())),
+                Poll::Pending
+            ));
+        }
+        assert_eq!(app.transport().stage, Stage::Empty);
+        assert_eq!(app.transport().inner.counts.unwrap().app_polls, 0);
+        let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        sender
+            .send_to(
+                &[0x40, 0, 0, 7],
+                app.transport().inner.socket.local_addr().unwrap(),
+            )
+            .unwrap();
+        readable(app.transport()).await;
+        let mut times = [epoch, epoch + Duration::from_secs(1)].into_iter();
+        assert_eq!(
+            driver
+                .turn_with(
+                    &mut app,
+                    |_| false,
+                    || times.next().unwrap(),
+                    async |_, _| Ok(())
+                )
+                .await
+                .unwrap(),
+            Turn::Stop
+        );
+        let stage = app.transport().stage;
+        assert_ne!(stage, Stage::Empty); // Received before finite stop, retained without poll.
+        drop(driver.turn(&mut app));
+        assert_eq!(app.transport().stage, stage);
+        assert_eq!(app.transport().inner.counts.unwrap().recv_calls, 0);
+        let mut output = [0; 1472];
+        assert_eq!(app.transport_mut().recv(&mut output).unwrap().unwrap().0, 4);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn transport_only_false_readiness_yields_at_32_total_turns() {
+        use std::{
+            future::Future,
+            task::{Context, Poll, Waker},
+        };
+        let mut app = fixture(transport().await);
+        let epoch = Instant::now();
+        let mut driver =
+            Driver::new(&mut app, epoch, Some(epoch + Duration::from_secs(1))).unwrap();
+        {
+            let mut run = std::pin::pin!(async {
+                for _ in 0..64 {
+                    assert_eq!(
+                        driver
+                            .turn_with(&mut app, |_| false, || epoch, async |_, _| Ok(()))
+                            .await
+                            .unwrap(),
+                        Turn::Idle
+                    );
+                }
+            });
+            assert!(matches!(
+                run.as_mut().poll(&mut Context::from_waker(Waker::noop())),
+                Poll::Pending
+            ));
+        }
+        assert_eq!(
+            (
+                driver.counts.turns,
+                driver.counts.probes,
+                driver.counts.empty,
+                driver.counts.waits,
+                driver.counts.yields
+            ),
+            (32, 32, 32, 32, 1)
+        );
+        assert_eq!(app.transport().inner.counts.unwrap().app_polls, 0);
+        for _ in 0..32 {
+            driver
+                .turn_with(&mut app, |_| false, || epoch, async |_, _| Ok(()))
+                .await
+                .unwrap();
+        }
+        assert_eq!(driver.turn(&mut app).await.unwrap(), Turn::Stop);
+        assert_eq!((driver.counts.turns, driver.counts.yields), (64, 2));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn no_stop_horizon_crosses_one_second_and_96_turns() {
+        let mut app = fixture(transport().await);
+        let epoch = Instant::now();
+        let mut driver = Driver::new(&mut app, epoch, None).unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            for turn in 1..=96 {
                 assert_eq!(
                     driver
-                        .turn_with(&mut app, |_| false, || epoch, async |_, _| Ok(()))
+                        .turn_with(
+                            &mut app,
+                            |_| false,
+                            Instant::now,
+                            async |_, deadline| {
+                                assert_eq!(deadline, None); // Bare readability, no invented horizon.
+                                if turn == 1 {
+                                    tokio::time::sleep(Duration::from_millis(1050)).await;
+                                }
+                                Ok(())
+                            },
+                        )
                         .await
                         .unwrap(),
                     Turn::Idle
                 );
+                assert_eq!(driver.counts.yields, turn / 32);
+                assert_eq!(u32::from(driver.turns_since_yield), turn % 32);
             }
-        });
-        assert!(matches!(
-            run.as_mut().poll(&mut Context::from_waker(Waker::noop())),
-            Poll::Pending
-        ));
+        })
+        .await
+        .expect("bounded lifetime regression");
+        assert!(epoch.elapsed() > Duration::from_secs(1));
+        assert_eq!((driver.counts.turns, driver.counts.yields), (96, 3));
+        assert_eq!(app.transport().inner.counts.unwrap().app_polls, 0);
+        let mut finite =
+            Driver::new(&mut app, epoch, Some(epoch + Duration::from_secs(1))).unwrap();
+        assert_eq!(finite.turn(&mut app).await.unwrap(), Turn::Stop);
     }
-    assert_eq!(
-        (
-            driver.counts.turns,
-            driver.counts.probes,
-            driver.counts.empty,
-            driver.counts.waits,
-            driver.counts.yields
-        ),
-        (32, 32, 32, 32, 1)
-    );
-    assert_eq!(app.transport().inner.counts.unwrap().app_polls, 0);
-    for _ in 0..32 {
-        driver
-            .turn_with(&mut app, |_| false, || epoch, async |_, _| Ok(()))
-            .await
-            .unwrap();
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn startup_ledger_is_bounded_single_line_and_flushed() {
+        struct Output {
+            bytes: [u8; 4096],
+            used: usize,
+            flushes: u8,
+        }
+        impl io::Write for Output {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                let end = self
+                    .used
+                    .checked_add(bytes.len())
+                    .filter(|end| *end <= self.bytes.len())
+                    .ok_or(io::ErrorKind::WriteZero)?;
+                self.bytes[self.used..end].copy_from_slice(bytes);
+                self.used = end;
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                self.flushes += 1;
+                Ok(())
+            }
+        }
+        let mut app = fixture(transport().await);
+        let mut driver = Driver::new(&mut app, Instant::now(), None).unwrap();
+        let run = run(&mut app, &mut driver);
+        let future_bytes = mem::size_of_val(&run);
+        let mut output = Output {
+            bytes: [0; 4096],
+            used: 0,
+            flushes: 0,
+        };
+        write_resources(&mut output, future_bytes).unwrap();
+        assert_eq!(output.flushes, 1);
+        let bytes = &output.bytes[..output.used];
+        assert!(output.used < 4096 && bytes.ends_with(b"}\n"));
+        assert_eq!(bytes.iter().filter(|byte| **byte == b'\n').count(), 1);
+        let line = std::str::from_utf8(bytes).unwrap();
+        assert!(line.starts_with("{\"schema\":\"coaptic-native-server-resources/2\",\"server_kind\":\"coaptic-staged-ready\","));
+        for (name, expected) in [
+            ("udp_scratch_bytes", 2049),
+            ("staged_datagram_capacity", 1),
+            ("stage_metadata_bytes", mem::size_of::<Stage>()),
+            ("driver_inline_bytes", mem::size_of::<Driver>()),
+            ("adapter_inline_bytes", mem::size_of::<StagedReady>()),
+            ("app_including_adapter_bytes", mem::size_of::<StagedApp>()),
+            ("loop_future_borrowing_app_bytes", future_bytes),
+        ] {
+            assert!(line.contains(&format!("\"{name}\":{expected},")));
+        }
+        assert!(line.contains("\"runtime_heap_bytes\":null,\"runtime_stack_bytes\":null,"));
+        assert!(line.contains("\"send_policy\":\"immediate_try_send_to\","));
+        assert!(!line.contains("timeout_us") && !line.contains("deadline_ms"));
+        println!("test-build only: {line}");
     }
-    assert_eq!(driver.turn(&mut app).await.unwrap(), Turn::Stop);
-    assert_eq!((driver.counts.turns, driver.counts.yields), (64, 2));
 }
