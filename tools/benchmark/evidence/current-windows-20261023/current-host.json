@@ -1,0 +1,9 @@
+{
+  "cpu": "AMD Ryzen 7 5800X3D 8-Core Processor",
+  "physical_cpus": 8,
+  "logical_cpus": 16,
+  "ram_bytes": 34266349568,
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.14.4 (tags/v3.14.4:23116f9, Apr  7 2026, 14:10:54) [MSC v.1944 64 bit (AMD64)]",
+  "RUSTC_environment": null
+}

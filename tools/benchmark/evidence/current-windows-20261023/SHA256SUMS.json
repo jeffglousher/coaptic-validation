@@ -1,0 +1,54 @@
+{
+  ".gitattributes": {
+    "bytes": 33,
+    "sha256": "dabe63faea541789c0deeb5fe96af06fc5174e1131f20f58ca4e9959befa7631"
+  },
+  "build.json": {
+    "bytes": 1484,
+    "sha256": "02051f839d3edd843ca010c9a795263ea51bdd5c4f8f2f4180f5a02b4afc0501"
+  },
+  "cells.jsonl.gz": {
+    "bytes": 1664295,
+    "sha256": "c95095f4dc963825640b733392e583abef589fef272ff3c3806fa66d491fecf1"
+  },
+  "cost-evidence.json": {
+    "bytes": 870,
+    "sha256": "fa7f3243421fe745edc8bee182d8e84f1cbdf33ead9fd083c663aeaa5f52aca3"
+  },
+  "current-host.json": {
+    "bytes": 301,
+    "sha256": "0b23353f7a0398a16decc372fa59d0965d5e5f0b18d5d3a3f06b46eeac00605a"
+  },
+  "publication.json": {
+    "bytes": 2151,
+    "sha256": "e879a751eca31a209dc9466313d75afe28565a7c6361aa4ada1063b31c2c14ab"
+  },
+  "rankings.csv": {
+    "bytes": 102385,
+    "sha256": "3d6248b17d8f7d2f284b98396dbabc78e955129eb7e7d77311844c6dd302840c"
+  },
+  "rankings.json": {
+    "bytes": 649219,
+    "sha256": "f2d42224d29a8854a71a05b13a77c7e8f0380c2a2339349ce3600cb88b212d4d"
+  },
+  "README.md": {
+    "bytes": 4906,
+    "sha256": "968136dea8b9d05fb06756ae9eeb42c21db86fa64828b2cde6fd950b0264f0fa"
+  },
+  "regrade.py": {
+    "bytes": 2095,
+    "sha256": "842bea37ac81769f5818796e288d366fee18113e1523d7131c62c299cbc470cd"
+  },
+  "report.html": {
+    "bytes": 82611,
+    "sha256": "19727698f34eaae74b6fe27f5fd0710055c11aa7519d8acdb58d89ffd797cf1f"
+  },
+  "sources.json": {
+    "bytes": 524,
+    "sha256": "f9ab6050778420446229b8f419eb5067ac81aeec928548c1e70c689207510be1"
+  },
+  "validation.json": {
+    "bytes": 653,
+    "sha256": "ad42212701ca6b6eb3493d8d7fbc4ab7d56f170880afe1f87237ed39eb54c934"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "binaries": [
+    {
+      "bytes": 5082112,
+      "sha256": "bdb58ac1cc7272d027b91c7bb3fcf6175d2094b4acfd6df2465bc974d035e9a1",
+      "name": "bench-rust-server.exe"
+    },
+    {
+      "bytes": 199680,
+      "sha256": "b3a856042ba977d2fb7486612e2a9021413645b6595ea51500c4e6ee55990e10",
+      "name": "bench-load.exe"
+    },
+    {
+      "bytes": 14892544,
+      "sha256": "c540361219dc9c4da632954ce71f45b69570e4170f5805c8067a6fae035b7574",
+      "name": "bench-go.exe"
+    },
+    {
+      "bytes": 877568,
+      "sha256": "0d7d3a1d7b08fa30c52f5158beaf63d25ed0edf76d339fb9fa940af72aa17b3c",
+      "name": "bench-libcoap.exe"
+    }
+  ],
+  "core": {
+    "revision": "b9b83d8663cbdcb7a80bf143670a05019f25cf25",
+    "status": "",
+    "tree": "bf00581d91a54e136eeb1b2583338c9893da242e"
+  },
+  "native_lock_sha256": "aecd3e37a4a762ef0a0831ad047979536b9ddb5ab7c3bcf83ca40405b691191f",
+  "net_target_growth": 3700560,
+  "pending_changes_scope": "Four uncommitted server-App CPU probe files are preserved; selected server/load bins and campaign do not compile or import them.",
+  "suite": {
+    "revision": "c123d8b4da0f88469a2c9692c48310cf3354163f",
+    "status": "M .github/workflows/core-cost-probe.yml\n M tools/benchmark/core_cost_probe.py\n M tools/benchmark/native/servers/src/bin/bench-core.rs\n M tools/benchmark/test_core_cost_probe.py",
+    "tree": "9881e061f402abb42f75f5747ad843894544dd3b"
+  },
+  "utc": "2026-10-23T13:48:32.953847+00:00"
+}
