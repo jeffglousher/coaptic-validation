@@ -5,7 +5,7 @@ Cargo lane. Clean windows, perf record and perf stat passes never overlap.
 See linux_cpu.md for bounds, interpretation and the manual workflow.
 """
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import hashlib
 import importlib.metadata
 import itertools
@@ -1541,7 +1541,8 @@ def stderr_tail(child, limit):
 def unresolved_cleanup(result):
     return bool(result.get("cleanup_unresolved") or result.get("cleanup_errors")
                 or result.get("perf", {}).get("cleanup_unresolved")
-                or result.get("perf", {}).get("cleanup_error"))
+                or result.get("perf", {}).get("cleanup_error")
+                or result.get("syscall_trace", {}).get("cleanup_unresolved"))
 
 
 def save_window(directory, result):
@@ -1570,8 +1571,12 @@ def save_window(directory, result):
 
 def window(server, client, cell, operations, directory, mode="clean", quota=8 * MIB,
            *, concurrency=1, message_type="con", admission_diagnostics=False,
-           resource_profile="host-control", independent_endpoints=False, long_window=False):
+           resource_profile="host-control", independent_endpoints=False, long_window=False, syscall_observer=None):
     security, size, rate, kind = cell
+    if syscall_observer is not None and (mode != "clean" or kind != "coaptic-mio"
+            or concurrency != 1 or message_type != "con" or admission_diagnostics
+            or independent_endpoints or long_window):
+        raise ValueError("syscall diagnostic requires ordinary Mio, C1 CON, no other instrumentation")
     if security not in ("unprotected", "oscore"):
         raise ValueError("unsupported profile security")
     validate_profile(resource_profile, kind, size, concurrency=concurrency,
@@ -1601,6 +1606,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
               "load_before": os.getloadavg()}
     if admission_diagnostics:
         result["admission_diagnostics"] = True
+    if syscall_observer is not None:
+        result["syscall_diagnostic"] = True
     sut = child = None
     clock_evidence = ({"schema": "coaptic-linux-process-cpu-clock/1",
                        "backend": "clock_getcpuclockid + time.clock_gettime_ns/clock_getres",
@@ -1646,6 +1653,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                     time.sleep(.01)
                 else:
                     raise RuntimeError("server bind deadline")
+                if syscall_observer is not None:
+                    syscall_observer.prepare_target(sut, directory)
                 child = spawn(client_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, text=True)
                 def gate(expected, deadline=None, *, long_measurement=False):
@@ -1668,9 +1677,13 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                            (("server", sut), ("client", child))} if mode == "clean" else {})
                 if clocks:
                     clock_evidence["setup"] = {name: clock.status for name, clock in clocks.items()}
+                trace_context = (syscall_observer(sut, directory) if syscall_observer is not None else nullcontext(None))
                 with perf_pass(mode, sut.pid, PROFILE_SECONDS, directory, quota, target=sut,
-                               attribution=(mode == "record")) as perf:
+                               attribution=(mode == "record")) as perf, trace_context as trace:
                     result["perf"] = perf
+                    if trace is not None:
+                        result["syscall_trace"] = trace
+                        trace.enable()
                     if clocks:
                         clock_evidence["before"] = {name: clock.snapshot() for name, clock in clocks.items()}
                     before = {name: native.snapshot(proc) for name, proc in peers.items()}
@@ -1694,6 +1707,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                         result["scheduler_delta"] = scheduler_delta(result["scheduler_before"],
                                                                     result["scheduler_after"])
                     perf.finish_recording()
+                    if trace is not None:
+                        trace.finish()
                     child.stdin.write("report\n")
                     child.stdin.flush()
                     raw = native.control_line(child.stdout, 15, report_limit(operations) - 1)
@@ -1730,10 +1745,19 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                               accounting="failed window; no verified denominator unless raw report present")
                 if hasattr(error, "perf_capture"):
                     result["perf"] = error.perf_capture
+                if hasattr(error, "syscall_capture"):
+                    result["syscall_trace"] = error.syscall_capture
                 if getattr(error, "cleanup_unresolved", False):
                     result["cleanup_unresolved"] = True
             finally:
                 try:
+                    if syscall_observer is not None:
+                        try:
+                            syscall_observer.close()
+                        except Exception as error:
+                            result["passed"] = False
+                            result.setdefault("cleanup_errors", []).append(
+                                {"process": "syscall-helper", "type": type(error).__name__, "reason": str(error)[:512]})
                     for name, process in (("client", child), ("server", sut)):
                         try:
                             stop(process)
@@ -1761,6 +1785,7 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
 
 def accepted(result, tick):
     if (not result.get("passed") or result["mode"] != "clean"
+            or result.get("syscall_diagnostic", False) is not False
             or result.get("admission_diagnostics", False) is not False
             or "admission_diagnostics" in result.get("report", {})):
         return False
