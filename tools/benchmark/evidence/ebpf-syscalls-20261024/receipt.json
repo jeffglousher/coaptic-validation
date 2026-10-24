@@ -1308,7 +1308,7 @@
       "loader_lifetime_maxrss_kib": 51268
     }
   ],
-  "counter_semantics": "Independent entry/exit gates, no balance invariant. Counts not durations, vDSO calls, removable CPU share or optimization gain. EAGAIN is an expected receive result, not a failed operation.",
+  "counter_semantics": "Window totals normalized by verified completions; no individual-operation event ordering was captured. Independent entry/exit gates, no balance invariant. Counts not durations, vDSO calls, removable CPU share or optimization gain. EAGAIN is an expected receive result, not a failed operation.",
   "tests": {
     "linux_python_passed": 201,
     "linux_python_skipped": 0,

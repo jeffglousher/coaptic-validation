@@ -9,8 +9,8 @@ or primary CPU acceptance. Both 50% targets and whole-memory acceptance remain o
 
 ## What eBPF observed
 
-For each of 30,000 verified complete operations in every ON window, both
-unprotected and established OSCORE:
+Window totals divided by 30,000 verified completions, in each ON window for
+both unprotected and established OSCORE, yield these averages:
 
 - `sendto`: one entry and one successful exit.
 - `recvfrom`: two entries, one successful exit and one EAGAIN exit.
@@ -23,7 +23,8 @@ per-window statistics and every pair/pooled guard. Entry/exit observations are
 independently gate-censored; no balance invariant is assumed. They provide no
 syscall duration, vDSO-clock coverage or removable CPU percentage.
 
-This confirms the successful-receive / empty-receive / selector-wait mechanism.
+These totals match the successful-receive / empty-receive / selector-wait
+mechanism in the source. No per-operation event order was captured.
 Avoiding that empty receive is a source hypothesis to assess, not a demonstrated
 CPU saving: queued packets, readiness semantics, fairness, deadlines and refusal
 must remain correct. No new transport, buffer, batching or kernel-bypass gain is
