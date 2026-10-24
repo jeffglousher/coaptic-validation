@@ -20,6 +20,8 @@
 //! `coaptic-staged-ready` stages a nonblocking receive in the same reusable scratch
 //! before polling App, preserving ready's immediate try_send_to congestion policy.
 //! Explicit coaptic-staged-mio combines staging with direct Mio and immediate send_to.
+//! Linux-only coaptic-mio-direct receives into the borrowed Engine RX slot with
+//! MSG_TRUNC, retaining Mio's scheduler and immediate send acceptance semantics.
 #![forbid(unsafe_code)]
 macro_rules! conn_as_any {
     () => {
@@ -34,6 +36,8 @@ macro_rules! conn_as_any {
     reason = "The shared interop module also supplies an unused client transport."
 )]
 mod coap_dtls;
+#[cfg(target_os = "linux")]
+mod direct_udp;
 #[path = "../../../../interop/dtls_listener.rs"]
 mod dtls_listener;
 mod staged_mio;
@@ -460,21 +464,32 @@ async fn async_udp_server(
     run.await
 }
 
-struct MioUdp {
+struct MioUdp<const SCRATCH: usize = 2049> {
     socket: mio::net::UdpSocket,
-    scratch: [u8; 2049],
+    scratch: [u8; SCRATCH],
     received: bool,
 }
 
-impl coaptic::storage::DatagramTransport for MioUdp {
+impl<const SCRATCH: usize> coaptic::storage::DatagramTransport for MioUdp<SCRATCH> {
     type Error = std::io::Error;
 }
-impl DatagramIo for MioUdp {
+impl<const SCRATCH: usize> DatagramIo for MioUdp<SCRATCH> {
     fn recv(&mut self, buf: &mut [u8]) -> Result<Option<(usize, Endpoint)>, Self::Error> {
         self.received = false;
-        let result = receive_guarded(buf, &mut self.scratch, |scratch| {
-            self.socket.recv_from(scratch)
-        });
+        let result = if SCRATCH == 0 {
+            #[cfg(target_os = "linux")]
+            {
+                direct_udp::receive(&self.socket, buf)
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                Err(std::io::ErrorKind::Unsupported.into())
+            }
+        } else {
+            receive_guarded(buf, &mut self.scratch, |scratch| {
+                self.socket.recv_from(scratch)
+            })
+        };
         self.received = result.as_ref().is_ok_and(Option::is_some);
         result
     }
@@ -484,7 +499,7 @@ impl DatagramIo for MioUdp {
     }
 }
 
-fn mio_server(
+fn mio_server<const SCRATCH: usize>(
     address: &str,
     bytes: usize,
     rx_bytes: usize,
@@ -494,27 +509,31 @@ fn mio_server(
     socket.set_nonblocking(true)?;
     let mut io = MioUdp {
         socket: mio::net::UdpSocket::from_std(socket),
-        scratch: [0; 2049],
+        scratch: [0; SCRATCH],
         received: false,
     };
     let mut poll = mio::Poll::new()?;
     poll.registry()
         .register(&mut io.socket, mio::Token(0), mio::Interest::READABLE)?;
     let mut events = mio::Events::with_capacity(8);
+    let adapter_bytes = std::mem::size_of_val(&io);
     let mut app = bind_fixture(io, bytes, rx_bytes, context)?;
+    println!(
+        "{{\"schema\":\"coaptic-native-mio-resources/1\",\"server_kind\":\"{}\",\"udp_scratch_bytes\":{SCRATCH},\"adapter_inline_bytes\":{adapter_bytes},\"app_including_adapter_bytes\":{},\"poll_inline_bytes\":{},\"events_inline_bytes\":{},\"event_capacity\":{},\"worker_threads\":0,\"pending_kernel_operations\":0,\"runtime_heap_bytes\":null,\"runtime_stack_bytes\":null,\"kernel_bytes\":null,\"nesting\":\"scratch inside adapter inside App; poll and event owners separate; no extra packet buffers\",\"limits\":\"inline sizes only; event heap, App heap, body, allocator, peak stack and kernel socket/selector storage require separate accounting\"}}",
+        if SCRATCH == 0 {
+            "coaptic-mio-direct"
+        } else {
+            "coaptic-mio"
+        },
+        std::mem::size_of_val(&app),
+        std::mem::size_of_val(&poll),
+        std::mem::size_of_val(&events),
+        events.capacity(),
+    );
+    std::io::stdout().flush()?;
     let started = Instant::now();
     loop {
-        let mut idle = false;
-        for _ in 0..32 {
-            match app.poll(started.elapsed().as_millis() as u64) {
-                Ok(()) | Err(coaptic::app::Error::Oscore(_)) => {}
-                Err(error) => return Err(error.into()),
-            }
-            if !app.transport().received {
-                idle = true;
-                break;
-            }
-        }
+        let idle = mio_burst(&mut app, started)?;
         let now_ms = started.elapsed().as_millis() as u64;
         let timeout = if idle {
             app.next_poll_at(now_ms).map(|due| {
@@ -528,6 +547,29 @@ fn mio_server(
             result => result?,
         }
     }
+}
+
+fn mio_burst<const SCRATCH: usize>(
+    app: &mut App<coaptic::profiles::Default, MioUdp<SCRATCH>, 1, true, AllocMemory>,
+    started: Instant,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    for _ in 0..32 {
+        match app.poll(started.elapsed().as_millis() as u64) {
+            Ok(()) | Err(coaptic::app::Error::Oscore(_)) => {}
+            // A consumed oversized packet is not an empty socket. Keep draining
+            // to WouldBlock before an edge-triggered wait; do not parse its prefix.
+            Err(coaptic::app::Error::Io(coaptic::storage::DatagramIoError::Io(error)))
+                if error.kind() == std::io::ErrorKind::InvalidData =>
+            {
+                continue;
+            }
+            Err(error) => return Err(error.into()),
+        }
+        if !app.transport().received {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn ready_burst(
@@ -700,7 +742,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if !(5..=7).contains(&args.len()) {
         return Err(
-            "usage: bench-rust-server coaptic-small|coaptic|coaptic-reusable|coaptic-ready|coaptic-staged-ready|coaptic-staged-mio|coaptic-mio|coaptic-async|coaptic-blocking|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]]".into(),
+            "usage: bench-rust-server coaptic-small|coaptic|coaptic-reusable|coaptic-ready|coaptic-staged-ready|coaptic-staged-mio|coaptic-mio|coaptic-mio-direct|coaptic-async|coaptic-blocking|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]]".into(),
         );
     }
     let rx_bytes: usize = args
@@ -730,6 +772,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 | "coaptic-staged-ready"
                 | "coaptic-staged-mio"
                 | "coaptic-mio"
+                | "coaptic-mio-direct"
                 | "coaptic-async"
                 | "coaptic-blocking"
         )
@@ -746,6 +789,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 | "coaptic-staged-ready"
                 | "coaptic-staged-mio"
                 | "coaptic-mio"
+                | "coaptic-mio-direct"
                 | "coaptic-async"
                 | "coaptic-blocking"
         )
@@ -813,7 +857,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "coap-lite-codec" => codec_server(&address, body),
         "coaptic-blocking" => staged_udp::serve(&address, size, rx_bytes, context),
         "coaptic-staged-mio" => staged_mio::serve(&address, size, rx_bytes, context),
-        "coaptic-mio" => mio_server(&address, size, rx_bytes, context),
+        "coaptic-mio" => mio_server::<2049>(&address, size, rx_bytes, context),
+        #[cfg(target_os = "linux")]
+        "coaptic-mio-direct" => mio_server::<0>(&address, size, rx_bytes, context),
+        #[cfg(not(target_os = "linux"))]
+        "coaptic-mio-direct" => Err("coaptic-mio-direct requires Linux MSG_TRUNC semantics".into()),
         "coaptic-ready" => tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?

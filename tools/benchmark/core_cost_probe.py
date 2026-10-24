@@ -99,37 +99,6 @@ def validate_credentials(text, uid, gid):
     return fields
 
 
-def cleanup_group(marker):
-    """Only a fixed worker's pre-child, owned group receipt authorizes signaling.
-
-    The group remains reserved while members exist after its leader exits.
-    A surviving leader must still match starttime/session; any ambiguity is fatal.
-    """
-    if not marker.exists():
-        return  # No worker receipt means the worker never reached child activity.
-    owned = load(marker)
-    pid = owned["pid"]
-    if type(pid) is not int or pid <= 1 or owned["pgrp"] != pid or pid == os.getpgrp():
-        raise RuntimeError("cleanup unresolved: invalid owned worker group")
-    try:
-        if proc_identity(pid) != {key: owned[key] for key in ("pid", "pgrp", "session", "starttime")}:
-            raise RuntimeError("cleanup unresolved: worker PID identity changed")
-    except FileNotFoundError:
-        pass
-    for sig in (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.killpg(pid, sig)
-        except ProcessLookupError:
-            return
-        for _ in range(20):
-            try:
-                os.killpg(pid, 0)
-            except ProcessLookupError:
-                return
-            time.sleep(.05)
-    raise RuntimeError("cleanup unresolved: owned worker group survives KILL")
-
-
 def batch_pidfds_required():
     if not callable(getattr(os, "pidfd_open", None)) or not callable(getattr(signal, "pidfd_send_signal", None)):
         raise RuntimeError("batch cleanup requires Python Linux pidfd APIs; no numeric PID fallback")
@@ -163,7 +132,8 @@ class BatchLifetime:
         self.fd = os.pidfd_open(child.pid, 0)
 
     def wait(self, timeout):
-        code = self.child.wait(timeout=timeout)
+        # This pidfd lifetime owns only the direct child, with no later group signal.
+        code = self.child.process.wait(timeout=timeout)
         self.settled = True
         self.child.stopped = True
         return code
@@ -396,10 +366,16 @@ def batch_release_child(child, lifetime):
     if child is None:
         return
     primary = None
+    def reap_after_eof():
+        # No handle was acquired: EOF is the only stop authority. Reap only
+        # after it exits; never upgrade this path into numeric group signaling.
+        child.process.wait(timeout=1)
+        child.stopped = True
+
     # Independent attempts retain EOF, exact-process settlement and fd closure
     # even if another step fails. No group query or signaling uses stale IDs.
     actions = [lambda: child.stdin.close() if not child.stdin.closed else None,
-               lifetime.stop if lifetime is not None else lambda: child.wait(timeout=1),
+               lifetime.stop if lifetime is not None else reap_after_eof,
                child.stdout.close]
     if lifetime is not None:
         actions.append(lifetime.close)
@@ -585,8 +561,8 @@ def worker(root, phase):
     # Bound worker tracebacks/metadata, retaining headroom for the benchmark's
     # own lower hard limit. The unmodified fixture cannot enlarge its limit.
     resource.setrlimit(resource.RLIMIT_FSIZE, (META, resource.getrlimit(resource.RLIMIT_FSIZE)[1]))
-    if os.getpgrp() != os.getpid():
-        os.setpgid(0, 0)
+    # Inherit the wrapper's reserved group through the final parent-owned signal.
+    # The receipt is diagnostic evidence, never authority to signal a number.
     owned = proc_identity(os.getpid())
     owned.update(credentials=credentials, phase=name)
     save_new(directory / "worker.json", owned)  # Before ANY benchmark child.
@@ -603,13 +579,13 @@ def worker(root, phase):
     for number in range(count):
         receipt = {"complete": False, "security": security, "operations": OPERATIONS,
                    "warmup": WARMUP, "scope": SCOPE}
-        child = None
+        child, primary = None, None
         started = time.monotonic_ns()
         before = usage()
         try:
             with (directory / f"bench-{number}.jsonlog").open("xb") as stream:
-                # Deliberately inherit this recorded worker group. spawn() would
-                # create a separate session, defeating parent failure cleanup.
+                # Inherit the wrapper's group. spawn() would create a separate
+                # session, defeating parent failure cleanup.
                 child = subprocess.Popen([binary, str(OPERATIONS), security], stdin=subprocess.DEVNULL,
                                          stdout=stream, stderr=subprocess.STDOUT,
                                          preexec_fn=lambda: resource.setrlimit(resource.RLIMIT_FSIZE, (BENCH, BENCH)))
@@ -623,6 +599,9 @@ def worker(root, phase):
             receipt["whole_process_cpu_ns_per_verified_exchange"] = (
                 delta["utime"] + delta["stime"]) * 1e9 / (OPERATIONS + WARMUP)
             receipt["complete"] = True
+        except BaseException as error:
+            primary = error
+            raise
         finally:
             try:
                 if child is not None and child.poll() is None:
@@ -632,18 +611,29 @@ def worker(root, phase):
                     except subprocess.TimeoutExpired:
                         child.kill()
                         child.wait(timeout=1)
-            except BaseException:
+            except BaseException as cleanup:
                 receipt["cleanup_unresolved"] = True
-                raise
+                cleanup.cleanup_unresolved = True
+                if primary is None:
+                    primary = cleanup
+                    raise
+                primary.cleanup_unresolved = True
+                primary.add_note("benchmark child cleanup: " + str(cleanup)[:512])
             finally:
-                save_new(directory / f"bench-{number}.json", receipt)
+                try:
+                    save_new(directory / f"bench-{number}.json", receipt)
+                except BaseException as retention:
+                    if primary is None:
+                        raise
+                    primary.add_note("benchmark receipt: " + str(retention)[:512])
         if time.monotonic() > deadline:
             raise TimeoutError("worker deadline")
 
 
 def prefix(quota, seconds):
+    # timeout must not create a group outside the parent's reserved session.
     return ["sudo", "-n", "--", "prlimit", f"--fsize={quota}:{quota}",
-            "--as=536870912:536870912", "--", "timeout", "--signal=TERM",
+            "--as=536870912:536870912", "--", "timeout", "--foreground", "--signal=TERM",
             "--kill-after=5", str(seconds)]
 
 
@@ -692,6 +682,7 @@ def capture_access(directory, uid, gid, log, state):
 
 
 def execute_phase(directory, record, count, uid, gid, log, *, batch_cpu=False):
+    """Settle original inherited groups or batch pidfd custody before capture access."""
     primary, recorder_settled = None, False
 
     def failure(error, label):
@@ -722,7 +713,10 @@ def execute_phase(directory, record, count, uid, gid, log, *, batch_cpu=False):
             cleanup_batch(directory, recorder_settled and record.get("returncode") == 0)
             record["cleanup_settled"] = True
         else:
-            cleanup_group(directory / "worker.json")
+            # run_owned observes full process/thread-group exits in its bounded
+            # inherited-group census before reaping the reserved leader. A KILL
+            # delivery alone cannot authorize capture handoff. Never reopen markers.
+            record["cleanup_settled"] = recorder_settled
     except BaseException as error:
         failure(error, "worker_cleanup_error")
     if count == 8:
@@ -847,9 +841,8 @@ def directory_bytes(root):
 
 
 def build(root, lane, env, host):
-    """Reuse bounded build logging; one marker permits the narrow lane watchdog."""
-    done, errors = threading.Event(), []
-    marker = root / "builder.json"
+    """Bound the lane; only run_logged's owner may signal its reserved group."""
+    done, cancel, errors = threading.Event(), threading.Event(), []
     if directory_bytes(lane) > 4 * 1024 * MIB:
         raise ValueError("build lane exceeds 4 GiB before build")
 
@@ -859,27 +852,42 @@ def build(root, lane, env, host):
                 if directory_bytes(lane) > 4 * 1024 * MIB:
                     raise ValueError("build lane exceeds 4 GiB")
             except Exception as error:
-                errors.append(str(error))
-                try:
-                    cleanup_group(marker)
-                except Exception as cleanup:
-                    errors.append("cleanup unresolved: " + str(cleanup))
+                errors.append(str(error)[:512])
+                cancel.set()
                 return
 
     watcher = threading.Thread(target=watch, daemon=True)
-    watcher.start()
+    primary = None
     try:
+        watcher.start()
         with (root / "build.log").open("xb") as stream:
             run_logged([sys.executable, "-B", str(Path(__file__).resolve())], stream, timeout=900,
-                       limit=META if env.get("CORE_COST_BATCH_CPU") == "1" else 2 * MIB, cwd=SUITE,
-                       env={**env, "CORE_COST_BUILD": str(root), "CORE_COST_HOST": host})
+                       cancel=cancel, limit=META if env.get("CORE_COST_BATCH_CPU") == "1" else 2 * MIB,
+                       cwd=SUITE, env={**env, "CORE_COST_BUILD": str(root), "CORE_COST_HOST": host})
+    except BaseException as error:
+        primary = error
     finally:
         done.set()
-        watcher.join(timeout=5)
-        if watcher.is_alive():
-            raise RuntimeError("cleanup unresolved: build watchdog")
+        # A failed thread start cannot leave a watchdog to join.
+        if watcher.ident is not None:
+            try:
+                watcher.join(timeout=5)
+                if watcher.is_alive():
+                    raise RuntimeError("cleanup unresolved: build watchdog")
+            except BaseException as cleanup:
+                cleanup.cleanup_unresolved = True
+                if primary is None:
+                    primary = cleanup
+                else:
+                    primary.cleanup_unresolved = True
+                    primary.add_note("build watchdog cleanup: " + str(cleanup)[:512])
         if errors:
-            raise RuntimeError("; ".join(errors))
+            if primary is None:
+                primary = RuntimeError("; ".join(errors))
+            else:
+                primary.add_note("build watchdog: " + "; ".join(errors))
+    if primary is not None:
+        raise primary
     if directory_bytes(lane) > 4 * 1024 * MIB:
         raise ValueError("build lane exceeds 4 GiB")
 

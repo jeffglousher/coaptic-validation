@@ -117,6 +117,36 @@ class ReportTests(unittest.TestCase):
             child.stdin.write.assert_not_called()
 
     @staticmethod
+    def mio_record(kind="coaptic-mio"):
+        return dict(schema="coaptic-native-mio-resources/1", server_kind=kind,
+                    udp_scratch_bytes=0 if kind.endswith("-direct") else 2049,
+                    adapter_inline_bytes=2104, app_including_adapter_bytes=16000,
+                    poll_inline_bytes=8, events_inline_bytes=24, event_capacity=8,
+                    worker_threads=0, pending_kernel_operations=0,
+                    runtime_heap_bytes=None, runtime_stack_bytes=None, kernel_bytes=None,
+                    nesting="adapter inside App; poll/events separate", limits="inline only")
+
+    def test_mio_ledgers_require_no_worker_no_pending_operation_and_exact_scratch(self):
+        for kind in ("coaptic-mio", "coaptic-mio-direct"):
+            valid = self.mio_record(kind)
+            changes = [dict(udp_scratch_bytes=1), dict(adapter_inline_bytes=0),
+                       dict(worker_threads=1), dict(pending_kernel_operations=1),
+                       dict(worker_threads=False), dict(event_capacity=16),
+                       dict(runtime_heap_bytes=0), dict(kernel_bytes=0),
+                       dict(app_including_adapter_bytes=1), dict(nesting="")]
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "server.log"
+                for delta in ({}, *changes):
+                    record = valid | delta
+                    path.write_text(json.dumps(record) + "\n")
+                    with self.subTest(kind=kind, delta=delta):
+                        if delta:
+                            with self.assertRaises(ValueError):
+                                server_resources(path, kind, deadline=0, server=None)
+                        else:
+                            self.assertEqual(server_resources(path, kind, deadline=0, server=None), record)
+
+    @staticmethod
     def startup_record():
         return dict(schema="coaptic-native-server-resources/2", server_kind="coaptic-async",
                     udp_scratch_bytes=2049, adapter_inline_bytes=2104,
@@ -366,7 +396,9 @@ class ReportTests(unittest.TestCase):
 
         records = {"coaptic-async": self.startup_record(), "coaptic-blocking": self.blocking_record(),
                    "coaptic-staged-ready": self.staged_ready_record(),
-                   "coaptic-staged-mio": self.staged_mio_record()}
+                   "coaptic-staged-mio": self.staged_mio_record(),
+                   "coaptic-mio": self.mio_record(),
+                   "coaptic-mio-direct": self.mio_record("coaptic-mio-direct")}
         for kind, complete in ((kind, complete) for kind in records
                                for complete in (True, False)):
             record = records[kind]
