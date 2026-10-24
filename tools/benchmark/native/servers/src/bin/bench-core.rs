@@ -54,13 +54,14 @@ fn representation(_: Request<'_>) -> Response<'static> {
         .etag(b"fixture")
 }
 
-const USAGE: &str = "usage: bench-core OPERATIONS (1..=60000) [unprotected|oscore [--small-device|--batch-cpu]]; --small-device is wall-only; --batch-cpu requires 50000";
+const USAGE: &str = "usage: bench-core OPERATIONS (1..=60000) [unprotected|oscore [--small-device|--batch-cpu]]; --small-device is wall-only; --batch-cpu requires 50000; or: bench-core OPERATIONS unprotected|oscore --service-fixed|--service-allocated 64|1024|16384 (combined 60000-send bound)";
 
 #[derive(Debug, PartialEq)]
 enum ProbeMode {
     Wall,
     SmallDevice,
     BatchCpu,
+    Service { allocated: bool, payload: usize },
 }
 
 #[derive(Debug, PartialEq)]
@@ -71,7 +72,7 @@ struct Config<'a> {
 }
 
 fn parse_args(args: &[String]) -> Result<Config<'_>, Failure> {
-    if !(2..=4).contains(&args.len()) {
+    if !(2..=5).contains(&args.len()) {
         return Err(USAGE.into());
     }
     let operations = args[1].parse::<usize>().map_err(|_| USAGE)?;
@@ -84,8 +85,16 @@ fn parse_args(args: &[String]) -> Result<Config<'_>, Failure> {
     }
     let mode = match args.get(3).map(String::as_str) {
         None => ProbeMode::Wall,
-        Some("--small-device") => ProbeMode::SmallDevice,
-        Some("--batch-cpu") => ProbeMode::BatchCpu,
+        Some("--small-device") if args.len() == 4 => ProbeMode::SmallDevice,
+        Some("--batch-cpu") if args.len() == 4 => ProbeMode::BatchCpu,
+        Some(flag @ ("--service-fixed" | "--service-allocated")) if args.len() == 5 => {
+            let payload = args[4].parse::<usize>().map_err(|_| USAGE)?;
+            service_admission(operations, payload)?;
+            ProbeMode::Service {
+                allocated: flag == "--service-allocated",
+                payload,
+            }
+        }
         _ => return Err(USAGE.into()),
     };
     if mode == ProbeMode::BatchCpu && operations != BATCH_OPS {
@@ -190,6 +199,14 @@ fn main() -> Result<(), Failure> {
         }
         _ => return Err("security selection".into()),
     };
+    if let ProbeMode::Service { allocated, payload } = config.mode {
+        let mut client = service_client(client_context)?;
+        return if allocated {
+            service_allocated(server_context, &mut client, &config, payload)
+        } else {
+            service_fixed(server_context, &mut client, &config, payload)
+        };
+    }
     // Construct only the selected App; no union reserves a larger profile.
     if config.mode == ProbeMode::SmallDevice {
         wall_run(
@@ -396,6 +413,415 @@ fn small_device_ledger<P, S, const N: usize, const B: bool, const D: usize, cons
         2 * std::mem::size_of::<Vec<u128>>(),
         std::mem::size_of::<Option<coaptic::oscore::SecurityContext>>()
     );
+}
+
+// Service-only fixture. Keep CoreIo and all legacy wall/batch layouts unchanged.
+const SERVICE_SEND_LIMIT: u32 = 30_000;
+const SERVICE_ROUNDS: u32 = 32;
+const SERVICE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+static SERVICE_BODY: [u8; 16384] = {
+    let mut body = [0; 16384];
+    let mut i = 0;
+    while i < body.len() {
+        body[i] = (i % 251) as u8;
+        i += 1;
+    }
+    body
+};
+
+struct ServiceIo {
+    io: CoreIo,
+    sent: u32,
+}
+impl coaptic::storage::DatagramTransport for ServiceIo {
+    type Error = &'static str;
+}
+impl DatagramIo for ServiceIo {
+    fn recv(&mut self, buf: &mut [u8]) -> Result<Option<(usize, Endpoint)>, Self::Error> {
+        self.io.recv(buf)
+    }
+    fn send(&mut self, peer: Endpoint, bytes: &[u8]) -> Result<usize, Self::Error> {
+        if self.sent >= SERVICE_SEND_LIMIT {
+            return Err("Service port send limit");
+        }
+        let n = self.io.send(peer, black_box(bytes))?;
+        self.sent += 1;
+        Ok(n)
+    }
+}
+fn service_io() -> ServiceIo {
+    ServiceIo {
+        io: core_io(),
+        sent: 0,
+    }
+}
+fn service_admission(operations: usize, payload: usize) -> Result<(), Failure> {
+    if !matches!(payload, 64 | 1024 | 16384)
+        || operations == 0
+        || operations
+            .checked_add(128)
+            .and_then(|n| n.checked_mul(payload.div_ceil(1024)))
+            .is_none_or(|sends| sends > SERVICE_SEND_LIMIT as usize)
+    {
+        return Err(
+            "Service requires payload 64/1024/16384 and (operations+128)*ceil(payload/1024)<=30000"
+                .into(),
+        );
+    }
+    Ok(())
+}
+fn service64(_: Request<'_>) -> Response<'static> {
+    service_representation(64)
+}
+fn service1024(_: Request<'_>) -> Response<'static> {
+    service_representation(1024)
+}
+fn service16384(_: Request<'_>) -> Response<'static> {
+    service_representation(16384)
+}
+fn service_representation(payload: usize) -> Response<'static> {
+    Response::content(&SERVICE_BODY[..payload])
+        .content_format(ContentFormat::OCTET_STREAM)
+        .etag(b"fixture")
+}
+// All three handlers borrow the same static owner; no mutable payload selector.
+macro_rules! service_builder {
+    ($resources:expr, $context:expr, $payload:expr) => {{
+        let handler: fn(Request<'_>) -> Response<'static> = match $payload {
+            64 => service64,
+            1024 => service1024,
+            _ => service16384,
+        };
+        let builder = App::with_resources($resources)
+            .randomness(|bytes| getrandom::fill(bytes).is_ok())
+            .route("bench", get(handler));
+        if let Some(context) = $context {
+            builder.oscore(context)
+        } else {
+            builder.allow_unprotected()
+        }
+    }};
+}
+type ServiceClient =
+    App<coaptic::profiles::Default, ServiceIo, 1, true, coaptic::storage::AllocMemory>;
+type ServiceServer<S> = App<coaptic::profiles::Service, ServiceIo, 32, true, S, 8, 4>;
+
+fn service_client_capacities() -> Capacities {
+    Capacities {
+        rx_datagram_slots: 4,
+        rx_datagram_bytes: WIRE,
+        tx_datagram_slots: 4,
+        tx_datagram_bytes: WIRE,
+        dedup_entries: 8,
+        observe_entries: 4,
+        rx_body_slots: Some(1),
+        rx_body_bytes: Some(16384),
+        tx_body_slots: Some(1),
+        tx_body_bytes: Some(1024),
+    }
+}
+fn service_client(
+    context: Option<coaptic::oscore::SecurityContext>,
+) -> Result<ServiceClient, Failure> {
+    let builder = App::builder()
+        .routes::<1>()
+        .block_wise::<true>()
+        .full_responses()
+        .randomness(|bytes| getrandom::fill(bytes).is_ok());
+    let builder = if let Some(context) = context {
+        builder.oscore(context)
+    } else {
+        builder.allow_unprotected()
+    };
+    let caps = service_client_capacities();
+    let heap = coaptic::storage::AllocMemory::<Token>::required_heap_bytes(caps)?;
+    Ok(builder.bind_storage(
+        service_io(),
+        coaptic::storage::AllocMemory::try_new(caps, heap)?,
+    )?)
+}
+
+// Like the existing Service/Mio entry, isolate large safe fixed initialization.
+// No Box::new claim, stack-size override, extra thread or uninitialized storage.
+#[inline(never)]
+fn service_fixed(
+    context: Option<coaptic::oscore::SecurityContext>,
+    client: &mut ServiceClient,
+    config: &Config<'_>,
+    payload: usize,
+) -> Result<(), Failure> {
+    let mut app =
+        service_builder!(coaptic::resources::Service::new(), context, payload).bind(service_io())?;
+    service_run(&mut app, client, config, payload, false)
+}
+#[inline(never)]
+fn service_allocated(
+    context: Option<coaptic::oscore::SecurityContext>,
+    client: &mut ServiceClient,
+    config: &Config<'_>,
+    payload: usize,
+) -> Result<(), Failure> {
+    let resources = coaptic::resources::Service::new();
+    let heap =
+        coaptic::storage::AllocMemory::<Token>::required_heap_bytes(resources.pool_capacities())?;
+    let mut app =
+        service_builder!(resources.allocated(heap), context, payload).bind(service_io())?;
+    service_run(&mut app, client, config, payload, true)
+}
+
+fn service_bridge(from: &mut ServiceIo, to: &mut ServiceIo) -> Result<(), Failure> {
+    let n = from
+        .io
+        .output_len
+        .ok_or("Service no progress: missing packet")?;
+    if !(1..=WIRE).contains(&n) || to.io.input_len.is_some() {
+        return Err("Service bridge capacity/occupied input".into());
+    }
+    to.io.input[..n].copy_from_slice(black_box(&from.io.output[..n]));
+    black_box(&to.io.input[..n]);
+    to.io.input_len = Some(n);
+    from.io.output_len = None;
+    Ok(())
+}
+fn service_wire(io: &ServiceIo) -> Result<coaptic::message::ParsedMessage<'_>, Failure> {
+    let n = io
+        .io
+        .output_len
+        .ok_or("Service no progress: missing packet")?;
+    if !(1..=WIRE).contains(&n) {
+        return Err("Service packet length".into());
+    }
+    Ok(decode(black_box(&io.io.output[..n]))?)
+}
+fn service_ack(io: &ServiceIo, mid: MessageId, token: Token) -> Result<(), Failure> {
+    let reply = service_wire(io)?;
+    if reply.ty() != Type::Acknowledgement || reply.message_id() != mid || reply.token() != token {
+        return Err("Service wire ACK/MID/Token mismatch".into());
+    }
+    Ok(())
+}
+fn service_deadline(started: Instant) -> Result<(), Failure> {
+    if started.elapsed() >= SERVICE_TIMEOUT {
+        return Err("Service complete operation deadline".into());
+    }
+    Ok(())
+}
+struct ServicePending {
+    call: coaptic::Call,
+    first_mid: MessageId,
+    started: Instant,
+    polls: u32,
+    wall_sum: u128,
+}
+fn service_begin(
+    client: &mut ServiceClient,
+    payload: usize,
+    clock: Instant,
+) -> Result<ServicePending, Failure> {
+    let started = Instant::now();
+    let now: u64 = clock.elapsed().as_millis().try_into()?;
+    let request = client.get("bench").to(PEER).deadline(now + 3000);
+    let request = if payload == 16384 {
+        request.block2(coaptic::message::BlockValue::new(0, false, 6)?)
+    } else {
+        request
+    };
+    let call = request
+        .send(now)
+        .map_err(|error| format!("Service client send: {error:?}"))?;
+    client
+        .poll(clock.elapsed().as_millis().try_into()?)
+        .map_err(|_| "Service client poll")?;
+    let first_mid = service_wire(client.transport())?.message_id();
+    service_deadline(started)?;
+    Ok(ServicePending {
+        call,
+        first_mid,
+        started,
+        polls: 0,
+        wall_sum: 0,
+    })
+}
+fn service_turn<S>(
+    server: &mut ServiceServer<S>,
+    client: &mut ServiceClient,
+    pending: &mut ServicePending,
+    clock: Instant,
+) -> Result<(), Failure>
+where
+    S: AppStorage<Token = Token>,
+{
+    service_deadline(pending.started)?;
+    if pending.polls >= SERVICE_ROUNDS {
+        return Err("Service round limit".into());
+    }
+    let request = service_wire(client.transport())?;
+    let mid = request.message_id();
+    if request.ty() != Type::Confirmable || request.token() != pending.call.token() {
+        return Err("Service request header mismatch".into());
+    }
+    service_bridge(client.transport_mut(), server.transport_mut())?;
+    let now: u64 = clock.elapsed().as_millis().try_into()?;
+    let started = Instant::now();
+    let result = black_box(black_box(&mut *server).poll(black_box(now)));
+    let elapsed = started.elapsed().as_nanos();
+    pending.wall_sum = pending
+        .wall_sum
+        .checked_add(elapsed)
+        .ok_or("Service wall sum overflow")?;
+    pending.polls += 1;
+    result.map_err(|_| "Service server poll")?;
+    service_ack(server.transport(), mid, pending.call.token())?;
+    service_bridge(server.transport_mut(), client.transport_mut())?;
+    client
+        .poll(clock.elapsed().as_millis().try_into()?)
+        .map_err(|_| "Service client poll")?;
+    service_deadline(pending.started)
+}
+fn service_verify(
+    reply: &Response<'_>,
+    pending: &ServicePending,
+    payload: usize,
+) -> Result<(), Failure> {
+    let mut etags = reply
+        .received_options()
+        .filter(|opt| opt.number() == coaptic::message::OptionNumber::ETAG);
+    if reply.code() != Code::CONTENT
+        || reply.format() != Some(ContentFormat::OCTET_STREAM)
+        || reply.etag_bytes() != Some(&b"fixture"[..])
+        || etags.next().map(|opt| opt.value()) != Some(&b"fixture"[..])
+        || etags.next().is_some()
+        || reply.ty() != Some(Type::Acknowledgement)
+        || reply.token() != Some(pending.call.token())
+        || reply.message_id() != Some(pending.first_mid)
+        || reply.peer() != Some(PEER)
+        || reply.payload_truncated()
+        || black_box(reply.payload()) != &SERVICE_BODY[..payload]
+        || (payload == 16384 && !reply.has_body())
+    {
+        return Err("Service complete response mismatch".into());
+    }
+    // Assembled headers retain the FIRST fragment (including NUM0/M=1).
+    // Terminal App collection, full varied body and round count prove completion.
+    Ok(())
+}
+fn service_step<S>(
+    server: &mut ServiceServer<S>,
+    client: &mut ServiceClient,
+    payload: usize,
+    clock: Instant,
+    output: &mut [u8],
+) -> Result<(u128, u32), Failure>
+where
+    S: AppStorage<Token = Token>,
+{
+    let mut pending = service_begin(client, payload, clock)?;
+    let result = (|| {
+        for _ in 0..SERVICE_ROUNDS {
+            service_turn(server, client, &mut pending, clock)?;
+            if let Some(outcome) = client.take_response_into(pending.call, output)? {
+                let reply = outcome.map_err(|_| "Service terminal Call failure")?;
+                service_verify(&reply, &pending, payload)?;
+                service_deadline(pending.started)?;
+                if pending.polls != payload.div_ceil(1024) as u32 {
+                    return Err("Service unexpected round count".into());
+                }
+                if client.transport().io.output_len.is_some() {
+                    return Err("Service unexpected extra packet".into());
+                }
+                return Ok((pending.wall_sum, pending.polls));
+            }
+        }
+        Err("Service incomplete after round limit".into())
+    })();
+    if result.is_err() {
+        client.cancel(pending.call);
+        // Cancellation alone does not consume terminal state. Failure stops the
+        // run; consume any terminal outcome before dropping the owned Apps.
+        let _ = client.take_response(pending.call);
+    }
+    result
+}
+fn service_run<S>(
+    server: &mut ServiceServer<S>,
+    client: &mut ServiceClient,
+    config: &Config<'_>,
+    payload: usize,
+    allocated: bool,
+) -> Result<(), Failure>
+where
+    S: AppStorage<Token = Token>,
+{
+    let mut samples = Vec::with_capacity(config.operations);
+    let mut polls = Vec::with_capacity(config.operations);
+    let mut calibration = Vec::with_capacity(4096);
+    let mut output = vec![0; 16384];
+    for i in 0..4096 {
+        let started = Instant::now();
+        black_box(i);
+        calibration.push(started.elapsed().as_nanos());
+    }
+    let clock = Instant::now();
+    for operation in 0..config.operations + 128 {
+        let (wall, count) = service_step(server, client, payload, clock, &mut output)?;
+        if operation >= 128 {
+            samples.push(wall);
+            polls.push(count);
+        }
+    }
+    let heap = if allocated {
+        coaptic::storage::AllocMemory::<Token>::required_heap_bytes(server.engine().capacities())?
+    } else {
+        0
+    };
+    let client_heap =
+        coaptic::storage::AllocMemory::<Token>::required_heap_bytes(client.engine().capacities())?;
+    print!(
+        "{{\"operations\":{},\"warmup\":128,\"verified\":{},\"security\":\"{}\",\"black_box\":true,\"profile\":\"Service\",\"storage\":\"{}\",\"payload_bytes\":{payload},\"concurrency\":1,\"message_type\":\"CON\",\"calibration_samples\":4096,",
+        config.operations,
+        config.operations + 128,
+        config.security,
+        if allocated { "allocated" } else { "fixed" }
+    );
+    print!(
+        "\"server_poll_wall_sum_ns\":{samples:?},\"server_poll_counts\":{polls:?},\"clock_calibration_ns\":{calibration:?},"
+    );
+    print!(
+        "\"server_capacities\":{{\"routes\":32,\"populated_routes\":1,\"calls\":4,\"deferred\":8,\"associations\":1,\"security_requests\":4,\"rx_slots\":32,\"tx_slots\":32,\"datagram_bytes\":1472,\"dedup\":64,\"observe\":32,\"rx_body_slots\":4,\"tx_body_slots\":4,\"body_bytes\":16384,\"blockwise\":true}},"
+    );
+    print!(
+        "\"client_capacities\":{{\"routes\":1,\"populated_routes\":0,\"calls\":4,\"deferred\":0,\"associations\":1,\"security_requests\":4,\"rx_slots\":4,\"tx_slots\":4,\"datagram_bytes\":1472,\"dedup\":8,\"observe\":4,\"rx_body_slots\":1,\"rx_body_bytes\":16384,\"tx_body_slots\":1,\"tx_body_bytes\":1024,\"blockwise\":true}},"
+    );
+    print!(
+        "\"sends\":{{\"client\":{},\"server\":{},\"combined\":{},\"per_port_limit\":30000,\"combined_limit\":60000}},",
+        client.transport().sent,
+        server.transport().sent,
+        client.transport().sent + server.transport().sent
+    );
+    print!(
+        "\"memory\":{{\"server_app_including_transport_inline_bytes\":{},\"server_pool_requested_heap_bytes\":{heap},\"server_pool_payload_nested_bytes\":225280,\"server_transport_nested_bytes\":{},\"client_app_including_transport_inline_bytes\":{},\"client_pool_requested_heap_bytes\":{client_heap},\"client_pool_payload_nested_bytes\":29184,\"client_transport_nested_bytes\":{},\"each_transport_input_nested_bytes\":1472,\"each_transport_output_nested_bytes\":1472,\"packet_buffers_nested_count\":4,",
+        std::mem::size_of_val(server),
+        std::mem::size_of_val(server.transport()),
+        std::mem::size_of_val(client),
+        std::mem::size_of_val(client.transport())
+    );
+    print!(
+        "\"separate_static_representation_bytes\":16384,\"separate_verification_requested_bytes\":{},\"separate_timing_requested_bytes\":{},\"separate_poll_counts_requested_bytes\":{},\"separate_calibration_requested_bytes\":{},\"separate_vec_headers_bytes\":{},\"separate_pending_inline_bytes\":{},\"clock_inline_bytes\":{},\"remaining\":\"security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice\"}},",
+        output.capacity(),
+        samples.capacity() * std::mem::size_of::<u128>(),
+        polls.capacity() * std::mem::size_of::<u32>(),
+        calibration.capacity() * std::mem::size_of::<u128>(),
+        std::mem::size_of_val(&output)
+            + std::mem::size_of_val(&samples)
+            + std::mem::size_of_val(&polls)
+            + std::mem::size_of_val(&calibration),
+        std::mem::size_of::<ServicePending>(),
+        std::mem::size_of::<Instant>()
+    );
+    println!(
+        "\"measurement\":\"sum of every server App::poll wall interval per fully verified operation; server fixture receive/send copies, dispatch, maintenance, body snapshot and crypto inside; bridge, client preparation/polls/protection/authentication/assembly/verification outside; monotonic clock; separate calibration never subtracted\",\"metadata\":\"each wire ACK/MID/Token checked against its request; assembled snapshot retains first fragment MID/header\",\"scope\":\"socket-free C1 wall supporting evidence; not CPU, socket latency, transport share, Mio memory equivalence, peak/whole memory or either 50% acceptance\"}}"
+    );
+    Ok(())
 }
 
 // Diagnostic storage only. App pools, Calls and security bindings stay unchanged.
@@ -1204,5 +1630,369 @@ mod batch_tests {
         assert!(row.prepare(65_536, &mut context).is_err());
         assert!(row.prepare(65_535, &mut context).is_ok());
         assert_eq!(EMPTY_GATES, 16);
+    }
+    #[test]
+    fn service_cli_exact_modes_and_send_admission() {
+        for flag in ["--service-fixed", "--service-allocated"] {
+            for (payload, max) in [(64, 29872), (1024, 29872), (16384, 1747)] {
+                for security in ["unprotected", "oscore"] {
+                    let args: Vec<String> = [
+                        "bench-core",
+                        &max.to_string(),
+                        security,
+                        flag,
+                        &payload.to_string(),
+                    ]
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect();
+                    assert_eq!(
+                        parse_args(&args).unwrap().mode,
+                        ProbeMode::Service {
+                            allocated: flag == "--service-allocated",
+                            payload,
+                        }
+                    );
+                }
+                assert!(service_admission(max + 1, payload).is_err());
+                assert!(service_admission(0, payload).is_err());
+            }
+        }
+        for raw in [
+            "1 oscore --service-fixed",
+            "1 --service-fixed 16384",
+            "1 oscore --service-fixed 32",
+            "1 oscore --service-fixed 16385",
+            "1 oscore --service-fixed --small-device",
+            "1 oscore --small-device 16384",
+            "1 oscore --service-fixed 16384 extra",
+            "1 oscore --service-fixed --service-allocated 16384",
+        ] {
+            let mut args = vec!["bench-core".into()];
+            args.extend(raw.split_whitespace().map(str::to_owned));
+            assert!(parse_args(&args).is_err(), "{raw}");
+        }
+    }
+
+    fn service_alloc_fixture(
+        context: Option<coaptic::oscore::SecurityContext>,
+        payload: usize,
+    ) -> ServiceServer<coaptic::storage::AllocMemory> {
+        let resources = coaptic::resources::Service::new();
+        let heap = coaptic::storage::AllocMemory::<Token>::required_heap_bytes(
+            resources.pool_capacities(),
+        )
+        .unwrap();
+        service_builder!(resources.allocated(heap), context, payload)
+            .bind(service_io())
+            .unwrap()
+    }
+
+    fn service_reuse<S: AppStorage<Token = Token>>(
+        server: &mut ServiceServer<S>,
+        protected: bool,
+        payload: usize,
+    ) {
+        let (context, _) = contexts(protected);
+        let mut client = service_client(context).unwrap();
+        let server_caps = server.engine().capacities();
+        let client_caps = client.engine().capacities();
+        assert_eq!(
+            server_caps,
+            coaptic::resources::Service::new().pool_capacities()
+        );
+        assert_eq!(client_caps, service_client_capacities());
+        let mut output = vec![0; 16384];
+        let capacity = output.capacity();
+        let clock = Instant::now();
+        ALLOCATIONS.with(|count| count.set(Some(0)));
+        let guard = Counting;
+        for _ in 0..4 {
+            let (_, polls) =
+                service_step(server, &mut client, payload, clock, &mut output).unwrap();
+            assert_eq!(polls, payload.div_ceil(1024) as u32);
+        }
+        let allocations = ALLOCATIONS.with(Cell::get).unwrap();
+        drop(guard);
+        assert_eq!(allocations, 0);
+        assert_eq!(output.capacity(), capacity);
+        assert_eq!(server.engine().capacities(), server_caps);
+        assert_eq!(client.engine().capacities(), client_caps);
+        assert_eq!(client.transport().sent, 4 * payload.div_ceil(1024) as u32);
+        assert_eq!(server.transport().sent, client.transport().sent);
+        if protected {
+            assert_eq!(
+                client.oscore().unwrap().sender_seq(),
+                u64::from(client.transport().sent)
+            );
+            assert!(!server.oscore().unwrap().replay_fresh(0));
+        }
+    }
+
+    // Isolate the fixed construction on the normal test-thread stack, too.
+    #[inline(never)]
+    fn service_fixed_reuse(protected: bool, payload: usize) {
+        let (_, context) = contexts(protected);
+        let mut app = service_builder!(coaptic::resources::Service::new(), context, payload)
+            .bind(service_io())
+            .unwrap();
+        service_reuse(&mut app, protected, payload);
+    }
+    #[test]
+    fn service_both_storage_security_all_payloads_full_without_growth() {
+        for protected in [false, true] {
+            for payload in [64, 1024, 16384] {
+                service_fixed_reuse(protected, payload);
+                let (_, context) = contexts(protected);
+                service_reuse(
+                    &mut service_alloc_fixture(context, payload),
+                    protected,
+                    payload,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn service_first_fragment_is_not_completion_and_small_output_retains_reply() {
+        for protected in [false, true] {
+            let (client_context, server_context) = contexts(protected);
+            let mut server = service_alloc_fixture(server_context, 16384);
+            let mut client = service_client(client_context).unwrap();
+            let clock = Instant::now();
+            let mut pending = service_begin(&mut client, 16384, clock).unwrap();
+            let mut short = [0xa5; 1024];
+            let mut last_mid = pending.first_mid;
+            for round in 0..16 {
+                last_mid = service_wire(client.transport()).unwrap().message_id();
+                service_turn(&mut server, &mut client, &mut pending, clock).unwrap();
+                let outcome = client.take_response_into(pending.call, &mut short);
+                if round < 15 {
+                    assert!(matches!(outcome, Ok(None)));
+                } else {
+                    assert!(matches!(
+                        outcome,
+                        Err(coaptic::app::ResponseBufferError::TooSmall {
+                            required: 16384,
+                            available: 1024
+                        })
+                    ));
+                }
+            }
+            assert!(short.iter().all(|&byte| byte == 0xa5));
+            assert_ne!(last_mid, pending.first_mid);
+            assert!(!client.cancel(pending.call)); // Terminal cancellation does not consume.
+            let mut output = vec![0; 16384];
+            {
+                let reply = client
+                    .take_response_into(pending.call, &mut output)
+                    .unwrap()
+                    .unwrap()
+                    .unwrap();
+                service_verify(&reply, &pending, 16384).unwrap();
+                assert_eq!(reply.message_id(), Some(pending.first_mid));
+                assert_eq!(reply.body().unwrap(), &SERVICE_BODY);
+                let first_block = reply
+                    .received_options()
+                    .find(|opt| opt.number() == coaptic::message::OptionNumber::BLOCK2)
+                    .unwrap();
+                let first_block = coaptic::message::decode_block(first_block.value()).unwrap();
+                assert_eq!(first_block.num(), 0);
+                assert!(first_block.more());
+                let wrong = ServicePending {
+                    first_mid: last_mid,
+                    ..pending
+                };
+                assert!(service_verify(&reply, &wrong, 16384).is_err());
+            }
+            assert!(
+                client
+                    .take_response_into(pending.call, &mut output)
+                    .unwrap()
+                    .is_none()
+            );
+            // Subsequent operation reuses consumed Call/body/binding ownership.
+            service_step(&mut server, &mut client, 16384, clock, &mut output).unwrap();
+        }
+    }
+
+    #[test]
+    fn service_port_deadline_round_and_wire_guards() {
+        let mut source = service_io();
+        let mut dest = service_io();
+        assert!(service_bridge(&mut source, &mut dest).is_err());
+        assert!(source.send(PEER, &[0; WIRE + 1]).is_err());
+        assert!(source.send(Endpoint::v4([1, 2, 3, 4], 3), b"x").is_err());
+        assert_eq!(source.sent, 0);
+        source.sent = SERVICE_SEND_LIMIT - 1;
+        source.send(PEER, b"x").unwrap();
+        assert_eq!(source.sent, SERVICE_SEND_LIMIT);
+        assert!(source.send(PEER, b"x").is_err());
+        dest.io.input_len = Some(1);
+        assert!(service_bridge(&mut source, &mut dest).is_err());
+        assert_eq!(source.io.output_len, Some(1)); // Refusal retains source.
+        dest.io.input_len = None;
+        service_bridge(&mut source, &mut dest).unwrap();
+        assert!(source.io.output_len.is_none());
+        assert!(service_deadline(Instant::now() - SERVICE_TIMEOUT).is_err());
+
+        let (mut app, _) = fixture(false);
+        // Real wire header validator rejects ACK type, MID and Token independently.
+        let mid = MessageId::new(7);
+        let token = Token::new(b"t").unwrap();
+        for fault in 0..4 {
+            let mut port = service_io();
+            let msg = Message::new(
+                if fault == 1 {
+                    Type::NonConfirmable
+                } else {
+                    Type::Acknowledgement
+                },
+                Code::CONTENT,
+                if fault == 2 { MessageId::new(8) } else { mid },
+            )
+            .with_token(if fault == 3 {
+                Token::new(b"wrong").unwrap()
+            } else {
+                token
+            });
+            port.io.output_len = Some(msg.encode(&mut port.io.output).unwrap());
+            assert_eq!(service_ack(&port, mid, token).is_ok(), fault == 0);
+        }
+        // Keep the old transport's occupied-output guard independently exercised.
+        app.transport_mut().send(PEER, b"x").unwrap();
+        assert!(app.transport_mut().send(PEER, b"y").is_err());
+        for exhausted in [false, true] {
+            let mut server = service_alloc_fixture(None, 16384);
+            let mut client = service_client(None).unwrap();
+            let clock = Instant::now();
+            let mut pending = service_begin(&mut client, 16384, clock).unwrap();
+            if exhausted {
+                pending.polls = SERVICE_ROUNDS;
+            } else {
+                pending.started = Instant::now() - SERVICE_TIMEOUT;
+            }
+            assert!(service_turn(&mut server, &mut client, &mut pending, clock).is_err());
+            assert!(client.cancel(pending.call));
+            assert!(matches!(
+                client.take_response(pending.call),
+                Some(Err(coaptic::app::CallFailure::Cancelled))
+            ));
+        }
+    }
+
+    #[test]
+    fn service_bad_metadata_body_auth_and_missing_blocks_refuse_then_cancel() {
+        for protected in [false, true] {
+            // Changes are made to actual server output, never to a cloned context.
+            for fault in 0..8 {
+                let (client_context, server_context) = contexts(protected);
+                let mut server = service_alloc_fixture(server_context, 16384);
+                let mut client = service_client(client_context).unwrap();
+                let clock = Instant::now();
+                let mut pending = service_begin(&mut client, 16384, clock).unwrap();
+                let mut failed = false;
+                let mut output = vec![0; 16384];
+                for round in 0..16 {
+                    let mid = service_wire(client.transport()).unwrap().message_id();
+                    service_bridge(client.transport_mut(), server.transport_mut()).unwrap();
+                    server.poll(clock.elapsed().as_millis() as u64).unwrap();
+                    let io = &mut server.transport_mut().io;
+                    let n = io.output_len.unwrap();
+                    // Missing middle/final, short wire, changed last body/tag byte,
+                    // changed ETag/format, and changed wire MID.
+                    if (fault == 0 && round == 7) || (fault == 1 && round == 15) {
+                        io.output_len = None;
+                    } else if round == 0 {
+                        match fault {
+                            2 => io.output_len = Some(n - 1),
+                            3 => io.output[n - 1] ^= 1,
+                            4 | 5 if !protected => {
+                                let needle: &[u8] =
+                                    if fault == 4 { b"fixture" } else { &[0x81, 42] };
+                                let pos = io.output[..n]
+                                    .windows(needle.len())
+                                    .position(|w| w == needle)
+                                    .unwrap();
+                                io.output[pos + needle.len() - 1] ^= 1;
+                            }
+                            4 | 5 => io.output[n - 2] ^= 1,
+                            6 => io.output[2] ^= 1,
+                            7 => {
+                                let start = n - decode(&io.output[..n]).unwrap().payload().len();
+                                io.output.swap(start, start + 1);
+                            }
+                            _ => {}
+                        }
+                    }
+                    if service_ack(server.transport(), mid, pending.call.token()).is_err()
+                        || service_bridge(server.transport_mut(), client.transport_mut()).is_err()
+                        || client.poll(clock.elapsed().as_millis() as u64).is_err()
+                    {
+                        failed = true;
+                        break;
+                    }
+                    match client.take_response_into(pending.call, &mut output) {
+                        Ok(Some(Ok(reply))) => {
+                            pending.polls = round + 1;
+                            assert!(service_verify(&reply, &pending, 16384).is_err());
+                            failed = true;
+                            break;
+                        }
+                        Ok(Some(Err(_))) | Err(_) => {
+                            failed = true;
+                            break;
+                        }
+                        Ok(None) => {
+                            if client.transport().io.output_len.is_none() {
+                                failed = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                assert!(failed, "fault {fault}, protected {protected}");
+                client.cancel(pending.call);
+                let _ = client.take_response(pending.call); // Drain cancelled/terminal ownership.
+                assert!(client.take_response(pending.call).is_none());
+            }
+        }
+    }
+    #[test]
+    fn service_active_cancel_drains_then_fresh_call_reuses_without_nonce_reset() {
+        for protected in [false, true] {
+            let (cc, sc) = contexts(protected);
+            let mut server = service_alloc_fixture(sc, 16384);
+            let mut client = service_client(cc).unwrap();
+            let clock = Instant::now();
+            let pending = service_begin(&mut client, 16384, clock).unwrap();
+            let old_mid = pending.first_mid;
+            let old_token = pending.call.token();
+            assert!(client.cancel(pending.call));
+            assert!(matches!(
+                client.take_response(pending.call),
+                Some(Err(coaptic::app::CallFailure::Cancelled))
+            ));
+            assert!(client.take_response(pending.call).is_none());
+            // This already-sent, undelivered fixture datagram is deliberately
+            // discarded after cancellation. Do not reset its send count or nonce.
+            client.transport_mut().io.output_len = None;
+            let mut output = vec![0; 16384];
+            let pending = service_begin(&mut client, 16384, clock).unwrap();
+            assert_ne!(pending.first_mid, old_mid);
+            assert_ne!(pending.call.token(), old_token);
+            assert!(client.cancel(pending.call));
+            let _ = client.take_response(pending.call);
+            client.transport_mut().io.output_len = None;
+            service_step(&mut server, &mut client, 16384, clock, &mut output).unwrap();
+            if protected {
+                assert_eq!(client.oscore().unwrap().sender_seq(), 18);
+                assert!(!server.oscore().unwrap().replay_fresh(2));
+            }
+            let mut port = service_io();
+            port.send(PEER, b"x").unwrap();
+            assert!(port.send(PEER, b"y").is_err());
+            assert_eq!(port.sent, 1);
+        }
     }
 }
