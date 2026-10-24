@@ -1,4 +1,4 @@
-# eBPF syscall benchmark ? October 24, 2026
+# eBPF syscall benchmark - October 24, 2026
 
 [Run 40112478137, attempt 1](https://github.com/jeffglousher/coaptic-validation/actions/runs/40112478137)
 passes functional measurement: **16 windows, 480,000 verified operations and 320
@@ -46,7 +46,7 @@ SmallDevice fixed/Constrained, ordinary Mio, 32-byte complete GET, C1 CON,
 1,000 starts/s, thirty seconds, four rotated OFF/ON pairs per security mode;
 both single-thread servers are pinned to CPU0. Routes four/one populated GET,
 Calls one, deferred zero, associations one, request bindings four, RX/TX each
-two ? 1,152 bytes, dedup four, Observe two, no body pools. Each client window
+two x 1,152 bytes, dedup four, Observe two, no body pools. Each client window
 uses 30,020 total sends under its unchanged 60,000 ceiling.
 
 AMD EPYC 7763, four assigned logical CPUs, Ubuntu 24.04/Linux
@@ -56,15 +56,15 @@ Native Rust/Cargo 1.99.0 GNU release: locked, default features off,
 strip=none, incremental=0 and two build jobs. Helper Rust 1.99.0; BPF
 nightly-2026-10-13, linker 0.12.0 with the unchanged pinned archive checksum.
 Exact compiler/lock/binary identities remain in hosted build receipts; selected
-native syn3 input is `cb9a96e1?`, restored canonical input `3ed89aed?`.
+native syn3 input is `cb9a96e1...`, restored canonical input `3ed89aed...`.
 
 All operation, rate, matched-rate, pacing, twenty-tick and cleanup gates pass.
 The required ON-minus-OFF median limit is +2 microseconds for **every pair**:
 
-- Unprotected repeat 3: **+2.084 ?s**, fail.
-- OSCORE repeats 0/1/2: **+2.875 / +16.642 / +2.514 ?s**, fail.
+- Unprotected repeat 3: **+2.084 us**, fail.
+- OSCORE repeats 0/1/2: **+2.875 / +16.642 / +2.514 us**, fail.
 
-All pair p99 guards (+10 ?s limit) and both pooled guards pass. Those pooled
+All pair p99 guards (+10 us limit) and both pooled guards pass. Those pooled
 passes cannot erase pair failures. Both overhead ratios remain withheld; no
 favorable pairs are selected as a replacement cohort. Every diagnostic row is
 permanently ineligible for primary #650 acceptance. CPU/user/system observations
@@ -84,7 +84,7 @@ together report **8,192 bytes memlock**; translated/JIT lengths are nested and
 must not be added again. Map/link allocator metadata is unknown. Helper limits
 are 128 MiB address space (including the 1 MiB stack limit), CPU 30 seconds,
 64 FDs and wall 60 seconds. Its separate lifetime CPU snapshot is
-53,721?56,762 ?s; maximum RSS 49,220?51,852 KiB. These include setup, warmup,
+53,721 to 56,762 us; maximum RSS 49,220 to 51,852 KiB. These include setup, warmup,
 waiting and controls, exclude final formatting/drop, and cannot be subtracted
 from or added to differently scoped native CPU windows to manufacture a share.
 System-wide prefilter callback and machine/kernel worker CPU remain unassigned.

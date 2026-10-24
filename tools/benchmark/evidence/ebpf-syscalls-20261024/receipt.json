@@ -50,7 +50,21 @@
       "median_ns": 38021.0,
       "p99_ns": 60944,
       "rate": 1000.0294175320324,
-      "server_ticks": 69
+      "server_ticks": 69,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.17,
+          "system": 0.52,
+          "total": 0.6900000000000001
+        },
+        "client": {
+          "user": 0.76,
+          "system": 0.87,
+          "total": 1.63
+        }
+      },
+      "raw_result_member": "syscall-results/window-00/result.json",
+      "raw_result_sha256": "ae2d338594beaa49ab1f08a5d289060b67f9322a75909e0394b23b5a4a51b813"
     },
     {
       "index": 1,
@@ -63,7 +77,21 @@
       "median_ns": 38021.0,
       "p99_ns": 63358,
       "rate": 1000.0297164163725,
-      "server_ticks": 71
+      "server_ticks": 71,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.0,
+          "system": 0.71,
+          "total": 0.71
+        },
+        "client": {
+          "user": 0.49,
+          "system": 1.15,
+          "total": 1.64
+        }
+      },
+      "raw_result_member": "syscall-results/window-01/result.json",
+      "raw_result_sha256": "142d33aec90e3a2c7e9e9ba40215c9cc4996c58e66c803adf97619b9f9b1058f"
     },
     {
       "index": 2,
@@ -76,7 +104,21 @@
       "median_ns": 55082.0,
       "p99_ns": 67876,
       "rate": 1000.0290756787039,
-      "server_ticks": 83
+      "server_ticks": 83,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.0,
+          "system": 0.83,
+          "total": 0.83
+        },
+        "client": {
+          "user": 0.29,
+          "system": 1.59,
+          "total": 1.8800000000000001
+        }
+      },
+      "raw_result_member": "syscall-results/window-02/result.json",
+      "raw_result_sha256": "be8dffddf0cd05b77ab7a5d4c85c93b43c76071444a4e4f8e595ccce1d201d98"
     },
     {
       "index": 3,
@@ -89,7 +131,21 @@
       "median_ns": 57957.0,
       "p99_ns": 69881,
       "rate": 1000.028906568899,
-      "server_ticks": 90
+      "server_ticks": 90,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.3,
+          "system": 0.6,
+          "total": 0.8999999999999999
+        },
+        "client": {
+          "user": 0.59,
+          "system": 1.37,
+          "total": 1.96
+        }
+      },
+      "raw_result_member": "syscall-results/window-03/result.json",
+      "raw_result_sha256": "816e7a61bfca151c95824aed7ac876d8e335932dd152fcefddb6ccf3dc9cc0e3"
     },
     {
       "index": 4,
@@ -102,7 +158,21 @@
       "median_ns": 50344.0,
       "p99_ns": 61184,
       "rate": 1000.0296462122052,
-      "server_ticks": 79
+      "server_ticks": 79,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.53,
+          "system": 0.26,
+          "total": 0.79
+        },
+        "client": {
+          "user": 0.39,
+          "system": 1.36,
+          "total": 1.75
+        }
+      },
+      "raw_result_member": "syscall-results/window-04/result.json",
+      "raw_result_sha256": "361e50923bdea21100d0ff35e84e62c5da8f30b8aba03da62d381e8470b646ee"
     },
     {
       "index": 5,
@@ -115,7 +185,21 @@
       "median_ns": 48841.0,
       "p99_ns": 59381,
       "rate": 1000.029795221062,
-      "server_ticks": 83
+      "server_ticks": 83,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.0,
+          "system": 0.83,
+          "total": 0.83
+        },
+        "client": {
+          "user": 0.56,
+          "system": 1.25,
+          "total": 1.81
+        }
+      },
+      "raw_result_member": "syscall-results/window-05/result.json",
+      "raw_result_sha256": "3eab2cbcbc03a3fc39ae865ba46f539f0f91e27096dc969f8b335d2232fa95bc"
     },
     {
       "index": 6,
@@ -128,7 +212,21 @@
       "median_ns": 58249.0,
       "p99_ns": 72605,
       "rate": 1000.0295836084973,
-      "server_ticks": 88
+      "server_ticks": 88,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.11,
+          "system": 0.77,
+          "total": 0.88
+        },
+        "client": {
+          "user": 0.75,
+          "system": 1.22,
+          "total": 1.97
+        }
+      },
+      "raw_result_member": "syscall-results/window-06/result.json",
+      "raw_result_sha256": "2cd56a65c57d8837996e056955b2c5d6a86e30af0f3f79811dfed0a6fe47555d"
     },
     {
       "index": 7,
@@ -141,7 +239,21 @@
       "median_ns": 41607.0,
       "p99_ns": 66193,
       "rate": 1000.0295895421817,
-      "server_ticks": 78
+      "server_ticks": 78,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.19,
+          "system": 0.59,
+          "total": 0.78
+        },
+        "client": {
+          "user": 0.64,
+          "system": 1.17,
+          "total": 1.81
+        }
+      },
+      "raw_result_member": "syscall-results/window-07/result.json",
+      "raw_result_sha256": "5c1a876f470fc3eacce887d008f40a4a580e10637959ea07df21f7dfebc11c8d"
     },
     {
       "index": 8,
@@ -154,7 +266,21 @@
       "median_ns": 48300.0,
       "p99_ns": 59270,
       "rate": 1000.0293103590719,
-      "server_ticks": 79
+      "server_ticks": 79,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.0,
+          "system": 0.79,
+          "total": 0.79
+        },
+        "client": {
+          "user": 0.7,
+          "system": 1.05,
+          "total": 1.75
+        }
+      },
+      "raw_result_member": "syscall-results/window-08/result.json",
+      "raw_result_sha256": "fff608d35fc1ba8c2f9f41dd52749e03fcdbcd9f143e4a934399fb5ce01ee05c"
     },
     {
       "index": 9,
@@ -167,7 +293,21 @@
       "median_ns": 45379.0,
       "p99_ns": 59931,
       "rate": 1000.0296719804003,
-      "server_ticks": 77
+      "server_ticks": 77,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.19,
+          "system": 0.58,
+          "total": 0.77
+        },
+        "client": {
+          "user": 0.56,
+          "system": 1.19,
+          "total": 1.75
+        }
+      },
+      "raw_result_member": "syscall-results/window-09/result.json",
+      "raw_result_sha256": "afe347dc1acd1bb77cfd2b7039a76601dbd791c16235151094d06368f5223f38"
     },
     {
       "index": 10,
@@ -180,7 +320,21 @@
       "median_ns": 56295.0,
       "p99_ns": 68878,
       "rate": 1000.0295669741802,
-      "server_ticks": 88
+      "server_ticks": 88,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.44,
+          "system": 0.44,
+          "total": 0.88
+        },
+        "client": {
+          "user": 0.78,
+          "system": 1.21,
+          "total": 1.99
+        }
+      },
+      "raw_result_member": "syscall-results/window-10/result.json",
+      "raw_result_sha256": "13a22da91793edc7d7389250d5e0cc1e1f5fced8b5f7015f6e739a2b8bc4c0e4"
     },
     {
       "index": 11,
@@ -193,7 +347,21 @@
       "median_ns": 58809.0,
       "p99_ns": 70611,
       "rate": 1000.0295339055591,
-      "server_ticks": 92
+      "server_ticks": 92,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.0,
+          "system": 0.92,
+          "total": 0.92
+        },
+        "client": {
+          "user": 0.63,
+          "system": 1.37,
+          "total": 2.0
+        }
+      },
+      "raw_result_member": "syscall-results/window-11/result.json",
+      "raw_result_sha256": "97a2e1e23949c31ab94197ebcfc82cff225a75c528d339b3fc551af195d6e90a"
     },
     {
       "index": 12,
@@ -206,7 +374,21 @@
       "median_ns": 50915.0,
       "p99_ns": 63187,
       "rate": 1000.0292224539269,
-      "server_ticks": 81
+      "server_ticks": 81,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.2,
+          "system": 0.61,
+          "total": 0.81
+        },
+        "client": {
+          "user": 0.51,
+          "system": 1.27,
+          "total": 1.78
+        }
+      },
+      "raw_result_member": "syscall-results/window-12/result.json",
+      "raw_result_sha256": "2e64b1c9030c80c550bcfeffebbece412e8f1112598bafc135a8b402a02456f6"
     },
     {
       "index": 13,
@@ -219,7 +401,21 @@
       "median_ns": 48831.0,
       "p99_ns": 58319,
       "rate": 1000.0292607561668,
-      "server_ticks": 78
+      "server_ticks": 78,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.39,
+          "system": 0.39,
+          "total": 0.78
+        },
+        "client": {
+          "user": 0.98,
+          "system": 0.78,
+          "total": 1.76
+        }
+      },
+      "raw_result_member": "syscall-results/window-13/result.json",
+      "raw_result_sha256": "e5ed0ed926dc136886fb2aac2a309f06bc8fdd3aabb312468f8911247dcb9e7e"
     },
     {
       "index": 14,
@@ -232,7 +428,21 @@
       "median_ns": 43069.0,
       "p99_ns": 66152,
       "rate": 1000.0289293035471,
-      "server_ticks": 78
+      "server_ticks": 78,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.39,
+          "system": 0.39,
+          "total": 0.78
+        },
+        "client": {
+          "user": 0.64,
+          "system": 1.19,
+          "total": 1.83
+        }
+      },
+      "raw_result_member": "syscall-results/window-14/result.json",
+      "raw_result_sha256": "9173250af8f71e7c5e1ab180e15be417f08ffa17a79685c7488a1e39154b4a28"
     },
     {
       "index": 15,
@@ -245,7 +455,21 @@
       "median_ns": 41217.0,
       "p99_ns": 65552,
       "rate": 1000.0290647113995,
-      "server_ticks": 76
+      "server_ticks": 76,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.25,
+          "system": 0.51,
+          "total": 0.76
+        },
+        "client": {
+          "user": 0.64,
+          "system": 1.15,
+          "total": 1.79
+        }
+      },
+      "raw_result_member": "syscall-results/window-15/result.json",
+      "raw_result_sha256": "f0f44aa1413b306cc92daf5bfeb2d1e00bd57e751cd4a164b76b9e9862ebed41"
     }
   ],
   "pairs": [
