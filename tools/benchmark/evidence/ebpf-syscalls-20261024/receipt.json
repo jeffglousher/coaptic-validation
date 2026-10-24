@@ -1,0 +1,1613 @@
+{
+  "schema": "coaptic-ebpf-syscall-result/1",
+  "run": 40112478137,
+  "attempt": 1,
+  "url": "https://github.com/jeffglousher/coaptic-validation/actions/runs/40112478137",
+  "suite": "35a86de963503cd93cd0a579f0fcfbec85ce0b00",
+  "suite_tree": "3265cb3a972aef3258826c8eda56d217bf61b63e",
+  "native_core": "d23f93c0699b75ec17e692999d62ff89bb71463d",
+  "bpf_build_core": "1b93171035fa4b9506ec5e798ccef5d0773e1109",
+  "functional_passed": true,
+  "primary_acceptance": false,
+  "overhead_qualified": false,
+  "qualified_overhead_ratios": null,
+  "hardware": {
+    "model": "AMD EPYC 7763 64-Core Processor",
+    "assigned_logical_cpus": 4,
+    "server_cpu_both_arms": 0,
+    "kernel": "6.17.0-1022-azure",
+    "os": "Ubuntu 24.04",
+    "glibc": "2.39",
+    "process_accounting_hz": 100,
+    "governor": "unavailable"
+  },
+  "plan": {
+    "profile": "SmallDevice fixed/Constrained",
+    "response_bytes": 32,
+    "adapter": "ordinary Mio",
+    "message_type": "CON",
+    "concurrency": 1,
+    "rate_per_second": 1000,
+    "window_seconds": 30,
+    "rotated_pairs_per_security": 4,
+    "windows": 16,
+    "measured_completions": 480000,
+    "warmups": 320,
+    "operation_failures": 0,
+    "datagram_limit_per_window": 60000,
+    "trace_off": "no tracing helper or attached programs",
+    "trace_on": "disabled before warmup; enabled before CPU/run; disabled/detached after measured snapshots before report"
+  },
+  "windows": [
+    {
+      "index": 0,
+      "repeat": 0,
+      "security": "unprotected",
+      "arm": "off",
+      "completed": 30000,
+      "warmup": 20,
+      "server_seconds": 0.6900000000000001,
+      "median_ns": 38021.0,
+      "p99_ns": 60944,
+      "rate": 1000.0294175320324,
+      "server_ticks": 69,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.17,
+          "system": 0.52,
+          "total": 0.6900000000000001
+        },
+        "client": {
+          "user": 0.76,
+          "system": 0.87,
+          "total": 1.63
+        }
+      },
+      "raw_result_member": "syscall-results/window-00/result.json",
+      "raw_result_sha256": "ae2d338594beaa49ab1f08a5d289060b67f9322a75909e0394b23b5a4a51b813"
+    },
+    {
+      "index": 1,
+      "repeat": 0,
+      "security": "unprotected",
+      "arm": "on",
+      "completed": 30000,
+      "warmup": 20,
+      "server_seconds": 0.71,
+      "median_ns": 38021.0,
+      "p99_ns": 63358,
+      "rate": 1000.0297164163725,
+      "server_ticks": 71,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.0,
+          "system": 0.71,
+          "total": 0.71
+        },
+        "client": {
+          "user": 0.49,
+          "system": 1.15,
+          "total": 1.64
+        }
+      },
+      "raw_result_member": "syscall-results/window-01/result.json",
+      "raw_result_sha256": "142d33aec90e3a2c7e9e9ba40215c9cc4996c58e66c803adf97619b9f9b1058f"
+    },
+    {
+      "index": 2,
+      "repeat": 0,
+      "security": "oscore",
+      "arm": "off",
+      "completed": 30000,
+      "warmup": 20,
+      "server_seconds": 0.83,
+      "median_ns": 55082.0,
+      "p99_ns": 67876,
+      "rate": 1000.0290756787039,
+      "server_ticks": 83,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.0,
+          "system": 0.83,
+          "total": 0.83
+        },
+        "client": {
+          "user": 0.29,
+          "system": 1.59,
+          "total": 1.8800000000000001
+        }
+      },
+      "raw_result_member": "syscall-results/window-02/result.json",
+      "raw_result_sha256": "be8dffddf0cd05b77ab7a5d4c85c93b43c76071444a4e4f8e595ccce1d201d98"
+    },
+    {
+      "index": 3,
+      "repeat": 0,
+      "security": "oscore",
+      "arm": "on",
+      "completed": 30000,
+      "warmup": 20,
+      "server_seconds": 0.8999999999999999,
+      "median_ns": 57957.0,
+      "p99_ns": 69881,
+      "rate": 1000.028906568899,
+      "server_ticks": 90,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.3,
+          "system": 0.6,
+          "total": 0.8999999999999999
+        },
+        "client": {
+          "user": 0.59,
+          "system": 1.37,
+          "total": 1.96
+        }
+      },
+      "raw_result_member": "syscall-results/window-03/result.json",
+      "raw_result_sha256": "816e7a61bfca151c95824aed7ac876d8e335932dd152fcefddb6ccf3dc9cc0e3"
+    },
+    {
+      "index": 4,
+      "repeat": 1,
+      "security": "unprotected",
+      "arm": "on",
+      "completed": 30000,
+      "warmup": 20,
+      "server_seconds": 0.79,
+      "median_ns": 50344.0,
+      "p99_ns": 61184,
+      "rate": 1000.0296462122052,
+      "server_ticks": 79,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.53,
+          "system": 0.26,
+          "total": 0.79
+        },
+        "client": {
+          "user": 0.39,
+          "system": 1.36,
+          "total": 1.75
+        }
+      },
+      "raw_result_member": "syscall-results/window-04/result.json",
+      "raw_result_sha256": "361e50923bdea21100d0ff35e84e62c5da8f30b8aba03da62d381e8470b646ee"
+    },
+    {
+      "index": 5,
+      "repeat": 1,
+      "security": "unprotected",
+      "arm": "off",
+      "completed": 30000,
+      "warmup": 20,
+      "server_seconds": 0.83,
+      "median_ns": 48841.0,
+      "p99_ns": 59381,
+      "rate": 1000.029795221062,
+      "server_ticks": 83,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.0,
+          "system": 0.83,
+          "total": 0.83
+        },
+        "client": {
+          "user": 0.56,
+          "system": 1.25,
+          "total": 1.81
+        }
+      },
+      "raw_result_member": "syscall-results/window-05/result.json",
+      "raw_result_sha256": "3eab2cbcbc03a3fc39ae865ba46f539f0f91e27096dc969f8b335d2232fa95bc"
+    },
+    {
+      "index": 6,
+      "repeat": 1,
+      "security": "oscore",
+      "arm": "on",
+      "completed": 30000,
+      "warmup": 20,
+      "server_seconds": 0.88,
+      "median_ns": 58249.0,
+      "p99_ns": 72605,
+      "rate": 1000.0295836084973,
+      "server_ticks": 88,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.11,
+          "system": 0.77,
+          "total": 0.88
+        },
+        "client": {
+          "user": 0.75,
+          "system": 1.22,
+          "total": 1.97
+        }
+      },
+      "raw_result_member": "syscall-results/window-06/result.json",
+      "raw_result_sha256": "2cd56a65c57d8837996e056955b2c5d6a86e30af0f3f79811dfed0a6fe47555d"
+    },
+    {
+      "index": 7,
+      "repeat": 1,
+      "security": "oscore",
+      "arm": "off",
+      "completed": 30000,
+      "warmup": 20,
+      "server_seconds": 0.78,
+      "median_ns": 41607.0,
+      "p99_ns": 66193,
+      "rate": 1000.0295895421817,
+      "server_ticks": 78,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.19,
+          "system": 0.59,
+          "total": 0.78
+        },
+        "client": {
+          "user": 0.64,
+          "system": 1.17,
+          "total": 1.81
+        }
+      },
+      "raw_result_member": "syscall-results/window-07/result.json",
+      "raw_result_sha256": "5c1a876f470fc3eacce887d008f40a4a580e10637959ea07df21f7dfebc11c8d"
+    },
+    {
+      "index": 8,
+      "repeat": 2,
+      "security": "unprotected",
+      "arm": "off",
+      "completed": 30000,
+      "warmup": 20,
+      "server_seconds": 0.79,
+      "median_ns": 48300.0,
+      "p99_ns": 59270,
+      "rate": 1000.0293103590719,
+      "server_ticks": 79,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.0,
+          "system": 0.79,
+          "total": 0.79
+        },
+        "client": {
+          "user": 0.7,
+          "system": 1.05,
+          "total": 1.75
+        }
+      },
+      "raw_result_member": "syscall-results/window-08/result.json",
+      "raw_result_sha256": "fff608d35fc1ba8c2f9f41dd52749e03fcdbcd9f143e4a934399fb5ce01ee05c"
+    },
+    {
+      "index": 9,
+      "repeat": 2,
+      "security": "unprotected",
+      "arm": "on",
+      "completed": 30000,
+      "warmup": 20,
+      "server_seconds": 0.77,
+      "median_ns": 45379.0,
+      "p99_ns": 59931,
+      "rate": 1000.0296719804003,
+      "server_ticks": 77,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.19,
+          "system": 0.58,
+          "total": 0.77
+        },
+        "client": {
+          "user": 0.56,
+          "system": 1.19,
+          "total": 1.75
+        }
+      },
+      "raw_result_member": "syscall-results/window-09/result.json",
+      "raw_result_sha256": "afe347dc1acd1bb77cfd2b7039a76601dbd791c16235151094d06368f5223f38"
+    },
+    {
+      "index": 10,
+      "repeat": 2,
+      "security": "oscore",
+      "arm": "off",
+      "completed": 30000,
+      "warmup": 20,
+      "server_seconds": 0.88,
+      "median_ns": 56295.0,
+      "p99_ns": 68878,
+      "rate": 1000.0295669741802,
+      "server_ticks": 88,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.44,
+          "system": 0.44,
+          "total": 0.88
+        },
+        "client": {
+          "user": 0.78,
+          "system": 1.21,
+          "total": 1.99
+        }
+      },
+      "raw_result_member": "syscall-results/window-10/result.json",
+      "raw_result_sha256": "13a22da91793edc7d7389250d5e0cc1e1f5fced8b5f7015f6e739a2b8bc4c0e4"
+    },
+    {
+      "index": 11,
+      "repeat": 2,
+      "security": "oscore",
+      "arm": "on",
+      "completed": 30000,
+      "warmup": 20,
+      "server_seconds": 0.92,
+      "median_ns": 58809.0,
+      "p99_ns": 70611,
+      "rate": 1000.0295339055591,
+      "server_ticks": 92,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.0,
+          "system": 0.92,
+          "total": 0.92
+        },
+        "client": {
+          "user": 0.63,
+          "system": 1.37,
+          "total": 2.0
+        }
+      },
+      "raw_result_member": "syscall-results/window-11/result.json",
+      "raw_result_sha256": "97a2e1e23949c31ab94197ebcfc82cff225a75c528d339b3fc551af195d6e90a"
+    },
+    {
+      "index": 12,
+      "repeat": 3,
+      "security": "unprotected",
+      "arm": "on",
+      "completed": 30000,
+      "warmup": 20,
+      "server_seconds": 0.81,
+      "median_ns": 50915.0,
+      "p99_ns": 63187,
+      "rate": 1000.0292224539269,
+      "server_ticks": 81,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.2,
+          "system": 0.61,
+          "total": 0.81
+        },
+        "client": {
+          "user": 0.51,
+          "system": 1.27,
+          "total": 1.78
+        }
+      },
+      "raw_result_member": "syscall-results/window-12/result.json",
+      "raw_result_sha256": "2e64b1c9030c80c550bcfeffebbece412e8f1112598bafc135a8b402a02456f6"
+    },
+    {
+      "index": 13,
+      "repeat": 3,
+      "security": "unprotected",
+      "arm": "off",
+      "completed": 30000,
+      "warmup": 20,
+      "server_seconds": 0.78,
+      "median_ns": 48831.0,
+      "p99_ns": 58319,
+      "rate": 1000.0292607561668,
+      "server_ticks": 78,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.39,
+          "system": 0.39,
+          "total": 0.78
+        },
+        "client": {
+          "user": 0.98,
+          "system": 0.78,
+          "total": 1.76
+        }
+      },
+      "raw_result_member": "syscall-results/window-13/result.json",
+      "raw_result_sha256": "e5ed0ed926dc136886fb2aac2a309f06bc8fdd3aabb312468f8911247dcb9e7e"
+    },
+    {
+      "index": 14,
+      "repeat": 3,
+      "security": "oscore",
+      "arm": "on",
+      "completed": 30000,
+      "warmup": 20,
+      "server_seconds": 0.78,
+      "median_ns": 43069.0,
+      "p99_ns": 66152,
+      "rate": 1000.0289293035471,
+      "server_ticks": 78,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.39,
+          "system": 0.39,
+          "total": 0.78
+        },
+        "client": {
+          "user": 0.64,
+          "system": 1.19,
+          "total": 1.83
+        }
+      },
+      "raw_result_member": "syscall-results/window-14/result.json",
+      "raw_result_sha256": "9173250af8f71e7c5e1ab180e15be417f08ffa17a79685c7488a1e39154b4a28"
+    },
+    {
+      "index": 15,
+      "repeat": 3,
+      "security": "oscore",
+      "arm": "off",
+      "completed": 30000,
+      "warmup": 20,
+      "server_seconds": 0.76,
+      "median_ns": 41217.0,
+      "p99_ns": 65552,
+      "rate": 1000.0290647113995,
+      "server_ticks": 76,
+      "native_cpu_seconds": {
+        "server": {
+          "user": 0.25,
+          "system": 0.51,
+          "total": 0.76
+        },
+        "client": {
+          "user": 0.64,
+          "system": 1.15,
+          "total": 1.79
+        }
+      },
+      "raw_result_member": "syscall-results/window-15/result.json",
+      "raw_result_sha256": "f0f44aa1413b306cc92daf5bfeb2d1e00bd57e751cd4a164b76b9e9862ebed41"
+    }
+  ],
+  "pairs": [
+    {
+      "security": "unprotected",
+      "repeat": 0,
+      "median_delta_ns": 0.0,
+      "p99_delta_ns": 2414,
+      "passed": true
+    },
+    {
+      "security": "unprotected",
+      "repeat": 1,
+      "median_delta_ns": 1503.0,
+      "p99_delta_ns": 1803,
+      "passed": true
+    },
+    {
+      "security": "unprotected",
+      "repeat": 2,
+      "median_delta_ns": -2921.0,
+      "p99_delta_ns": 661,
+      "passed": true
+    },
+    {
+      "security": "unprotected",
+      "repeat": 3,
+      "median_delta_ns": 2084.0,
+      "p99_delta_ns": 4868,
+      "passed": false
+    },
+    {
+      "security": "oscore",
+      "repeat": 0,
+      "median_delta_ns": 2875.0,
+      "p99_delta_ns": 2005,
+      "passed": false
+    },
+    {
+      "security": "oscore",
+      "repeat": 1,
+      "median_delta_ns": 16642.0,
+      "p99_delta_ns": 6412,
+      "passed": false
+    },
+    {
+      "security": "oscore",
+      "repeat": 2,
+      "median_delta_ns": 2514.0,
+      "p99_delta_ns": 1733,
+      "passed": false
+    },
+    {
+      "security": "oscore",
+      "repeat": 3,
+      "median_delta_ns": 1852.0,
+      "p99_delta_ns": 600,
+      "passed": true
+    }
+  ],
+  "pooled_latency_guards": [
+    {
+      "security": "unprotected",
+      "median_delta_ns": -7143.0,
+      "p99_delta_ns": 2694,
+      "passed": true,
+      "qualified_overhead_ratio": null
+    },
+    {
+      "security": "oscore",
+      "median_delta_ns": -2855.0,
+      "p99_delta_ns": 2846,
+      "passed": true,
+      "qualified_overhead_ratio": null
+    }
+  ],
+  "on_counts": [
+    {
+      "index": 1,
+      "security": "unprotected",
+      "repeat": 0,
+      "denominator": 30000,
+      "counts": {
+        "read": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "write": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "poll": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendto": {
+          "enter": 30000,
+          "exit_ok": 30000,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvfrom": {
+          "enter": 60000,
+          "exit_ok": 30000,
+          "exit_eagain": 30000,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_wait": {
+          "enter": 30000,
+          "exit_ok": 30000,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_pwait": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvmmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendmmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "pselect6": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "ppoll": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "clock_gettime": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_pwait2": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "other": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        }
+      },
+      "loader_lifetime_user_us": 28341,
+      "loader_lifetime_system_us": 26073,
+      "loader_lifetime_maxrss_kib": 51264
+    },
+    {
+      "index": 3,
+      "security": "oscore",
+      "repeat": 0,
+      "denominator": 30000,
+      "counts": {
+        "read": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "write": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "poll": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendto": {
+          "enter": 30000,
+          "exit_ok": 30000,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvfrom": {
+          "enter": 60000,
+          "exit_ok": 30000,
+          "exit_eagain": 30000,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_wait": {
+          "enter": 30000,
+          "exit_ok": 30000,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_pwait": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvmmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendmmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "pselect6": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "ppoll": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "clock_gettime": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_pwait2": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "other": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        }
+      },
+      "loader_lifetime_user_us": 31532,
+      "loader_lifetime_system_us": 22189,
+      "loader_lifetime_maxrss_kib": 51264
+    },
+    {
+      "index": 4,
+      "security": "unprotected",
+      "repeat": 1,
+      "denominator": 30000,
+      "counts": {
+        "read": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "write": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "poll": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendto": {
+          "enter": 30000,
+          "exit_ok": 30000,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvfrom": {
+          "enter": 60000,
+          "exit_ok": 30000,
+          "exit_eagain": 30000,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_wait": {
+          "enter": 30000,
+          "exit_ok": 30000,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_pwait": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvmmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendmmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "pselect6": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "ppoll": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "clock_gettime": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_pwait2": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "other": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        }
+      },
+      "loader_lifetime_user_us": 31408,
+      "loader_lifetime_system_us": 23265,
+      "loader_lifetime_maxrss_kib": 51852
+    },
+    {
+      "index": 6,
+      "security": "oscore",
+      "repeat": 1,
+      "denominator": 30000,
+      "counts": {
+        "read": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "write": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "poll": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendto": {
+          "enter": 30000,
+          "exit_ok": 30000,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvfrom": {
+          "enter": 60000,
+          "exit_ok": 30000,
+          "exit_eagain": 30000,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_wait": {
+          "enter": 30000,
+          "exit_ok": 30000,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_pwait": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvmmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendmmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "pselect6": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "ppoll": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "clock_gettime": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_pwait2": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "other": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        }
+      },
+      "loader_lifetime_user_us": 34294,
+      "loader_lifetime_system_us": 22468,
+      "loader_lifetime_maxrss_kib": 51852
+    },
+    {
+      "index": 9,
+      "security": "unprotected",
+      "repeat": 2,
+      "denominator": 30000,
+      "counts": {
+        "read": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "write": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "poll": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendto": {
+          "enter": 30000,
+          "exit_ok": 30000,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvfrom": {
+          "enter": 60000,
+          "exit_ok": 30000,
+          "exit_eagain": 30000,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_wait": {
+          "enter": 30000,
+          "exit_ok": 30000,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_pwait": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvmmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendmmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "pselect6": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "ppoll": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "clock_gettime": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_pwait2": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "other": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        }
+      },
+      "loader_lifetime_user_us": 26555,
+      "loader_lifetime_system_us": 30018,
+      "loader_lifetime_maxrss_kib": 49984
+    },
+    {
+      "index": 11,
+      "security": "oscore",
+      "repeat": 2,
+      "denominator": 30000,
+      "counts": {
+        "read": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "write": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "poll": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendto": {
+          "enter": 30000,
+          "exit_ok": 30000,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvfrom": {
+          "enter": 60000,
+          "exit_ok": 30000,
+          "exit_eagain": 30000,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_wait": {
+          "enter": 30000,
+          "exit_ok": 30000,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_pwait": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvmmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendmmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "pselect6": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "ppoll": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "clock_gettime": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_pwait2": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "other": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        }
+      },
+      "loader_lifetime_user_us": 25315,
+      "loader_lifetime_system_us": 31343,
+      "loader_lifetime_maxrss_kib": 49220
+    },
+    {
+      "index": 12,
+      "security": "unprotected",
+      "repeat": 3,
+      "denominator": 30000,
+      "counts": {
+        "read": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "write": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "poll": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendto": {
+          "enter": 30000,
+          "exit_ok": 30000,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvfrom": {
+          "enter": 60000,
+          "exit_ok": 30000,
+          "exit_eagain": 30000,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_wait": {
+          "enter": 30000,
+          "exit_ok": 30000,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_pwait": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvmmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendmmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "pselect6": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "ppoll": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "clock_gettime": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_pwait2": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "other": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        }
+      },
+      "loader_lifetime_user_us": 27579,
+      "loader_lifetime_system_us": 27579,
+      "loader_lifetime_maxrss_kib": 51384
+    },
+    {
+      "index": 14,
+      "security": "oscore",
+      "repeat": 3,
+      "denominator": 30000,
+      "counts": {
+        "read": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "write": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "poll": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendto": {
+          "enter": 30000,
+          "exit_ok": 30000,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvfrom": {
+          "enter": 60000,
+          "exit_ok": 30000,
+          "exit_eagain": 30000,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_wait": {
+          "enter": 30000,
+          "exit_ok": 30000,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_pwait": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "recvmmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "sendmmsg": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "pselect6": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "ppoll": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "clock_gettime": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "epoll_pwait2": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        },
+        "other": {
+          "enter": 0,
+          "exit_ok": 0,
+          "exit_eagain": 0,
+          "exit_eintr": 0,
+          "exit_other_error": 0
+        }
+      },
+      "loader_lifetime_user_us": 28203,
+      "loader_lifetime_system_us": 25947,
+      "loader_lifetime_maxrss_kib": 51268
+    }
+  ],
+  "counter_semantics": "Window totals normalized by verified completions; no individual-operation event ordering was captured. Independent entry/exit gates, no balance invariant. Counts not durations, vDSO calls, removable CPU share or optimization gain. EAGAIN is an expected receive result, not a failed operation.",
+  "tests": {
+    "linux_python_passed": 201,
+    "linux_python_skipped": 0,
+    "classifier_passed": 3,
+    "loader_passed": 9,
+    "new_reader_regressions": 7,
+    "strict_loader_clippy": "PASS",
+    "locked_helper_bpf_native_builds": "PASS",
+    "native_rust_tests_in_this_workflow": "NOT RUN",
+    "native_clippy_in_this_workflow": "NOT RUN"
+  },
+  "resources": {
+    "map_value_bytes_actual": 2632,
+    "possible_cpus_actual": 4,
+    "program_memlock_bytes_total_actual": 8192,
+    "helper_AS_limit_bytes": 134217728,
+    "helper_stack_limit_bytes_subset_AS": 1048576,
+    "helper_lifetime_cpu_us_range": [
+      53721,
+      56762
+    ],
+    "helper_lifetime_maxrss_kib_range": [
+      49220,
+      51852
+    ],
+    "server_App_inline_bytes": 14016,
+    "server_adapter_inline_bytes_nested_App": 2056,
+    "server_rx_scratch_bytes_nested_adapter": 2049,
+    "server_pool_heap_request_bytes": 0,
+    "representation_bytes_separate": 32,
+    "Poll_inline_bytes_separate": 4,
+    "Events_header_bytes_separate": 24,
+    "Events_capacity": 8,
+    "unknown": "Kernel map/link allocator metadata; Events heap; allocator/startup/peak stack/runtime/kernel owners. Helper lifetime CPU includes setup/warmup/wait/control and excludes final formatting/drop; not native window CPU. Global prefilter callback/machine worker CPU unassigned. RSS is not minimum or whole-memory acceptance."
+  },
+  "artifact": {
+    "id": 12566918509,
+    "sha256": "997f2065b5ac53545ebeffa814946105fb8978edeb4bb18bdc9b22e617aff9c1",
+    "members": 141,
+    "compressed_bytes": 1150060,
+    "expanded_text_bytes": 3667819,
+    "collector_integrity": "All141 members CRC/SHA/digest and25 source bytes/blob/size verified; binary files excluded, captured build hashes/freeze control flow reused, no fresh collector ELF rehash."
+  },
+  "binary_identities": {
+    "native": {
+      "bench-rust-server": {
+        "path": "/home/runner/work/_temp/syscall-setup/binaries/native/bench-rust-server",
+        "sha256": "48b0432fa03cf14beadcc54db271848c9482c0903ee659409a9881f17481d1a2",
+        "bytes": 33581368
+      },
+      "bench-native-client": {
+        "path": "/home/runner/work/_temp/syscall-setup/binaries/native/bench-native-client",
+        "sha256": "97dd6b1baa2b40466e8acd08e171dddce2c4c82bfc23783ed37167d8d9f3956f",
+        "bytes": 6278712
+      }
+    },
+    "loader_sha256": "774297c5759c0d81ae229f1dd4968503bb77fc271b29c39bd2d26cbaa0edc5e7",
+    "object_sha256": "d9084171631d2cfbb8d2e5327b00f58fa5e6a9a186903f9a0a7ad10dd2cb1eb5",
+    "scope": "Collector rehashes build/manifest texts and immutable source bytes. Actual copied ELF rehash before windows is established by captured identity receipts plus exact source control flow; no ELF bytes uploaded, no fresh collector ELF hash or crosshost reproduction claim."
+  },
+  "API_step_state_consistency": {
+    "consistent": false,
+    "status": "INCONSISTENT / individual terminal step fields unavailable",
+    "scope": "Attempt and exact-job embedded steps remained live/pending despite completed-success top-level job, completed log and final artifact. All API responses and first two analysis failures preserved. Terminal campaign/budget/upload corroborated by job success, exact workflow/log/full raw campaign/retained size checks; no fabricated step statuses or benchmark gate change."
+  },
+  "prior_failures": [
+    {
+      "run": 40107158379,
+      "result": "linker file-size guard,0windows/all16NOTRUN"
+    },
+    {
+      "run": 40109321826,
+      "result": "OFF30000+20 verified; ON attach then enable ACK timeout;14laterNOTRUN/no counts or overhead"
+    }
+  ],
+  "both_50_percent_targets": "OPEN",
+  "whole_memory_acceptance": "OPEN"
+}

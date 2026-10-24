@@ -2,6 +2,13 @@
 
 ## Bounded syscall diagnostic
 
+The [measured syscall result](evidence/ebpf-syscalls-20261024/README.md) records
+run `40112478137`: 480,000 verified operations plus 320 warmups; all eight ON
+captures see one successful send, one successful receive plus one EAGAIN
+receive, and one epoll wait per operation. Four pair median guards fail, so
+both overhead ratios remain withheld. Counts establish neither a CPU share
+nor an optimization gain; both primary targets and whole memory remain open.
+
 The first Linux proof, `40107158379`, stopped before builds: the pinned
 27,995,844-byte linker archive exceeded the 16 MiB download file limit. Its
 199 Python tests passed, but all sixteen benchmark windows were NOT RUN; no
@@ -28,8 +35,9 @@ writes with the writer open, queued commands, EOF, partial lines and deadlines;
 they also reproduce the mixed-buffer mechanism on an owned pipe. This explains
 a concrete source defect, not a dynamically traced first byte in the failed run.
 Controller reply timeouts now name the expected helper ACK and retain the cause
-and fatal cleanup path. Actual Linux execution of the repair and authenticated
-OFF/ON proof remain pending; no CPU gain or whole-memory claim follows.
+and fatal cleanup path. Run `40112478137` now passes the Linux repair tests and
+authenticated OFF/ON functional proof. Both overhead ratios remain withheld for
+failed pair median guards; no CPU gain or whole-memory claim follows.
 
 Issue 195 adds an opt-in `syscall_probe.py` path over the existing ordinary Mio
 server, native client and complete response verification. The default benchmark
