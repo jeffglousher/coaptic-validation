@@ -21,6 +21,11 @@ const SEND_WAIT: Duration = Duration::from_millis(1);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Stage {
     Empty,
+    Oversized,
+    // These two tags exist only within one driver poll. A failed progress send
+    // clears RejectedOversized so it cannot be mistaken for the receive error.
+    RejectOversized,
+    RejectedOversized,
     Packet {
         len: u16,
         peer: Endpoint,
@@ -111,10 +116,7 @@ impl StagedUdp {
                     len,
                     peer: peer.into(),
                 },
-                _ => Stage::Error {
-                    raw: None,
-                    kind: io::ErrorKind::InvalidData,
-                },
+                _ => Stage::Oversized,
             },
             Err(error)
                 if matches!(
@@ -178,6 +180,19 @@ impl StagedUdp {
         bytes: &[u8],
         send: impl FnOnce(&UdpSocket, &[u8], SocketAddr) -> io::Result<usize>,
     ) -> io::Result<usize> {
+        let result = self.try_send_with(peer, bytes, send);
+        if result.is_err() && self.state.stage == Stage::RejectedOversized {
+            self.state.stage = Stage::Empty;
+        }
+        result
+    }
+
+    fn try_send_with(
+        &mut self,
+        peer: Endpoint,
+        bytes: &[u8],
+        send: impl FnOnce(&UdpSocket, &[u8], SocketAddr) -> io::Result<usize>,
+    ) -> io::Result<usize> {
         if self
             .state
             .until
@@ -190,6 +205,38 @@ impl StagedUdp {
             TransportCounts::inc(&mut counts.socket_send_calls);
         }
         send(&self.socket, bytes, peer.into())
+    }
+
+    fn begin_poll(&mut self, capacity: usize) -> Stage {
+        let previous = self.state.stage;
+        if previous == Stage::Oversized
+            || matches!(previous, Stage::Packet { len, .. } if usize::from(len) > capacity)
+        {
+            self.state.stage = Stage::RejectOversized;
+        }
+        previous
+    }
+
+    fn finish_poll(
+        &mut self,
+        previous: Stage,
+        result: Result<(), AppError>,
+    ) -> Result<(), AppError> {
+        let rejected = self.state.stage == Stage::RejectedOversized;
+        if self.state.stage == Stage::RejectOversized {
+            // Failure before receive (including RX saturation) retains ingress.
+            self.state.stage = previous;
+        } else if rejected {
+            self.state.stage = Stage::Empty;
+        }
+        match result {
+            Err(AppError::Io(DatagramIoError::Io(error)))
+                if rejected && error.kind() == io::ErrorKind::InvalidData =>
+            {
+                Ok(())
+            }
+            result => result,
+        }
     }
 }
 
@@ -211,6 +258,11 @@ impl DatagramIo for StagedUdp {
         // Engine calls this only after acquiring RX. An admission failure never
         // reaches this take and therefore cannot overwrite the staged owner.
         match mem::replace(&mut self.state.stage, Stage::Empty) {
+            Stage::Oversized | Stage::RejectedOversized => Err(io::ErrorKind::InvalidData.into()),
+            Stage::RejectOversized => {
+                self.state.stage = Stage::RejectedOversized;
+                Err(io::ErrorKind::InvalidData.into())
+            }
             Stage::Empty => {
                 #[cfg(test)]
                 if let Some(counts) = &mut self.counts {
@@ -300,7 +352,10 @@ fn step_with_clock(
     if let Some(counts) = &mut app.transport_mut().counts {
         TransportCounts::inc(&mut counts.app_polls);
     }
-    app.poll(poll_ms)?;
+    let capacity = app.engine().capacities().rx_datagram_bytes;
+    let previous = app.transport_mut().begin_poll(capacity);
+    let result = app.poll(poll_ms);
+    app.transport_mut().finish_poll(previous, result)?;
     Ok(Some(Step {
         #[cfg(test)]
         poll_ms,
@@ -343,6 +398,165 @@ pub(super) fn serve(
 pub(super) mod tests {
     use super::*;
 
+    pub(crate) fn oversized_packet() -> [u8; 1473] {
+        let mut packet = [0x39; 1473];
+        // CON GET /bench with a payload: even its truncated prefix decodes.
+        packet[..11].copy_from_slice(&[0x40, 1, 0, 123, 0xb5, b'b', b'e', b'n', b'c', b'h', 0xff]);
+        assert!(coaptic::message::decode(&packet[..1472]).is_ok());
+        packet
+    }
+
+    #[test]
+    fn oversized_driver_turn_recovers_complete_operations() {
+        for protected in [false, true] {
+            let epoch = Instant::now();
+            let until = epoch + Duration::from_secs(1);
+            let io = StagedUdp::new(UdpSocket::bind("127.0.0.1:0").unwrap(), Some(until)).unwrap();
+            let local = io.socket.local_addr().unwrap();
+            let sender = UdpSocket::bind("127.0.0.1:0").unwrap();
+            sender.send_to(&oversized_packet(), local).unwrap();
+            let mut app = bind_fixture(io, 64, 1472, protected.then(|| context(true))).unwrap();
+            assert_eq!(
+                step(&mut app, epoch, false).unwrap().unwrap().wait,
+                Wait::Receive
+            );
+            assert_eq!(app.transport().state.stage, Stage::Empty);
+            assert_eq!(app.engine_mut().rx_occupied(), 0);
+            assert_eq!(
+                (
+                    app.metrics().rx_accepted,
+                    app.metrics().tx_ok,
+                    app.metrics().rx_error
+                ),
+                (0, 0, 1)
+            );
+            let (app, _) = verify_four(app, local.into(), epoch, until, protected, |app| {
+                assert!(step(app, epoch, false).unwrap().is_some());
+            });
+            assert_eq!(app.transport().state.stage, Stage::Empty);
+            assert_eq!(app.metrics().rx_error, 1);
+        }
+    }
+
+    #[test]
+    fn driver_turn_preserves_native_receive_errors() {
+        for kind in [io::ErrorKind::InvalidData, io::ErrorKind::ConnectionReset] {
+            let mut app = fixture(transport());
+            app.transport_mut().stage_result(Err(kind.into()));
+            assert!(
+                matches!(step(&mut app, Instant::now(), false), Err(AppError::Io(DatagramIoError::Io(error))) if error.kind() == kind)
+            );
+            assert_eq!(app.transport().state.stage, Stage::Empty);
+            assert_eq!(app.engine_mut().rx_occupied(), 0);
+            assert_eq!(app.metrics().rx_error, 1);
+        }
+    }
+
+    #[test]
+    fn driver_turn_progress_send_failure_preserves_ingress_provenance() {
+        let bad_peer: Endpoint = "[::1]:9".parse::<SocketAddr>().unwrap().into();
+        for saturated in [false, true] {
+            let mut app = fixture(transport());
+            // An IPv4 socket cannot send to an IPv6 destination. Keep the actual
+            // platform's error rather than inventing a portable errno mapping.
+            let expected = app
+                .transport()
+                .socket
+                .send_to(b"no", SocketAddr::from(bad_peer))
+                .unwrap_err();
+            let sender = UdpSocket::bind("127.0.0.1:0").unwrap();
+            sender
+                .send_to(
+                    &oversized_packet(),
+                    app.transport().socket.local_addr().unwrap(),
+                )
+                .unwrap();
+            app.transport_mut().wait_until(None, MAX_WAIT).unwrap();
+            let staged = app.transport().state.stage;
+            let due = pending(&mut app, bad_peer);
+            let held: Option<[_; 4]> = saturated.then(|| {
+                std::array::from_fn(|_| {
+                    let slot = app.engine_mut().acquire_rx().unwrap();
+                    app.engine_mut()
+                        .write_rx(slot, &[0x40, 0, 0, 9], bad_peer)
+                        .unwrap();
+                    slot
+                })
+            });
+            let epoch = Instant::now() - Duration::from_millis(due);
+            let Err(AppError::Io(DatagramIoError::Io(error))) = step(&mut app, epoch, false) else {
+                panic!("due progress send failure must propagate");
+            };
+            assert_eq!(error.kind(), expected.kind());
+            assert_eq!(error.raw_os_error(), expected.raw_os_error());
+            assert_eq!(
+                app.transport().state.stage,
+                if saturated { staged } else { Stage::Empty }
+            );
+            assert_eq!(app.metrics().rx_error, u32::from(!saturated));
+            assert_eq!(app.metrics().tx_fail, 1);
+            if let Some(held) = held {
+                for slot in held {
+                    app.engine_mut().release_rx(slot).unwrap();
+                }
+            }
+            assert_eq!(app.engine_mut().rx_occupied(), 0);
+        }
+    }
+
+    #[test]
+    fn oversize_marker_preserves_saturation_and_send_errors() {
+        let mut app = fixture(transport());
+        let peer = Endpoint::v4([127, 0, 0, 1], 9);
+        app.transport_mut().stage_result(Ok((1473, peer.into())));
+        let previous = app.transport().state.stage;
+        let held: [_; 4] = std::array::from_fn(|_| {
+            let slot = app.engine_mut().acquire_rx().unwrap();
+            app.engine_mut()
+                .write_rx(slot, &[0x40, 0, 0, 9], peer)
+                .unwrap();
+            slot
+        });
+        assert!(matches!(
+            step(&mut app, Instant::now(), false),
+            Err(AppError::Saturated)
+        ));
+        assert_eq!(app.transport().state.stage, previous);
+        for slot in held {
+            if app.engine_mut().access_rx(slot).is_ok() {
+                app.engine_mut().release_rx(slot).unwrap();
+            }
+        }
+        assert!(step(&mut app, Instant::now(), false).unwrap().is_some());
+        assert_eq!(app.transport().state.stage, Stage::Empty);
+        // poll_engine may return a progress send error before its saved recv error.
+        // Exercise the production send seam in both pre/post-receive states.
+        for consumed in [false, true] {
+            for kind in [io::ErrorKind::InvalidData, io::ErrorKind::ConnectionReset] {
+                let io = app.transport_mut();
+                io.stage_result(Ok((1473, peer.into())));
+                let previous = io.begin_poll(1472);
+                if consumed {
+                    assert_eq!(
+                        io.recv(&mut [0; 1472]).unwrap_err().kind(),
+                        io::ErrorKind::InvalidData
+                    );
+                }
+                let error = io
+                    .send_with(peer, b"retained", |_, _, _| Err(kind.into()))
+                    .unwrap_err();
+                assert!(
+                    matches!(io.finish_poll(previous, Err(app_io(error))), Err(AppError::Io(DatagramIoError::Io(error))) if error.kind() == kind)
+                );
+                assert_eq!(
+                    io.state.stage,
+                    if consumed { Stage::Empty } else { previous }
+                );
+                io.state.stage = Stage::Empty;
+            }
+        }
+    }
+
     fn transport() -> StagedUdp {
         StagedUdp::new(
             UdpSocket::bind("127.0.0.1:0").unwrap(),
@@ -380,6 +594,10 @@ pub(super) mod tests {
 
     #[test]
     fn startup_ledger_is_one_bounded_flushed_line() {
+        if cfg!(all(target_os = "windows", target_pointer_width = "64")) {
+            assert_eq!(mem::size_of::<Stage>(), 32);
+            assert_eq!(mem::size_of::<State>(), 56);
+        }
         #[derive(Default)]
         struct Output {
             bytes: Vec<u8>,
@@ -798,6 +1016,7 @@ pub(super) mod tests {
         [u32; 4],
     ) {
         use coaptic::{Code, ContentFormat};
+        let before = server.metrics();
         const PAYLOAD: [u8; 64] = {
             let mut bytes = [0; 64];
             let mut i = 0;
@@ -862,7 +1081,12 @@ pub(super) mod tests {
                 metrics.rx_error,
                 metrics.tx_fail
             ),
-            (4, 4, 0, 0)
+            (
+                before.rx_accepted + 4,
+                before.tx_ok + 4,
+                before.rx_error,
+                before.tx_fail
+            )
         );
         assert_eq!(server.engine_mut().rx_occupied(), 0);
         (
