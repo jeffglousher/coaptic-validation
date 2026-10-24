@@ -35,8 +35,9 @@ writes with the writer open, queued commands, EOF, partial lines and deadlines;
 they also reproduce the mixed-buffer mechanism on an owned pipe. This explains
 a concrete source defect, not a dynamically traced first byte in the failed run.
 Controller reply timeouts now name the expected helper ACK and retain the cause
-and fatal cleanup path. Actual Linux execution of the repair and authenticated
-OFF/ON proof remain pending; no CPU gain or whole-memory claim follows.
+and fatal cleanup path. Run `40112478137` now passes the Linux repair tests and
+authenticated OFF/ON functional proof. Both overhead ratios remain withheld for
+failed pair median guards; no CPU gain or whole-memory claim follows.
 
 Issue 195 adds an opt-in `syscall_probe.py` path over the existing ordinary Mio
 server, native client and complete response verification. The default benchmark
