@@ -93,7 +93,7 @@ concurrency:
 jobs:
   cpu:
     runs-on: ${{ inputs.native_validation_only && inputs.native_validation_os || 'ubuntu-24.04' }}
-    timeout-minutes: ${{ inputs.long_window && 360 || 60 }}
+    timeout-minutes: ${{ !inputs.native_validation_only && inputs.long_window && 360 || 60 }}
     env:
       RUSTUP_TOOLCHAIN: 1.99.0
       BASELINE_SHA: ${{ inputs.baseline_sha }}
