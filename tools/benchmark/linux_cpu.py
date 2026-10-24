@@ -29,7 +29,7 @@ import threading
 import time
 
 from native_lock import native_lock
-from native_profiles import PROFILE_SIZES, dimensions, validate_profile
+from native_profiles import validate_concurrency, PROFILE_SIZES, dimensions, validate_profile
 
 
 MIB = 1024 * 1024
@@ -89,14 +89,12 @@ def configuration(args):
             raise ValueError("adapter comparison requires two distinct explicit server kinds")
         if sha40(args.baseline_sha) != sha40(args.candidate_sha):
             raise ValueError("adapter comparison requires identical core SHAs; do not combine source and scheduling changes")
-    if (type(args.concurrency) is not int or not 1 <= args.concurrency <= 4
-            or args.message_type not in ("con", "non")
-            or (args.concurrency > 1 and args.message_type != "non")):
-        raise ValueError("concurrency 1..4; concurrent CON refused by per-endpoint NSTART=1; select NON explicitly")
+    validate_concurrency(args.concurrency, args.message_type, getattr(args, "independent_endpoints", False))
     sizes = [int(p) for p in selection(args.sizes, tuple(str(s) for s in PROFILE_SIZES[profile]))]
     for size in sizes:
         validate_profile(profile, args.server_kind, size, concurrency=args.concurrency,
-                         message_type=args.message_type, admission_diagnostics=diagnostic)
+                         message_type=args.message_type, admission_diagnostics=diagnostic,
+                         independent_endpoints=getattr(args, "independent_endpoints", False))
         if profile != "host-control" and args.candidate_server_kind is not None:
             raise ValueError("representative profile requires same Mio on both labels")
     rates = [int(p) for p in selection(args.rates)]
@@ -1421,12 +1419,12 @@ def save_window(directory, result):
 
 def window(server, client, cell, operations, directory, mode="clean", quota=8 * MIB,
            *, concurrency=1, message_type="con", admission_diagnostics=False,
-           resource_profile="host-control"):
+           resource_profile="host-control", independent_endpoints=False):
     security, size, rate, kind = cell
     if security not in ("unprotected", "oscore"):
         raise ValueError("unsupported profile security")
     validate_profile(resource_profile, kind, size, concurrency=concurrency,
-                     message_type=message_type, security=security,
+                     message_type=message_type, security=security, independent_endpoints=independent_endpoints,
                      admission_diagnostics=admission_diagnostics)
     if type(admission_diagnostics) is not bool or (admission_diagnostics and
             (mode != "clean" or concurrency != 1 or type(cell[2]) is not int or cell[2] <= 0)):
@@ -1437,7 +1435,7 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
     result = {"passed": False, "mode": mode, "security": security, "bytes": size,
               "rate": rate, "server_kind": kind, "operations": operations,
               "concurrency": concurrency, "message_type": message_type,
-              "resource_profile": resource_profile,
+              "resource_profile": resource_profile, "independent_endpoints": independent_endpoints,
               "load_before": os.getloadavg()}
     if admission_diagnostics:
         result["admission_diagnostics"] = True
@@ -1461,6 +1459,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
         client_args = [str(client), str(port), str(size), str(operations), str(WARMUP), "3000", "spin", security,
                        "--cpu-gated", "--rate", str(rate),
                        "--concurrency", str(concurrency), "--message-type", message_type]
+        if independent_endpoints:
+            client_args.append("--independent-endpoints")
         if admission_diagnostics:
             client_args.append("--admission-diagnostics")
         if security == "oscore":
@@ -1533,7 +1533,7 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                     report = json.loads(raw)
                     result["report"] = report_summary(report)
                     native.validate_report(report, size, operations, "spin", security, rate,
-                                           concurrency, message_type, admission_diagnostics)
+                                           concurrency, message_type, admission_diagnostics, independent_endpoints=independent_endpoints)
                     if report["warmup"] != WARMUP:
                         raise ValueError("mismatched warmup")
                     if sut.poll() is not None:
@@ -1592,13 +1592,16 @@ def accepted(result, tick):
     try:
         validate_profile(result.get("resource_profile", "host-control"), result["server_kind"],
                          result["bytes"], concurrency=result.get("concurrency"),
-                         message_type=result.get("message_type"), security=result["security"])
+                         message_type=result.get("message_type"), security=result["security"],
+                         independent_endpoints=result.get("independent_endpoints", False))
+        from native_diagnostic import validate_endpoint_report
+        validate_endpoint_report(result["report"], result.get("concurrency"), result.get("independent_endpoints", False), require_overlap=True)
     except ValueError:
         return False
     report = result["report"]
     concurrency, message_type = result.get("concurrency"), result.get("message_type")
     return (type(concurrency) is int and 1 <= concurrency <= 4
-            and message_type in ("con", "non") and (concurrency == 1 or message_type == "non")
+            and message_type in ("con", "non") and (concurrency == 1 or message_type == "non" or result.get("independent_endpoints") is True)
             and type(report.get("concurrency")) is int and report["concurrency"] == concurrency
             and report.get("message_type") == message_type
             and type(report.get("peak_pending")) is int and 1 <= report["peak_pending"] <= concurrency
@@ -1616,7 +1619,8 @@ def report_latencies(result):
     values = report["latencies_ns"]
     if (len(values) != result["report"]["completed"]
             or report.get("concurrency") != result.get("concurrency")
-            or report.get("message_type") != result.get("message_type")):
+            or report.get("message_type") != result.get("message_type")
+            or ("endpoint_transport" in report) != result.get("independent_endpoints", False)):
         raise ValueError("retained latency count changed")
     return values
 
@@ -1629,7 +1633,7 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
             key = (item["security"], item["bytes"], item["rate"],
                    adapter_pair[0] if adapter_pair else item["server_kind"],
                    item.get("concurrency"), item.get("message_type"),
-                   item.get("resource_profile", "host-control"))
+                   item.get("resource_profile", "host-control"), item.get("independent_endpoints", False))
             groups.setdefault(key, []).append(item)
     output = []
     cleanup_failed = any(unresolved_cleanup(item) for item in results)
@@ -1637,7 +1641,7 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
                      or "admission_diagnostics" in item.get("report", {}) for item in results)
     for key, items in groups.items():
         record = dict(zip(("security", "bytes", "rate", "server_kind", "concurrency", "message_type",
-                           "resource_profile"), key))
+                           "resource_profile", "independent_endpoints"), key))
         labels = {label: [i for i in items if i["revision_label"] == label]
                   for label in ("baseline", "candidate")}
         kinds = dict(zip(("baseline", "candidate"), adapter_pair or (key[3], key[3])))
@@ -1719,6 +1723,7 @@ def run(args):
                                    "candidate_sha": args.candidate_sha, "cells": cells,
                                    "seconds": args.seconds, "repeats": args.repeats,
                                    "perf": args.perf, "concurrency": args.concurrency,
+                                   "independent_endpoints": getattr(args, "independent_endpoints", False),
                                    "admission_diagnostics": diagnostic,
                                    "message_type": args.message_type,
                                    "candidate_server_kind": args.candidate_server_kind,
@@ -1742,6 +1747,7 @@ def run(args):
                 "artifact_bound_bytes_excluding_binaries": metadata_bytes + PERF_FILES_PER_SLOT * perf_slots * quota,
                 "cells": cells, "seconds": args.seconds, "repeats": args.repeats,
                 "concurrency": args.concurrency, "message_type": args.message_type,
+                "independent_endpoints": getattr(args, "independent_endpoints", False),
                 "adapter_pair": adapter_pair, "comparison_type": comparison_type,
                 "admission_diagnostics": diagnostic,
                 "admission_diagnostic_limit_bytes": ADMISSION_DIAGNOSTIC_LIMIT,
@@ -1767,7 +1773,8 @@ def run(args):
             result = window(server, client, actual_cell, cell[2] * (args.seconds if mode == "clean" else PROFILE_SECONDS),
                             out / f"window-{index:03}", mode, quota,
                             concurrency=args.concurrency, message_type=args.message_type,
-                            admission_diagnostics=diagnostic, resource_profile=profile)
+                            admission_diagnostics=diagnostic, resource_profile=profile,
+                            independent_endpoints=getattr(args, "independent_endpoints", False))
             result.update(revision_label=label, core_sha=builds[label]["core"]["revision"], repeat=repeat,
                           server_sha256=digest(server), client_sha256=digest(client), index=index)
             result["comparison_type"] = comparison_type
@@ -1823,6 +1830,7 @@ def argument_parser():
                         help="same-core, same-adapter paced C1 intervals; perf refused and CPU ratios vetoed")
     parser.add_argument("--concurrency", type=int, choices=range(1, 5), default=1)
     parser.add_argument("--message-type", choices=("con", "non"), default="con")
+    parser.add_argument("--independent-endpoints", action="store_true")
     return parser
 
 

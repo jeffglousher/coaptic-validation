@@ -10,11 +10,14 @@
 //! completed latency is retained. CPU-gated campaigns stop before report
 //! formatting so an external process can sample CPU first.
 #![forbid(unsafe_code)]
+#[path = "../client_endpoint_udp.rs"]
+mod endpoint_udp;
 use coaptic::{
     App, Call, Code, ContentFormat, Response,
     oscore::{DeriveParams, SecurityContext},
     storage::{AllocMemory, Capacities, DatagramIo, Endpoint, UdpSocketIo},
 };
+use endpoint_udp::EndpointIo;
 use std::{
     io::{Read, Write},
     net::UdpSocket,
@@ -47,6 +50,51 @@ impl DatagramIo for CountIo {
     }
 }
 type Client<T = CountIo> = App<coaptic::profiles::Default, T, 1, true, AllocMemory>;
+
+trait ClientIo: DatagramIo {
+    fn lane_counts(&self) -> ([u64; 4], [u64; 4]) {
+        ([0; 4], [0; 4])
+    }
+    fn counts(&self) -> (u64, u64);
+    fn peers(&self, server: Endpoint) -> [Endpoint; 4];
+    fn endpoint_report(&self, _: ([u64; 4], [u64; 4])) -> String {
+        String::new()
+    }
+}
+impl ClientIo for CountIo {
+    fn counts(&self) -> (u64, u64) {
+        (self.received, self.sent)
+    }
+    fn peers(&self, server: Endpoint) -> [Endpoint; 4] {
+        [server; 4]
+    }
+}
+impl ClientIo for EndpointIo {
+    fn counts(&self) -> (u64, u64) {
+        (self.received, self.sent)
+    }
+    fn peers(&self, _: Endpoint) -> [Endpoint; 4] {
+        self.peers()
+    }
+    fn lane_counts(&self) -> ([u64; 4], [u64; 4]) {
+        self.lane_counts()
+    }
+    fn endpoint_report(&self, before: ([u64; 4], [u64; 4])) -> String {
+        self.report(before)
+    }
+}
+
+struct Peers([Endpoint; 4]);
+impl From<Endpoint> for Peers {
+    fn from(peer: Endpoint) -> Self {
+        Self([peer; 4])
+    }
+}
+impl From<[Endpoint; 4]> for Peers {
+    fn from(peers: [Endpoint; 4]) -> Self {
+        Self(peers)
+    }
+}
 
 const MAX_OPERATIONS: usize = 60_000;
 const MAX_RATE: u32 = 1_000_000;
@@ -113,6 +161,7 @@ struct RunOptions {
     concurrency: usize,
     message_type: MessageType,
     admission_diagnostics: bool,
+    independent_endpoints: bool,
 }
 impl Default for RunOptions {
     fn default() -> Self {
@@ -122,6 +171,7 @@ impl Default for RunOptions {
             concurrency: 1,
             message_type: MessageType::Con,
             admission_diagnostics: false,
+            independent_endpoints: false,
         }
     }
 }
@@ -133,6 +183,13 @@ fn run_options(args: &mut Vec<String>) -> Result<RunOptions, &'static str> {
     let mut index = 1;
     while index < args.len() {
         match args[index].as_str() {
+            "--independent-endpoints" => {
+                if options.independent_endpoints {
+                    return Err("duplicate independent endpoints");
+                }
+                options.independent_endpoints = true;
+                args.remove(index);
+            }
             "--admission-diagnostics" => {
                 if options.admission_diagnostics {
                     return Err("duplicate admission diagnostics");
@@ -196,10 +253,18 @@ fn run_options(args: &mut Vec<String>) -> Result<RunOptions, &'static str> {
             _ => index += 1,
         }
     }
-    if options.concurrency > 1 && options.message_type == MessageType::Con {
+    if options.concurrency > 1
+        && options.message_type == MessageType::Con
+        && !options.independent_endpoints
+    {
         return Err(
             "concurrent CON refused: per-endpoint NSTART=1; explicitly select --message-type non",
         );
+    }
+    if options.independent_endpoints
+        && (options.concurrency == 1 || options.message_type != MessageType::Con)
+    {
+        return Err("independent endpoints require C2..4 CON");
     }
     if options.admission_diagnostics && (options.rate.is_none() || options.concurrency != 1) {
         return Err("admission diagnostics require paced concurrency 1");
@@ -330,6 +395,8 @@ struct Window {
     pacing_lateness_ns: u128,
     pacing_max_lateness_ns: u128,
     peak_pending: usize,
+    overlapping_completions: [usize; MAX_CONCURRENCY],
+    verified_completions: [usize; MAX_CONCURRENCY],
     admission_diagnostics: Option<AdmissionDiagnostics>,
 }
 
@@ -338,7 +405,7 @@ struct Window {
 #[allow(clippy::too_many_arguments)]
 fn run_window<T: DatagramIo>(
     client: &mut Client<T>,
-    peer: Endpoint,
+    peers: impl Into<Peers>,
     clock: &Instant,
     timeout: Duration,
     sleep: bool,
@@ -349,6 +416,7 @@ fn run_window<T: DatagramIo>(
     started: Instant,
     timings: &mut Vec<u64>,
 ) -> Window {
+    let peers = peers.into().0;
     let mut window = Window {
         admission_diagnostics: options
             .admission_diagnostics
@@ -373,7 +441,7 @@ fn run_window<T: DatagramIo>(
                 window.failure = Some("poll");
                 break;
             }
-            for slot in &mut pending {
+            for (lane, slot) in pending.iter_mut().enumerate() {
                 let Some(p) = *slot else { continue };
                 let outcome = client.take_response_into(p.call, output);
                 let reply = match outcome {
@@ -398,6 +466,10 @@ fn run_window<T: DatagramIo>(
                     break;
                 }
                 timings.push(completed.duration_since(p.started).as_nanos() as u64);
+                if options.independent_endpoints {
+                    window.overlapping_completions[lane] += usize::from(active > 1);
+                    window.verified_completions[lane] += 1;
+                }
                 if let Some(diagnostic) = &mut window.admission_diagnostics {
                     diagnostic.completed(completed);
                 }
@@ -433,7 +505,13 @@ fn run_window<T: DatagramIo>(
                 }
             }
             window.attempted += 1;
-            let request = client.get("bench").to(peer);
+            // The pending row is the lane reservation. It is reused only after
+            // terminal collection (which releases TX/body/security ownership).
+            let lane = pending
+                .iter()
+                .position(Option::is_none)
+                .expect("fixed Call slot");
+            let request = client.get("bench").to(peers[lane]);
             let request = if options.message_type == MessageType::Non {
                 request.non()
             } else {
@@ -442,10 +520,7 @@ fn run_window<T: DatagramIo>(
             match request.send(clock.elapsed().as_millis() as u64) {
                 Ok(call) => {
                     admitted = true;
-                    *pending
-                        .iter_mut()
-                        .find(|p| p.is_none())
-                        .expect("fixed Call slot") = Some(PendingCall {
+                    pending[lane] = Some(PendingCall {
                         call,
                         started: now,
                         deadline: now + timeout,
@@ -519,9 +594,35 @@ fn context(path: &str) -> Result<SecurityContext, Box<dyn std::error::Error>> {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args: Vec<_> = std::env::args().collect();
     let options = run_options(&mut args)?;
+    if options.independent_endpoints {
+        let count = options.concurrency;
+        run_client(&args, options, |port| {
+            EndpointIo::new(
+                std::net::SocketAddrV4::new(std::net::Ipv4Addr::LOCALHOST, port),
+                count,
+            )
+        })
+    } else {
+        run_client(&args, options, |_| {
+            let socket = UdpSocket::bind("127.0.0.1:0")?;
+            socket.set_nonblocking(true)?;
+            Ok(CountIo {
+                io: UdpSocketIo::new(socket, [0; 1473])?,
+                received: 0,
+                sent: 0,
+            })
+        })
+    }
+}
+
+fn run_client<T: ClientIo>(
+    args: &[String],
+    options: RunOptions,
+    make_io: impl FnOnce(u16) -> std::io::Result<T>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let gated = options.gate != GateMode::None;
     if !(8..=9).contains(&args.len()) {
-        return Err("usage: bench-native-client PORT BYTES OPERATIONS WARMUP TIMEOUT_MS spin|sleep1 unprotected|oscore [CREDENTIALS] [--gated|--cpu-gated] [--rate OPS_PER_SEC] [--concurrency 1..4] [--message-type con|non] [--admission-diagnostics]".into());
+        return Err("usage: bench-native-client PORT BYTES OPERATIONS WARMUP TIMEOUT_MS spin|sleep1 unprotected|oscore [CREDENTIALS] [--gated|--cpu-gated] [--rate OPS_PER_SEC] [--concurrency 1..4] [--message-type con|non] [--admission-diagnostics] [--independent-endpoints]".into());
     }
     let port: u16 = args[1].parse()?;
     let size: usize = args[2].parse()?;
@@ -556,8 +657,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("oscore", Some(path)) => Some(context(path)?),
         _ => return Err("explicit security/credential selection".into()),
     };
-    let socket = UdpSocket::bind("127.0.0.1:0")?;
-    socket.set_nonblocking(true)?;
+    let io = make_io(port)?;
+    let peers = io.peers(Endpoint::v4([127, 0, 0, 1], port));
     let builder = App::builder()
         .routes::<1>()
         .block_wise::<true>()
@@ -568,17 +669,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         builder.allow_unprotected()
     };
-    let capacities = client_capacities(size, options.concurrency);
+    let mut capacities = client_capacities(size, options.concurrency);
+    if options.independent_endpoints {
+        capacities.rx_datagram_slots = 5;
+        capacities.tx_datagram_slots = 5;
+    }
     let heap_limit = AllocMemory::<coaptic::message::Token>::required_heap_bytes(capacities)?;
     let storage = AllocMemory::try_new(capacities, heap_limit)?;
-    let mut client = builder.bind_storage(
-        CountIo {
-            io: UdpSocketIo::new(socket, [0; 1473])?,
-            received: 0,
-            sent: 0,
-        },
-        storage,
-    )?;
+    let mut client = builder.bind_storage(io, storage)?;
     let expected: Vec<_> = (0..size).map(|i| (i % 251) as u8).collect();
     let mut output = vec![0; size];
     let mut timings = Vec::with_capacity(operations.max(warmup));
@@ -586,7 +684,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let verification_heap_bytes = expected.capacity() + output.capacity();
     let timing_heap_bytes = timings.capacity() * std::mem::size_of::<u64>();
     let clock = Instant::now();
-    let peer = Endpoint::v4([127, 0, 0, 1], port);
     let timeout = Duration::from_millis(timeout_ms);
     let warm_options = RunOptions {
         rate: None,
@@ -595,7 +692,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let warm = run_window(
         &mut client,
-        peer,
+        peers,
         &clock,
         timeout,
         sleep,
@@ -614,11 +711,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("ready");
         gate("run")?;
     }
-    let before = (client.transport().received, client.transport().sent);
+    let before = client.transport().counts();
+    let lane_before = client.transport().lane_counts();
     let started = Instant::now();
     let window = run_window(
         &mut client,
-        peer,
+        peers,
         &clock,
         timeout,
         sleep,
@@ -630,9 +728,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut timings,
     );
     let elapsed = started.elapsed().as_nanos();
-    let received = client.transport().received - before.0;
-    let sent = client.transport().sent - before.1;
-    let total_sent_datagrams = client.transport().sent;
+    let received = client.transport().counts().0 - before.0;
+    let sent = client.transport().counts().1 - before.1;
+    let total_sent_datagrams = client.transport().counts().1;
     if options.gate == GateMode::Cpu {
         eprintln!("measured");
         gate("report")?;
@@ -659,6 +757,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cancelled_inflight,
         ..
     } = window;
+    let endpoint_json = client.transport().endpoint_report(lane_before);
+    let overlap_json = if options.independent_endpoints {
+        format!(
+            ",\"overlapping_completions\":{:?},\"client_rx_slots\":5,\"client_tx_slots\":5,\"verified_completions\":{:?},\"window_metadata_bytes\":{},\"lane_counter_snapshot_bytes\":{},\"peer_keys_bytes\":{}",
+            &window.overlapping_completions[..options.concurrency],
+            &window.verified_completions[..options.concurrency],
+            std::mem::size_of::<Window>(),
+            std::mem::size_of_val(&lane_before),
+            std::mem::size_of_val(&peers)
+        )
+    } else {
+        String::new()
+    };
     let concurrency = options.concurrency;
     let message_type = options.message_type.name();
     let pending_call_metadata_bytes = std::mem::size_of::<[Option<PendingCall>; MAX_CONCURRENCY]>();
@@ -668,7 +779,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .as_ref()
         .map_or_else(String::new, AdmissionDiagnostics::json);
     println!(
-        "{{\"schema\":\"coaptic-native-complete/1\",\"bytes\":{size},\"requested_operations\":{operations},\"attempted\":{attempted},\"completed\":{completed},\"failed\":{failed},\"unattempted\":{unattempted},\"failure\":{failure_json},\"concurrency\":{concurrency},\"message_type\":\"{message_type}\",\"peak_pending\":{peak_pending},\"cancelled_inflight\":{cancelled_inflight},\"pending_call_metadata_bytes\":{pending_call_metadata_bytes},\"rx_body_slots\":{rx_body_slots},\"total_sent_datagrams\":{total_sent_datagrams},\"warmup\":{warmup},\"elapsed_ns\":{elapsed},\"scheduled_rate_ops_per_second\":{rate_json},\"achieved_ops_per_second\":{achieved_rate},\"scheduled_dispatch_span_ns\":{span_json},\"pacing_late_operations\":{pacing_late_operations},\"pacing_missed_period_operations\":{pacing_missed_period_operations},\"pacing_total_lateness_ns\":{pacing_lateness_ns},\"pacing_max_lateness_ns\":{pacing_max_lateness_ns},\"pacing_dropped_operations\":0,\"pacing_semantics\":\"absolute operation-start deadlines; bounded outstanding Calls; late starts catch up without dropping; elapsed includes pacing; latencies exclude pacing\",\"received_datagrams\":{received},\"sent_datagrams\":{sent},\"latencies_ns\":{timings:?},\"core_heap_limit_bytes\":{heap_limit},\"app_inline_bytes\":{app_inline_bytes},\"verification_heap_bytes\":{verification_heap_bytes},\"timing_heap_bytes\":{timing_heap_bytes},\"udp_scratch_bytes\":1473,\"policy\":\"{}\",\"security\":\"{}\",\"measurement\":\"Coaptic client/server diagnostic; complete authenticated body verification; setup excluded; no durable recovery; heap request excludes allocator overhead; App inline includes UDP scratch\"{admission_json}}}",
+        "{{\"schema\":\"coaptic-native-complete/1\",\"bytes\":{size},\"requested_operations\":{operations},\"attempted\":{attempted},\"completed\":{completed},\"failed\":{failed},\"unattempted\":{unattempted},\"failure\":{failure_json},\"concurrency\":{concurrency},\"message_type\":\"{message_type}\",\"peak_pending\":{peak_pending},\"cancelled_inflight\":{cancelled_inflight},\"pending_call_metadata_bytes\":{pending_call_metadata_bytes},\"rx_body_slots\":{rx_body_slots},\"total_sent_datagrams\":{total_sent_datagrams},\"warmup\":{warmup},\"elapsed_ns\":{elapsed},\"scheduled_rate_ops_per_second\":{rate_json},\"achieved_ops_per_second\":{achieved_rate},\"scheduled_dispatch_span_ns\":{span_json},\"pacing_late_operations\":{pacing_late_operations},\"pacing_missed_period_operations\":{pacing_missed_period_operations},\"pacing_total_lateness_ns\":{pacing_lateness_ns},\"pacing_max_lateness_ns\":{pacing_max_lateness_ns},\"pacing_dropped_operations\":0,\"pacing_semantics\":\"absolute operation-start deadlines; bounded outstanding Calls; late starts catch up without dropping; elapsed includes pacing; latencies exclude pacing\",\"received_datagrams\":{received},\"sent_datagrams\":{sent},\"latencies_ns\":{timings:?},\"core_heap_limit_bytes\":{heap_limit},\"app_inline_bytes\":{app_inline_bytes},\"verification_heap_bytes\":{verification_heap_bytes},\"timing_heap_bytes\":{timing_heap_bytes},\"udp_scratch_bytes\":1473,\"policy\":\"{}\",\"security\":\"{}\",\"measurement\":\"Coaptic client/server diagnostic; complete authenticated body verification; setup excluded; no durable recovery; heap request excludes allocator overhead; App inline includes UDP scratch\"{admission_json}{endpoint_json}{overlap_json}}}",
         args[6], args[7]
     );
     std::io::stdout().flush()?;
@@ -1072,6 +1183,44 @@ mod tests {
             assert_eq!(client.resource_usage().client_replies.occupied, 0);
         }
     }
+    #[test]
+    fn independent_endpoint_selector_requires_explicit_con_counts_and_preserves_legacy_caps() {
+        for count in 2..=4 {
+            let value = count.to_string();
+            let selected = run_options(&mut args(&[
+                "client",
+                "--concurrency",
+                &value,
+                "--independent-endpoints",
+            ]))
+            .unwrap();
+            assert!(selected.independent_endpoints);
+            assert_eq!(selected.message_type, MessageType::Con);
+        }
+        for values in [
+            vec!["client", "--independent-endpoints"],
+            vec![
+                "client",
+                "--concurrency",
+                "2",
+                "--message-type",
+                "non",
+                "--independent-endpoints",
+            ],
+            vec![
+                "client",
+                "--concurrency",
+                "2",
+                "--independent-endpoints",
+                "--independent-endpoints",
+            ],
+        ] {
+            assert!(run_options(&mut args(&values)).is_err());
+        }
+        assert_eq!(client_capacities(64, 1).rx_datagram_slots, 4);
+        assert_eq!(client_capacities(64, 1).tx_datagram_slots, 4);
+    }
+
     #[test]
     fn outbound_admission_counts_warmup_blocks_and_checked_arithmetic() {
         assert_eq!(outbound_budget(64, 59_872, 128), Ok(60_000));

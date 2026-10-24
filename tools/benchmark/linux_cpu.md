@@ -887,3 +887,38 @@ writer or crash-recovery protocol. Fixture tests do not substitute for actual
 locked builds. The fixed old-source `core_cost_probe.py` modes keep their original
 lock and source pins. Other preparation helpers do not acquire syn-3 support from
 this change.
+
+### Independent local endpoints (explicit CON mode)
+
+Select `--independent-endpoints --concurrency 2` (or 3/4) with CON and Mio.
+One client App owns K connected loopback UDP sockets to the one actual server,
+one OSCORE context/global sender sequence and globally unique Tokens. Private
+namespace-zero Endpoint keys encode each full stable local/remote pair. Each
+pair retains NSTART=1. Default C1 and shared-endpoint NON keep their existing
+client configuration; NON is a separate cohort.
+
+The new client uses five RX and five TX slots of 1472 bytes, K RX body slots,
+four Calls/request bindings, one 1473-byte scratch and at most K receive attempts
+per adapter receive. Pending rows reserve their sockets until terminal collection
+or cancellation cleanup. There are no packet queues or workers. Adapter/sockets
+and scratch are nested in App inline; requested core heap, verification and timing
+heap remain separate. Kernel socket buffers, allocator overhead and peak stack
+are unknown; no whole-memory or CPU improvement follows from this selector.
+The 60000 outbound budget is global, including warmup, retries and controls.
+
+The runner explicitly refuses SmallDevice concurrency, whose unchanged body
+capacity cannot establish four overlapping bodies. Host-control multiblock
+supports at most two endpoints; Service fixed/allocated support C2..4 with their
+unchanged four TX bodies. Reports retain actual source ports, per-lane send/receive
+lifetime counts, measured-window datagram deltas, per-lane fully verified
+completion counts and completions while another Call was live. Raw datagram
+counts include protocol/control/invalid traffic and are not verified operations.
+The report names the bounded counter snapshot and Window metadata; neither
+size is a measured peak stack. CPU acceptance additionally
+requires actual observed overlap and service on every lane. A low-paced C4
+parameter alone cannot establish C4 overlap. No concurrency campaign is implied.
+
+Delaying one initial protected request while other endpoints advance the shared
+sequence beyond the server's replay window can legitimately cause replay refusal,
+even with only four live Calls. The fixture preserves this limitation and never
+widens the replay window, clones contexts or promises recovery from arbitrary loss.
