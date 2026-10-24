@@ -11,3 +11,11 @@ coaptic-ingress-classifier = { path = "../classifier" }
 panic = "abort"
 lto = true
 codegen-units = 1
+
+[features]
+syscall-trace = []
+
+[[bin]]
+name = "coaptic-syscall-ebpf"
+path = "src/bin/syscall.rs"
+required-features = ["syscall-trace"]

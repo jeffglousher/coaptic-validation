@@ -165,3 +165,20 @@ Official references:
 - https://github.com/aya-rs/bpf-linker
 - https://docs.rs/aya/0.14.0/aya/programs/xdp/struct.Xdp.html
 - https://docs.rs/aya-ebpf/0.2.1/aya_ebpf/maps/per_cpu_array/struct.PerCpuArray.html
+
+## Separate bounded syscall observer (issue 195)
+
+The opt-in `syscall-trace` feature declares separate `coaptic-syscall-ebpf` and
+`coaptic-syscall-loader` binaries. Existing ingress ELF maps, commands and default
+builds do not acquire tracing behavior. The three current BPF locks explicitly
+bind `coaptic-io` to syn3; Aya's own syn2 edges stay pinned. Historical receipts
+remain evidence for their old commits. Do not use current locks with an old syn2
+core or implicitly update them after `--locked` refusal. Native benchmark locks
+retain their existing source-selection mechanism.
+
+The observer counts independent syscall entries and return classes for one
+PID/TID. It reads no arguments or payloads, keeps no dynamic flow keys, timestamps,
+events or stack samples, and makes no packet/admission decisions. The trace ELF
+has no reachable Coaptic code. Its explicitly recorded build core may therefore
+differ from the same-binary native OFF/ON core.
+See [the socket integration](../benchmark/linux_cpu.md#bounded-syscall-diagnostic).

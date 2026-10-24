@@ -1,0 +1,178 @@
+name: Manual bounded eBPF syscall diagnostic
+on:
+  workflow_dispatch:
+    inputs:
+      library_revision:
+        description: Exact native SUT/client core SHA, same binaries for OFF and ON
+        required: true
+        type: string
+      bpf_library_revision:
+        description: Exact current syn3 core SHA for locked trace-object compilation
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: manual-linux-cpu
+  cancel-in-progress: false
+env:
+  CARGO_BUILD_JOBS: '2'
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_RELEASE_DEBUG: '0'
+jobs:
+  syscall:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Validate immutable finite request
+        env:
+          NATIVE_CORE: ${{ inputs.library_revision }}
+          BPF_CORE: ${{ inputs.bpf_library_revision }}
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/syscall-setup" "$RUNNER_TEMP/syscall-lane"
+          python3 -B - <<'PY'
+          import os, re
+          for key in ('NATIVE_CORE','BPF_CORE'):
+              if not re.fullmatch('[0-9a-f]{40}',os.environ[key]):
+                  raise SystemExit('immutable full core SHA required')
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: jeffglousher/coaptic
+          ref: ${{ inputs.bpf_library_revision }}
+          path: coaptic
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: 1.99.0
+          components: clippy
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: nightly-2026-10-13
+          components: rust-src, llvm-tools
+      - name: Pinned linker and portable checks
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/syscall-venv"
+          PYTHONPATH=tools/benchmark python3 -B - <<'PY'
+          import os
+          from pathlib import Path
+          import linux_cpu as c
+          root=Path(os.environ['RUNNER_TEMP'])
+          commands=[('python',[str(root/'syscall-venv/bin/pip'),'install','psutil==7.0.0']),
+              ('python-tests',[str(root/'syscall-venv/bin/python'),'-B','-m','unittest','test_syscall_probe','test_linux_cpu','test_native_diagnostic'])]
+          for name,argv in commands:
+              with (root/'syscall-setup'/f'{name}.log').open('wb') as stream:
+                  c.run_logged(argv,stream,cwd=c.SUITE,timeout=120,limit=128*1024)
+          PY
+          mkdir "$RUNNER_TEMP/syscall-linker"
+          (ulimit -f 16384; curl --fail --location --retry 2 https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-x86_64-unknown-linux-musl.tar.zst -o "$RUNNER_TEMP/syscall-linker/archive.tar.zst")
+          echo "6789717c8cb6a2a5d920f3b6bfac2bd7efc00f6228ecd149108a99699a75c679  $RUNNER_TEMP/syscall-linker/archive.tar.zst" | sha256sum --check
+          test "$(tar --zstd -tf "$RUNNER_TEMP/syscall-linker/archive.tar.zst")" = bpf-linker
+          [[ "$(tar --zstd -tvf "$RUNNER_TEMP/syscall-linker/archive.tar.zst")" == -* ]]
+          tar --zstd --no-same-owner -xf "$RUNNER_TEMP/syscall-linker/archive.tar.zst" -C "$RUNNER_TEMP/syscall-linker" bpf-linker
+          test -f "$RUNNER_TEMP/syscall-linker/bpf-linker" && test ! -L "$RUNNER_TEMP/syscall-linker/bpf-linker"
+      - name: Locked helper and separate BPF object
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/syscall-lane
+          CARGO_TARGET_BPFEL_UNKNOWN_NONE_LINKER: ${{ runner.temp }}/syscall-linker/bpf-linker
+        run: |
+          set -euo pipefail
+          # Bound log copying independently: RLIMIT_FSIZE would also truncate
+          # compiler artifacts. Reuse the existing reserved-process launcher.
+          PYTHONPATH=tools/benchmark "$RUNNER_TEMP/syscall-venv/bin/python" -B - <<'PY'
+          import os
+          from pathlib import Path
+          import linux_cpu as c
+          root=Path(os.environ['RUNNER_TEMP'])/'syscall-setup'
+          loader=['--locked','--features','syscall-trace','--bin','coaptic-syscall-loader','--manifest-path','tools/bpf-ingress/loader/Cargo.toml']
+          commands=[('classifier-tests',['cargo','+1.99.0','test','--locked','--manifest-path','tools/bpf-ingress/classifier/Cargo.toml']),
+              ('loader-tests',['cargo','+1.99.0','test',*loader]),
+              ('loader-clippy',['cargo','+1.99.0','clippy',*loader,'--','-D','warnings']),
+              ('loader-build',['cargo','+1.99.0','build','--release',*loader]),
+              ('object-build',['cargo','+nightly-2026-10-13','build','--release','--locked','-Z','build-std=core','--target','bpfel-unknown-none','--features','syscall-trace','--bin','coaptic-syscall-ebpf','--manifest-path','tools/bpf-ingress/ebpf/Cargo.toml'])]
+          for name,argv in commands:
+              with (root/(name+'.log')).open('wb') as stream:
+                  c.run_logged(argv,stream,cwd=c.SUITE,timeout=900,limit=128*1024)
+          PY
+          {
+            uname -a
+            lscpu
+            sha256sum /sys/kernel/btf/vmlinux
+            cargo +1.99.0 -Vv
+            rustc +1.99.0 -Vv
+            rustc +nightly-2026-10-13 -Vv
+            "$RUNNER_TEMP/syscall-linker/bpf-linker" --version
+            sha256sum "$RUNNER_TEMP/syscall-linker/bpf-linker"
+          } > "$RUNNER_TEMP/syscall-setup/host-tools.txt"
+          # Cargo may hard-link release outputs. Give the finite execution path
+          # independent owned copies; retained metadata hashes still name builds.
+          mkdir -p "$RUNNER_TEMP/syscall-setup/binaries/bpf"
+          cp --preserve=mode "$RUNNER_TEMP/syscall-lane/release/coaptic-syscall-loader" "$RUNNER_TEMP/syscall-setup/binaries/bpf/loader"
+          cp "$RUNNER_TEMP/syscall-lane/bpfel-unknown-none/release/coaptic-syscall-ebpf" "$RUNNER_TEMP/syscall-setup/binaries/bpf/trace.elf"
+          PYTHONPATH=tools/benchmark "$RUNNER_TEMP/syscall-venv/bin/python" -B - <<'PY'
+          import os
+          from pathlib import Path
+          import linux_cpu as c
+          root=Path(os.environ['RUNNER_TEMP'])
+          c.save(root/'syscall-setup/bpf-build.json',dict(
+              core=c.identity(c.SUITE/'coaptic'),suite=c.identity(c.SUITE),
+              native_toolchain='1.99.0',bpf_toolchain='nightly-2026-10-13',
+              loader_sha256=c.digest(root/'syscall-lane/release/coaptic-syscall-loader'),
+              object_sha256=c.digest(root/'syscall-lane/bpfel-unknown-none/release/coaptic-syscall-ebpf'),
+              lock_sha256={f'tools/bpf-ingress/{name}/Cargo.lock':c.digest(c.SUITE/f'tools/bpf-ingress/{name}/Cargo.lock') for name in ('classifier','loader','ebpf')}))
+          PY
+      - name: One source-matched native build
+        env:
+          NATIVE_CORE: ${{ inputs.library_revision }}
+        run: |
+          set -euo pipefail
+          PYTHONPATH=tools/benchmark "$RUNNER_TEMP/syscall-venv/bin/python" -B - <<'PY'
+          import argparse, os
+          from pathlib import Path
+          import linux_cpu as c
+          root=Path(os.environ['RUNNER_TEMP'])
+          c.build(argparse.Namespace(build_lane=root/'syscall-lane'),'native',os.environ['NATIVE_CORE'],root/'syscall-setup')
+          PY
+      - name: Sixteen finite ordinary Mio windows
+        env:
+          NATIVE_CORE: ${{ inputs.library_revision }}
+        run: |
+          set -euo pipefail
+          PYTHONPATH=tools/benchmark "$RUNNER_TEMP/syscall-venv/bin/python" -B tools/benchmark/syscall_probe.py \
+            --core-sha "$NATIVE_CORE" --build-record "$RUNNER_TEMP/syscall-setup/build-native.json" \
+            --bpf-build-record "$RUNNER_TEMP/syscall-setup/bpf-build.json" \
+            --loader "$RUNNER_TEMP/syscall-setup/binaries/bpf/loader" \
+            --object "$RUNNER_TEMP/syscall-setup/binaries/bpf/trace.elf" \
+            --output "$RUNNER_TEMP/syscall-results" --seconds 30 --rate 1000 --repeats 4 \
+            --resource-profile small-device --bytes 32
+      - name: Enforce retained output budgets
+        if: always()
+        run: |
+          PYTHONPATH=tools/benchmark "$RUNNER_TEMP/syscall-venv/bin/python" -B - <<'PY'
+          import os
+          from pathlib import Path
+          import linux_cpu as c
+          root=Path(os.environ['RUNNER_TEMP'])
+          results=root/'syscall-results'
+          if results.exists() and c.upload_bytes(results)>16*c.MIB:
+              raise SystemExit('diagnostic evidence exceeds16MiB')
+          if sum(p.stat().st_size for p in (root/'syscall-setup').iterdir() if p.is_file())>6*c.MIB:
+              raise SystemExit('setup evidence exceeds6MiB')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: ebpf-syscalls-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/syscall-results/
+            ${{ runner.temp }}/syscall-setup/*.json
+            ${{ runner.temp }}/syscall-setup/*.log
+            ${{ runner.temp }}/syscall-setup/host-tools.txt
+          if-no-files-found: error
+          retention-days: 14

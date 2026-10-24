@@ -1,5 +1,67 @@
 # Manual Linux CPU qualification
 
+## Bounded syscall diagnostic
+
+Issue 195 adds an opt-in `syscall_probe.py` path over the existing ordinary Mio
+server, native client and complete response verification. The default benchmark
+and core remain unchanged. The manual `ebpf-syscalls.yml` workflow builds one
+native server/client pair, then runs SmallDevice32 C1 CON at 1,000 starts/s for
+30 seconds, four rotated OFF/ON pairs per security mode: sixteen windows,
+480,000 planned complete operations plus 320 warmups. Each window plans 30,020
+minimum outbound datagrams within the unchanged 60,000 bound. Perf, admission
+diagnostics, independent endpoints and network topology changes are absent.
+Established OSCORE and unprotected strata remain separate.
+
+OFF starts no tracing helper and attaches no syscall programs. ON creates the
+bounded privileged helper before warmup with counters disabled, enables at the
+post-warmup gate, then disables/detaches after `measured` and before client JSON
+formatting. Both arms explicitly pin the single-thread server to CPU 0. Aya
+opens its perf event there; that does not prove kernel callback coverage. No
+comparison to earlier unpinned measurements is valid. Callback filtering can
+impose system-wide work, including on non-target tasks, outside measured server
+CPU. Initial target observations and anomaly checks are narrow coverage proof.
+
+The helper requires Linux x86_64 LP64 ELF, a live PID/start-time identity, one
+thread, exact `raw_syscalls` tracepoint field layouts and CPU-0 affinity. It holds
+a pidfd and rechecks identity at gates. Fixed maps hold one target/gate value
+and 82 per-CPU u64 counters: sixteen syscall bins times five independent entry/
+exit classes, plus context-read and foreign-thread anomaly counters. EAGAIN,
+EINTR and other error returns stay explicit. There are no durations, syscall
+pairing, arguments, payloads, dynamic hashes, event rings or stack traces.
+Entry and exit counts need not balance: gates censor in-flight syscalls and
+restart behavior remains visible. vDSO calls are unobserved. Observed foreign
+threads, changed thread count/identity/affinity, malformed controls, missing
+hooks, read errors, saturation and unsupported layouts refuse the diagnostic.
+
+Admission allows at most 64 possible CPUs: map value storage is at most 41,992
+bytes, including the target slot. Each program's translated bytecode is capped
+at 64 KiB and their reported program memlock sum at 256 KiB. Native helper limits
+are 128 MiB address space (including its 1 MiB stack allowance), 30 CPU seconds,
+60 wall seconds, 64 FDs and 16 KiB stderr. Program JIT/memlock and loader lifetime
+CPU/RSS are retained separately. Kernel map/link allocator metadata and generated
+peak stack remain unknown; a 1 MiB metadata planning allowance is not a measured
+whole-kernel ceiling. Successful verifier acceptance is still needed. No pins,
+global sysctls or shared network changes are used.
+
+The existing owned-process reserved leader/group cleanup handles the privileged
+helper on normal exit, EOF, timeout, context cancellation and errors. Unresolved
+cleanup is fatal and blocks another helper. Controls and output have finite byte
+and time bounds. Retained results are capped at 16 MiB, setup logs/identities at
+6 MiB; binary build outputs are outside the upload. The runner retains raw failed
+reports and separate counts/op only after complete native verification. It keeps
+the existing CPU/load/latency/failure guards for diagnostic overhead eligibility;
+these rows are always vetoed by primary CPU acceptance. Low CPU resolution or
+failed latency guards withhold overhead ratios and do not erase valid functional
+counts. Counts are not removable CPU costs or transport shares. Both 50% targets
+and whole-memory acceptance remain open.
+
+The BPF object/native helper use explicitly source-matched current BPF locks,
+native Rust 1.99.0, pinned `nightly-2026-10-13` and linker 0.12.0. The native SUT
+may use accepted d23 via the existing native lock selector; its exact core and
+binary hashes remain separate from the BPF build core. Historical XDP proof
+cannot qualify this tracer. Actual Linux compilation, attachment, authenticated
+operations and measured OFF/ON overhead require the finite reviewed Linux proof.
+
 ### Bounded process memory observations (#185)
 
 Each existing `native_diagnostic.snapshot(process)` now attempts one optional
