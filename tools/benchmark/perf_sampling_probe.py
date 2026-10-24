@@ -23,7 +23,7 @@ import subprocess
 import sys
 import time
 
-from linux_cpu import bounded_bytes, command, perf_pass, spawn, stop
+from linux_cpu import bounded_bytes, command, perf_pass, sampling_frequency, spawn, stop
 
 MIB = 1024 * 1024
 OUTPUT_LIMIT = 64 * MIB
@@ -115,8 +115,9 @@ def inventory(directory):
 
 
 def measure_control(pattern, *, cpu=time.process_time_ns, thread=time.thread_time_ns,
-                    wall=time.monotonic_ns, sleep=time.sleep, usage=None):
+                    wall=time.monotonic_ns, sleep=time.sleep, usage=None, frequency_hz=997):
     """Scalar-only workload; injectable clocks allow tests without a timed run."""
+    period_ns = 1_000_000_000 // sampling_frequency(frequency_hz)
     if pattern not in ("continuous", "bursty"):
         raise ValueError("unsupported work pattern")
     if usage is None:
@@ -141,7 +142,7 @@ def measure_control(pattern, *, cpu=time.process_time_ns, thread=time.thread_tim
         block_ns = last_cpu - block_start
         blocks += 1
         maximum = max(maximum, block_ns)
-        over_period += block_ns >= PERIOD_NS
+        over_period += block_ns >= period_ns
         # Clock/loop/sleep overhead contributes to the total process CPU target.
         last_cpu = cpu()
         if (pattern == "bursty" and last_cpu - started_cpu < TARGET_CPU_NS
@@ -192,7 +193,8 @@ def write_gate(fd, gate, deadline):
         raise ValueError("partial IPC gate; command not retried")
 
 
-def worker_main(pattern):
+def worker_main(pattern, *, frequency_hz=997):
+    sampling_frequency(frequency_hz)
     if sys.platform != "linux":
         raise ValueError("helper requires Linux")
     input_fd, output_fd = sys.stdin.fileno(), sys.stdout.fileno()
@@ -203,7 +205,7 @@ def worker_main(pattern):
     if read_line(input_fd, startup, 16) != b"run\n":
         raise ValueError("expected run gate")
     report_deadline = time.monotonic() + 15
-    receipt = measure_control(pattern)
+    receipt = measure_control(pattern, frequency_hz=frequency_hz)
     write_gate(output_fd, b"measured\n", report_deadline)
     if read_line(input_fd, report_deadline, 16) != b"report\n":
         raise ValueError("expected report gate")
@@ -217,7 +219,8 @@ def worker_main(pattern):
     return 0
 
 
-def validate_receipt(value, pid, pattern):
+def validate_receipt(value, pid, pattern, *, frequency_hz=997):
+    period_ns = 1_000_000_000 // sampling_frequency(frequency_hz)
     numbers = ("process_cpu_ns", "thread_cpu_ns", "wall_ns", "iterations", "blocks",
                "max_block_cpu_ns", "blocks_at_or_above_period", "sleep_calls",
                "voluntary_context_switches", "involuntary_context_switches")
@@ -235,7 +238,7 @@ def validate_receipt(value, pid, pattern):
             or value["thread_cpu_ns"] > value["process_cpu_ns"] + 1_000_000
             or value["process_cpu_ns"] > value["wall_ns"] + 1_000_000
             or value["short_blocks_valid"] != (value["blocks_at_or_above_period"] == 0)
-            or (value["max_block_cpu_ns"] >= PERIOD_NS) != bool(value["blocks_at_or_above_period"])
+            or (value["max_block_cpu_ns"] >= period_ns) != bool(value["blocks_at_or_above_period"])
             or value["completed"] != (value["process_cpu_ns"] >= TARGET_CPU_NS)
             or value["deadline_hit"] != (value["wall_ns"] >= WALL_NS)):
         raise ValueError("inconsistent helper receipt")
@@ -260,12 +263,13 @@ def proc_snapshot(pid):
             "executable": os.readlink(f"/proc/{pid}/exe")}
 
 
-def parse_perf(data, event, pid, executable):
+def parse_perf(data, event, pid, executable, *, frequency_hz=997):
     """Strict single-clock or observed clock+dummy/IDENTIFIER records only.
 
     No ELF, raw capture, callchain or symbol is executed. No symbol resolver is
     invoked here. Features are range checked but their contents are not decoded.
     """
+    sampling_frequency(frequency_hz)
     if event not in ("cpu-clock", "task-clock") or type(pid) is not int or pid <= 1:
         raise ValueError("invalid expected event/PID")
     if not 104 <= len(data) <= QUOTA or data[:8] != b"PERFILE2":
@@ -309,7 +313,7 @@ def parse_perf(data, event, pid, executable):
         # Only the requested clock is sampled; dummy is metadata-only and has
         # the observed user-only exclusions, never a second CPU denominator.
         if (declared + 16 != attr_stride or typ != 1 or config != expected_config
-                or freq != 997 or sample_type != expected_sample or read_format != 20
+                or freq != frequency_hz or sample_type != expected_sample or read_format != 20
                 or not flags & (1 << 10) or (identified and not flags & (1 << 18))
                 or scope != expected_scope):
             raise ValueError("unsupported event, frequency, scope or sample layout")
@@ -462,7 +466,7 @@ def parse_perf(data, event, pid, executable):
     return {"schema": 1, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
             "event": event, "event_id_count": len(event_ids),
             "event_ids_sha256": hashlib.sha256(data[clock["io"]:clock["io"] + clock["iz"]]).hexdigest(),
-            "frequency_hz": 997, "inclusive": True,
+            "frequency_hz": frequency_hz, "inclusive": True,
             "sample_layout": "clock+tracking IDENTIFIER" if identified else "single clock295",
             "tracking_event_id_count": len(tracking_ids), "tracking_metadata_records": tracking_metadata,
             "synthetic_metadata_records": synthetic_metadata, "loss_by_event": event_loss,
@@ -499,16 +503,19 @@ def report_counts(directory):
     return result
 
 
-def collect_control(event, pattern, directory):
+def collect_control(event, pattern, directory, *, frequency_hz=997):
+    sampling_frequency(frequency_hz)
     if (event, pattern) not in PLAN:
         raise ValueError("unsupported control")
     directory.mkdir(mode=0o700)
-    result = {"event": event, "pattern": pattern, "valid": False, "attempted": True}
+    result = {"event": event, "pattern": pattern, "frequency_hz": frequency_hz,
+              "valid": False, "attempted": True}
     worker = capture = None
     try:
         with (directory / "worker.stderr").open("xb") as log:
             try:
-                worker = spawn([sys.executable, "-B", str(Path(__file__).resolve()), "--worker", pattern],
+                worker = spawn([sys.executable, "-B", str(Path(__file__).resolve()), "--worker", pattern,
+                                "--frequency-hz", str(frequency_hz)],
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
                                file_limit=LOG_LIMIT)
                 result["pid"] = worker.pid
@@ -516,7 +523,8 @@ def collect_control(event, pattern, directory):
                 os.set_blocking(worker.stdout.fileno(), False)
                 if read_line(worker.stdout.fileno(), time.monotonic() + 2, 16) != b"ready\n":
                     raise ValueError("worker not ready")
-                with perf_pass("record", worker.pid, 5, directory, QUOTA, event=event, target=worker) as capture:
+                with perf_pass("record", worker.pid, 5, directory, QUOTA, event=event, target=worker,
+                               frequency_hz=frequency_hz) as capture:
                     deadline = capture.deadline
                     if not isinstance(deadline, (float, int)) or not math.isfinite(deadline) or not 0 < deadline - time.monotonic() <= 15:
                         raise ValueError("missing finite record deadline")
@@ -544,7 +552,7 @@ def collect_control(event, pattern, directory):
                         stream.write(raw)
                     receipt = json.loads(raw)
                     result["receipt"] = receipt
-                    validate_receipt(receipt, worker.pid, pattern)
+                    validate_receipt(receipt, worker.pid, pattern, frequency_hz=frequency_hz)
                     if worker.wait(timeout=max(0, deadline - time.monotonic())) != 0:
                         raise ValueError("helper exited unsuccessfully")
                     if os.read(worker.stdout.fileno(), 1):
@@ -568,7 +576,7 @@ def collect_control(event, pattern, directory):
                 or result.get("cleanup_unresolved")):
             raise ValueError("capture/report unavailable or cleanup unresolved")
         raw_audit = parse_perf(read_regular(directory / "perf.data", QUOTA), event, worker.pid,
-                               str(Path(sys.executable).resolve()))
+                               str(Path(sys.executable).resolve()), frequency_hz=frequency_hz)
         result["raw"] = raw_audit
         headers = report_counts(directory)
         result["report_counts"] = headers
@@ -599,9 +607,11 @@ def collect_control(event, pattern, directory):
     return result
 
 
-def run_probe(output):
+def run_probe(output, *, frequency_hz=997):
+    sampling_frequency(frequency_hz)
     output = fresh_output(output)
-    summary = {"schema": 1, "plan": [dict(event=e, pattern=p) for e, p in PLAN],
+    summary = {"schema": 1, "frequency_hz": frequency_hz,
+               "plan": [dict(event=e, pattern=p) for e, p in PLAN],
                "valid": False, "controls": [], "limits":
                "Finite sampling suitability controls only. ACK is processing, not representative coverage; block CPU is not a scheduler slice. No function shares, application speedup or causal claim about prior captures."}
     try:
@@ -612,7 +622,8 @@ def run_probe(output):
         missing = [name for name in ("perf", "sudo", "prlimit", "timeout", "git") if not shutil.which(name)]
         if missing:
             raise ValueError("required existing tool unavailable: " + ", ".join(missing))
-        manifest = {"schema": 1, "python": sys.version, "python_executable": str(Path(sys.executable).resolve()),
+        manifest = {"schema": 1, "frequency_hz": frequency_hz,
+                    "python": sys.version, "python_executable": str(Path(sys.executable).resolve()),
                     "python_identity": digest_file(Path(sys.executable).resolve()),
                     "helper_identity": digest_file(Path(__file__).resolve()),
                     "recorder_identity": digest_file(Path(__file__).with_name("linux_cpu.py")),
@@ -621,13 +632,15 @@ def run_probe(output):
                     "source_status": command(["git", "--no-optional-locks", "status", "--porcelain"], timeout=5),
                     "host": platform.platform(), "kernel": platform.release(), "controller_pid": os.getpid(),
                     "tools": {name: shutil.which(name) for name in ("perf", "sudo", "prlimit", "timeout")},
-                    "target_cpu_ns": TARGET_CPU_NS, "block_cpu_ns": BLOCK_CPU_NS, "period_ns": PERIOD_NS,
+                    "target_cpu_ns": TARGET_CPU_NS, "block_cpu_ns": BLOCK_CPU_NS,
+                    "period_ns": 1_000_000_000 // frequency_hz,
                     "wall_cap_ns": WALL_NS, "block_cap": MAX_BLOCKS, "per_perf_file_quota": QUOTA,
                     "whole_output_limit": OUTPUT_LIMIT, "workflow_test_log_allowance": TEST_LOG_LIMIT,
                     "no_symbol_downloads": True}
         save_new(output / "manifest.json", manifest)
         for index, (event, pattern) in enumerate(PLAN):
-            result = collect_control(event, pattern, output / f"control-{index:03}")
+            result = collect_control(event, pattern, output / f"control-{index:03}",
+                                     frequency_hz=frequency_hz)
             summary["controls"].append({
                 "event": event, "pattern": pattern, "valid": result["valid"],
                 "evidence": f"control-{index:03}/control.json",
@@ -660,8 +673,10 @@ def main(argv=None):
     choice = parser.add_mutually_exclusive_group(required=True)
     choice.add_argument("--output", type=Path, help="NEW directory; existing output is refused")
     choice.add_argument("--worker", choices=("continuous", "bursty"), help=argparse.SUPPRESS)
+    parser.add_argument("--frequency-hz", type=int, choices=(997, 9970), default=997)
     args = parser.parse_args(argv)
-    return worker_main(args.worker) if args.worker else run_probe(args.output)
+    return (worker_main(args.worker, frequency_hz=args.frequency_hz) if args.worker
+            else run_probe(args.output, frequency_hz=args.frequency_hz))
 
 
 if __name__ == "__main__":

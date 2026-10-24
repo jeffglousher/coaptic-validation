@@ -485,7 +485,7 @@ capacity is enlarged by this diagnostic path.
 
 Optional **separate** five-second `sudo -n perf record` and `perf stat` passes
 attach only to the selected server PID after warmup. Record samples user and
-kernel execution at 997Hz using inclusive `cpu-clock`, frame-pointer call chains
+kernel execution at the requested frequency (default 997Hz) using inclusive `cpu-clock`, frame-pointer call chains
 and 128 mmap pages. Kernel symbols may remain unresolved under runner policy.
 Clean process CPU still includes user and system time, and stat events are
 unchanged. There is no eBPF, DWARF stack
@@ -519,7 +519,7 @@ that NUL. Wrong, extra, stale, incomplete or late ACKs, short writes and target 
 recorder exits refuse the capture. A startup refusal never releases the client
 run gate. Record's measured gate is clamped to the capture deadline too.
 
-`perf_pass(..., event='cpu-clock', target=None)` yields a dict-compatible
+`perf_pass(..., event='cpu-clock', target=None, frequency_hz=997)` yields a dict-compatible
 `PerfCapture`. Its record-only `deadline` and `finish_recording()` support the
 separate finite sampling probe; process handles and FDs are instance attributes,
 never serialized keys. Only record accepts `cpu-clock` or `task-clock`; campaigns
@@ -553,6 +553,60 @@ The raw reader accepts the earlier single-clock layout or the observed
 clock-plus-dummy layout with `IDENTIFIER`. Every sample must bind to the requested
 clock's IDs and target PID; tracking metadata and loss stay separate. Other
 layouts are retained and refused.
+
+### One bounded higher-rate diagnostic (#180)
+
+`--frequency-hz` accepts only integer `997` or `9970`; the existing manual
+sampling and performance workflows expose `frequency_hz` with default `997`.
+The recorder, request/manifest/window metadata and strict raw audit retain the
+requested rate. `parse_perf(data, event, pid, executable, *, frequency_hz=997)`
+requires that rate in both supported clock/dummy attribute layouts; it never
+derives the expected rate from the capture. Historical 997Hz input uses the
+unchanged default. Event, scope, sample layout, IDs, PID, executable mapping,
+CPU modes and loss checks remain mandatory. Stat does not use the frequency,
+but its metadata still names the selection.
+
+First predeclare and review the existing four serial cpu-clock/task-clock,
+continuous/bursty controls at `--frequency-hz 9970`. Their CPU target, 50us
+blocks, wall cap and block cap are unchanged; short bursts must be below the
+requested nominal period (`floor(1e9/frequency_hz)` ns). For example:
+
+```sh
+python3 -B tools/benchmark/perf_sampling_probe.py \
+  --frequency-hz 9970 --output /fresh/evidence/sampling-controls-9970
+```
+
+Only adequate controls can support one separately predeclared communication
+capture. At 9970Hz the runner and workflow validation require perf enabled,
+admission diagnostics off, identical full baseline/candidate core SHAs, ordinary
+`coaptic-mio` on both labels (`candidate_server_kind: same`), `small-device`,
+32 bytes only, C1 CON, independent endpoints off, 4000/s only and two rotated
+pairs (an AB/BA screen, not four-pair acceptance). Wrong combinations fail before
+build/native preflight. Existing clean seconds 2..30 and every send, operation,
+CPU, latency, capacity and security gate still apply. A reproduction command
+after review and control qualification is:
+
+```sh
+python3 -B tools/benchmark/linux_cpu.py \
+  --baseline-sha "$CORE_SHA" --candidate-sha "$CORE_SHA" \
+  --build-lane /existing/compatible/cargo-lane --output /fresh/evidence/small-9970 \
+  --server-kind coaptic-mio --resource-profile small-device --sizes 32 \
+  --rates 4000 --seconds 5 --repeats 2 --concurrency 1 --message-type con \
+  --perf --frequency-hz 9970
+```
+
+4000/s avoids the lower sample density of the 1000/s cell while retaining the
+current SmallDevice32 source; it does not replace an acceptance workload. The
+five-second profiling window, 128-page ring, file/process/time/report/binary/
+output/send budgets, compiler flags and diagnostics-off App are unchanged.
+Higher-rate profiling can perturb execution; profile CPU is not clean CPU.
+Zero recorded loss does not establish complete capture, and counts do not
+establish cause, App ancestry or transport shares. Stop on control/capture
+refusal, limits, inadequate App/inline evidence or an inconclusive optimization
+screen; do not raise frequency again, change floors or replace prior cohorts.
+The higher-rate runner stops after its first failed window or unavailable
+capture/report. Actual higher-rate Linux proof remains pending. Wiring establishes
+no performance gain, qualification or progress on either open 50% CPU target.
 
 [Run 39855681794](https://github.com/jeffglousher/coaptic-validation/actions/runs/39855681794)
 passed all 57 selected Linux tests, then refused enable ACK before releasing work.
