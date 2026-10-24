@@ -33,7 +33,9 @@ Each measured batch executes 10,000 kernel `BPF_PROG_TEST_RUN` invocations;
 each program/frame has 100 warmups and five measured batches with alternating
 program order. The native loader pins one available CPU and restores affinity.
 Both programs are loaded with unmodified Aya; neither is attached and there is
-no network delivery. Each invocation checks PASS and unchanged returned bytes.
+no network delivery. Each batch is one kernel test-run call requesting repeated
+program executions. The loader checks the returned PASS action and frame once
+per call; it does not independently inspect every repetition's returned bytes.
 Counter deltas match all 200,400 classifier invocations; the control also
 executes 200,400 times without changing counters. Linux already divides the
 reported duration by repetitions; do not divide it again.
