@@ -17,7 +17,7 @@ on:
         type: string
         default: 64,1024
       resource_profile:
-        description: Same exact resource profile on both labels; new profiles require Mio C1 CON
+        description: Same exact resource profile on both labels; Mio and supported CON capacity required
         type: choice
         default: host-control
         options: [host-control, small-device, small-blockwise, service-fixed, service-allocated]
@@ -52,7 +52,7 @@ on:
         type: boolean
         default: false
       client_concurrency:
-        description: Outstanding client Calls (2..4 requires explicit non; CON NSTART=1)
+        description: Outstanding Calls; C2..4 requires independent CON endpoints or explicit NON
         type: choice
         default: '1'
         options: ['1', '2', '3', '4']
@@ -61,6 +61,10 @@ on:
         type: choice
         default: con
         options: [con, non]
+      independent_endpoints:
+        description: Explicit C2..4 CON over distinct local endpoints to one server; capacities still enforced
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -87,6 +91,7 @@ jobs:
       ADMISSION_DIAGNOSTICS: ${{ inputs.admission_diagnostics }}
       CLIENT_CONCURRENCY: ${{ inputs.client_concurrency }}
       MESSAGE_TYPE: ${{ inputs.message_type }}
+      INDEPENDENT_ENDPOINTS: ${{ inputs.independent_endpoints }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -109,7 +114,8 @@ jobs:
               candidate_server_kind=(None if os.environ['CANDIDATE_SERVER_KIND'] == 'same'
                                      else os.environ['CANDIDATE_SERVER_KIND']),
               baseline_sha=os.environ['BASELINE_SHA'], candidate_sha=os.environ['CANDIDATE_SHA'],
-              concurrency=int(os.environ['CLIENT_CONCURRENCY']), message_type=os.environ['MESSAGE_TYPE']))
+              concurrency=int(os.environ['CLIENT_CONCURRENCY']), message_type=os.environ['MESSAGE_TYPE'],
+              independent_endpoints=os.environ['INDEPENDENT_ENDPOINTS'] == 'true'))
           PY
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -135,8 +141,7 @@ jobs:
           # Never change perf_event_paranoid or install a kernel/profiling service.
           # Missing perf/sudo, unsupported events and permission refusal are raw artifacts.
           { command -v perf; perf --version; command -v prlimit; uname -a; } >"$RUNNER_TEMP/cpu-setup-logs/perf-tools.log" 2>&1 || true
-      - name: Direct Linux transport proof before its comparison
-        if: inputs.server_kind == 'coaptic-mio-direct' || inputs.candidate_server_kind == 'coaptic-mio-direct'
+      - name: Native endpoint and staged driver proof before measurement
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/cpu-build-lane
           CARGO_INCREMENTAL: '0'
@@ -153,27 +158,35 @@ jobs:
           from native_lock import native_lock
           before = identity(SUITE), identity(SUITE / 'coaptic')
           if any(source['status'] for source in before):
-              raise ValueError('direct preflight requires clean sources')
+              raise ValueError('native preflight requires clean sources')
           logs = Path(os.environ['RUNNER_TEMP']) / 'cpu-setup-logs'
+          common = ['--manifest-path', 'tools/benchmark/native/Cargo.toml',
+                    '--release', '--locked', '-p', 'bench-rust-server']
+          checks = [
+              ('endpoint-tests', ['cargo', 'test', *common, '--bin', 'bench-native-client',
+                                  'endpoint_udp::tests', '--', '--test-threads=1']),
+              ('staged-tests', ['cargo', 'test', *common, '--bin', 'bench-rust-server',
+                                'staged_', '--', '--test-threads=1']),
+          ]
+          if 'coaptic-mio-direct' in (os.environ['SERVER_KIND'], os.environ['CANDIDATE_SERVER_KIND']):
+              checks.append(('direct-tests', ['cargo', 'test', *common, '--bin',
+                                               'bench-rust-server', 'direct_udp::tests']))
+          checks.append(('native-clippy', ['cargo', 'clippy', *common, '--all-targets',
+                                          '--', '-D', 'warnings']))
           with native_lock(SUITE / 'coaptic') as lock_input:
-              for name, command in (
-                  ('direct-tests', ['cargo', 'test', '--manifest-path', 'tools/benchmark/native/Cargo.toml',
-                                   '--release', '--locked', '-p', 'bench-rust-server', '--bin',
-                                   'bench-rust-server', 'direct_udp::tests']),
-                  ('direct-clippy', ['cargo', 'clippy', '--manifest-path', 'tools/benchmark/native/Cargo.toml',
-                                    '--release', '--locked', '-p', 'bench-rust-server', '--bin',
-                                    'bench-rust-server', '--', '-D', 'warnings'])):
+              for name, command in checks:
                   with (logs / (name + '.log')).open('wb') as log:
                       run_logged(command, log, cwd=SUITE, timeout=900)
           if (identity(SUITE), identity(SUITE / 'coaptic')) != before:
-              raise ValueError('direct preflight source identity changed')
-          save(logs / 'direct-lock-input.json', dict(suite=before[0], core=before[1], native_lock_input=lock_input))
+              raise ValueError('native preflight source identity changed')
+          save(logs / 'native-lock-input.json', dict(suite=before[0], core=before[1], native_lock_input=lock_input))
           PY
       - name: Sequential source-matched builds, clean windows, then profiling
         run: |
           options=()
           if [[ "$PERF_ENABLED" == true ]]; then options+=(--perf); fi
           if [[ "$ADMISSION_DIAGNOSTICS" == true ]]; then options+=(--admission-diagnostics); fi
+          if [[ "$INDEPENDENT_ENDPOINTS" == true ]]; then options+=(--independent-endpoints); fi
           if [[ "$CANDIDATE_SERVER_KIND" != same ]]; then options+=(--candidate-server-kind "$CANDIDATE_SERVER_KIND"); fi
           "$RUNNER_TEMP/cpu-venv/bin/python" tools/benchmark/linux_cpu.py \
             --baseline-sha "$BASELINE_SHA" --candidate-sha "$CANDIDATE_SHA" \
