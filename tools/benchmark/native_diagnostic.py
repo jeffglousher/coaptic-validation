@@ -1,8 +1,8 @@
 """Coaptic-only complete-operation diagnostic, not a comparative campaign.
 
 Gates keep CPU/RSS samples outside operation clocks. Resource windows include
-control IPC/sampling overhead; CPU accounting is quantized. RSS high-water marks
-cover the process lifetime, not solely measurement. Kernel socket memory and
+control IPC/sampling overhead; CPU accounting is quantized. Optional kernel memory
+high-water observations cover process lifetime, not solely measurement. Kernel socket memory and
 allocator overhead are not derived from the core's requested heap quota.
 Each control phase has an explicit wall-clock deadline (300s by default),
 independent of the client's operation bounds. If it expires, the observation
@@ -185,10 +185,112 @@ def source_identity(path):
                 status=git("status", "--porcelain"))
 
 
+PROC_MEMORY_READ_LIMIT = 8192  # Per file, including the refusal sentinel byte.
+PROC_MEMORY_RESULT_LIMIT = 1024  # Compact ASCII JSON, including member overhead.
+
+
+def _proc_memory_fields(raw, source):
+    """Parse only four status fields or one limits row; no general /proc parser."""
+    if len(raw) >= PROC_MEMORY_READ_LIMIT:
+        raise ValueError("read_limit")
+    if not raw or not raw.endswith(b"\n"):
+        raise ValueError("incomplete")
+    fields = {}
+    start = 0
+    while start < len(raw):
+        end = raw.find(b"\n", start)
+        line = raw[start:end]
+        start = end + 1
+        if source == "status":
+            key, separator, value = line.partition(b":")
+            if key not in (b"VmHWM", b"VmPeak", b"VmStk", b"Threads"):
+                continue
+            if not separator or len(line) > 128:
+                raise ValueError("malformed")
+            tokens = value.split()
+            if key == b"Threads":
+                if len(tokens) != 1:
+                    raise ValueError("malformed")
+                fields_key, scale = "threads", 1
+            else:
+                if len(tokens) != 2 or tokens[1] != b"kB":
+                    raise ValueError("malformed")
+                fields_key, scale = {b"VmHWM": "vm_hwm_bytes", b"VmPeak": "vm_peak_bytes",
+                                     b"VmStk": "vm_stk_bytes"}[key], 1024
+            values = (tokens[0],)
+        else:
+            if not line.startswith(b"Max stack size"):
+                continue
+            if len(line) > 128:
+                raise ValueError("malformed")
+            tokens = line.split()
+            if len(tokens) != 6 or tokens[:3] != [b"Max", b"stack", b"size"] or tokens[5] != b"bytes":
+                raise ValueError("malformed")
+            fields_key, scale, values = "stack_limit", 1, tokens[3:5]
+        if fields_key in fields:
+            raise ValueError("duplicate")
+        numbers = []
+        for token in values:
+            if source == "limits" and token == b"unlimited":
+                numbers.append("unlimited")
+            elif not 1 <= len(token) <= 20 or not token.isdigit() or int(token) * scale >= 2**64:
+                raise ValueError("malformed")
+            else:
+                numbers.append(int(token) * scale)
+        if fields_key == "threads" and numbers[0] == 0:
+            raise ValueError("malformed")
+        fields[fields_key] = numbers[0] if source == "status" else numbers
+    if len(fields) != (4 if source == "status" else 1):
+        raise ValueError("missing")
+    if source == "limits":
+        soft, hard = fields.pop("stack_limit")
+        if hard != "unlimited" and (soft == "unlimited" or soft > hard):
+            raise ValueError("malformed")
+        fields = dict(stack_soft_bytes=soft, stack_hard_bytes=hard)
+    return dict(available=True, **fields)
+
+
+def process_memory_evidence(pid):
+    """Optional read-only Linux metadata for an owned, unreaped child at a gate.
+
+    Reads are serial, non-atomic and never used for CPU/memory acceptance. Callers
+    retain PID custody; this helper neither polls/reaps nor acts on any PID.
+    """
+    result = dict(schema="coaptic-proc-memory/1", available=False)
+    if sys.platform != "linux":
+        return dict(result, reason="unsupported_platform")
+    if type(pid) is not int or not 0 < pid < 2**31:
+        return dict(result, reason="invalid_pid")
+    result["pid"] = pid
+    for source in ("status", "limits"):
+        try:
+            # Unbuffered: the file wrapper cannot read ahead beyond this cap.
+            with Path(f"/proc/{pid}/{source}").open("rb", buffering=0) as reader:
+                raw = reader.read(PROC_MEMORY_READ_LIMIT - 1)
+                if reader.read(1):
+                    # Even a newline-ended short read must prove EOF, rather
+                    # than accepting a prefix that happens to contain our fields.
+                    raise ValueError("read_limit" if len(raw) == PROC_MEMORY_READ_LIMIT - 1 else "incomplete")
+            result[source] = _proc_memory_fields(raw, source)
+        except OSError:
+            result[source] = dict(available=False, reason="read_failed")
+        except ValueError as error:
+            reason = str(error)
+            result[source] = dict(available=False, reason=reason if reason in
+                                 ("read_limit", "incomplete", "malformed", "duplicate", "missing") else "malformed")
+        finally:
+            raw = None  # Release this file's bytes before the next bounded read.
+    result["available"] = all(result[source]["available"] for source in ("status", "limits"))
+    if len(json.dumps(result, separators=(",", ":"), ensure_ascii=True)) + len(',"process_memory":') > PROC_MEMORY_RESULT_LIMIT:
+        return dict(schema="coaptic-proc-memory/1", available=False, reason="result_limit")
+    return result
+
+
 def snapshot(process):
     cpu = process.cpu_times()
+    memory = process.memory_info()._asdict()
     return dict(cpu_user_seconds=cpu.user, cpu_system_seconds=cpu.system,
-                memory=process.memory_info()._asdict())
+                memory=memory, process_memory=process_memory_evidence(process.pid))
 
 
 def control_line(stream, timeout, limit=128):

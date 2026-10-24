@@ -7,8 +7,150 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 from native_diagnostic import (ADMISSION_DIAGNOSTIC_LIMIT, control_line, cpu_cost, main, measure,
-                               server_resources, validate_admission_diagnostics, validate_report)
+                               PROC_MEMORY_READ_LIMIT, PROC_MEMORY_RESULT_LIMIT, _proc_memory_fields,
+                               process_memory_evidence, snapshot, server_resources,
+                               validate_admission_diagnostics, validate_report)
 from native_profiles import dimensions, PROFILE_SIZES
+
+
+class ProcessMemoryTests(unittest.TestCase):
+    STATUS = b"Name:\tnative\nVmHWM:\t12 kB\nVmPeak: 34 kB\nVmStk: 8 kB\nThreads: 1\n"
+    LIMITS = b"Limit Soft Limit Hard Limit Units\nMax stack size 8388608 unlimited bytes\n"
+
+    def test_exact_fields_units_zero_and_unlimited_limits(self):
+        self.assertEqual(_proc_memory_fields(self.STATUS, "status"), dict(
+            available=True, vm_hwm_bytes=12288, vm_peak_bytes=34816, vm_stk_bytes=8192, threads=1))
+        for soft, hard in (("0", "0"), ("1024", "2048"), ("unlimited", "unlimited"),
+                           ("0", "unlimited"), (str(2**64 - 1), "unlimited")):
+            row = f"Max stack size {soft} {hard} bytes\n".encode()
+            result = _proc_memory_fields(row, "limits")
+            self.assertEqual(result, dict(available=True,
+                stack_soft_bytes=soft if soft == "unlimited" else int(soft),
+                stack_hard_bytes=hard if hard == "unlimited" else int(hard)))
+        zero = self.STATUS.replace(b"12 kB", b"0 kB")
+        self.assertEqual(_proc_memory_fields(zero, "status")["vm_hwm_bytes"], 0)
+
+    def test_missing_duplicates_units_numeric_and_incomplete_refuse(self):
+        for field in (b"VmHWM", b"VmPeak", b"VmStk", b"Threads"):
+            lines = self.STATUS.splitlines(keepends=True)
+            row = next(line for line in lines if line.startswith(field + b":"))
+            for raw, reason in ((self.STATUS.replace(row, b""), "missing"),
+                                (self.STATUS + row, "duplicate")):
+                with self.subTest(field=field, reason=reason), self.assertRaisesRegex(ValueError, reason):
+                    _proc_memory_fields(raw, "status")
+        bad_status = (self.STATUS[:-1], b"", self.STATUS.replace(b"12 kB", b"12 KB"),
+                      self.STATUS.replace(b"12 kB", b"12 bytes"),
+                      self.STATUS.replace(b"12 kB", b"12"),
+                      self.STATUS.replace(b"12 kB", b"-1 kB"),
+                      self.STATUS.replace(b"12 kB", b"1.0 kB"),
+                      self.STATUS.replace(b"12 kB", b"+1 kB"),
+                      self.STATUS.replace(b"12 kB", b"\xff kB"),
+                      self.STATUS.replace(b"12 kB", str(2**54).encode() + b" kB"),
+                      self.STATUS.replace(b"12 kB", b"1" * 21 + b" kB"),
+                      self.STATUS.replace(b"Threads: 1", b"Threads: 0"),
+                      self.STATUS.replace(b"Threads: 1", b"Threads: 1 kB"),
+                      self.STATUS.replace(b"12 kB", b" " * 129 + b"12 kB"))
+        bad_limits = (b"", self.LIMITS[:-1], self.LIMITS + self.LIMITS,
+                      b"Max stack size 2 1 bytes\n", b"Max stack size unlimited 1 bytes\n",
+                      b"Max stack size -1 unlimited bytes\n", b"Max stack size 1 2 kB\n",
+                      b"Max stack size 1 2 bytes extra\n", b"Max stack size 1 bytes\n",
+                      b"Max stack size Unlimited unlimited bytes\n",
+                      f"Max stack size {2**64} unlimited bytes\n".encode())
+        for source, records in (("status", bad_status), ("limits", bad_limits)):
+            for raw in records:
+                with self.subTest(source=source, raw=raw[:150]), self.assertRaises(ValueError):
+                    _proc_memory_fields(raw, source)
+
+    def test_read_bound_refuses_full_cap_even_if_selected_fields_complete(self):
+        for source, base in (("status", self.STATUS), ("limits", self.LIMITS)):
+            accepted = base + b"x" * (PROC_MEMORY_READ_LIMIT - len(base) - 2) + b"\n"
+            self.assertTrue(_proc_memory_fields(accepted, source)["available"])
+            for raw in (accepted + b"\n", accepted + b"xx\n"):
+                with self.subTest(source=source), self.assertRaisesRegex(ValueError, "read_limit"):
+                    _proc_memory_fields(raw, source)
+
+    def test_capture_serial_bounded_read_errors_and_partial_availability(self):
+        for status, limits in ((self.STATUS, self.LIMITS), (PermissionError(), self.LIMITS),
+                               (self.STATUS, FileNotFoundError()), (b"VmHWM: 1 kB\n", self.LIMITS),
+                               (self.STATUS, self.LIMITS * PROC_MEMORY_READ_LIMIT),
+                               (OSError("private path must not escape"), OSError())):
+            calls = []
+            def open_source(path, mode, **kwargs):
+                self.assertEqual(mode, "rb")
+                self.assertEqual(kwargs, dict(buffering=0))
+                calls.append(str(path).replace("\\", "/"))
+                data = status if path.name == "status" else limits
+                if isinstance(data, Exception):
+                    raise data
+                stream = MagicMock()
+                reader = stream.__enter__.return_value
+                data_reader = io.BytesIO(data)
+                counts = iter((PROC_MEMORY_READ_LIMIT - 1, 1))
+                def read(n):
+                    self.assertEqual(n, next(counts))
+                    return data_reader.read(n)
+                reader.read.side_effect = read
+                return stream
+            with patch("native_diagnostic.sys.platform", "linux"), \
+                 patch("native_diagnostic.Path.open", autospec=True, side_effect=open_source) as opened:
+                result = process_memory_evidence(123)
+            self.assertEqual(calls, ["/proc/123/status", "/proc/123/limits"])
+            self.assertEqual(opened.call_count, 2)
+            self.assertEqual(result["available"], status == self.STATUS and limits == self.LIMITS)
+            for source, data in (("status", status), ("limits", limits)):
+                if isinstance(data, Exception):
+                    self.assertEqual(result[source], dict(available=False, reason="read_failed"))
+            encoded = json.dumps(result, separators=(",", ":"), ensure_ascii=True)
+            self.assertLessEqual(len(encoded) + len(',"process_memory":'), PROC_MEMORY_RESULT_LIMIT)
+            self.assertNotIn("private path", encoded)
+
+    def test_newline_ended_short_read_without_eof_is_unavailable(self):
+        for extra in (b"x", OSError("read refused")):
+            with patch("native_diagnostic.sys.platform", "linux"), \
+                 patch("native_diagnostic.Path.open") as opened:
+                opened.return_value.__enter__.return_value.read.side_effect = [
+                    self.STATUS, extra, self.LIMITS, b""]
+                result = process_memory_evidence(123)
+            self.assertFalse(result["available"])
+            self.assertEqual(result["status"], dict(available=False,
+                reason="read_failed" if isinstance(extra, OSError) else "incomplete"))
+            self.assertTrue(result["limits"]["available"])
+
+    def test_snapshot_order_cpu_denominator_and_original_errors_are_preserved(self):
+        process = Mock(pid=123)
+        events = []
+        process.cpu_times.side_effect = lambda: (events.append("cpu") or Mock(user=1.25, system=.5))
+        process.memory_info.side_effect = lambda: (events.append("memory") or Mock(_asdict=lambda: dict(rss=456)))
+        with patch("native_diagnostic.process_memory_evidence", side_effect=lambda pid:
+                   (events.append(("proc", pid)) or dict(available=False, reason="read_failed"))):
+            after = snapshot(process)
+        self.assertEqual(events, ["cpu", "memory", ("proc", 123)])
+        self.assertEqual(after["memory"], dict(rss=456))
+        before = dict(cpu_user_seconds=1, cpu_system_seconds=.25, memory=dict(rss=1))
+        self.assertEqual(cpu_cost(dict(server=before), dict(server=after), 1000)["server"][
+            "ns_per_verified_operation"], 500000)
+        for failing in ("cpu_times", "memory_info"):
+            with self.subTest(failing=failing), patch("native_diagnostic.process_memory_evidence") as capture:
+                getattr(process, failing).side_effect = PermissionError("original")
+                with self.assertRaisesRegex(PermissionError, "original"):
+                    snapshot(process)
+                capture.assert_not_called()
+                getattr(process, failing).side_effect = None
+
+    def test_unsupported_platform_and_invalid_pid_never_open_proc(self):
+        for platform_name in ("win32", "darwin"):
+            process = Mock(pid=123)
+            process.cpu_times.return_value = Mock(user=1, system=2)
+            process.memory_info.return_value._asdict.return_value = dict(rss=3, peak_wset=4)
+            with patch("native_diagnostic.sys.platform", platform_name), patch("native_diagnostic.Path.open") as opened:
+                self.assertEqual(snapshot(process), dict(cpu_user_seconds=1, cpu_system_seconds=2,
+                    memory=dict(rss=3, peak_wset=4), process_memory=dict(schema="coaptic-proc-memory/1",
+                    available=False, reason="unsupported_platform")))
+                opened.assert_not_called()
+        with patch("native_diagnostic.sys.platform", "linux"), patch("native_diagnostic.Path.open") as opened:
+            for pid in (None, True, 0, -1, 2**31, "123"):
+                self.assertEqual(process_memory_evidence(pid)["reason"], "invalid_pid")
+            opened.assert_not_called()
 
 
 class ReportTests(unittest.TestCase):
