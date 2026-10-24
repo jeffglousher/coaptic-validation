@@ -1,5 +1,17 @@
 # Manual Linux CPU qualification
 
+## Ended level-readiness experiment
+
+The [matched level-readiness result](evidence/level-readiness-20261024/README.md)
+records run `40130199038`: all sixteen windows verify 480,000 complete operations
+plus 320 warmups with no operation failures, but OSCORE repeat 2 fails the +2 us
+median guard (27.431 to 29.823 us). Full-cohort CPU claims are withheld. Pooled
+and p99 passes cannot rescue the pair. Stop expansion; no retry or replacement.
+The experimental implementation in #202 remains unmerged; ordinary Mio remains
+the reference. This comparison uses the same accepted core on both arms and
+does not replace original-baseline evidence. Both 50% targets and whole-memory
+acceptance remain open.
+
 ## Bounded syscall diagnostic
 
 The [measured syscall result](evidence/ebpf-syscalls-20261024/README.md) records
