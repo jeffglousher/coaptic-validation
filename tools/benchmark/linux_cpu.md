@@ -1216,3 +1216,54 @@ Linux integration requires a separate reviewed change. This wall supporting
 evidence cannot rescue failed socket guards, establish CPU/transport shares or
 either 50% target. #190 Linux proof and whole-memory acceptance remain open;
 delivered #187 is not reopened.
+
+For the separate #190 Linux functional proof, select the explicit `service-proof`
+mode in that same existing manual workflow only after parent review/dispatch
+authorization. It uses the PR #191 Service probe Git blob
+`dbffc02293898336087a640cd4b61cca5eb70d5e` (Linux LF SHA256
+`5ff878db5d1f0eadc0e85da789cb12fe1e5508146874d5440f07d60f147051c6`),
+with immutable original b8 and accepted d23. The earlier `small-device-proof`
+choice keeps its PR #188 source pins and Default64/Small32 plan; it does not
+qualify the newer Service source. Legacy original/batch modes are unchanged.
+
+Service mode requests the pinned Rust 1.99.0 Clippy component and requires all
+16 unfiltered release tests plus strict binary-target release Clippy per core,
+inside the selected native-lock context. The existing paired build, identity,
+4 GiB lane/900-second build/log watchdog, restoration, copy and input-freeze
+paths are reused. Both actual copied ELFs, selected locks/manifests, compiler,
+native target, features, flags and probe/helper identities freeze before any
+native cell. The 25-minute job remains a hard bound.
+
+Exactly eight serial fresh processes cover the two cores, unprotected/OSCORE,
+and fixed/allocated Service at 16KiB. Each has 16 measured operations plus 128
+verified warmups and 4096 separate calibrations: totals are 1152 verified
+operations, 32768 calibrations, 18432 server polls and 36864 accepted sends.
+The exact 21-key raw schema, type/u128/count bounds, capacities, wall/authentication
+scope and nested/separate owner ledger must validate. Every operation requires
+16 server polls; each process reports 2304 sends per port, including warmup.
+Immutable native code retains the three-second operation deadline, 32-round
+ceiling and 30000 accepted sends per port/60000 combined global limit.
+
+Actual GNU owner figures are bounded and recorded, then frozen as references
+for matching source/compiler/configuration cells. Fixed heap is zero; allocated
+requested layouts include pool metadata/alignment. Server/client payloads
+225280/29184 bytes nest in fixed App or requested heap; four 1472-byte fixture
+buffers nest in their transports inside Apps. Static representation, verification,
+timing/poll counts, calibration, vector headers, pending metadata and clock are
+separate. Security and profile scratch nest in Apps. Allocator overhead,
+initialization, peak stack and runtime remain unknown. No Windows or Mio App size,
+portable minimum, or whole-memory equivalence is assumed.
+
+Each process retains the existing 30-second owned-process deadline, 512 MiB
+address-space limit and separate 512 KiB raw-file bounds. No CPU/perf or socket
+phase runs. First failure keeps subsequent cells NOT RUN, with no retry; cleanup,
+source/lock restoration and independent final identity failures remain fatal.
+The existing 111 MiB paired-ELF, 16 MiB non-ELF, 127 MiB proof/<100-file bounds and
+final-receipt reserve remain, with the whole 128 MiB upload gate including setup,
+test and Clippy logs. Overbudget evidence refuses upload rather than trimming.
+
+Local actionlint/AST/pure checks do not establish Linux execution. #190 stays open
+until the separately authorized finite Linux run and independent receipt review
+complete. #187 stays closed. Both 50% targets, whole memory and physical/release
+gaps remain open; these wall arrays cannot replace failed socket cohorts or
+establish CPU gains or transport shares.

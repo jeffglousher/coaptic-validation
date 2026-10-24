@@ -11,6 +11,7 @@ on:
           - original
           - server-app-batch-cpu
           - small-device-proof
+          - service-proof
 
 permissions:
   contents: read
@@ -34,11 +35,12 @@ jobs:
           persist-credentials: false
           repository: jeffglousher/coaptic
           # b9b83 is PLAN-only over 1629; Rust is source-equivalent.
-          ref: ${{ inputs.mode == 'small-device-proof' && 'b8f44fa16b3e16f4c9c6cc5f1205d2aee9cb0b57' || inputs.mode == 'server-app-batch-cpu' && 'b9b83d8663cbdcb7a80bf143670a05019f25cf25' || 'ff08926422d570602069d2231a555559d1154f3f' }}
+          ref: ${{ (inputs.mode == 'small-device-proof' || inputs.mode == 'service-proof') && 'b8f44fa16b3e16f4c9c6cc5f1205d2aee9cb0b57' || inputs.mode == 'server-app-batch-cpu' && 'b9b83d8663cbdcb7a80bf143670a05019f25cf25' || 'ff08926422d570602069d2231a555559d1154f3f' }}
           path: coaptic
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
         with:
           toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
+          components: ${{ inputs.mode == 'service-proof' && 'clippy' || '' }}
       - name: Isolated stdlib tests with bounded retained log
         env:
           PROBE_MODE: ${{ inputs.mode }}
@@ -49,14 +51,14 @@ jobs:
           from pathlib import Path
           from linux_cpu import run_logged
           modules = ['test_core_cost_probe']
-          if os.environ['PROBE_MODE'] == 'small-device-proof':
+          if os.environ['PROBE_MODE'] in ('small-device-proof', 'service-proof'):
               modules.append('test_native_lock')
           with (Path(os.environ['RUNNER_TEMP']) / 'core-cost-probe-evidence/tests.log').open('xb') as log:
               run_logged([sys.executable, '-B', '-m', 'unittest', *modules], log,
                          timeout=90, limit=64 * 1024)
           PY
       - name: One build and fixed serial diagnostic phases
-        if: inputs.mode != 'small-device-proof'
+        if: inputs.mode != 'small-device-proof' && inputs.mode != 'service-proof'
         # No apt/pip install, policy change, cache install, UDP or device action.
         env:
           DIAGNOSIS_MODE: ${{ inputs.mode }}
@@ -66,8 +68,10 @@ jobs:
           else
             python3 -B tools/benchmark/core_cost_probe.py
           fi
-      - name: Fixed SmallDevice Linux functional proof
-        if: inputs.mode == 'small-device-proof'
+      - name: Fixed SmallDevice or Service Linux functional proof
+        if: inputs.mode == 'small-device-proof' || inputs.mode == 'service-proof'
+        env:
+          PROOF_MODE: ${{ inputs.mode }}
         run: |
           PYTHONPATH=tools/benchmark python3 -B - <<'PY'
           import json
@@ -85,12 +89,19 @@ jobs:
                                  identity, matching_lock_inputs, run_logged, run_owned)
           from native_lock import native_lock
 
+          MODE = os.environ["PROOF_MODE"]
+          if MODE not in ("small-device-proof", "service-proof"):
+              raise ValueError("fixed proof mode required")
+          SERVICE = MODE == "service-proof"
           MIB, META = 1024 * 1024, 64 * 1024
           PAIR = (("original", "b8f44fa16b3e16f4c9c6cc5f1205d2aee9cb0b57"),
                   ("accepted", "d23f93c0699b75ec17e692999d62ff89bb71463d"))
           PROBE = "tools/benchmark/native/servers/src/bin/bench-core.rs"
           PROBE_BLOB = "2f3f2845f47cd854a68ba74a7c7e83fce99a77cb"
           PROBE_SHA = "737bc14600d458788df27d1d9c76f19d2406b62284112490659e536050fa0f8a"
+          if SERVICE:
+              PROBE_BLOB = "dbffc02293898336087a640cd4b61cca5eb70d5e"
+              PROBE_SHA = "5ff878db5d1f0eadc0e85da789cb12fe1e5508146874d5440f07d60f147051c6"
           ROOT = Path(os.environ["RUNNER_TEMP"]) / "core-cost-probe-evidence/proof"
           LANE = Path(os.environ["RUNNER_TEMP"]) / "cpu-build-lane"
           CORE = SUITE / "coaptic"
@@ -102,7 +113,11 @@ jobs:
                     "tools/benchmark/native/Cargo.lock", "tools/benchmark/native/Cargo.syn3.lock")
           PLAN = [{"label": label, "security": security, "small_device": small, "status": "NOT RUN"}
                   for label, _ in PAIR for security in ("unprotected", "oscore") for small in (True, False)]
-          STATE = {"complete": False, "mode": "small-device-proof", "builds": [], "cells": PLAN,
+          if SERVICE:
+              PLAN = [{"label": label, "security": security, "storage": storage, "status": "NOT RUN"}
+                      for label, _ in PAIR for security in ("unprotected", "oscore")
+                      for storage in ("fixed", "allocated")]
+          STATE = {"complete": False, "mode": MODE, "builds": [], "cells": PLAN,
                    "scope": "finite socket-free wall functional proof; no CPU ratios, profiling, socket "
                             "latency, transport share, peak stack or whole-memory acceptance",
                    "both_50_percent_targets": "OPEN", "issue187": "OPEN pending independent Linux receipts",
@@ -110,6 +125,13 @@ jobs:
                    "budgets": {"proof_bytes": 127 * MIB, "non_elf_bytes": 16 * MIB,
                                "paired_elf_bytes": 111 * MIB, "final_receipt_reserve_bytes": MIB // 2,
                                "files_less_than": 100, "outer_upload_bytes": 128 * MIB}}
+          if SERVICE:
+              STATE.update(issue187="CLOSED; immutable earlier SmallDevice proof",
+                           issue190="OPEN pending independent Linux receipts",
+                           protocol_limits={"absolute_operation_deadline_ms": 3000, "maximum_rounds": 32,
+                                            "per_port_accepted_sends": 30000, "combined_accepted_sends": 60000,
+                                            "maximum_measured_16k_operations": 1747},
+                           linux_owner_references={})
           INITIAL = None
           INPUTS = {}
           CANONICAL = ALTERNATE = None
@@ -242,6 +264,113 @@ jobs:
                   raise ValueError("memory/timing uncertainty scope missing")
 
 
+          def validate_service(data, security, storage):
+              expected = {"operations": 16, "warmup": 128, "verified": 144, "security": security,
+                          "black_box": True, "profile": "Service", "storage": storage,
+                          "payload_bytes": 16384, "concurrency": 1, "message_type": "CON",
+                          "calibration_samples": 4096}
+              keys = {*expected, "server_poll_wall_sum_ns", "server_poll_counts", "clock_calibration_ns",
+                      "server_capacities", "client_capacities", "sends", "memory",
+                      "measurement", "metadata", "scope"}
+              if type(data) is not dict or set(data) != keys or storage not in ("fixed", "allocated"):
+                  raise ValueError("Service exact 21-key schema/storage differs")
+              for key, value in expected.items():
+                  if type(data[key]) is not type(value) or data[key] != value:
+                      raise ValueError("Service field differs: " + key)
+              for key, count in (("server_poll_wall_sum_ns", 16), ("server_poll_counts", 16),
+                                 ("clock_calibration_ns", 4096)):
+                  values = data[key]
+                  if (type(values) is not list or len(values) != count
+                          or any(type(value) is not int or not 0 <= value < 2**128 for value in values)
+                          or key == "server_poll_counts" and values != [16] * 16):
+                      raise ValueError("Service u128/count array differs: " + key)
+              server = {"routes": 32, "populated_routes": 1, "calls": 4, "deferred": 8,
+                        "associations": 1, "security_requests": 4, "rx_slots": 32, "tx_slots": 32,
+                        "datagram_bytes": 1472, "dedup": 64, "observe": 32, "rx_body_slots": 4,
+                        "tx_body_slots": 4, "body_bytes": 16384, "blockwise": True}
+              client = {"routes": 1, "populated_routes": 0, "calls": 4, "deferred": 0,
+                        "associations": 1, "security_requests": 4, "rx_slots": 4, "tx_slots": 4,
+                        "datagram_bytes": 1472, "dedup": 8, "observe": 4, "rx_body_slots": 1,
+                        "rx_body_bytes": 16384, "tx_body_slots": 1, "tx_body_bytes": 1024,
+                        "blockwise": True}
+              sends = {"client": 2304, "server": 2304, "combined": 4608,
+                       "per_port_limit": 30000, "combined_limit": 60000}
+              for key, fields in (("server_capacities", server), ("client_capacities", client), ("sends", sends)):
+                  actual = data[key]
+                  if (type(actual) is not dict or set(actual) != set(fields)
+                          or any(type(actual[name]) is not type(value) or actual[name] != value
+                                 for name, value in fields.items())):
+                      raise ValueError("Service fixed capacity/send ledger differs: " + key)
+              scopes = {
+                  "measurement": "sum of every server App::poll wall interval per fully verified operation; "
+                                 "server fixture receive/send copies, dispatch, maintenance, body snapshot and crypto inside; "
+                                 "bridge, client preparation/polls/protection/authentication/assembly/verification outside; "
+                                 "monotonic clock; separate calibration never subtracted",
+                  "metadata": "each wire ACK/MID/Token checked against its request; "
+                              "assembled snapshot retains first fragment MID/header",
+                  "scope": "socket-free C1 wall supporting evidence; not CPU, socket latency, transport share, "
+                           "Mio memory equivalence, peak/whole memory or either 50% acceptance",
+              }
+              for key, value in scopes.items():
+                  if type(data[key]) is not str or data[key] != value:
+                      raise ValueError("Service source timing/verification scope differs: " + key)
+              memory = data["memory"]
+              fixed = {"server_pool_payload_nested_bytes": 225280, "client_pool_payload_nested_bytes": 29184,
+                       "each_transport_input_nested_bytes": 1472, "each_transport_output_nested_bytes": 1472,
+                       "packet_buffers_nested_count": 4, "separate_static_representation_bytes": 16384,
+                       "separate_verification_requested_bytes": 16384, "separate_timing_requested_bytes": 256,
+                       "separate_poll_counts_requested_bytes": 64, "separate_calibration_requested_bytes": 65536}
+              sizes = {"server_app_including_transport_inline_bytes": (2944, 512 * 1024),
+                       "server_pool_requested_heap_bytes": (225280, 512 * 1024) if storage == "allocated" else (0, 0),
+                       "server_transport_nested_bytes": (2944, 8192),
+                       "client_app_including_transport_inline_bytes": (2944, 128 * 1024),
+                       "client_pool_requested_heap_bytes": (29184, 128 * 1024),
+                       "client_transport_nested_bytes": (2944, 8192),
+                       "separate_vec_headers_bytes": (32, 256), "separate_pending_inline_bytes": (1, 1024),
+                       "clock_inline_bytes": (1, 128)}
+              remaining = ("security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; "
+                           "allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, "
+                           "generated peak stack and runtime unknown; do not add nested owners twice")
+              if type(memory) is not dict or set(memory) != set(fixed) | set(sizes) | {"remaining"}:
+                  raise ValueError("Service exact memory owners differ")
+              for key, value in fixed.items():
+                  if type(memory[key]) is not int or memory[key] != value:
+                      raise ValueError("Service fixed memory payload differs: " + key)
+              for key, (low, high) in sizes.items():
+                  if type(memory[key]) is not int or not low <= memory[key] <= high:
+                      raise ValueError("Service actual Linux owner outside bound: " + key)
+              if (memory["remaining"] != remaining
+                      or memory["server_transport_nested_bytes"] != memory["client_transport_nested_bytes"]
+                      or memory["client_app_including_transport_inline_bytes"] < memory["client_transport_nested_bytes"]
+                      or memory["server_app_including_transport_inline_bytes"]
+                         < memory["server_transport_nested_bytes"] + (225280 if storage == "fixed" else 0)):
+                  raise ValueError("Service owner nesting/uncertainty differs")
+
+
+          def retain_service_owners(memory, row, host, versions):
+              storage = row["storage"]
+              references = STATE["linux_owner_references"]
+              # Measured GNU/compiler/configuration owners, not Windows/Mio values or portable minima.
+              path = ROOT / ("owners-" + storage + ".json")
+              if storage in references:
+                  if (references[storage]["memory"] != memory
+                          or digest(path) != references[storage]["receipt_sha256"]):
+                      raise ValueError("matched Service Linux owner figures changed")
+                  return
+              for reference in references.values():
+                  shared = set(memory) - {"server_app_including_transport_inline_bytes", "server_pool_requested_heap_bytes"}
+                  if any(reference["memory"][key] != memory[key] for key in shared):
+                      raise ValueError("fixed/allocated shared fixture owners changed")
+              reference = {"reference_cell": dict(row), "memory": memory, "target": host,
+                           "rustc": versions["rustc"], "flags": FLAGS, "source_sha256": PROBE_SHA,
+                           "source_blob": PROBE_BLOB, "binary": COPIES[row["label"]],
+                           "features": ["std", "alloc", "oscore"],
+                           "scope": "measured matching GNU configuration owners; not portable minima or whole memory"}
+              save_new(path, reference)
+              reference["receipt_sha256"] = digest(path)
+              references[storage] = reference
+
+
           def strict_object(pairs):
               result = {}
               for key, value in pairs:
@@ -266,7 +395,7 @@ jobs:
               INPUTS = {name: digest(SUITE / name) for name in SHARED}
               if (command(["git", "rev-parse", "HEAD:" + PROBE]) != PROBE_BLOB
                       or INPUTS[PROBE] != PROBE_SHA):
-                  raise ValueError("PR188 immutable probe differs")
+                  raise ValueError("selected immutable probe differs")
               workspace = tomllib.loads(bounded_read(NATIVE / "Cargo.toml", META).decode())
               package = tomllib.loads(bounded_read(NATIVE / "servers/Cargo.toml", META).decode())
               dependency = package["dependencies"]["coaptic"]
@@ -292,6 +421,12 @@ jobs:
               if len(hosts) != 1:
                   raise ValueError("one explicit native host target required")
               host = hosts[0]
+              if SERVICE:
+                  if host != "x86_64-unknown-linux-gnu":
+                      raise ValueError("Service proof requires the selected native GNU runner")
+                  versions["clippy"] = command(["cargo", "clippy", "--version"], env=env, timeout=10)
+                  if not re.fullmatch(r"clippy 0\.1\.99 \([^\r\n]+\)", versions["clippy"]):
+                      raise ValueError("pinned Clippy component unavailable/different")
               save_new(ROOT / "setup.json", {"initial": INITIAL, "inputs": INPUTS, "probe_blob": PROBE_BLOB,
                                             "versions": versions, "flags": FLAGS, "target": host,
                                             "plan": PLAN, "budgets": STATE["budgets"]})
@@ -315,6 +450,8 @@ jobs:
                   record.update(core=selected, core_lock_sha256=digest(CORE / "Cargo.lock"),
                                 suite=INITIAL["suite"], shared_inputs=INPUTS, rustc=versions["rustc"],
                                 cargo=versions["cargo"], target=host, flags=FLAGS)
+                  if SERVICE:
+                      record.update(features=dependency["features"], clippy=versions["clippy"])
                   with native_lock(CORE, NATIVE) as lock:
                       if lock["syn_requirement"] != ("2" if label == "original" else "3"):
                           raise ValueError("unexpected core-specific syn requirement")
@@ -329,14 +466,25 @@ jobs:
                       with (directory / "tests.log").open("xb") as log:
                           run_logged(test, log, timeout=120, limit=META, cwd=SUITE, env=env)
                       text = bounded_read(directory / "tests.log", META).decode("utf-8")
-                      if (re.findall(r"^running ([0-9]+) tests$", text, re.M) != ["10"]
-                              or len(re.findall(r"^test result: ok\. 10 passed; 0 failed; 0 ignored; "
+                      test_count = 16 if SERVICE else 10
+                      if (re.findall(r"^running ([0-9]+) tests$", text, re.M) != [str(test_count)]
+                              or len(re.findall(rf"^test result: ok\. {test_count} passed; 0 failed; 0 ignored; "
                                                 r"0 measured; 0 filtered out; finished in [^\r\n]+$",
                                                 text, re.M)) != 1):
-                          raise ValueError("all ten unfiltered release tests must run/pass")
-                      record["tests_passed"] = 10
+                          raise ValueError("all " + str(test_count) + " unfiltered release tests must run/pass")
+                      record["tests_passed"] = test_count
                       if directory_bytes(LANE) > 4 * 1024 * MIB:
                           raise ValueError("4 GiB lane exceeded after tests")
+                      if SERVICE:
+                          clippy = ["cargo", "clippy", "--release", "--locked", "--target", host,
+                                    "--manifest-path", "tools/benchmark/native/Cargo.toml", "-p",
+                                    "bench-rust-server", "--bin", "bench-core", "--", "-D", "warnings"]
+                          record["clippy_command"] = clippy
+                          with (directory / "clippy.log").open("xb") as log:
+                              run_logged(clippy, log, timeout=120, limit=META, cwd=SUITE, env=env)
+                          record["clippy_passed"] = True
+                          if directory_bytes(LANE) > 4 * 1024 * MIB:
+                              raise ValueError("4 GiB lane exceeded after Clippy")
                       build(directory, LANE, env, host)  # Existing 4 GiB watchdog/900s/2MiB log/custody.
                       record["build_command"] = ["cargo", "build", "--release", "--locked", "--target", host,
                                                  "--manifest-path", "tools/benchmark/native/Cargo.toml",
@@ -376,10 +524,15 @@ jobs:
                   if digest(binary["path"]) != binary["sha256"]:
                       raise ValueError("copied ELF changed before cell")
                   directory = ROOT / (row["label"] + "-" + row["security"]
-                                      + ("-small32" if row["small_device"] else "-default64"))
+                                      + ("-" + row["storage"] if SERVICE else
+                                         "-small32" if row["small_device"] else "-default64"))
                   directory.mkdir(mode=0o700)
                   argv = ["prlimit", "--as=536870912:536870912", "--", binary["path"],
-                          "16", row["security"]] + (["--small-device"] if row["small_device"] else [])
+                          "16", row["security"]]
+                  if SERVICE:
+                      argv += ["--service-" + row["storage"], "16384"]
+                  else:
+                      argv += ["--small-device"] if row["small_device"] else []
                   row.update(status="RUNNING", command=argv, timeout_seconds=30, file_limit_bytes=MIB // 2,
                              owner="linux_cpu.run_owned reserved group/thread settlement")
                   cell_error = None
@@ -396,11 +549,19 @@ jobs:
                                         parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
                       if type(data) is not dict:
                           raise ValueError("native wall JSON object required")
-                      validate_wall(data, row["security"], row["small_device"])
+                      if SERVICE:
+                          validate_service(data, row["security"], row["storage"])
+                          retain_service_owners(data["memory"], row, host, versions)
+                          row.update(payload_bytes=16384, server_polls=2304, accepted_sends=4608,
+                                     memory=data["memory"], sends=data["sends"],
+                                     protocol_limits=STATE["protocol_limits"])
+                      else:
+                          validate_wall(data, row["security"], row["small_device"])
+                          row["payload_bytes"] = 32 if row["small_device"] else 64
+                          if row["small_device"]:
+                              row["memory"] = data["memory"]  # Actual Linux sizes, no Windows layout assumption.
                       row.update(status="PASS", measured_verified=16, warmup_verified=128,
-                                 verified=144, separate_calibrations=4096, payload_bytes=32 if row["small_device"] else 64)
-                      if row["small_device"]:
-                          row["memory"] = data["memory"]  # Actual Linux sizes, no Windows layout assumption.
+                                 verified=144, separate_calibrations=4096)
                   except BaseException as error:
                       cell_error = error
                       row.update(status="FAILED", error=error_record(error))
@@ -417,6 +578,8 @@ jobs:
                           cell_error.add_note("independent cell retention/hash: " + str(error)[:512])
               STATE.update(measured_verified=128, warmup_verified=1024, verified=1152,
                            separate_calibrations=32768)
+              if SERVICE:
+                  STATE.update(server_polls=18432, accepted_sends=36864)
           except BaseException as error:
               PRIMARY = error
           finally:
@@ -444,6 +607,16 @@ jobs:
                           PRIMARY = error
                       else:
                           PRIMARY.add_note("independent final ELF: " + str(error)[:512])
+              if SERVICE:
+                  for storage, reference in STATE["linux_owner_references"].items():
+                      try:
+                          if digest(ROOT / ("owners-" + storage + ".json")) != reference["receipt_sha256"]:
+                              raise ValueError("final Service owner reference changed")
+                      except BaseException as error:
+                          if PRIMARY is None:
+                              PRIMARY = error
+                          else:
+                              PRIMARY.add_note("independent owner reference: " + str(error)[:512])
               STATE["complete"] = PRIMARY is None and all(row["status"] == "PASS" for row in PLAN)
               if PRIMARY is not None:
                   STATE["error"] = error_record(PRIMARY)
@@ -489,9 +662,9 @@ jobs:
           if code:
               raise RuntimeError('native custody checks failed: ' + str(code))
           PY
-      - name: Bound entire SmallDevice proof upload even on failure
+      - name: Bound entire functional proof upload even on failure
         id: proof-upload
-        if: always() && inputs.mode == 'small-device-proof'
+        if: always() && (inputs.mode == 'small-device-proof' || inputs.mode == 'service-proof')
         run: |
           PYTHONPATH=tools/benchmark python3 -B - <<'PY'
           import os
@@ -522,7 +695,7 @@ jobs:
               stream.write("allowed=true\n")
           PY
       - name: Retain diagnosis or explicit refusal
-        if: always() && (inputs.mode != 'small-device-proof' || steps.proof-upload.outputs.allowed == 'true')
+        if: always() && ((inputs.mode != 'small-device-proof' && inputs.mode != 'service-proof') || steps.proof-upload.outputs.allowed == 'true')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: core-cost-probe-${{ github.run_id }}-${{ github.run_attempt }}
