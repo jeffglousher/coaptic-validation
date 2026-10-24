@@ -310,7 +310,7 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(allowance, 21_574_848)
         quota = min(8 * cpu.MIB, (cpu.PERF_BUDGET - cpu.METADATA_BUDGET)
                     // (cpu.PERF_FILES_PER_SLOT * slots))
-        self.assertEqual(quota, 6_990_506)
+        self.assertEqual(quota, 4_194_304)
         self.assertLessEqual(allowance + cpu.PERF_FILES_PER_SLOT * slots * quota, cpu.PERF_BUDGET)
 
     def test_user_profile_density_refuses_long_clean_and_oversized_sample_plans(self):
@@ -1153,6 +1153,191 @@ class PerfReportTests(unittest.TestCase):
                                                   unittest.mock.call(report, elevated=True)])
 
 
+class PerfAttributionTests(unittest.TestCase):
+    def capture(self, *, mode="record", attribution=True, flat=True, raw_code=0,
+                output=b"inline frames\nWarning: unknown symbol\n", code=0, error=None,
+                primary=None, metadata_error=False):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "owned space; $literal"
+            root.mkdir()
+            raw = root / ("perf.data" if mode == "record" else "perf-stat.txt")
+            raw.write_bytes(b"capture fixture")
+            profiler = Mock(returncode=raw_code)
+            profiler.wait.return_value = raw_code
+            calls = []
+
+            def run(argv, **kwargs):
+                calls.append((argv, kwargs))
+                if "chmod" in argv:
+                    return 0
+                kwargs["stdout"].write(output)
+                kwargs["stdout"].flush()
+                if error is not None:
+                    raise error
+                return code
+
+            original_stat = Path.stat
+            def stat(path, *args, **kwargs):
+                if metadata_error and path.name == "perf-callers.txt":
+                    raise OSError("readout stat refused")
+                return original_stat(path, *args, **kwargs)
+
+            with mock_record_control(), patch.object(cpu, "spawn", return_value=profiler), \
+                    patch.object(cpu, "stop"), patch.object(cpu, "run_owned", side_effect=run), \
+                    patch.object(cpu, "perf_report", return_value=dict(available=flat)) as report, \
+                    patch.object(Path, "stat", stat):
+                try:
+                    with cpu.perf_pass(mode, 123, 5, root, 4096, attribution=attribution) as state:
+                        if primary is not None:
+                            raise primary
+                except Exception as caught:
+                    self.assertIs(caught, primary)
+            if mode == "clean":
+                report.assert_not_called()
+                return state, calls, {}
+            self.assertEqual(json.loads((root / "perf.json").read_text()), state)
+            saved = {path.name: path.read_bytes() for path in root.glob("perf-*.txt")
+                     if path.name in ("perf-callers.txt", "perf-samples.txt")}
+            return state, calls, saved
+
+    def test_requested_record_retains_pid_filtered_inline_readouts_with_owned_bounds(self):
+        state, calls, saved = self.capture()
+        attribution = state["attribution"]
+        self.assertTrue(attribution["available"])
+        self.assertEqual(set(saved), {"perf-callers.txt", "perf-samples.txt"})
+        self.assertTrue(all(b"Warning: unknown symbol" in text for text in saved.values()))
+        for name, (argv, kwargs) in zip(("callers", "samples"), calls[1:]):
+            item = attribution[name]
+            self.assertTrue(item["available"])
+            self.assertEqual(item["pid"], 123)
+            self.assertEqual(item["command"], argv)
+            self.assertEqual(item["output_bytes"], len(saved[Path(item["output_file"]).name]))
+            self.assertEqual(argv[:6], ["sudo", "-n", "--", "prlimit", "--fsize=4096:4096", "--"])
+            self.assertEqual(argv[6:13], ["timeout", "--foreground", "--signal=TERM", "--kill-after=5",
+                                         "25", "env", "DEBUGINFOD_URLS="])
+            self.assertEqual(argv[argv.index("--pid") + 1], "123")
+            self.assertIn("--inline", argv)
+            self.assertNotIn("--no-inline", argv)
+            self.assertEqual(argv[-3:], ["--force", "--input", str(Path(item["output_file"]).parent / "perf.data")])
+            self.assertTrue(kwargs["elevated"])
+            self.assertEqual(kwargs["timeout"], 30)
+            self.assertEqual(kwargs["file_limit"], 4096)
+            self.assertIs(kwargs["stdout"], kwargs["stderr"])
+            self.assertEqual(kwargs["stdin"], cpu.subprocess.DEVNULL)
+            self.assertEqual(kwargs["env"]["DEBUGINFOD_URLS"], "")
+        caller, sample = calls[1][0], calls[2][0]
+        self.assertIn("--children", caller)
+        self.assertEqual(caller[caller.index("--sort") + 1], "pid,dso,symbol")
+        self.assertEqual(caller[caller.index("--call-graph") + 1], "graph,0,caller")
+        self.assertEqual(caller[caller.index("--percentage") + 1], "absolute")
+        self.assertEqual(caller[caller.index("--percent-limit") + 1], "0")
+        self.assertIn("script", sample)
+        self.assertTrue(all(option in sample for option in ("--ns", "--demangle", "--show-task-events", "--show-lost-events")))
+        self.assertEqual(sample[sample.index("-F") + 1], "comm,pid,tid,time,event,period,ip,sym,dso")
+        self.assertIn("require review", attribution["interpretation"])
+        self.assertFalse(cpu.unresolved_cleanup(dict(perf=state)))
+
+    def test_default_controls_clean_and_stat_never_request_inline_helpers(self):
+        for kwargs in (dict(attribution=False), dict(mode="clean"), dict(mode="stat")):
+            with self.subTest(kwargs=kwargs):
+                state, calls, saved = self.capture(**kwargs)
+                self.assertNotIn("attribution", state)
+                self.assertFalse(saved)
+                self.assertTrue(all("perf" not in argv for argv, _ in calls))
+
+    def test_failed_flat_capture_or_window_explicitly_skips_without_new_helpers(self):
+        for kwargs in (dict(flat=False), dict(raw_code=255), dict(primary=RuntimeError("client gate failed"))):
+            with self.subTest(kwargs=kwargs):
+                state, calls, saved = self.capture(**kwargs)
+                self.assertFalse(state["attribution"]["available"])
+                self.assertIn("skipped", state["attribution"])
+                self.assertFalse(saved)
+                self.assertTrue(all("perf" not in argv for argv, _ in calls))
+
+    def test_permission_timeout_quota_empty_and_metadata_failures_keep_partial_output(self):
+        for kwargs in (dict(code=255), dict(code=124), dict(code=137), dict(code=-25),
+                       dict(output=b""), dict(output=b"x" * 4096), dict(metadata_error=True),
+                       dict(error=PermissionError("sudo refused")),
+                       dict(error=cpu.subprocess.TimeoutExpired("inline report", 30))):
+            with self.subTest(kwargs=kwargs):
+                state, calls, saved = self.capture(**kwargs)
+                item = state["attribution"]
+                self.assertTrue(state["available"])
+                self.assertTrue(state["report"]["available"])
+                self.assertFalse(item["available"])
+                self.assertIn("skipped", item["samples"])
+                self.assertEqual(len(calls), 2)  # chmod + first attribution; no retry.
+                self.assertEqual(saved["perf-callers.txt"], kwargs.get("output", b"inline frames\nWarning: unknown symbol\n"))
+                self.assertFalse(cpu.unresolved_cleanup(dict(perf=state)))
+                if isinstance(kwargs.get("error"), cpu.subprocess.TimeoutExpired):
+                    self.assertTrue(item["callers"]["deadline_exceeded"])
+
+    def test_owned_timeout_and_kill_refusal_preserve_primary_and_block_second_helper(self):
+        child = Mock(pid=4322, returncode=None)
+        child.wait.side_effect = cpu.subprocess.TimeoutExpired("inline report", 30)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with (root / "perf-command.log").open("w") as log, \
+                    patch.object(cpu, "spawn", return_value=child) as spawn, \
+                    patch.object(cpu, "stop", side_effect=PermissionError("inline group kill refused")):
+                state = cpu.perf_attribution(root, 4096, log, 123)
+            self.assertTrue(state["cleanup_unresolved"])
+            self.assertEqual(state["callers"]["error_type"], "TimeoutExpired")
+            self.assertIn("inline group kill refused", state["callers"]["cleanup_reason"])
+            self.assertIn("skipped", state["samples"])
+            spawn.assert_called_once()
+
+    def test_close_failure_does_not_hide_primary_timeout_or_partial_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with (root / "perf-command.log").open("w") as log:
+                stream = (root / "perf-callers.txt").open("xb")
+                stream.write(b"partial frames")
+                wrapped = Mock(wraps=stream)
+                def close():
+                    stream.close()
+                    raise OSError("readout close failed")
+                wrapped.close.side_effect = close
+                with patch.object(Path, "open", return_value=wrapped), \
+                        patch.object(cpu, "run_owned", side_effect=cpu.subprocess.TimeoutExpired("inline report", 30)):
+                    state = cpu.perf_attribution(root, 4096, log, 123)
+            self.assertEqual(state["callers"]["error_type"], "TimeoutExpired")
+            self.assertEqual(state["callers"]["close_error"], "OSError")
+            self.assertEqual(state["callers"]["output_bytes"], len(b"partial frames"))
+            self.assertTrue(state["cleanup_unresolved"])
+            self.assertIn("skipped", state["samples"])
+
+    def test_flat_or_attribution_unresolved_cleanup_reaches_capture_fatal_flag(self):
+        error = cpu.subprocess.TimeoutExpired("inline report", 30)
+        error.cleanup_unresolved = True
+        error.add_note("group settlement refused")
+        state, calls, _ = self.capture(error=error)
+        self.assertTrue(cpu.unresolved_cleanup(dict(perf=state)))
+        self.assertEqual(state["attribution"]["callers"]["error_type"], "TimeoutExpired")
+        self.assertEqual(len(calls), 2)
+        with patch.object(cpu, "perf_attribution") as attribution:
+            # The flat helper's fatal state also refuses any attribution launch.
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                (root / "perf.data").write_bytes(b"fixture")
+                profiler = Mock(returncode=0)
+                with mock_record_control(), patch.object(cpu, "spawn", return_value=profiler), \
+                        patch.object(cpu, "stop"), patch.object(cpu, "run_owned"), \
+                        patch.object(cpu, "perf_report", return_value=dict(available=False, cleanup_unresolved=True)):
+                    with cpu.perf_pass("record", 123, 5, root, 4096, attribution=True) as state:
+                        pass
+                self.assertTrue(cpu.unresolved_cleanup(dict(perf=state)))
+                attribution.assert_not_called()
+
+    def test_invalid_requested_pid_or_request_refuses_before_capture(self):
+        with patch.object(cpu, "spawn") as spawn:
+            for pid, request in ((0, True), (-1, True), (True, True), ("123", True), (123, "yes")):
+                with self.subTest(pid=pid, request=request), self.assertRaisesRegex(ValueError, "positive server PID"):
+                    with cpu.perf_pass("record", pid, 5, Path("unused"), 4096, attribution=request):
+                        pass
+            spawn.assert_not_called()
+
+
 class AggregationTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -1371,9 +1556,9 @@ class MetadataTests(unittest.TestCase):
         self.assertGreater(sum(cpu.report_limit(op) for op in operations), 4 * cpu.MIB)
         self.assertLessEqual(allowance, 96 * cpu.MIB)
         slots = sum(mode != "clean" for mode, *_ in plan)
-        self.assertEqual(cpu.PERF_FILES_PER_SLOT, 3)
-        quota = min(8 * cpu.MIB, (cpu.PERF_BUDGET - cpu.METADATA_BUDGET) // (3 * slots))
-        self.assertLessEqual(allowance + 3 * slots * quota, cpu.PERF_BUDGET)
+        self.assertEqual(cpu.PERF_FILES_PER_SLOT, 5)
+        quota = min(8 * cpu.MIB, (cpu.PERF_BUDGET - cpu.METADATA_BUDGET) // (5 * slots))
+        self.assertLessEqual(allowance + 5 * slots * quota, cpu.PERF_BUDGET)
         with patch.object(cpu, "METADATA_BUDGET", 1), self.assertRaisesRegex(ValueError, "metadata"):
             cpu.configuration(args)
 
@@ -1499,6 +1684,7 @@ class CampaignTests(unittest.TestCase):
                         if process is profiler and startup_refusal == "unresolved":
                             raise PermissionError("profiler kill refused")
                     with patch.dict(sys.modules, {"psutil": Mock(), "native_diagnostic": native}), \
+                            patch.object(cpu, "perf_pass", wraps=cpu.perf_pass) as perf_pass, \
                             patch.object(cpu.PerfCapture, "_open_control", autospec=True, side_effect=opened), \
                             patch.object(cpu, "spawn", side_effect=[sut, client_process, profiler]), \
                             patch.object(cpu, "stop", side_effect=stopped) as stop, \
@@ -1510,6 +1696,7 @@ class CampaignTests(unittest.TestCase):
                             patch.object(cpu.socket, "socket", side_effect=[reserve, probe]), \
                             patch.object(cpu.os, "getloadavg", return_value=(0, 0, 0), create=True):
                         result = real_window(server, client, cell, operations, directory, mode, quota, **kwargs)
+                    self.assertTrue(perf_pass.call_args.kwargs["attribution"])
                     client_process.stdin.write.assert_not_called()
                     native.snapshot.assert_not_called()
                     self.assertEqual(result["reason"], "malformed record ACK")
@@ -1534,6 +1721,13 @@ class CampaignTests(unittest.TestCase):
                     profiler.wait.return_value = 0
 
                     def read_capture(argv, **kwargs):
+                        if report_error_command == "attribution" and "perf" in argv:
+                            kwargs["stdout"].write("version fixture\n" if argv == ["perf", "--version"]
+                                                   else b"flat or inline fixture\n")
+                            kwargs["stdout"].flush()
+                            if "--inline" in argv:
+                                raise report_error
+                            return 0
                         command = argv[12:14] if argv[:3] == ["sudo", "-n", "--"] else argv[:2]
                         if command == ["perf", "report" if report_error_command == "report" else "--version"]:
                             raise report_error
@@ -1541,7 +1735,8 @@ class CampaignTests(unittest.TestCase):
 
                     with mock_record_control(), patch.object(cpu, "spawn", return_value=profiler), patch.object(cpu, "stop"), \
                             patch.object(cpu, "run_owned", side_effect=read_capture):
-                        with cpu.perf_pass(mode, 123, 5, directory, quota) as perf:
+                        with cpu.perf_pass(mode, 123, 5, directory, quota,
+                                           attribution=(report_error_command == "attribution")) as perf:
                             pass
                     result["perf"] = perf
                     if cpu.unresolved_cleanup(result):
@@ -1578,10 +1773,10 @@ class CampaignTests(unittest.TestCase):
             manifest = json.loads((out / "manifest.json").read_text())
             slots = sum(mode != "clean" for mode, *_ in cpu.rotation(args, cpu.configuration(args)))
             quota = manifest["perf_file_quota_bytes"]
-            self.assertEqual(manifest["perf_files_per_slot"], 3)
+            self.assertEqual(manifest["perf_files_per_slot"], 5)
             self.assertEqual(manifest["artifact_bound_bytes_excluding_binaries"],
-                             manifest["metadata_allowance_bytes"] + 3 * slots * quota)
-            self.assertLessEqual(3 * slots * quota, cpu.PERF_BUDGET - cpu.METADATA_BUDGET)
+                             manifest["metadata_allowance_bytes"] + 5 * slots * quota)
+            self.assertLessEqual(5 * slots * quota, cpu.PERF_BUDGET - cpu.METADATA_BUDGET)
             self.assertLessEqual(manifest["artifact_bound_bytes_excluding_binaries"], cpu.PERF_BUDGET)
             if calls:
                 entries = [json.loads(line) for line in (out / "windows.jsonl").read_text().splitlines()]
@@ -1680,6 +1875,18 @@ class CampaignTests(unittest.TestCase):
                     self.assertEqual(summary["unavailable_reports"], [8])
                     self.assertTrue(all(not item["comparable"] and item["server_cpu_ratio"] is None
                                         for item in summary["comparisons"]))
+
+    def test_inline_readout_cleanup_aborts_campaign_while_resolved_refusal_keeps_clean_pairs(self):
+        for fatal in (False, True):
+            error = cpu.subprocess.TimeoutExpired("inline report", 30)
+            error.cleanup_unresolved = fatal
+            with self.subTest(fatal=fatal):
+                summary, calls = self.exercise(report_error=error, report_error_command="attribution")
+                self.assertEqual(len(calls), 9 if fatal else 16)
+                self.assertEqual(summary["cleanup_unresolved"], fatal)
+                self.assertEqual(summary["campaign_complete"], not fatal)
+                self.assertEqual(summary["unavailable_reports"], [])  # Original flat report survives.
+                self.assertTrue(all(item["comparable"] == (not fatal) for item in summary["comparisons"]))
 
     def test_build_targets_must_match_before_any_window(self):
         summary, calls = self.exercise(target_mismatch=True)
@@ -2477,7 +2684,7 @@ class RetentionTests(unittest.TestCase):
             return {"cpu_user_seconds": 0, "cpu_system_seconds": 0}
         native.snapshot.side_effect = snapshot
         native.cpu_cost.return_value = {"server": {"total_seconds": 1}, "client": {"total_seconds": 1}}
-        server, client = MagicMock(), MagicMock()
+        server, client = MagicMock(pid=101), MagicMock(pid=102)
         for child in (server, client):
             child.poll.return_value = None
             child.wait.return_value = 0
@@ -2502,6 +2709,7 @@ class RetentionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             out = Path(temporary) / "window"
             with mock_record_control(timeline), patch.dict(sys.modules, {"psutil": Mock(), "native_diagnostic": native}), \
+                    patch.object(cpu, "perf_pass", wraps=cpu.perf_pass) as perf_pass, \
                     patch.object(cpu, "spawn", side_effect=[server, client, profiler]) as spawn, \
                     patch.object(cpu, "stop", side_effect=cleanup_errors) as stop, \
                     patch.object(cpu, "stderr_tail", return_value=b"raw native failure\n", side_effect=tail_error), \
@@ -2513,6 +2721,7 @@ class RetentionTests(unittest.TestCase):
                                     59_900 if long_window else 10, out, mode=mode,
                                     admission_diagnostics=admission_diagnostics, long_window=long_window,
                                     resource_profile="small-blockwise" if long_window else "host-control")
+            self.assertEqual(perf_pass.call_args.kwargs["attribution"], mode == "record")
             self.assertEqual(spawn.call_args_list[1].args[0].count("--admission-diagnostics"),
                              int(admission_diagnostics))
             self.assertEqual(spawn.call_args_list[1].args[0].count("--long-window"), int(long_window))
@@ -3152,6 +3361,11 @@ class LongWindowTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'setup logs'): cpu.upload_plan(out, logs, 100, 0)
                 (logs/'setup.log').write_bytes(b'x'*20)
                 binary.write_bytes(b'x'*171)
+                with self.assertRaisesRegex(ValueError, 'whole upload'): cpu.check_upload(out, logs)
+                binary.write_bytes(b'x'*40)
+                (out/'perf-callers.txt').write_bytes(b'x'*70)
+                (out/'perf-samples.txt').write_bytes(b'x'*70)
+                self.assertEqual(cpu.upload_bytes(out, logs), 210)
                 with self.assertRaisesRegex(ValueError, 'whole upload'): cpu.check_upload(out, logs)
             with self.assertRaisesRegex(ValueError, 'disjoint'): cpu.upload_bytes(out, out/'binaries')
 

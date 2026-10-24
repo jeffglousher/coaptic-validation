@@ -47,7 +47,7 @@ WARMUP = 20
 DATAGRAM_BUDGET = 60_000
 PROFILE_SECONDS = 5
 PERF_REPORT_SECONDS = 30
-PERF_FILES_PER_SLOT = 3  # Data/stat output, command/version log, record report.
+PERF_FILES_PER_SLOT = 5  # Data/stat, command log, flat report, inline callers/samples.
 KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready")
 EXPLICIT_KINDS = (*KINDS, "coaptic-async", "coaptic-blocking", "coaptic-staged-ready", "coaptic-staged-mio", "coaptic-mio-direct")
 FLAGS = {"RUSTUP_TOOLCHAIN": "1.99.0", "RUSTC": "rustc",
@@ -1303,8 +1303,74 @@ def perf_report(directory, quota, log):
     return state
 
 
+def perf_attribution(directory, quota, log, pid):
+    """Retain bounded inline readouts, not App eligibility or cost conclusions."""
+    if type(pid) is not int or pid <= 0:
+        raise ValueError("attribution requires a positive server PID")
+    result = dict(available=False, pid=pid,
+                  interpretation="readout availability only; App ancestry, inline completeness, eligible sample counts and CPU attribution require review")
+    commands = (("callers", "perf-callers.txt", ["report", "--stdio", "--header", "--show-nr-samples",
+                 "--show-total-period", "--sort", "pid,dso,symbol", "--children", "--call-graph",
+                 "graph,0,caller", "--inline", "--percent-limit", "0", "--percentage", "absolute",
+                 "--stdio-color", "never", "--demangle"]),
+                ("samples", "perf-samples.txt", ["script", "--ns", "--demangle", "--inline",
+                 "--show-task-events", "--show-lost-events", "-F", "comm,pid,tid,time,event,period,ip,sym,dso"]))
+    skipped = None
+    for name, filename, options in commands:
+        path = directory / filename
+        argv = ["sudo", "-n", "--", "prlimit", f"--fsize={quota}:{quota}", "--",
+                "timeout", "--foreground", "--signal=TERM", "--kill-after=5", str(PERF_REPORT_SECONDS - 5),
+                "env", "DEBUGINFOD_URLS=", "perf", *options, "--pid", str(pid),
+                "--force", "--input", str(directory / "perf.data")]
+        state = result[name] = dict(available=False, command=argv, output_file=str(path), pid=pid,
+                                   file_size_limit_bytes=quota, timeout_seconds=PERF_REPORT_SECONDS)
+        if skipped is not None:
+            state["skipped"] = skipped
+            continue
+        stream = None
+        try:
+            stream = path.open("xb")
+            state["returncode"] = run_owned(argv, timeout=PERF_REPORT_SECONDS, check=False, elevated=True,
+                                           stdin=subprocess.DEVNULL, stdout=stream, stderr=stream,
+                                           file_limit=quota, env={**os.environ, "DEBUGINFOD_URLS": ""})
+        except Exception as error:
+            state.update(error_type=type(error).__name__, reason=str(error)[:512])
+            if isinstance(error, subprocess.TimeoutExpired):
+                state["deadline_exceeded"] = True
+            if getattr(error, "cleanup_unresolved", False):
+                state["cleanup_unresolved"] = True
+                state["cleanup_reason"] = "; ".join(getattr(error, "__notes__", []) or [str(error)])[:512]
+        finally:
+            # Closing/stat failures must not replace a primary timeout or its
+            # independent process-cleanup evidence. Never truncate prior output.
+            if stream is not None:
+                try:
+                    stream.close()
+                except OSError as error:
+                    state.update(close_error=type(error).__name__, close_reason=str(error)[:512],
+                                 cleanup_unresolved=True)
+            try:
+                state["output_bytes"] = path.stat().st_size
+                state["command_log_bytes"] = os.fstat(log.fileno()).st_size
+            except OSError as error:
+                state.update(metadata_error=type(error).__name__, metadata_reason=str(error)[:512])
+        state["available"] = (not any(state.get(key) for key in
+                                      ("error_type", "close_error", "metadata_error", "cleanup_unresolved"))
+                              and state.get("returncode") == 0
+                              and 0 < state.get("output_bytes", 0) < quota
+                              and state.get("command_log_bytes", quota) < quota)
+        if state.get("cleanup_unresolved"):
+            result["cleanup_unresolved"] = True
+        if not state["available"]:
+            skipped = "previous attribution readout unavailable; no retry"
+    result["available"] = all(result[name]["available"] for name, _, _ in commands)
+    return result
+
+
 @contextmanager
-def perf_pass(mode, pid, seconds, directory, quota, *, event="cpu-clock", target=None):
+def perf_pass(mode, pid, seconds, directory, quota, *, event="cpu-clock", target=None, attribution=False):
+    if type(attribution) is not bool or (attribution and (type(pid) is not int or pid <= 0)):
+        raise ValueError("attribution requires a boolean request and a positive server PID")
     state = PerfCapture(mode, seconds, target)
     if mode == "clean":
         yield state
@@ -1422,6 +1488,15 @@ def perf_pass(mode, pid, seconds, directory, quota, *, event="cpu-clock", target
                         state["report"] = perf_report(directory, quota, log)
                         if state["report"].get("cleanup_unresolved"):
                             state["cleanup_unresolved"] = True
+                    if mode == "record" and attribution:
+                        state["attribution"] = dict(available=False, pid=pid,
+                                                    skipped="capture/flat report unavailable or window failed")
+                        if (primary is None and finish_error is None
+                                and not unresolved_cleanup({"perf": state})
+                                and state["available"] and state.get("report", {}).get("available")):
+                            state["attribution"] = perf_attribution(directory, quota, log, pid)
+                            if state["attribution"].get("cleanup_unresolved"):
+                                state["cleanup_unresolved"] = True
                     try:
                         save(directory / "perf.json", state, WINDOW_LIMIT)
                     except Exception as error:
@@ -1593,7 +1668,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                            (("server", sut), ("client", child))} if mode == "clean" else {})
                 if clocks:
                     clock_evidence["setup"] = {name: clock.status for name, clock in clocks.items()}
-                with perf_pass(mode, sut.pid, PROFILE_SECONDS, directory, quota, target=sut) as perf:
+                with perf_pass(mode, sut.pid, PROFILE_SECONDS, directory, quota, target=sut,
+                               attribution=(mode == "record")) as perf:
                     result["perf"] = perf
                     if clocks:
                         clock_evidence["before"] = {name: clock.snapshot() for name, clock in clocks.items()}
