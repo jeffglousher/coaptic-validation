@@ -1074,3 +1074,51 @@ The parser, resource bounds, complete-operation checks and acceptance gates
 remain unchanged. Raw failure evidence is retained; no diagnostic parser or
 sampling infrastructure is added to extend this approach. Both 50% server CPU
 targets remain open, and sample counts establish no CPU gain or transport share.
+
+### Opt-in SmallDevice core wall probe (#187)
+
+The existing socket-free native `bench-core` accepts one appended
+`--small-device` flag after an explicit security mode:
+
+```sh
+bench-core 16 unprotected --small-device
+bench-core 16 oscore --small-device
+```
+
+This selects the unchanged `SmallDevice::new()` fixed Constrained preset:
+four route capacity/one populated GET, one Call, zero deferred rows, one
+association/four request bindings, RX/TX each two by 1,152 bytes, dedup four,
+Observe two, blockwise off and no body pools; the complete response is 32 bytes.
+It constructs only that App, with startup storage reused and no automatic growth.
+The existing `bench-core OPERATIONS [unprotected|oscore]` Default/Alloc 64-byte
+CLI and JSON shape stay supported. The fixed 50,000-operation `--batch-cpu`
+mode remains separate; mixed flags, unknown options and extra arguments refuse.
+Existing `core_cost_probe.py` source pins and workflows are unchanged.
+
+Wall mode permits 1..60,000 measured operations plus 128 distinct-MID warmups.
+Each poll retains optimizer barriers around the App, monotonic input and result;
+fixture receive/send copies, dispatch, maintenance and server crypto remain
+inside that same timed `App::poll`. Request preparation/protection and complete
+ACK MID, Token, code, content-format, single ETag, payload and absence-of-Block2
+verification run outside. OSCORE responses must authenticate. The 4,096 clock
+calibrations are separate and never subtracted.
+
+Only the opt-in JSON adds profile/payload/capacity and memory fields. App inline
+includes fixed pools, security and CoreIo; its transport size and two 1,472-byte
+fixture buffers are nested owners, not additional App bytes. These fixture
+buffers are distinct from the preset's two 1,152-byte RX and TX slots and do not
+establish native Mio memory equivalence. Timing vector payloads/headers,
+the 1,472-byte verification buffer, optional client context and 32 static
+representation bytes are named separately. Requested vector capacity excludes
+allocator overhead; initialization, generated peak stack and runtime costs
+remain unknown. This is no whole-memory ceiling.
+
+Build the same probe source against both immutable cores with Rust 1.99.0,
+the existing native release profile (`std,alloc,oscore`, defaults disabled,
+thin LTO/one codegen unit), `--locked` and the source-specific lock selector
+above. Freeze physical source/patch, compiler/flags, selected lock and both
+actual executable hashes before finite matched functional checks; restore the
+canonical lock and junction afterward. Preserve failures. Windows functional
+proof and per-poll wall arrays are supporting evidence only: they do not qualify
+future Linux/profile probes, socket latency, server CPU, transport share, peak
+stack or whole RAM. Both 50% targets and the remaining matrix obligations stay open.

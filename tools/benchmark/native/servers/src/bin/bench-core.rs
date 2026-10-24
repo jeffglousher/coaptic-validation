@@ -4,14 +4,16 @@
 //! from OS socket scheduling. Request preparation and complete reply validation
 //! are outside each timed poll. Per-call clocks perturb these measurements;
 //! they are not production latency or throughput estimates.
+use coaptic::app::{AppAssembled, AppStorage};
 use coaptic::message::{Message, MessageId, Opt, Token, Type, decode};
-use coaptic::storage::{Capacities, DatagramIo};
+use coaptic::storage::{Capacities, DatagramIo, MemoryLayout};
 use coaptic::{App, Code, ContentFormat, Endpoint, Request, Response, get};
 use std::hint::black_box;
 use std::io::{Read, Write};
 use std::time::Instant;
 
 const BODY: [u8; 64] = [0x5a; 64];
+const SMALL_BODY: [u8; 32] = [0x5a; 32];
 const PEER: Endpoint = Endpoint::v4([127, 0, 0, 1], 30000);
 
 struct CoreIo {
@@ -52,21 +54,123 @@ fn representation(_: Request<'_>) -> Response<'static> {
         .etag(b"fixture")
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<_> = std::env::args().collect();
-    let batch_cpu = args.len() == 4 && args[3] == "--batch-cpu";
-    if !(2..=3).contains(&args.len()) && !batch_cpu {
-        return Err("usage: bench-core OPERATIONS (1..=60000) [unprotected|oscore]".into());
+const USAGE: &str = "usage: bench-core OPERATIONS (1..=60000) [unprotected|oscore [--small-device|--batch-cpu]]; --small-device is wall-only; --batch-cpu requires 50000";
+
+#[derive(Debug, PartialEq)]
+enum ProbeMode {
+    Wall,
+    SmallDevice,
+    BatchCpu,
+}
+
+#[derive(Debug, PartialEq)]
+struct Config<'a> {
+    operations: usize,
+    security: &'a str,
+    mode: ProbeMode,
+}
+
+fn parse_args(args: &[String]) -> Result<Config<'_>, Failure> {
+    if !(2..=4).contains(&args.len()) {
+        return Err(USAGE.into());
     }
-    let operations: usize = args[1].parse()?;
+    let operations = args[1].parse::<usize>().map_err(|_| USAGE)?;
     if !(1..=60000).contains(&operations) {
-        return Err("operation limit".into());
-    }
-    if batch_cpu && operations != 50_000 {
-        return Err("batch CPU requires exactly 50000 operations".into());
+        return Err("operation limit (1..=60000)".into());
     }
     let security = args.get(2).map_or("unprotected", String::as_str);
-    let (client_context, server_context) = match security {
+    if !matches!(security, "unprotected" | "oscore") {
+        return Err(USAGE.into());
+    }
+    let mode = match args.get(3).map(String::as_str) {
+        None => ProbeMode::Wall,
+        Some("--small-device") => ProbeMode::SmallDevice,
+        Some("--batch-cpu") => ProbeMode::BatchCpu,
+        _ => return Err(USAGE.into()),
+    };
+    if mode == ProbeMode::BatchCpu && operations != BATCH_OPS {
+        return Err("batch CPU requires exactly 50000 operations".into());
+    }
+    Ok(Config {
+        operations,
+        security,
+        mode,
+    })
+}
+
+fn small_representation(_: Request<'_>) -> Response<'static> {
+    Response::content(&SMALL_BODY)
+        .content_format(ContentFormat::OCTET_STREAM)
+        .etag(b"fixture")
+}
+
+fn core_io() -> CoreIo {
+    CoreIo {
+        input: [0; WIRE],
+        input_len: None,
+        output: [0; WIRE],
+        output_len: None,
+    }
+}
+
+type SmallApp = App<
+    coaptic::profiles::Constrained,
+    CoreIo,
+    4,
+    false,
+    <coaptic::profiles::Constrained as MemoryLayout<false>>::Store,
+    0,
+    1,
+>;
+
+fn small_app(
+    server_context: Option<coaptic::oscore::SecurityContext>,
+) -> Result<SmallApp, Failure> {
+    let builder = App::with_resources(coaptic::resources::SmallDevice::new())
+        .randomness(|bytes| getrandom::fill(bytes).is_ok())
+        .route("bench", get(small_representation));
+    let builder = if let Some(context) = server_context {
+        builder.oscore(context)
+    } else {
+        builder.allow_unprotected()
+    };
+    Ok(builder.bind(core_io())?)
+}
+
+fn default_app(
+    server_context: Option<coaptic::oscore::SecurityContext>,
+) -> Result<CoreApp, Failure> {
+    let builder = App::builder()
+        .routes::<1>()
+        .block_wise::<true>()
+        .randomness(|bytes| getrandom::fill(bytes).is_ok())
+        .route("bench", get(representation));
+    let builder = if let Some(context) = server_context {
+        builder.oscore(context)
+    } else {
+        builder.allow_unprotected()
+    };
+    Ok(builder.bind_alloc(
+        core_io(),
+        Capacities {
+            rx_datagram_slots: 4,
+            rx_datagram_bytes: 1472,
+            tx_datagram_slots: 4,
+            tx_datagram_bytes: 1472,
+            dedup_entries: 8,
+            observe_entries: 4,
+            rx_body_slots: Some(1),
+            rx_body_bytes: Some(1024),
+            tx_body_slots: Some(2),
+            tx_body_bytes: Some(1024),
+        },
+    )?)
+}
+
+fn main() -> Result<(), Failure> {
+    let args: Vec<_> = std::env::args().collect();
+    let config = parse_args(&args)?;
+    let (client_context, server_context) = match config.security {
         "unprotected" => (None, None),
         "oscore" => {
             let mut material = [0; 24];
@@ -86,40 +190,67 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         _ => return Err("security selection".into()),
     };
-    let mut client_context = client_context;
-    let builder = App::builder()
-        .routes::<1>()
-        .block_wise::<true>()
-        .randomness(|bytes| getrandom::fill(bytes).is_ok())
-        .route("bench", get(representation));
-    let builder = if let Some(context) = server_context {
-        builder.oscore(context)
+    // Construct only the selected App; no union reserves a larger profile.
+    if config.mode == ProbeMode::SmallDevice {
+        wall_run(
+            &mut small_app(server_context)?,
+            client_context,
+            config.operations,
+            config.security,
+            &SMALL_BODY,
+            true,
+        )
     } else {
-        builder.allow_unprotected()
-    };
-    let mut app = builder.bind_alloc(
-        CoreIo {
-            input: [0; 1472],
-            input_len: None,
-            output: [0; 1472],
-            output_len: None,
-        },
-        Capacities {
-            rx_datagram_slots: 4,
-            rx_datagram_bytes: 1472,
-            tx_datagram_slots: 4,
-            tx_datagram_bytes: 1472,
-            dedup_entries: 8,
-            observe_entries: 4,
-            rx_body_slots: Some(1),
-            rx_body_bytes: Some(1024),
-            tx_body_slots: Some(2),
-            tx_body_bytes: Some(1024),
-        },
-    )?;
-    if batch_cpu {
-        return batch_run(&mut app, client_context, security);
+        let mut app = default_app(server_context)?;
+        if config.mode == ProbeMode::BatchCpu {
+            batch_run(&mut app, client_context, config.security)
+        } else {
+            wall_run(
+                &mut app,
+                client_context,
+                config.operations,
+                config.security,
+                &BODY,
+                false,
+            )
+        }
     }
+}
+
+fn verify_reply(
+    reply: &coaptic::message::ParsedMessage<'_>,
+    mid: MessageId,
+    token: Token,
+    body: &[u8],
+) -> Result<(), Failure> {
+    let mut etags = reply.etag();
+    if reply.message_id() != mid
+        || reply.token() != token
+        || reply.ty() != Type::Acknowledgement
+        || reply.code() != Code::CONTENT
+        || reply.payload() != body
+        || reply.block2().is_some()
+        || reply.content_format().and_then(Result::ok) != Some(ContentFormat::OCTET_STREAM)
+        || etags.next() != Some(&b"fixture"[..])
+        || etags.next().is_some()
+    {
+        return Err("response mismatch".into());
+    }
+    Ok(())
+}
+
+fn wall_run<P, S, const N: usize, const B: bool, const D: usize, const C: usize>(
+    app: &mut App<P, CoreIo, N, B, S, D, C>,
+    mut client_context: Option<coaptic::oscore::SecurityContext>,
+    operations: usize,
+    security: &str,
+    body: &[u8],
+    small_device: bool,
+) -> Result<(), Failure>
+where
+    P: MemoryLayout<B> + AppAssembled<B>,
+    S: AppStorage<Token = P::Token>,
+{
     let mut latencies = Vec::with_capacity(operations);
     let mut clock_calibration = Vec::with_capacity(4096);
     for sample in 0..4096 {
@@ -130,43 +261,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut opened = [0; 1472];
     let clock = Instant::now();
     for operation in 0..operations + 128 {
-        let mid = MessageId::new(operation as u16);
-        let token = Token::new(&(operation as u64).to_be_bytes()).ok_or("token")?;
-        let options = [Opt::uri_path("bench")];
-        let request = Message::con(Code::GET, mid, token).with_options(&options);
-        let io = app.transport_mut();
-        io.input_len = Some(match client_context.as_mut() {
-            Some(context) => context.protect_request(&request, &mut io.input)?,
-            None => request.encode(&mut io.input)?,
-        });
-        let now = clock.elapsed().as_millis() as u64;
-        let started = Instant::now();
-        let outcome = black_box(black_box(&mut app).poll(black_box(now)));
-        let elapsed = started.elapsed().as_nanos();
-        outcome.map_err(|_| "poll failure")?;
-        let io = app.transport_mut();
-        let n = io.output_len.take().ok_or("missing response")?;
-        let wire = decode(black_box(&io.output[..n]))?;
-        let reply = match client_context.as_mut() {
-            Some(context) => {
-                let binding = context.take(token).ok_or("request binding")?;
-                context.unprotect_response(&wire, binding, &mut opened)?
-            }
-            None => wire,
-        };
-        let mut etags = reply.etag();
-        if reply.message_id() != mid
-            || reply.token() != token
-            || reply.ty() != Type::Acknowledgement
-            || reply.code() != Code::CONTENT
-            || reply.payload() != BODY
-            || reply.block2().is_some()
-            || reply.content_format().and_then(Result::ok) != Some(ContentFormat::OCTET_STREAM)
-            || etags.next() != Some(&b"fixture"[..])
-            || etags.next().is_some()
-        {
-            return Err("response mismatch".into());
-        }
+        let elapsed = wall_step(
+            app,
+            &mut client_context,
+            operation,
+            clock,
+            &mut opened,
+            body,
+        )?;
         if operation >= 128 {
             latencies.push(elapsed);
         }
@@ -187,8 +289,113 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         print!("{elapsed}");
     }
-    println!("]}}");
+    if small_device {
+        print!("],");
+        small_device_ledger(
+            app,
+            operations,
+            latencies.capacity(),
+            clock_calibration.capacity(),
+        );
+        println!("}}");
+    } else {
+        println!("]}}");
+    }
     Ok(())
+}
+
+fn wall_step<P, S, const N: usize, const B: bool, const D: usize, const C: usize>(
+    app: &mut App<P, CoreIo, N, B, S, D, C>,
+    client_context: &mut Option<coaptic::oscore::SecurityContext>,
+    operation: usize,
+    clock: Instant,
+    opened: &mut [u8; WIRE],
+    body: &[u8],
+) -> Result<u128, Failure>
+where
+    P: MemoryLayout<B> + AppAssembled<B>,
+    S: AppStorage<Token = P::Token>,
+{
+    let mid = MessageId::new(operation as u16);
+    let token = Token::new(&(operation as u64).to_be_bytes()).ok_or("token")?;
+    let options = [Opt::uri_path("bench")];
+    let request = Message::con(Code::GET, mid, token).with_options(&options);
+    let io = app.transport_mut();
+    io.input_len = Some(match client_context.as_mut() {
+        Some(context) => context.protect_request(&request, &mut io.input)?,
+        None => request.encode(&mut io.input)?,
+    });
+    let now = clock.elapsed().as_millis() as u64;
+    let started = Instant::now();
+    let outcome = black_box(black_box(&mut *app).poll(black_box(now)));
+    let elapsed = started.elapsed().as_nanos();
+    outcome.map_err(|_| "poll failure")?;
+    wall_response(
+        app.transport_mut(),
+        client_context,
+        opened,
+        mid,
+        token,
+        body,
+    )?;
+    Ok(elapsed)
+}
+
+fn wall_response(
+    io: &mut CoreIo,
+    client_context: &mut Option<coaptic::oscore::SecurityContext>,
+    opened: &mut [u8; WIRE],
+    mid: MessageId,
+    token: Token,
+    body: &[u8],
+) -> Result<(), Failure> {
+    let n = io.output_len.take().ok_or("missing response")?;
+    if !(1..=io.output.len()).contains(&n) {
+        return Err("response length".into());
+    }
+    let wire = decode(black_box(&io.output[..n]))?;
+    let reply = match client_context.as_mut() {
+        Some(context) => {
+            let binding = context.take(token).ok_or("request binding")?;
+            context.unprotect_response(&wire, binding, opened)?
+        }
+        None => wire,
+    };
+    verify_reply(&reply, mid, token, body)?;
+    Ok(())
+}
+
+// This ledger is emitted only by the opt-in wall mode. Nested owners are
+// descriptive components of App, never additive whole-memory requirements.
+fn small_device_ledger<P, S, const N: usize, const B: bool, const D: usize, const C: usize>(
+    app: &App<P, CoreIo, N, B, S, D, C>,
+    operations: usize,
+    latency_capacity: usize,
+    calibration_capacity: usize,
+) where
+    P: MemoryLayout<B> + AppAssembled<B>,
+    S: AppStorage<Token = P::Token>,
+{
+    let caps = app.engine().capacities();
+    print!(
+        "\"profile\":\"SmallDevice\",\"pools\":\"Constrained\",\"storage\":\"fixed\",\"payload_bytes\":32,\"concurrency\":1,\"message_type\":\"CON\",\"routes\":{N},\"populated_routes\":1,\"calls\":{C},\"deferred\":{D},\"associations\":1,\"security_requests\":4,\"blockwise\":{B},\"rx_slots\":{},\"rx_datagram_bytes\":{},\"tx_slots\":{},\"tx_datagram_bytes\":{},\"dedup\":{},\"observe\":{},\"rx_body_slots\":0,\"tx_body_slots\":0,\"verified\":{},\"calibration_samples\":4096,",
+        caps.rx_datagram_slots,
+        caps.rx_datagram_bytes,
+        caps.tx_datagram_slots,
+        caps.tx_datagram_bytes,
+        caps.dedup_entries,
+        caps.observe_entries,
+        operations + 128
+    );
+    print!(
+        "\"memory\":{{\"app_including_transport_inline_bytes\":{},\"fixed_pool_heap_bytes\":0,\"transport_nested_in_app_inline_bytes\":{},\"transport_input_nested_bytes\":1472,\"transport_output_nested_bytes\":1472,\"separate_latency_requested_bytes\":{},\"separate_calibration_requested_bytes\":{},\"separate_timing_vec_headers_bytes\":{},\"separate_verification_buffer_bytes\":1472,\"separate_optional_client_context_inline_bytes\":{},\"separate_representation_static_bytes\":32,\"remaining\":\"allocator overhead, initialization scratch, generated peak stack and runtime memory unknown; nested owners must not be added twice\"}},\"scope\":\"socket-free wall supporting evidence only; fixture input/output copies remain inside App::poll; not native Mio memory equivalence, server CPU, socket latency, transport share, whole memory or either 50% acceptance\"",
+        std::mem::size_of_val(app),
+        std::mem::size_of_val(app.transport()),
+        latency_capacity * std::mem::size_of::<u128>(),
+        calibration_capacity * std::mem::size_of::<u128>(),
+        2 * std::mem::size_of::<Vec<u128>>(),
+        std::mem::size_of::<Option<coaptic::oscore::SecurityContext>>()
+    );
 }
 
 // Diagnostic storage only. App pools, Calls and security bindings stay unchanged.
@@ -561,6 +768,260 @@ mod batch_tests {
             )
             .unwrap();
         (app, client)
+    }
+
+    fn contexts(
+        protected: bool,
+    ) -> (
+        Option<coaptic::oscore::SecurityContext>,
+        Option<coaptic::oscore::SecurityContext>,
+    ) {
+        let derive = |sender_id, recipient_id| {
+            coaptic::oscore::SecurityContext::derive(coaptic::oscore::DeriveParams {
+                master_secret: &[0x37; 16],
+                master_salt: &[0x51; 8],
+                sender_id,
+                recipient_id,
+                id_context: &[],
+            })
+            .unwrap()
+        };
+        if protected {
+            (Some(derive(&[], &[1])), Some(derive(&[1], &[])))
+        } else {
+            (None, None)
+        }
+    }
+
+    #[test]
+    fn wall_cli_bounds_and_mixed_flag_refusal() {
+        for security in ["unprotected", "oscore"] {
+            for (flag, mode) in [
+                ("", ProbeMode::Wall),
+                ("--small-device", ProbeMode::SmallDevice),
+                ("--batch-cpu", ProbeMode::BatchCpu),
+            ] {
+                let mut args = vec!["bench-core".into(), "50000".into(), security.into()];
+                if !flag.is_empty() {
+                    args.push(flag.into());
+                }
+                assert_eq!(parse_args(&args).unwrap().mode, mode);
+            }
+        }
+        for operations in ["1", "60000"] {
+            let args = vec!["bench-core".into(), operations.into()];
+            assert_eq!(parse_args(&args).unwrap().security, "unprotected");
+            assert_eq!(parse_args(&args).unwrap().mode, ProbeMode::Wall);
+            let mut small = args;
+            small.extend(["oscore".into(), "--small-device".into()]);
+            assert_eq!(parse_args(&small).unwrap().mode, ProbeMode::SmallDevice);
+        }
+        for raw in [
+            "",
+            "0",
+            "60001",
+            "-1",
+            "x",
+            "1 --small-device",
+            "1 unknown",
+            "1 oscore --unknown",
+            "1 oscore --batch-cpu",
+            "50000 oscore --small-device --batch-cpu",
+            "50000 oscore --batch-cpu --small-device",
+            "1 oscore --small-device extra",
+        ] {
+            let mut args = vec!["bench-core".into()];
+            args.extend(raw.split_whitespace().map(str::to_owned));
+            assert!(parse_args(&args).is_err(), "{raw}");
+        }
+        let max = vec!["bench-core".into(), "60000".into()];
+        assert!(parse_args(&max).unwrap().operations + 128 < u16::MAX as usize); // No warmup/measured MID reuse.
+    }
+
+    fn wall_reuse<P, S, const N: usize, const B: bool, const D: usize, const C: usize>(
+        app: &mut App<P, CoreIo, N, B, S, D, C>,
+        client: &mut Option<coaptic::oscore::SecurityContext>,
+        body: &[u8],
+    ) where
+        P: MemoryLayout<B> + AppAssembled<B>,
+        S: AppStorage<Token = P::Token>,
+    {
+        let capacities = app.engine().capacities();
+        let mut opened = [0; WIRE];
+        let clock = Instant::now();
+        ALLOCATIONS.with(|count| count.set(Some(0)));
+        let guard = Counting;
+        for operation in 0..36 {
+            wall_step(app, client, operation, clock, &mut opened, body).unwrap();
+            assert!(app.transport().input_len.is_none());
+            assert!(app.transport().output_len.is_none());
+        }
+        let allocations = ALLOCATIONS.with(Cell::get).unwrap();
+        drop(guard);
+        assert_eq!(allocations, 0);
+        assert_eq!(app.engine().capacities(), capacities);
+        if let Some(client) = client {
+            assert_eq!(client.request_capacity(), 4);
+            assert_eq!(client.sender_seq(), 36);
+        }
+    }
+
+    #[test]
+    fn wall_exact_presets_both_payloads_verify_without_growth() {
+        let preset = coaptic::resources::SmallDevice::new();
+        assert_eq!(preset.route_capacity(), 4);
+        assert_eq!(preset.client_capacity(), 1);
+        assert_eq!(preset.deferred_capacity(), 0);
+        assert_eq!(preset.association_capacity(), 1);
+        assert_eq!(preset.security_request_capacity(), 4);
+        let expected = Capacities {
+            rx_datagram_slots: 2,
+            rx_datagram_bytes: 1152,
+            tx_datagram_slots: 2,
+            tx_datagram_bytes: 1152,
+            dedup_entries: 4,
+            observe_entries: 2,
+            rx_body_slots: None,
+            rx_body_bytes: None,
+            tx_body_slots: None,
+            tx_body_bytes: None,
+        };
+        assert_eq!(preset.pool_capacities(), expected);
+        for protected in [false, true] {
+            let (mut client, server) = contexts(protected);
+            let mut app = small_app(server).unwrap();
+            assert_eq!(app.engine().capacities(), expected);
+            wall_reuse(&mut app, &mut client, &SMALL_BODY);
+            let (mut client, server) = contexts(protected);
+            let mut app = default_app(server).unwrap();
+            let caps = app.engine().capacities();
+            assert_eq!((caps.rx_datagram_slots, caps.tx_datagram_slots), (4, 4));
+            assert_eq!(
+                (caps.rx_datagram_bytes, caps.tx_datagram_bytes),
+                (1472, 1472)
+            );
+            assert_eq!((caps.dedup_entries, caps.observe_entries), (8, 4));
+            assert_eq!((caps.rx_body_slots, caps.tx_body_slots), (Some(1), Some(2)));
+            assert_eq!(
+                (caps.rx_body_bytes, caps.tx_body_bytes),
+                (Some(1024), Some(1024))
+            );
+            wall_reuse(&mut app, &mut client, &BODY);
+        }
+    }
+
+    fn wall_faults<P, S, const N: usize, const B: bool, const D: usize, const C: usize>(
+        app: &mut App<P, CoreIo, N, B, S, D, C>,
+        client: &mut Option<coaptic::oscore::SecurityContext>,
+        body: &[u8],
+    ) where
+        P: MemoryLayout<B> + AppAssembled<B>,
+        S: AppStorage<Token = P::Token>,
+    {
+        let clock = Instant::now();
+        for fault in 0..8 {
+            let mid = MessageId::new(fault);
+            let token = Token::new(&u64::from(fault).to_be_bytes()).unwrap();
+            let options = [Opt::uri_path("bench")];
+            let request = Message::con(Code::GET, mid, token).with_options(&options);
+            let io = app.transport_mut();
+            io.input_len = Some(match client.as_mut() {
+                Some(context) => context.protect_request(&request, &mut io.input).unwrap(),
+                None => request.encode(&mut io.input).unwrap(),
+            });
+            app.poll(clock.elapsed().as_millis() as u64).unwrap();
+            let io = app.transport_mut();
+            match fault {
+                0 => io.output_len = None,
+                1 => io.output_len = Some(1),
+                2 => io.output[io.output_len.unwrap() - 1] ^= 1, // Payload or authentication tag.
+                3 => io.output[2] ^= 1,                          // MID is outside OSCORE AAD.
+                4 => io.output[4] ^= 1,                          // Token.
+                5 => io.output_len = Some(WIRE + 1),
+                6 => io.output_len = Some(0),
+                7 if client.is_some() => {
+                    client.as_mut().unwrap().take(token);
+                }
+                7 => io.output[1] = Code::BAD_REQUEST.as_raw(),
+                _ => unreachable!(),
+            }
+            assert!(
+                wall_response(io, client, &mut [0; WIRE], mid, token, body).is_err(),
+                "fault {fault}"
+            );
+            if let Some(client) = client {
+                client.take(token);
+            }
+        }
+        wall_step(app, client, 8, clock, &mut [0; WIRE], body).unwrap();
+    }
+
+    #[test]
+    fn wall_missing_bad_response_and_authentication_refuse_then_recover() {
+        for protected in [false, true] {
+            let (mut client, server) = contexts(protected);
+            wall_faults(&mut small_app(server).unwrap(), &mut client, &SMALL_BODY);
+            let (mut client, server) = contexts(protected);
+            wall_faults(&mut default_app(server).unwrap(), &mut client, &BODY);
+        }
+    }
+
+    #[test]
+    fn wall_full_metadata_and_complete_payload_are_required() {
+        let mid = MessageId::new(17);
+        let token = Token::new(b"token").unwrap();
+        for body in [&SMALL_BODY[..], &BODY[..]] {
+            for fault in 0..10 {
+                let etag = Opt::new(coaptic::message::OptionNumber::ETAG, b"fixture");
+                let wrong_etag = Opt::new(coaptic::message::OptionNumber::ETAG, b"wrong");
+                let format = Opt::new(coaptic::message::OptionNumber::CONTENT_FORMAT, &[42]); // application/octet-stream
+                let block = Opt::new(coaptic::message::OptionNumber::BLOCK2, &[0]);
+                let mut options = vec![etag, format];
+                match fault {
+                    1 => {
+                        options.remove(0);
+                    }
+                    2 => options[0] = wrong_etag,
+                    3 => options.insert(0, etag),
+                    4 => {
+                        options.pop();
+                    }
+                    5 => {
+                        options[1] = Opt::new(coaptic::message::OptionNumber::CONTENT_FORMAT, &[0])
+                    }
+                    6 => options.push(block),
+                    _ => {}
+                }
+                let ty = if fault == 7 {
+                    Type::NonConfirmable
+                } else {
+                    Type::Acknowledgement
+                };
+                let code = if fault == 8 {
+                    Code::BAD_REQUEST
+                } else {
+                    Code::CONTENT
+                };
+                let payload = if fault == 9 {
+                    &body[..body.len() - 1]
+                } else {
+                    body
+                };
+                let mut wire = [0; WIRE];
+                let len = Message::new(ty, code, mid)
+                    .with_token(token)
+                    .with_options(&options)
+                    .with_payload(payload)
+                    .encode(&mut wire)
+                    .unwrap();
+                assert_eq!(
+                    verify_reply(&decode(&wire[..len]).unwrap(), mid, token, body).is_ok(),
+                    fault == 0,
+                    "fault {fault}, payload {}",
+                    body.len()
+                );
+            }
+        }
     }
 
     #[test]
