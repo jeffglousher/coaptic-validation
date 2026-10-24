@@ -24,7 +24,7 @@ temporary borrowed pollfd, zero Mio Poll/Events/selector owners and unchanged
 capacities. Scratch and credit are nested in App; do not add them twice.
 Allocator, initialization/peak stack and socket/kernel readiness costs remain
 unknown. Windows refuses this control. Portable credit/protocol tests and
-Linux-target compilation cannot establish actual Linux readiness execution.
+Linux-target compilation alone cannot establish actual Linux readiness execution.
 
 Only the exact ordinary-Mio baseline/level candidate SmallDevice32 C1 comparison
 on the same full core revision is
@@ -39,7 +39,7 @@ this control, so `n>=3` can lose. Counts, whole-memory acceptance and both 50%
 CPU targets remain separate claims. Issue 195's failed overhead guards and
 older failed runs remain retained; no replacement cohort is implied.
 
-This draft awaits actual Windows/Linux native functional validation. Linux run
+This draft has Linux functional proof; Windows proof remains open. Linux run
 40125433101 passed 207 Python checks and formatting, then stopped during native
 test compilation: three direct-receive test callers still named the former burst
 helper. No native tests or functional cells ran. Those callers now use the shared
@@ -47,8 +47,16 @@ helper. No native tests or functional cells ran. Those callers now use the share
 207 Python checks, formatting, 33 client tests and 71 server tests, including
 13 level-control tests and one level CLI test. Strict Clippy then refused items
 after the nested test module. That module is now moved unchanged after the
-production items; strict Clippy, release binaries and all six functional cells
-remain pending. Both failed runs are retained.
+production items. Run `40127468237` then passed all 207 Python checks, 104 native
+tests, formatting, strict Clippy and release builds. All six Linux cells passed:
+12 measured complete operations plus six warmups, with zero failures. Both
+earlier failed runs are retained.
+Windows run `40127800619` passed 199 Python checks (eight skips) and formatting,
+then the build-lane sampler raised `FileNotFoundError` for a temporary Cargo
+file. No native test completed; Clippy, release build and all four cells were
+NOT RUN. The sampler now skips only vanished build-lane entries; evidence-output
+sampling and other filesystem errors remain strict. Corrected Windows execution
+is pending, with the failed run preserved.
 The first local preparation stopped on its evidence
 budget; a later attempt stopped below the disk floor before any native build.
 The retained intermediate Python run completed 204 tests with 195 passes, one
@@ -67,8 +75,9 @@ The standalone `native_diagnostic.measure`/CLI remains a host-control diagnostic
 and excludes level mode; only the matched `linux_cpu.window` path forwards the
 required SmallDevice profile and RX capacity. A separate finite ordinary-Mio
 ServiceFixed startup/full-response regression on Windows must select the native
-profile explicitly. Actual startup, allocator,
-peak stack, Linux readiness, whole memory and both 50% targets remain open.
+profile explicitly. Linux finite startup and readiness checks pass as above;
+Windows startup, allocator, peak stack, whole memory and both 50% targets remain
+open. Finite tests do not establish all kernel interruption behavior.
 
 The existing manual workflow has an opt-in `native_validation_only=true` mode
 with `native_validation_os=ubuntu-24.04` or `windows-latest`. Both source inputs
@@ -88,7 +97,8 @@ The wheel-only, no-build bootstrap caps combined pip output while it is produced
 and settles its direct child on failure. Subsequent command cleanup reuses the
 portable eight-member owner and fails on unresolved members or retained pipes;
 neither establishes containment of escaped descendants.
-Complete Linux/Windows fixture execution in this mode is still pending.
+Linux fixture execution passed in `40127468237`; corrected Windows execution
+remains pending. The Rust fixture bytes are unchanged by the sampler repair.
 
 ## Bounded syscall diagnostic
 

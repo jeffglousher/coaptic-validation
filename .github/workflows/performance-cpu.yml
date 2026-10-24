@@ -230,7 +230,7 @@ jobs:
           RUSTC: rustc
         run: |
           python -B - <<'PY'
-          import importlib, json, os, platform, socket, subprocess, sys, tempfile, threading, time, traceback
+          import importlib, json, os, platform, socket, stat, subprocess, sys, tempfile, threading, time, traceback
           from pathlib import Path
 
           CORE = 'd23f93c0699b75ec17e692999d62ff89bb71463d'
@@ -247,11 +247,23 @@ jobs:
               'setup', 'rustc', 'cargo-version', 'python-tests', 'native-diagnostic-tests', 'syscall-tests',
               'rustfmt', 'native-tests', 'native-clippy', 'native-build')}
 
-          def total(path):
-              return sum(p.stat().st_size for p in path.rglob('*') if p.is_file())
+          def total(path, *, allow_vanishing=False):
+              size = 0
+              for entry in path.rglob('*'):
+                  try:
+                      info = entry.stat()
+                  except FileNotFoundError:
+                      # Cargo removes temporary files during a build-lane sample.
+                      # Evidence output stays strict; other filesystem errors fail.
+                      if not allow_vanishing:
+                          raise
+                      continue
+                  if stat.S_ISREG(info.st_mode):
+                      size += info.st_size
+              return size
 
           def guard(reserve=0):
-              if total(ROOT) + reserve > LIMIT or total(LANE) > 4 * 1024**3:
+              if total(ROOT) + reserve > LIMIT or total(LANE, allow_vanishing=True) > 4 * 1024**3:
                   raise ValueError('native proof output/build-lane bound exceeded')
 
           def save(name, value):
