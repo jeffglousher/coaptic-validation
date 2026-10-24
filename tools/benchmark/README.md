@@ -16,6 +16,14 @@ Current rankings and complete cell receipts:
 The [October 22 sitrep](evidence/comprehensive-windows-20261022/README.md) retains
 the earlier campaign and methodology.
 
+eBPF is included as a separate measured component in the
+[ingress cost comparison](evidence/ebpf-ingress-20261024/README.md): the retained
+Rust/Aya XDP classifier costs 158/160/170/429 ns median batch averages for its
+four fixed frames, versus 28 ns for minimal PASS. It observes and passes every
+packet; these kernel test-run values are not authenticated socket CPU/op,
+individual-packet latency, throughput or an application speedup. The report
+keeps exact historical sources, raw arrays and current integration limits.
+
 ## Current SmallDevice quick check
 
 `coaptic-small` binds `resources::SmallDevice::new()` with fixed
