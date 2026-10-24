@@ -8,6 +8,8 @@ import subprocess
 import tempfile
 import threading
 import time
+from native_profiles import PROFILE_SIZES, dimensions, validate_profile
+from native_diagnostic import server_resources, validate_report
 
 
 def run_client(client, port, size, security, credentials=None):
@@ -100,9 +102,84 @@ def check(server, client):
           "unprotected/wrong-key refusal and fresh protected Block2 PASS")
 
 
+def check_profile(server, client, profile, size):
+    """Real executable/route checks; each process initializes its declared BODY.
+
+    Fresh process-lifetime keys per cell. Wrong-key traffic cannot consume the
+    valid sender sequence; the valid protected client is run exactly once.
+    """
+    validate_profile(profile, "coaptic-mio", size)
+    rx_bytes = dimensions(profile, size)["rx_datagram_bytes"]
+    for security in ("unprotected", "oscore"):
+        with tempfile.TemporaryDirectory(prefix="coaptic-profile-check-") as directory:
+            correct, wrong = Path(directory) / "correct", Path(directory) / "wrong"
+            correct.write_bytes(secrets.token_bytes(24))
+            wrong.write_bytes(secrets.token_bytes(24))
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as reserve:
+                reserve.bind(("127.0.0.1", 0))
+                port = reserve.getsockname()[1]
+            command = [str(Path(server).resolve()), "coaptic-mio", "127.0.0.1", str(port), str(size), str(rx_bytes)]
+            if security == "oscore":
+                command.append(str(correct))
+            command += ["--resource-profile", profile]
+            path = Path(directory) / "server.log"
+            with path.open("wb") as log:
+                process = subprocess.Popen(command, stdout=log, stderr=log)
+                try:
+                    ledger = server_resources(path, "coaptic-mio", deadline=time.monotonic() + 5,
+                                              server=process, resource_profile=profile,
+                                              size=size, security=security, rx_bytes=rx_bytes)
+                    # Exact +1 guard refusal followed by a fresh complete operation.
+                    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as oversized:
+                        oversized.sendto(b"\xff" * (rx_bytes + 1), ("127.0.0.1", port))
+                    if security == "oscore":
+                        for mode, key in (("unprotected", None), ("oscore", wrong)):
+                            refused = run_client(client, port, size, mode, key)
+                            failure = json.loads(refused.stdout)
+                            expected = ("complete representation/status/format/ETag mismatch"
+                                        if mode == "unprotected" else "complete operation deadline")
+                            if (refused.returncode != 1 or failure.get("completed") != 0
+                                    or failure.get("failure") != expected):
+                                raise RuntimeError("unexpected security refusal: " + str(failure.get("failure")))
+                    else:
+                        refused = run_client(client, port, size - 1, security)
+                        failure = json.loads(refused.stdout)
+                        if (refused.returncode != 1 or failure.get("completed") != 0
+                                or failure.get("failure") not in
+                                ("output", "complete representation/status/format/ETag mismatch")):
+                            raise RuntimeError("wrong declared representation counted complete")
+                    result = run_client(client, port, size, security, correct if security == "oscore" else None)
+                    if result.returncode:
+                        raise RuntimeError("profile complete/recovery failed: " + result.stderr[:512])
+                    report = json.loads(result.stdout)
+                    validate_report(report, size, 2, "spin", security)
+                    if process.poll() is not None:
+                        raise RuntimeError("server exited during profile proof")
+                    print(json.dumps(dict(profile=profile, security=security, size=size,
+                                          completed=report["completed"], ledger=ledger,
+                                          oversized_bytes=rx_bytes + 1,
+                                          expected_client_refusals=2 if security == "oscore" else 1)))
+                except BaseException:
+                    log.flush()
+                    print("RAW SERVER STARTUP/FAILURE: " + path.read_bytes()[:4096].decode("utf-8", errors="replace"),
+                          flush=True)
+                    raise
+                finally:
+                    if process.poll() is None:
+                        process.terminate()
+                    process.wait(timeout=5)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server", type=Path, required=True)
     parser.add_argument("--client", type=Path, required=True)
+    parser.add_argument("--resource-profile", choices=tuple(PROFILE_SIZES))
+    parser.add_argument("--bytes", type=int)
     args = parser.parse_args()
-    check(args.server, args.client)
+    if args.resource_profile is not None:
+        check_profile(args.server, args.client, args.resource_profile, args.bytes)
+    elif args.bytes is not None:
+        parser.error("--bytes requires --resource-profile")
+    else:
+        check(args.server, args.client)

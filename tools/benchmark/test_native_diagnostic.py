@@ -8,9 +8,37 @@ import unittest
 from unittest.mock import MagicMock, Mock, patch
 from native_diagnostic import (ADMISSION_DIAGNOSTIC_LIMIT, control_line, cpu_cost, main, measure,
                                server_resources, validate_admission_diagnostics, validate_report)
+from native_profiles import dimensions, PROFILE_SIZES
 
 
 class ReportTests(unittest.TestCase):
+    def test_profile_ledgers_match_actual_dimensions_and_disjoint_owner_categories(self):
+        for profile, sizes in PROFILE_SIZES.items():
+            for size in sizes:
+                expected = dimensions(profile, size)
+                record = self.mio_record() | expected | dict(
+                    security="oscore", app_requested_heap_bytes=0 if expected["storage"] == "fixed" else 1_000_000,
+                    allocator_overhead_bytes=None, initialization_stack_bytes=None, events_heap_bytes=None)
+                changes = [{key: not value if type(value) is bool else value + 1 if type(value) is int else "wrong"}
+                           for key, value in expected.items()]
+                changes += [dict(app_requested_heap_bytes=-1), dict(security="unprotected"),
+                            dict(initialization_stack_bytes=0), dict(allocator_overhead_bytes=0),
+                            dict(events_heap_bytes=0)]
+                changes += [dict(app_requested_heap_bytes=1 if expected["storage"] == "fixed" else 1)]
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "server.log"
+                    for delta in ({}, *changes):
+                        path.write_text(json.dumps(record | delta) + "\n")
+                        with self.subTest(profile=profile, size=size, delta=delta):
+                            if delta:
+                                with self.assertRaises(ValueError):
+                                    server_resources(path, "coaptic-mio", deadline=0, server=None,
+                                                     resource_profile=profile, size=size, security="oscore")
+                            else:
+                                self.assertEqual(server_resources(path, "coaptic-mio", deadline=0, server=None,
+                                                                  resource_profile=profile, size=size,
+                                                                  security="oscore"), record)
+
     @staticmethod
     def admission_report():
         # First A-D=100; next C-D=300, E=700 crosses P=1000; last C-D=1000

@@ -29,6 +29,7 @@ import threading
 import time
 
 from native_lock import native_lock
+from native_profiles import PROFILE_SIZES, dimensions, validate_profile
 
 
 MIB = 1024 * 1024
@@ -70,6 +71,9 @@ def selection(value, allowed=None):
 
 
 def configuration(args):
+    profile = getattr(args, "resource_profile", "host-control")
+    if profile not in PROFILE_SIZES:
+        raise ValueError("unknown resource profile")
     diagnostic = getattr(args, "admission_diagnostics", False)
     if type(diagnostic) is not bool:
         raise ValueError("admission diagnostics selection must be boolean")
@@ -89,7 +93,12 @@ def configuration(args):
             or args.message_type not in ("con", "non")
             or (args.concurrency > 1 and args.message_type != "non")):
         raise ValueError("concurrency 1..4; concurrent CON refused by per-endpoint NSTART=1; select NON explicitly")
-    sizes = [int(p) for p in selection(args.sizes, ("64", "1024", "65536"))]
+    sizes = [int(p) for p in selection(args.sizes, tuple(str(s) for s in PROFILE_SIZES[profile]))]
+    for size in sizes:
+        validate_profile(profile, args.server_kind, size, concurrency=args.concurrency,
+                         message_type=args.message_type, admission_diagnostics=diagnostic)
+        if profile != "host-control" and args.candidate_server_kind is not None:
+            raise ValueError("representative profile requires same Mio on both labels")
     rates = [int(p) for p in selection(args.rates)]
     if len(set(rates)) != len(rates):
         raise ValueError("rates must be numerically distinct")
@@ -1411,17 +1420,24 @@ def save_window(directory, result):
 
 
 def window(server, client, cell, operations, directory, mode="clean", quota=8 * MIB,
-           *, concurrency=1, message_type="con", admission_diagnostics=False):
+           *, concurrency=1, message_type="con", admission_diagnostics=False,
+           resource_profile="host-control"):
+    security, size, rate, kind = cell
+    if security not in ("unprotected", "oscore"):
+        raise ValueError("unsupported profile security")
+    validate_profile(resource_profile, kind, size, concurrency=concurrency,
+                     message_type=message_type, security=security,
+                     admission_diagnostics=admission_diagnostics)
     if type(admission_diagnostics) is not bool or (admission_diagnostics and
             (mode != "clean" or concurrency != 1 or type(cell[2]) is not int or cell[2] <= 0)):
         raise ValueError("admission diagnostics require an unprofiled paced C1 window")
     # Import lazily: argument validation/aggregation tests do not require psutil.
     import psutil
     import native_diagnostic as native
-    security, size, rate, kind = cell
     result = {"passed": False, "mode": mode, "security": security, "bytes": size,
               "rate": rate, "server_kind": kind, "operations": operations,
               "concurrency": concurrency, "message_type": message_type,
+              "resource_profile": resource_profile,
               "load_before": os.getloadavg()}
     if admission_diagnostics:
         result["admission_diagnostics"] = True
@@ -1440,7 +1456,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as reserve:
             reserve.bind(("127.0.0.1", 0))
             port = reserve.getsockname()[1]
-        server_args = [str(server), kind, "127.0.0.1", str(port), str(size), "1472"]
+        rx_bytes = dimensions(resource_profile, size)["rx_datagram_bytes"]
+        server_args = [str(server), kind, "127.0.0.1", str(port), str(size), str(rx_bytes)]
         client_args = [str(client), str(port), str(size), str(operations), str(WARMUP), "3000", "spin", security,
                        "--cpu-gated", "--rate", str(rate),
                        "--concurrency", str(concurrency), "--message-type", message_type]
@@ -1449,6 +1466,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
         if security == "oscore":
             server_args.append(str(credentials))
             client_args.insert(8, str(credentials))
+        if resource_profile != "host-control":
+            server_args += ["--resource-profile", resource_profile]
         with (directory / "server.log").open("w+b") as server_log, (directory / "client.stderr").open("wb") as client_log:
             try:
                 sut = spawn(server_args, stdout=server_log, stderr=server_log)
@@ -1477,7 +1496,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                         raise RuntimeError("client gate: " + line)
                 gate("ready")
                 result["server_resources"] = native.server_resources(
-                    directory / "server.log", kind, deadline=time.monotonic() + 60, server=sut)
+                    directory / "server.log", kind, deadline=time.monotonic() + 60, server=sut,
+                    resource_profile=resource_profile, size=size, security=security, rx_bytes=rx_bytes)
                 peers = {"server": psutil.Process(sut.pid), "client": psutil.Process(child.pid)}
                 clocks = ({name: ProcessCpuClock(proc) for name, proc in
                            (("server", sut), ("client", child))} if mode == "clean" else {})
@@ -1569,6 +1589,12 @@ def accepted(result, tick):
             or result.get("admission_diagnostics", False) is not False
             or "admission_diagnostics" in result.get("report", {})):
         return False
+    try:
+        validate_profile(result.get("resource_profile", "host-control"), result["server_kind"],
+                         result["bytes"], concurrency=result.get("concurrency"),
+                         message_type=result.get("message_type"), security=result["security"])
+    except ValueError:
+        return False
     report = result["report"]
     concurrency, message_type = result.get("concurrency"), result.get("message_type")
     return (type(concurrency) is int and 1 <= concurrency <= 4
@@ -1602,14 +1628,16 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
         if item["mode"] == "clean":
             key = (item["security"], item["bytes"], item["rate"],
                    adapter_pair[0] if adapter_pair else item["server_kind"],
-                   item.get("concurrency"), item.get("message_type"))
+                   item.get("concurrency"), item.get("message_type"),
+                   item.get("resource_profile", "host-control"))
             groups.setdefault(key, []).append(item)
     output = []
     cleanup_failed = any(unresolved_cleanup(item) for item in results)
     diagnostic = any(item.get("admission_diagnostics", False) is not False
                      or "admission_diagnostics" in item.get("report", {}) for item in results)
     for key, items in groups.items():
-        record = dict(zip(("security", "bytes", "rate", "server_kind", "concurrency", "message_type"), key))
+        record = dict(zip(("security", "bytes", "rate", "server_kind", "concurrency", "message_type",
+                           "resource_profile"), key))
         labels = {label: [i for i in items if i["revision_label"] == label]
                   for label in ("baseline", "candidate")}
         kinds = dict(zip(("baseline", "candidate"), adapter_pair or (key[3], key[3])))
@@ -1660,6 +1688,7 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
 
 def run(args):
     cells = configuration(args)
+    profile = getattr(args, "resource_profile", "host-control")
     diagnostic = getattr(args, "admission_diagnostics", False)
     adapter_pair = ((args.server_kind, args.candidate_server_kind)
                     if args.candidate_server_kind is not None else None)
@@ -1686,6 +1715,7 @@ def run(args):
     results = []
     try:
         save(out / "request.json", {"baseline_sha": args.baseline_sha,
+                                   "resource_profile": profile,
                                    "candidate_sha": args.candidate_sha, "cells": cells,
                                    "seconds": args.seconds, "repeats": args.repeats,
                                    "perf": args.perf, "concurrency": args.concurrency,
@@ -1698,6 +1728,9 @@ def run(args):
         if suite_identity["status"] or identity(SUITE / "coaptic")["status"]:
             raise ValueError("commit the source first; clean suite/core required")
         manifest = {"schema": "coaptic-linux-cpu/1", "baseline_sha": args.baseline_sha,
+                "resource_profile": profile,
+                "profile_dimensions": [dimensions(profile, size) for size in sorted({c[1] for c in cells})],
+                "native_profiles_sha256": digest(Path(__file__).with_name("native_profiles.py")),
                 "candidate_sha": args.candidate_sha, "hardware": hardware(), "flags": FLAGS,
                 "suite": suite_identity, "runner_sha256": digest(__file__),
                 "psutil_version": importlib.metadata.version("psutil"),
@@ -1715,7 +1748,7 @@ def run(args):
                 "report_base_fields_limit_bytes": REPORT_BASE_FIELDS_LIMIT,
                 "admission_diagnostic_limits": "opt-in paced C1; pre-send attempts include send refusal; prior C carries earlier debt; residual/idle traversal are local intervals, not causal sleep/server/VM shares; no CPU comparison",
                 "rotation": "AB/BA by repeat and cell; all clean windows precede all profiling passes",
-                "limits": "selected bounded concurrency/message type complete loopback GET; Default/AllocMemory host fixture; one App/context/global sender sequence per window; OSCORE established only; process CPU includes IPC boundaries/idle; no interrupt attribution, EDHOC, saturation, device or50% target proof"}
+                "limits": "selected resource profile and bounded concurrency/message type complete loopback GET; one App/context/global sender sequence per window; OSCORE established only; requested/inline memory owners do not prove whole memory; process CPU includes IPC boundaries/idle; no interrupt attribution, EDHOC, saturation, device or50% target proof"}
         save(out / "manifest.json", manifest)
         baseline = build(args, "baseline", args.baseline_sha, out)
         candidate = build(args, "candidate", args.candidate_sha, out, expected=baseline)
@@ -1734,7 +1767,7 @@ def run(args):
             result = window(server, client, actual_cell, cell[2] * (args.seconds if mode == "clean" else PROFILE_SECONDS),
                             out / f"window-{index:03}", mode, quota,
                             concurrency=args.concurrency, message_type=args.message_type,
-                            admission_diagnostics=diagnostic)
+                            admission_diagnostics=diagnostic, resource_profile=profile)
             result.update(revision_label=label, core_sha=builds[label]["core"]["revision"], repeat=repeat,
                           server_sha256=digest(server), client_sha256=digest(client), index=index)
             result["comparison_type"] = comparison_type
@@ -1778,6 +1811,7 @@ def argument_parser():
     parser.add_argument("--build-lane", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--sizes", default="64,1024")
+    parser.add_argument("--resource-profile", choices=tuple(PROFILE_SIZES), default="host-control")
     parser.add_argument("--rates", default="100,1000")
     parser.add_argument("--seconds", type=int, default=10)
     parser.add_argument("--repeats", type=int, default=4)
