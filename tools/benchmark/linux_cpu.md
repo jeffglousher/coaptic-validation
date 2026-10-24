@@ -2,6 +2,13 @@
 
 ## Bounded syscall diagnostic
 
+The [measured syscall result](evidence/ebpf-syscalls-20261024/README.md) records
+run `40112478137`: 480,000 verified operations plus 320 warmups; all eight ON
+captures see one successful send, one successful receive plus one EAGAIN
+receive, and one epoll wait per operation. Four pair median guards fail, so
+both overhead ratios remain withheld. Counts establish neither a CPU share
+nor an optimization gain; both primary targets and whole memory remain open.
+
 The first Linux proof, `40107158379`, stopped before builds: the pinned
 27,995,844-byte linker archive exceeded the 16 MiB download file limit. Its
 199 Python tests passed, but all sixteen benchmark windows were NOT RUN; no
