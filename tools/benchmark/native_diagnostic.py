@@ -24,7 +24,7 @@ import time
 import sys
 
 import psutil
-from native_profiles import dimensions
+from native_profiles import dimensions, validate_concurrency
 
 
 SERVER_KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready", "coaptic-async",
@@ -282,10 +282,76 @@ def validate_admission_diagnostics(report, selected=False):
         raise ValueError("admission diagnostics exceeds byte allowance")
 
 
+def validate_endpoint_report(report, concurrency, selected, *, require_overlap=False):
+    """Pair ownership evidence is mandatory; a C parameter alone proves nothing."""
+    ledger = report.get("endpoint_transport")
+    if not selected:
+        if ledger is not None or "overlapping_completions" in report or "verified_completions" in report:
+            raise ValueError("independent endpoint evidence in a shared endpoint cohort")
+        return
+    if not isinstance(ledger, dict) or ledger.get("schema") != "coaptic-local-pairs/1":
+        raise ValueError("missing actual endpoint ownership")
+    ports = ledger.get("local_ports")
+    if (not isinstance(ports, list) or len(ports) != concurrency
+            or any(type(p) is not int or not 1 <= p <= 65535 for p in ports)
+            or len(set(ports)) != concurrency):
+        raise ValueError("independent endpoints need distinct actual local ports")
+    server = ledger.get("server")
+    if not isinstance(server, str) or not server.startswith("127.0.0.1:"):
+        raise ValueError("endpoint ledger needs one actual loopback server")
+    try:
+        if not 1 <= int(server.split(":")[1]) <= 65535:
+            raise ValueError()
+    except (ValueError, IndexError):
+        raise ValueError("invalid actual server port") from None
+    for key, expected in (("socket_count", concurrency), ("scratch_bytes", 1473),
+                          ("receive_attempt_bound", concurrency), ("packet_queues", 0),
+                          ("workers", 0), ("requested_heap_bytes", 0)):
+        if type(ledger.get(key)) is not int or ledger[key] != expected:
+            raise ValueError("invalid bounded endpoint owner: " + key)
+    if (type(ledger.get("adapter_inline_bytes")) is not int
+            or not 1473 <= ledger["adapter_inline_bytes"] <= report.get("app_inline_bytes", 0)
+            or any(k not in ledger or ledger[k] is not None for k in ("kernel_bytes", "peak_stack_bytes"))
+            or any(type(report.get(k)) is not int or report[k] != 5 for k in ("client_rx_slots", "client_tx_slots"))):
+        raise ValueError("invalid client endpoint resource accounting")
+    for key in ("sent", "received", "measured_sent_datagrams", "measured_received_datagrams"):
+        values = ledger.get(key)
+        if (not isinstance(values, list) or len(values) != concurrency
+                or any(type(v) is not int or not 0 <= v <= 60_000 for v in values)):
+            raise ValueError("invalid per-lane service")
+    if (sum(ledger["sent"]) != report.get("total_sent_datagrams")
+            or sum(ledger["received"]) < report.get("received_datagrams", 0)
+            or sum(ledger["measured_sent_datagrams"]) != report.get("sent_datagrams")
+            or sum(ledger["measured_received_datagrams"]) != report.get("received_datagrams")
+            or any(m > t for key in ("sent", "received") for m, t in
+                   zip(ledger["measured_" + key + "_datagrams"], ledger[key]))):
+        raise ValueError("global socket accounting mismatch")
+    overlap = report.get("overlapping_completions")
+    verified = report.get("verified_completions")
+    if (not isinstance(verified, list) or len(verified) != concurrency
+            or any(type(v) is not int or not 0 <= v <= report.get("completed", 0) for v in verified)
+            or sum(verified) != report.get("completed")
+            or any(type(report.get(k)) is not int or report[k] <= 0 for k in
+                   ("window_metadata_bytes", "lane_counter_snapshot_bytes", "peer_keys_bytes"))
+            or report["lane_counter_snapshot_bytes"] != 64):
+        raise ValueError("invalid per-lane verified completion accounting")
+    if (not isinstance(overlap, list) or len(overlap) != concurrency
+            or any(type(v) is not int or not 0 <= v <= report.get("completed", 0) for v in overlap)
+            or sum(overlap) > report.get("completed", 0)
+            or any(o > v for o, v in zip(overlap, verified))):
+        raise ValueError("invalid observed Call overlap")
+    if require_overlap and (report.get("peak_pending") != concurrency
+                            or sum(overlap) < concurrency - 1
+                            or any(v == 0 for v in verified)):
+        raise ValueError("configured endpoint count did not demonstrate actual overlap/service")
+
+
 def validate_report(report, size, operations, policy, security, rate=None,
-                    concurrency=1, message_type="con", admission_diagnostics=False):
+                    concurrency=1, message_type="con", admission_diagnostics=False, independent_endpoints=False):
     if not isinstance(report, dict):
         raise ValueError("native diagnostic report must be an object")
+    validate_concurrency(concurrency, message_type, independent_endpoints)
+    validate_endpoint_report(report, concurrency, independent_endpoints)
     if (report.get("schema") != "coaptic-native-complete/1"
             or type(report.get("bytes")) is not int or type(report.get("completed")) is not int
             or report.get("bytes") != size or report.get("completed") != operations
@@ -293,7 +359,7 @@ def validate_report(report, size, operations, policy, security, rate=None,
             or type(report.get("concurrency")) is not int or report["concurrency"] != concurrency
             or report.get("message_type") != message_type
             or type(concurrency) is not int or not 1 <= concurrency <= 4
-            or message_type not in ("con", "non") or (concurrency > 1 and message_type != "non")):
+            or message_type not in ("con", "non")):
         raise ValueError("mismatched native diagnostic report")
     for name, expected in (("requested_operations", operations), ("attempted", operations),
                            ("failed", 0), ("unattempted", 0), ("cancelled_inflight", 0),
@@ -352,7 +418,10 @@ def validate_report(report, size, operations, policy, security, rate=None,
 
 def measure(server, client, size, operations, warmup, timeout_ms, policy, security,
             *, server_kind="coaptic-reusable", rate=None, cpu_gated=False,
-            phase_timeout_seconds=300, concurrency=1, message_type="con", admission_diagnostics=False):
+            phase_timeout_seconds=300, concurrency=1, message_type="con", admission_diagnostics=False, independent_endpoints=False):
+    validate_concurrency(concurrency, message_type, independent_endpoints)
+    if independent_endpoints and (server_kind != "coaptic-mio" or (size > 1024 and concurrency > 2)):
+        raise ValueError("host diagnostic independent CON requires Mio and at most two concurrent bodies")
     if not (1 <= size <= 65536 and 1 <= operations <= 60_000 and 0 <= warmup <= 1000
             and (operations + warmup) * ((size + 1023) // 1024) <= 60_000
             and 1 <= timeout_ms <= 60000 and policy in ("spin", "sleep1")
@@ -360,7 +429,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
             and type(concurrency) is int and 1 <= concurrency <= 4
             and type(admission_diagnostics) is bool
             and (not admission_diagnostics or (concurrency == 1 and rate is not None))
-            and message_type in ("con", "non") and (concurrency == 1 or message_type == "non")
+            and message_type in ("con", "non") and (concurrency == 1 or message_type == "non" or independent_endpoints)
             and server_kind in SERVER_KINDS
             and type(phase_timeout_seconds) is int and 1 <= phase_timeout_seconds <= 3600
             and (rate is None or (type(rate) is int and 1 <= rate <= 1_000_000
@@ -401,6 +470,8 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                 if rate is not None:
                     command.extend(["--rate", str(rate)])
                 command.extend(["--concurrency", str(concurrency), "--message-type", message_type])
+                if independent_endpoints:
+                    command.append("--independent-endpoints")
                 if admission_diagnostics:
                     command.append("--admission-diagnostics")
                 command.append("--cpu-gated" if cpu_gated else "--gated")
@@ -429,7 +500,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                     raise RuntimeError("client refused measured operation")
                 report = json.loads(output)
                 validate_report(report, size, operations, policy, security, rate, concurrency, message_type,
-                                admission_diagnostics)
+                                admission_diagnostics, independent_endpoints=independent_endpoints)
                 if report["warmup"] != warmup:
                     raise ValueError("mismatched warmup")
                 if not cpu_gated:
@@ -446,7 +517,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                                           if cpu_gated else "ready/run through JSON formatting"),
                             server_kind=server_kind, requested_operations_per_second=rate,
                             server_resources=startup,
-                            concurrency=concurrency, message_type=message_type,
+                            concurrency=concurrency, message_type=message_type, independent_endpoints=independent_endpoints,
                             admission_diagnostics=admission_diagnostics,
                             phase_timeout_seconds=phase_timeout_seconds,
                             cpu_attribution_limit="OS-accounted process user and system CPU; quantized; IPC/snapshot boundary overhead included; machine-wide interrupts/DPCs and unrelated kernel work not attributed; client reported separately",
@@ -471,7 +542,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                                        if report is not None else "no report; measured activity unknown"),
                     phase_timeout_seconds=phase_timeout_seconds,
                     size=size, operations=operations, policy=policy, security=security,
-                    concurrency=concurrency, message_type=message_type,
+                    concurrency=concurrency, message_type=message_type, independent_endpoints=independent_endpoints,
                     admission_diagnostics=admission_diagnostics)
                 raise
             finally:
@@ -500,6 +571,7 @@ def main():
     parser.add_argument("--rate", type=int)
     parser.add_argument("--concurrency", type=int, choices=range(1, 5), default=1)
     parser.add_argument("--message-type", choices=("con", "non"), default="con")
+    parser.add_argument("--independent-endpoints", action="store_true")
     parser.add_argument("--cpu-gated", action="store_true")
     parser.add_argument("--phase-timeout-seconds", type=int, default=300,
                         help="finite control-phase wall deadline, 1..3600s; expiry invalidates observation")
@@ -511,7 +583,7 @@ def main():
                          args.timeout_ms, args.policy, args.security,
                          server_kind=args.server_kind, rate=args.rate, cpu_gated=args.cpu_gated,
                          phase_timeout_seconds=args.phase_timeout_seconds,
-                         concurrency=args.concurrency, message_type=args.message_type,
+                         concurrency=args.concurrency, message_type=args.message_type, independent_endpoints=args.independent_endpoints,
                          admission_diagnostics=args.admission_diagnostics)
     except Exception as error:
         args.output.write_text(json.dumps(dict(passed=False, error_type=type(error).__name__,

@@ -2964,5 +2964,58 @@ assert sys.stdin.readline() == 'exit\\n'
                 print(cpu.bounded_bytes(evidence, 4096).decode("ascii"), end="")
 
 
+
+class IndependentEndpointsTests(unittest.TestCase):
+    def test_configuration_requires_actual_owned_endpoint_mode_and_capacity(self):
+        for profile, sizes, counts in (("host-control", "64,1024", (2,3,4)), ("host-control", "65536", (2,)),
+                                       ("service-fixed", "64,1024,16384", (2,3,4)),
+                                       ("service-allocated", "64,1024,16384", (2,3,4))):
+            for count in counts:
+                args = options(resource_profile=profile, sizes=sizes, rates="10", seconds=2, repeats=2,
+                               perf=False, server_kind="coaptic-mio", concurrency=count, independent_endpoints=True)
+                self.assertTrue(cpu.configuration(args))
+                args.independent_endpoints=False
+                with self.assertRaises(ValueError): cpu.configuration(args)
+        for changes in (dict(resource_profile="small-device", sizes="32"),
+                        dict(resource_profile="small-blockwise", sizes="4096"),
+                        dict(sizes="65536", concurrency=4), dict(message_type="non"),
+                        dict(concurrency=1), dict(server_kind="coaptic-async")):
+            args=options(server_kind="coaptic-mio", independent_endpoints=True, concurrency=2, perf=False,
+                         **{k:v for k,v in changes.items() if k not in ("server_kind", "concurrency")})
+            for key in ("server_kind", "concurrency"):
+                if key in changes: setattr(args,key,changes[key])
+            with self.assertRaises(ValueError): cpu.configuration(args)
+
+    def test_acceptance_requires_port_ownership_per_lane_service_and_observed_overlap(self):
+        from native_diagnostic import validate_endpoint_report
+        report=dict(app_inline_bytes=32000, completed=1000, received_datagrams=1000, total_sent_datagrams=1000,
+                    concurrency=4, message_type="con", peak_pending=4, overlapping_completions=[250,250,250,249],
+                    client_rx_slots=5, client_tx_slots=5, achieved_ops_per_second=100, pacing_missed_period_operations=0,
+                    sent_datagrams=1000, verified_completions=[250]*4, window_metadata_bytes=400, lane_counter_snapshot_bytes=64, peer_keys_bytes=112,
+                    endpoint_transport=dict(schema="coaptic-local-pairs/1", server="127.0.0.1:5683",
+                       local_ports=[10000,10001,10002,10003], sent=[250]*4, received=[250]*4,
+                       measured_sent_datagrams=[250]*4, measured_received_datagrams=[250]*4,
+                       adapter_inline_bytes=2000, socket_count=4, scratch_bytes=1473, receive_attempt_bound=4,
+                       packet_queues=0, workers=0, requested_heap_bytes=0, kernel_bytes=None, peak_stack_bytes=None))
+        result=dict(passed=True, mode="clean", bytes=64, security="oscore", rate=100, server_kind="coaptic-mio",
+                    resource_profile="service-fixed", independent_endpoints=True, concurrency=4, message_type="con",
+                    report=report, cpu_cost=dict(server=dict(total_seconds=1)))
+        self.assertTrue(cpu.accepted(result,.01))
+        for key,value in (("local_ports",[10000]*4),("received",[1000,0,0,0]),("socket_count",True),("receive_attempt_bound",5)):
+            bad=deepcopy(result);bad["report"]["endpoint_transport"][key]=value
+            self.assertFalse(cpu.accepted(bad,.01))
+        for key,value in (("overlapping_completions",[0]*4),("peak_pending",1),("client_rx_slots",4),("verified_completions",[1000,0,0,0])):
+            bad=deepcopy(result);bad["report"][key]=value
+            self.assertFalse(cpu.accepted(bad,.01))
+        bad=deepcopy(result);del bad["report"]["endpoint_transport"]
+        self.assertFalse(cpu.accepted(bad,.01))
+        bad=deepcopy(result);bad["independent_endpoints"]=False
+        self.assertFalse(cpu.accepted(bad,.01))
+        # Functional completion at low paced load remains valid data but cannot
+        # qualify independent-endpoint concurrency without measured overlap.
+        bad=deepcopy(report);bad["overlapping_completions"]=[0]*4;bad["peak_pending"]=1
+        validate_endpoint_report(bad,4,True)
+        with self.assertRaises(ValueError): validate_endpoint_report(bad,4,True,require_overlap=True)
+
 if __name__ == "__main__":
     unittest.main()

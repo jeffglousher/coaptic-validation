@@ -9,14 +9,27 @@ PROFILE_SIZES = {
 }
 
 
+def validate_concurrency(concurrency, message_type, independent_endpoints=False):
+    if (type(concurrency) is not int or not 1 <= concurrency <= 4
+            or message_type not in ("con", "non") or type(independent_endpoints) is not bool
+            or (independent_endpoints and (concurrency == 1 or message_type != "con"))
+            or (concurrency > 1 and message_type == "con" and not independent_endpoints)):
+        raise ValueError("concurrency bounds 1..4; per-endpoint NSTART=1; C2..4 CON requires actual independent endpoints")
+
+
 def validate_profile(profile, kind, size, *, concurrency=1, message_type="con",
-                     security=None, admission_diagnostics=False):
+                     security=None, admission_diagnostics=False, independent_endpoints=False):
     if profile not in PROFILE_SIZES:
         raise ValueError("unknown resource profile")
     if security is not None and security not in ("unprotected", "oscore"):
         raise ValueError("unsupported profile security")
+    validate_concurrency(concurrency, message_type, independent_endpoints)
+    if independent_endpoints:
+        if (kind != "coaptic-mio" or admission_diagnostics or profile.startswith("small-")
+                or (profile == "host-control" and size > 1024 and concurrency > 2)):
+            raise ValueError("independent CON requires Mio and actual server body capacity (host2/service4)")
     if profile != "host-control":
-        if (kind != "coaptic-mio" or type(concurrency) is not int or concurrency != 1
+        if (kind != "coaptic-mio" or (concurrency != 1 and not independent_endpoints)
                 or message_type != "con" or admission_diagnostics):
             raise ValueError("representative profiles require same Mio, C1 CON and no admission diagnostics")
     if type(size) is not int or size not in PROFILE_SIZES[profile]:
