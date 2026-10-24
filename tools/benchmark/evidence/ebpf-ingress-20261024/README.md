@@ -29,14 +29,16 @@ percentiles:
 - IPv6 CoAP with 126 options, 318-byte frame: classifier **429 ns**, minimal
   PASS **28 ns**. Raw classifier: 429, 429, 429, 428, 429.
 
-Each measured batch executes 10,000 kernel `BPF_PROG_TEST_RUN` invocations;
-each program/frame has 100 warmups and five measured batches with alternating
-program order. The native loader pins one available CPU and restores affinity.
+Each measured batch uses one kernel `BPF_PROG_TEST_RUN` call with 10,000 repeated
+program executions; each program/frame also has one call with 100 warmup
+executions. Five measured batches use alternating program order. The native
+loader pins one available CPU and restores affinity.
 Both programs are loaded with unmodified Aya; neither is attached and there is
 no network delivery. Each batch is one kernel test-run call requesting repeated
 program executions. The loader checks the returned PASS action and frame once
 per call; it does not independently inspect every repetition's returned bytes.
-Counter deltas match all 200,400 classifier invocations; the control also
+There are 48 test-run calls across both programs, including warmups. Counter
+deltas match all 200,400 repeated classifier executions; the control also
 executes 200,400 times without changing counters. Linux already divides the
 reported duration by repetitions; do not divide it again.
 
