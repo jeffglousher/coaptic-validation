@@ -24,13 +24,15 @@ import time
 import sys
 
 import psutil
+from native_profiles import dimensions
 
 
 SERVER_KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready", "coaptic-async",
                 "coaptic-blocking", "coaptic-staged-ready", "coaptic-staged-mio", "coaptic-mio-direct")
 
 
-def server_resources(log_path, server_kind, *, deadline, server):
+def server_resources(log_path, server_kind, *, deadline, server,
+                     resource_profile="host-control", size=None, security=None, rx_bytes=1472):
     """Await one bounded startup line before resource gates, without touching writer offsets.
 
     ``deadline`` is an absolute monotonic time; ``server`` supplies Popen.poll().
@@ -77,6 +79,26 @@ def server_resources(log_path, server_kind, *, deadline, server):
                 or any(type(record.get(key)) is not str or not 0 < len(record[key]) <= 1024
                        for key in ("nesting", "limits"))):
             raise ValueError("invalid Mio server startup ledger")
+        # Old retained host ledgers remain readable. New profile windows must
+        # identify every actual configured dimension before the CPU gate opens.
+        if "resource_profile" in record or resource_profile != "host-control":
+            if size is None or (resource_profile != "host-control" and server_kind != "coaptic-mio"):
+                raise ValueError("profile ledger requires selected representation and Mio")
+            for key, expected in dimensions(resource_profile, size, rx_bytes).items():
+                if type(record.get(key)) is not type(expected) or record[key] != expected:
+                    raise ValueError("mismatched Mio profile ledger: " + key)
+            heap = record.get("app_requested_heap_bytes")
+            payloads = sum(record[n] * record[b] for n, b in
+                           (("rx_slots", "rx_datagram_bytes"), ("tx_slots", "tx_datagram_bytes"),
+                            ("rx_body_slots", "rx_body_bytes"), ("tx_body_slots", "tx_body_bytes")))
+            if (type(heap) is not int or heap < 0
+                    or (record["storage"] == "fixed" and heap != 0)
+                    or (record["storage"] == "allocated" and heap < payloads)
+                    or record.get("security") not in ("unprotected", "oscore")
+                    or (security is not None and record["security"] != security)
+                    or any(key not in record or record[key] is not None for key in
+                           ("allocator_overhead_bytes", "initialization_stack_bytes", "events_heap_bytes"))):
+                raise ValueError("invalid Mio profile owner ledger")
         return record
     if server_kind == "coaptic-blocking":
         fields = ("udp_scratch_bytes", "staged_datagram_capacity", "stage_cache_metadata_bytes", "adapter_inline_bytes",
@@ -389,7 +411,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                     raise RuntimeError("client initialization/warmup refused: " + ready_line)
                 startup = server_resources(server_log_path, server_kind,
                                            deadline=time.monotonic() + phase_timeout_seconds,
-                                           server=sut)
+                                           server=sut, size=size, security=security)
                 peers = {"client": psutil.Process(child.pid), "server": psutil.Process(sut.pid)}
                 before = {name: snapshot(p) for name, p in peers.items()}
                 started = time.perf_counter_ns()

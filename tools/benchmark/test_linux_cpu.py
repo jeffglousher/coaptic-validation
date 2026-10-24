@@ -84,6 +84,62 @@ def mock_record_control(timeline=None):
 
 
 class ValidationTests(unittest.TestCase):
+    def test_representative_c1_profiles_and_invalid_choices_refuse_before_build(self):
+        for profile, sizes in (("small-device", "32"), ("small-blockwise", "64,1024,4096"),
+                               ("service-fixed", "64,1024,16384"),
+                               ("service-allocated", "64,1024,16384")):
+            selected = dict(resource_profile=profile, sizes=sizes, server_kind="coaptic-mio",
+                            rates="10", repeats=2, perf=False)
+            self.assertEqual(len(cpu.configuration(options(**selected))), 2 * len(sizes.split(",")))
+            for changes in (dict(server_kind="coaptic-mio-direct"), dict(server_kind="all"),
+                            dict(sizes="65536"), dict(concurrency=2, message_type="non"),
+                            dict(message_type="non"), dict(resource_profile="unknown"),
+                            dict(candidate_server_kind="coaptic-ready", candidate_sha="a" * 40)):
+                with self.subTest(profile=profile, changes=changes), patch.object(cpu, "build") as build, \
+                        self.assertRaises((ValueError, argparse.ArgumentTypeError)):
+                    cpu.run(options(**(selected | changes)))
+                build.assert_not_called()
+        parsed = cpu.argument_parser().parse_args(["--baseline-sha", "a" * 40, "--candidate-sha", "b" * 40,
+                                                  "--build-lane", "unused", "--output", "unused"])
+        self.assertEqual(parsed.resource_profile, "host-control")
+
+    def test_representative_window_refuses_security_before_credentials_or_spawn(self):
+        for security in ("dtls", "", None):
+            with patch.object(cpu, "spawn") as spawn, patch.object(cpu.secrets, "token_bytes") as key, \
+                    self.assertRaises(ValueError):
+                cpu.window("server", "client", (security, 32, 100, "coaptic-mio"), 2, Path("unused"),
+                           resource_profile="small-device")
+            spawn.assert_not_called()
+            key.assert_not_called()
+
+    def test_profile_reaches_server_and_startup_validation_before_measurement(self):
+        native = Mock()
+        native.control_line.return_value = "ready"
+        native.server_resources.side_effect = ValueError("startup profile mismatch")
+        server, client = MagicMock(pid=101), MagicMock(pid=102)
+        server.poll.return_value = client.poll.return_value = None
+        reserve, probe = MagicMock(), MagicMock()
+        reserve.__enter__.return_value, probe.__enter__.return_value = reserve, probe
+        reserve.getsockname.return_value = ("127.0.0.1", 12345)
+        probe.bind.side_effect = OSError("bound")
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict(sys.modules, {"native_diagnostic": native}), \
+                patch.object(cpu, "spawn", side_effect=[server, client]) as spawn, \
+                patch.object(cpu, "stop"), patch.object(cpu, "stderr_tail", return_value=b""), \
+                patch.object(cpu.socket, "socket", side_effect=[reserve, probe]), \
+                patch.object(cpu.os, "getloadavg", return_value=(0, 0, 0), create=True):
+            result = cpu.window("server", "client", ("oscore", 32, 100, "coaptic-mio"), 2,
+                                Path(directory) / "window", resource_profile="small-device")
+        command = spawn.call_args_list[0].args[0]
+        self.assertEqual(command[:6], ["server", "coaptic-mio", "127.0.0.1", "12345", "32", "1152"])
+        self.assertEqual(command[-2:], ["--resource-profile", "small-device"])
+        self.assertEqual(native.server_resources.call_args.kwargs["resource_profile"], "small-device")
+        self.assertEqual(native.server_resources.call_args.kwargs["size"], 32)
+        self.assertEqual(result["resource_profile"], "small-device")
+        self.assertIn("startup profile mismatch", result["reason"])
+        native.snapshot.assert_not_called()
+        client.stdin.write.assert_not_called()
+
     def test_admission_preflight_requires_same_full_core_adapter_c1_and_no_perf(self):
         selected = dict(admission_diagnostics=True, candidate_sha="a" * 40, perf=False,
                         server_kind="coaptic-mio", sizes="64,1024", rates="4000", seconds=12)
@@ -1198,6 +1254,22 @@ class AggregationTests(unittest.TestCase):
                 item.update(changes)
                 values.append(item)
         self.assertEqual(len(cpu.aggregate(values, repeats=2, tick=.01)), 5)
+
+    def test_resource_profiles_never_pool_and_invalid_profile_cannot_qualify(self):
+        values = self.pairs()
+        for item in self.pairs():
+            item.update(resource_profile="service-fixed", server_kind="coaptic-mio")
+            values.append(item)
+        for item in self.pairs():
+            item.update(resource_profile="service-allocated", server_kind="coaptic-mio")
+            values.append(item)
+        groups = cpu.aggregate(values, repeats=2, tick=.01)
+        self.assertEqual({g["resource_profile"] for g in groups},
+                         {"host-control", "service-fixed", "service-allocated"})
+        bad = self.pairs()
+        for item in bad:
+            item["resource_profile"] = "small-device"  # 64B/reusable is unsupported.
+        self.assertFalse(cpu.aggregate(bad, repeats=2, tick=.01)[0]["comparable"])
 
     def test_profiler_timings_are_excluded_even_when_they_look_faster(self):
         values = self.pairs()

@@ -93,6 +93,46 @@ be fresh and outside source. It fetches only the two specified core commits.
 Do not run concurrently with another lane consumer, compiler or timing campaign.
 
 
+### Representative C1 resource profiles
+
+`--resource-profile` defaults to `host-control`, preserving the existing host
+matrix, including its separately enlarged 65536-byte body fixture. Other choices
+require `--server-kind coaptic-mio`, no candidate adapter override, concurrency 1,
+message type `con` and admission diagnostics off. Both labels use the same profile,
+Mio driver (32-poll burst, eight events, immediate sends) and baseline-built client.
+Unsupported combinations refuse before builds. Select sizes explicitly:
+
+- `small-device`: 32 bytes; fixed Constrained, route capacity 4 (one populated),
+  one Call, zero deferred, one association/four request bindings; RX/TX each
+  2 x 1152, dedup 4, Observe 2, no body pools.
+- `small-blockwise`: 64,1024,4096; the same dimensions with one RX and one TX
+  body, each 4096 bytes. This is configured blockwise, not the body-free preset.
+- `service-fixed` and `service-allocated`: 64,1024,16384; route capacity 32 (one
+  populated), four Calls, eight deferred, one association/four request bindings;
+  RX/TX each 32 x 1472, dedup 64, Observe 32; four RX and four TX bodies, each
+  16384 bytes. Allocated storage uses an explicit required-heap request limit.
+
+For example, use `--resource-profile small-device --server-kind coaptic-mio
+--sizes 32 --rates 100,1000 --seconds 10 --repeats 4`, keeping the immutable source,
+existing build lane and fresh evidence arguments above. The server binary accepts
+the same `--resource-profile` option. The original `coaptic-small` spin quick
+fixture is unchanged.
+
+The startup ledger checks actual capacities, security and representation against
+the selection before measurement. All profiles reserve the full 2049-byte Mio
+scratch, even with 1152-byte datagrams. Scratch/adapter/fixed pools are nested in
+App inline size. Allocated payloads and metadata are included in the separate
+requested heap; representation backing, Poll and Events are separate owners.
+SmallDevice borrows the static 32-byte representation; other representations own
+exactly their declared byte count on the heap. Event heap, allocator overhead,
+initialization/peak stack, runtime and kernel costs remain unknown. These ledgers
+identify configurations and owners; they establish no whole-memory acceptance.
+
+Existing campaign/output/send bounds and every rate, pacing, CPU and latency guard
+remain unchanged. Low-rate windows can lack sufficient CPU resolution; retain
+them as ineligible. This C1 extension establishes neither independent-endpoint CON
+coverage nor either 50% CPU target. Physical and release checks remain separate.
+
 ### Optional C1 admission-interval diagnostic
 
 `--admission-diagnostics` is explicitly opt-in in the native client,

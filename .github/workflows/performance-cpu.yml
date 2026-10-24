@@ -13,9 +13,14 @@ on:
         required: true
         type: string
       sizes:
-        description: Comma-separated response bytes selected from 64,1024,65536
+        description: Profile-supported response bytes (host-control 64,1024,65536; see guide)
         type: string
         default: 64,1024
+      resource_profile:
+        description: Same exact resource profile on both labels; new profiles require Mio C1 CON
+        type: choice
+        default: host-control
+        options: [host-control, small-device, small-blockwise, service-fixed, service-allocated]
       rates:
         description: One to three paced complete operations/s (campaign bounds enforced)
         type: string
@@ -72,6 +77,7 @@ jobs:
       BASELINE_SHA: ${{ inputs.baseline_sha }}
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
       RESPONSE_SIZES: ${{ inputs.sizes }}
+      RESOURCE_PROFILE: ${{ inputs.resource_profile }}
       OFFERED_RATES: ${{ inputs.rates }}
       WINDOW_SECONDS: ${{ inputs.seconds }}
       REPEATS: ${{ inputs.repeats }}
@@ -96,6 +102,7 @@ jobs:
           sha40(os.environ['CANDIDATE_SHA'])
           configuration(argparse.Namespace(
               sizes=os.environ['RESPONSE_SIZES'], rates=os.environ['OFFERED_RATES'],
+              resource_profile=os.environ['RESOURCE_PROFILE'],
               seconds=int(os.environ['WINDOW_SECONDS']), repeats=int(os.environ['REPEATS']),
               server_kind=os.environ['SERVER_KIND'], perf=os.environ['PERF_ENABLED'] == 'true',
               admission_diagnostics=os.environ['ADMISSION_DIAGNOSTICS'] == 'true',
@@ -172,6 +179,7 @@ jobs:
             --baseline-sha "$BASELINE_SHA" --candidate-sha "$CANDIDATE_SHA" \
             --build-lane "$RUNNER_TEMP/cpu-build-lane" --output "$RUNNER_TEMP/cpu-evidence" \
             --sizes "$RESPONSE_SIZES" --rates "$OFFERED_RATES" \
+            --resource-profile "$RESOURCE_PROFILE" \
             --seconds "$WINDOW_SECONDS" --repeats "$REPEATS" --server-kind "$SERVER_KIND" \
             --concurrency "$CLIENT_CONCURRENCY" --message-type "$MESSAGE_TYPE" \
             "${options[@]}"

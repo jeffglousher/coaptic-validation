@@ -44,8 +44,9 @@ mod staged_mio;
 mod staged_ready;
 mod staged_udp;
 use coap_lite::{CoapOption, MessageClass, MessageType, Packet, ResponseType};
+use coaptic::app::{AppAssembled, AppStorage};
 use coaptic::oscore::{DeriveParams, SecurityContext};
-use coaptic::storage::{AllocMemory, Capacities, DatagramIo, Endpoint, UdpSocketIo};
+use coaptic::storage::{AllocMemory, Capacities, DatagramIo, Endpoint, MemoryLayout, UdpSocketIo};
 use coaptic::{App, ContentFormat, Request, Response, get};
 use std::{
     env,
@@ -56,6 +57,93 @@ use std::{
 };
 
 static BODY: OnceLock<&'static [u8]> = OnceLock::new();
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum ResourceProfile {
+    #[default]
+    HostControl,
+    SmallDevice,
+    SmallBlockwise,
+    ServiceFixed,
+    ServiceAllocated,
+}
+
+impl ResourceProfile {
+    fn name(self) -> &'static str {
+        match self {
+            Self::HostControl => "host-control",
+            Self::SmallDevice => "small-device",
+            Self::SmallBlockwise => "small-blockwise",
+            Self::ServiceFixed => "service-fixed",
+            Self::ServiceAllocated => "service-allocated",
+        }
+    }
+
+    fn take_option(args: &mut Vec<String>) -> Result<Self, &'static str> {
+        let mut selected = None;
+        while let Some(index) = args.iter().position(|arg| arg == "--resource-profile") {
+            if selected.is_some() {
+                return Err("duplicate resource profile");
+            }
+            selected = Some(match args.get(index + 1).map(String::as_str) {
+                Some("host-control") => Self::HostControl,
+                Some("small-device") => Self::SmallDevice,
+                Some("small-blockwise") => Self::SmallBlockwise,
+                Some("service-fixed") => Self::ServiceFixed,
+                Some("service-allocated") => Self::ServiceAllocated,
+                _ => return Err("unknown resource profile"),
+            });
+            args.drain(index..=index + 1);
+        }
+        Ok(selected.unwrap_or_default())
+    }
+
+    fn rx_bytes(self) -> usize {
+        match self {
+            Self::SmallDevice | Self::SmallBlockwise => 1152,
+            _ => 1472,
+        }
+    }
+
+    fn validate(self, kind: &str, size: usize, rx_bytes: usize) -> Result<(), &'static str> {
+        if self == Self::HostControl {
+            return Ok(());
+        }
+        if kind != "coaptic-mio" || rx_bytes != self.rx_bytes() {
+            return Err("representative resource profiles require Mio and exact RX capacity");
+        }
+        let sizes: &[usize] = match self {
+            Self::SmallDevice => &[32],
+            Self::SmallBlockwise => &[64, 1024, 4096],
+            Self::ServiceFixed | Self::ServiceAllocated => &[64, 1024, 16384],
+            Self::HostControl => unreachable!(),
+        };
+        if !sizes.contains(&size) {
+            return Err("unsupported resource profile representation");
+        }
+        Ok(())
+    }
+
+    fn allocated(self) -> bool {
+        matches!(self, Self::HostControl | Self::ServiceAllocated)
+    }
+}
+
+// Both fixed and allocated configured builders expose the same bind operations.
+// Expand only construction, leaving all polling in the shared generic driver.
+macro_rules! bind_resources {
+    ($resources:expr, $io:expr, $context:expr) => {{
+        let builder = App::with_resources($resources)
+            .randomness(|buffer| getrandom::fill(buffer).is_ok())
+            .route("bench", get(representation));
+        let builder = if let Some(context) = $context {
+            builder.oscore(context)
+        } else {
+            builder.allow_unprotected()
+        };
+        builder.bind($io)
+    }};
+}
 
 fn representation(_: Request<'_>) -> Response<'static> {
     Response::content(BODY.get().expect("initialized fixture"))
@@ -504,6 +592,7 @@ fn mio_server<const SCRATCH: usize>(
     bytes: usize,
     rx_bytes: usize,
     context: Option<SecurityContext>,
+    profile: ResourceProfile,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let socket = UdpSocket::bind(address)?;
     socket.set_nonblocking(true)?;
@@ -512,14 +601,101 @@ fn mio_server<const SCRATCH: usize>(
         scratch: [0; SCRATCH],
         received: false,
     };
-    let mut poll = mio::Poll::new()?;
+    let poll = mio::Poll::new()?;
     poll.registry()
         .register(&mut io.socket, mio::Token(0), mio::Interest::READABLE)?;
-    let mut events = mio::Events::with_capacity(8);
-    let adapter_bytes = std::mem::size_of_val(&io);
-    let mut app = bind_fixture(io, bytes, rx_bytes, context)?;
+    let events = mio::Events::with_capacity(8);
+    let security = if context.is_some() {
+        "oscore"
+    } else {
+        "unprotected"
+    };
+    macro_rules! drive {
+        ($app:expr) => {
+            drive_mio($app?, poll, events, profile, bytes, security)
+        };
+    }
+    match profile {
+        ResourceProfile::HostControl => drive!(bind_fixture(io, bytes, rx_bytes, context)),
+        ResourceProfile::SmallDevice => drive!(bind_resources!(
+            coaptic::resources::SmallDevice::new(),
+            io,
+            context
+        )),
+        ResourceProfile::SmallBlockwise => drive!(bind_resources!(
+            coaptic::resources::SmallDevice::new().block_wise::<true>(),
+            io,
+            context
+        )),
+        ResourceProfile::ServiceFixed => {
+            service_fixed_mio(io, poll, events, bytes, context, security)
+        }
+        ResourceProfile::ServiceAllocated => {
+            let resources = coaptic::resources::Service::new();
+            let required = AllocMemory::<coaptic::message::Token>::required_heap_bytes(
+                resources.pool_capacities(),
+            )?;
+            drive!(bind_resources!(resources.allocated(required), io, context))
+        }
+    }
+}
+
+// Keep this large fixed construction out of every other profile's setup frame.
+// The App still owns its inline pools and uses the same driver, without boxing.
+#[inline(never)]
+fn service_fixed_mio<const SCRATCH: usize>(
+    io: MioUdp<SCRATCH>,
+    poll: mio::Poll,
+    events: mio::Events,
+    bytes: usize,
+    context: Option<SecurityContext>,
+    security: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let app = bind_resources!(coaptic::resources::Service::new(), io, context)?;
+    drive_mio(
+        app,
+        poll,
+        events,
+        ResourceProfile::ServiceFixed,
+        bytes,
+        security,
+    )
+}
+
+fn drive_mio<
+    P,
+    S,
+    const SCRATCH: usize,
+    const N: usize,
+    const B: bool,
+    const D: usize,
+    const C: usize,
+>(
+    mut app: App<P, MioUdp<SCRATCH>, N, B, S, D, C>,
+    mut poll: mio::Poll,
+    mut events: mio::Events,
+    profile: ResourceProfile,
+    bytes: usize,
+    security: &str,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    P: MemoryLayout<B> + AppAssembled<B>,
+    S: AppStorage<Token = P::Token>,
+{
+    let adapter_bytes = std::mem::size_of_val(app.transport());
+    let capacities = app.engine().capacities();
+    let requested_heap = if profile.allocated() {
+        AllocMemory::<P::Token>::required_heap_bytes(capacities)?
+    } else {
+        0
+    };
+    let representation_heap = if profile == ResourceProfile::SmallDevice {
+        0
+    } else {
+        bytes
+    };
     println!(
-        "{{\"schema\":\"coaptic-native-mio-resources/1\",\"server_kind\":\"{}\",\"udp_scratch_bytes\":{SCRATCH},\"adapter_inline_bytes\":{adapter_bytes},\"app_including_adapter_bytes\":{},\"poll_inline_bytes\":{},\"events_inline_bytes\":{},\"event_capacity\":{},\"worker_threads\":0,\"pending_kernel_operations\":0,\"runtime_heap_bytes\":null,\"runtime_stack_bytes\":null,\"kernel_bytes\":null,\"nesting\":\"scratch inside adapter inside App; poll and event owners separate; no extra packet buffers\",\"limits\":\"inline sizes only; event heap, App heap, body, allocator, peak stack and kernel socket/selector storage require separate accounting\"}}",
+        "{{\"schema\":\"coaptic-native-mio-resources/1\",\"server_kind\":\"{}\",\"udp_scratch_bytes\":{SCRATCH},\"adapter_inline_bytes\":{adapter_bytes},\"app_including_adapter_bytes\":{},\"poll_inline_bytes\":{},\"events_inline_bytes\":{},\"event_capacity\":{},\"worker_threads\":0,\"pending_kernel_operations\":0,\"runtime_heap_bytes\":null,\"runtime_stack_bytes\":null,\"kernel_bytes\":null,\"allocator_overhead_bytes\":null,\"initialization_stack_bytes\":null,\"events_heap_bytes\":null,\"resource_profile\":\"{}\",\"storage\":\"{}\",\"routes\":{N},\"populated_routes\":1,\"calls\":{C},\"deferred\":{D},\"associations\":1,\"security_requests\":4,\"blockwise\":{B},\"rx_slots\":{},\"tx_slots\":{},\"rx_datagram_bytes\":{},\"tx_datagram_bytes\":{},\"dedup\":{},\"observe\":{},\"rx_body_slots\":{},\"tx_body_slots\":{},\"rx_body_bytes\":{},\"tx_body_bytes\":{},\"representation_bytes\":{bytes},\"representation_heap_bytes\":{representation_heap},\"app_requested_heap_bytes\":{requested_heap},\"security\":\"{security}\",\"nesting\":\"scratch inside adapter inside App; fixed pools inside App; allocated pool payloads and metadata inside requested heap; representation backing, poll and events separate\",\"limits\":\"requested and inline owners only; static representation backing is borrowed; events heap, allocator, initialization and peak stack, runtime and kernel owners unknown; no whole-memory acceptance\"}}",
         if SCRATCH == 0 {
             "coaptic-mio-direct"
         } else {
@@ -529,6 +705,22 @@ fn mio_server<const SCRATCH: usize>(
         std::mem::size_of_val(&poll),
         std::mem::size_of_val(&events),
         events.capacity(),
+        profile.name(),
+        if profile.allocated() {
+            "allocated"
+        } else {
+            "fixed"
+        },
+        capacities.rx_datagram_slots,
+        capacities.tx_datagram_slots,
+        capacities.rx_datagram_bytes,
+        capacities.tx_datagram_bytes,
+        capacities.dedup_entries,
+        capacities.observe_entries,
+        capacities.rx_body_slots.unwrap_or(0),
+        capacities.tx_body_slots.unwrap_or(0),
+        capacities.rx_body_bytes.unwrap_or(0),
+        capacities.tx_body_bytes.unwrap_or(0),
     );
     std::io::stdout().flush()?;
     let started = Instant::now();
@@ -549,10 +741,22 @@ fn mio_server<const SCRATCH: usize>(
     }
 }
 
-fn mio_burst<const SCRATCH: usize>(
-    app: &mut App<coaptic::profiles::Default, MioUdp<SCRATCH>, 1, true, AllocMemory>,
+fn mio_burst<
+    P,
+    S,
+    const SCRATCH: usize,
+    const N: usize,
+    const B: bool,
+    const D: usize,
+    const C: usize,
+>(
+    app: &mut App<P, MioUdp<SCRATCH>, N, B, S, D, C>,
     started: Instant,
-) -> Result<bool, Box<dyn std::error::Error>> {
+) -> Result<bool, Box<dyn std::error::Error>>
+where
+    P: MemoryLayout<B> + AppAssembled<B>,
+    S: AppStorage<Token = P::Token>,
+{
     for _ in 0..32 {
         match app.poll(started.elapsed().as_millis() as u64) {
             Ok(()) | Err(coaptic::app::Error::Oscore(_)) => {}
@@ -695,7 +899,22 @@ fn codec_server(address: &str, body: &[u8]) -> Result<(), Box<dyn std::error::Er
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<_> = env::args().collect();
+    let mut args: Vec<_> = env::args().collect();
+    let profile = ResourceProfile::take_option(&mut args)?;
+    // Reject unsupported combinations before credentials, representation or sockets.
+    if profile != ResourceProfile::HostControl {
+        let kind = args.get(1).ok_or("missing server kind")?;
+        let size = args.get(4).ok_or("missing representation bytes")?.parse()?;
+        let rx_bytes = args
+            .get(5)
+            .map(|s| s.parse())
+            .transpose()?
+            .unwrap_or(profile.rx_bytes());
+        profile.validate(kind, size, rx_bytes)?;
+        if args.get(2).map(String::as_str) != Some("127.0.0.1") {
+            return Err("representative fixtures require loopback".into());
+        }
+    }
     if args.len() == 2 && args[1] == "--security-profile" {
         println!(
             "{{\"security\":\"OSCORE-AES-CCM-16-64-128\",\"replay_window\":{}}}",
@@ -752,10 +971,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(if args[1] == "coaptic-small" {
             1152
         } else {
-            1472
+            profile.rx_bytes()
         });
     if (args[1] == "coaptic-small" && rx_bytes != 1152)
-        || (args[1] != "coaptic-small" && ![1472, 2048].contains(&rx_bytes))
+        || (args[1] != "coaptic-small"
+            && profile == ResourceProfile::HostControl
+            && ![1472, 2048].contains(&rx_bytes))
     {
         return Err(
             "SmallDevice requires 1152-byte receive capacity; other fixtures require 1472 or 2048"
@@ -831,12 +1052,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map_err(|_| "fixture initialization")?;
         return small_device_server(&format!("{}:{}", args[2], args[3]), context);
     }
-    let body: &'static [u8] = Box::leak(
-        (0..size)
-            .map(|index| (index % 251) as u8)
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-    );
+    let body: &'static [u8] = if profile == ResourceProfile::SmallDevice {
+        &SMALL_BODY
+    } else {
+        Box::leak(
+            (0..size)
+                .map(|index| (index % 251) as u8)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        )
+    };
     BODY.set(body).map_err(|_| "fixture initialization")?;
     let address = format!("{}:{}", args[2], args[3]);
     match args[1].as_str() {
@@ -857,9 +1082,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "coap-lite-codec" => codec_server(&address, body),
         "coaptic-blocking" => staged_udp::serve(&address, size, rx_bytes, context),
         "coaptic-staged-mio" => staged_mio::serve(&address, size, rx_bytes, context),
-        "coaptic-mio" => mio_server::<2049>(&address, size, rx_bytes, context),
+        "coaptic-mio" => mio_server::<2049>(&address, size, rx_bytes, context, profile),
         #[cfg(target_os = "linux")]
-        "coaptic-mio-direct" => mio_server::<0>(&address, size, rx_bytes, context),
+        "coaptic-mio-direct" => mio_server::<0>(&address, size, rx_bytes, context, profile),
         #[cfg(not(target_os = "linux"))]
         "coaptic-mio-direct" => Err("coaptic-mio-direct requires Linux MSG_TRUNC semantics".into()),
         "coaptic-ready" => tokio::runtime::Builder::new_current_thread()
@@ -887,6 +1112,77 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use super::*;
     use coaptic::message::{Message, MessageId, Type};
+
+    #[test]
+    fn representative_profiles_refuse_unsupported_selection_before_binding() {
+        for (profile, sizes, rx) in [
+            (ResourceProfile::SmallDevice, &[32][..], 1152),
+            (ResourceProfile::SmallBlockwise, &[64, 1024, 4096][..], 1152),
+            (ResourceProfile::ServiceFixed, &[64, 1024, 16384][..], 1472),
+            (
+                ResourceProfile::ServiceAllocated,
+                &[64, 1024, 16384][..],
+                1472,
+            ),
+        ] {
+            for &size in sizes {
+                assert!(profile.validate("coaptic-mio", size, rx).is_ok());
+                for kind in ["coaptic-mio-direct", "coaptic-small", "coaptic-async"] {
+                    assert!(profile.validate(kind, size, rx).is_err());
+                }
+                assert!(profile.validate("coaptic-mio", size, rx + 1).is_err());
+            }
+            assert!(profile.validate("coaptic-mio", 65536, rx).is_err());
+        }
+        for value in ["unknown", ""] {
+            let mut args = vec!["server".into(), "--resource-profile".into(), value.into()];
+            assert!(ResourceProfile::take_option(&mut args).is_err());
+        }
+        let mut args = vec!["server".into(), "--resource-profile".into()];
+        assert!(ResourceProfile::take_option(&mut args).is_err());
+        let mut args = vec![
+            "server".into(),
+            "--resource-profile".into(),
+            "small-device".into(),
+            "--resource-profile".into(),
+            "small-device".into(),
+        ];
+        assert!(ResourceProfile::take_option(&mut args).is_err());
+    }
+
+    #[test]
+    fn service_profile_exact_heap_budget_refuses_then_binds_and_drives() {
+        let io = || {
+            let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+            socket.set_nonblocking(true).unwrap();
+            MioUdp {
+                socket: mio::net::UdpSocket::from_std(socket),
+                scratch: [0; 2049],
+                received: false,
+            }
+        };
+        let resources = coaptic::resources::Service::new();
+        let capacities = resources.pool_capacities();
+        let required =
+            AllocMemory::<coaptic::message::Token>::required_heap_bytes(capacities).unwrap();
+        let refused = bind_resources!(resources.allocated(required - 1), io(), None);
+        assert!(matches!(
+            refused,
+            Err(coaptic::BuildError::HeapBudgetExceeded { .. })
+        ));
+        let mut app = bind_resources!(
+            coaptic::resources::Service::new().allocated(required),
+            io(),
+            None
+        )
+        .unwrap();
+        assert_eq!(app.engine().capacities(), capacities);
+        assert_eq!(app.client_capacity(), 4);
+        assert_eq!(app.security_request_capacity(), 4);
+        assert_eq!(app.association_capacity(), 1);
+        assert!(mio_burst(&mut app, Instant::now()).unwrap());
+        assert_eq!(app.engine_mut().rx_occupied(), 0);
+    }
 
     fn async_runtime() -> tokio::runtime::Runtime {
         tokio::runtime::Builder::new_current_thread()
@@ -1138,7 +1434,7 @@ mod tests {
     #[test]
     fn mio_readiness_receive_preserves_exact_oversized_and_recovery_datagrams() {
         for host in ["127.0.0.1:0", "[::1]:0"] {
-            for capacity in [64, 1472, 2048] {
+            for capacity in [64, 1152, 1472, 2048] {
                 let socket = UdpSocket::bind(host).unwrap();
                 socket.set_nonblocking(true).unwrap();
                 let local = socket.local_addr().unwrap();
