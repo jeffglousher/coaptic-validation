@@ -879,6 +879,62 @@ mod level_control {
             })
         }
     }
+    // Match pinned Mio1.2.4's ceil-ms and i32::MAX clamp. The absolute deadline
+    // is resampled on every wait; EINTR never restarts a stale relative timeout.
+    fn timeout(deadline: Option<Instant>, now: Instant) -> Option<Duration> {
+        deadline.map(|due| {
+            let remaining = due.saturating_duration_since(now);
+            let ms = remaining
+                .checked_add(Duration::from_nanos(999_999))
+                .unwrap_or(remaining)
+                .as_millis()
+                .min(i32::MAX as u128);
+            Duration::from_millis(ms as u64)
+        })
+    }
+    #[cfg(target_os = "linux")]
+    fn wait(io: &mut LevelUdp, deadline: Option<Instant>) -> io::Result<()> {
+        use rustix::event::{PollFd, PollFlags, Timespec};
+        io.credit = None;
+        let time = timeout(deadline, Instant::now())
+            .map(Timespec::try_from)
+            .transpose()
+            .map_err(io::Error::other)?;
+        let mut fd = [PollFd::new(&io.inner.socket, PollFlags::IN)];
+        rustix::event::poll(&mut fd, time.as_ref())?;
+        let ready = fd[0].revents();
+        if ready.contains(PollFlags::NVAL) {
+            return Err(rustix::io::Errno::BADF.into());
+        }
+        if ready.intersects(PollFlags::IN | PollFlags::ERR | PollFlags::HUP) {
+            // Native receive failures still flow through App's maintenance and
+            // error-priority path. A spurious ordinary readiness may be EAGAIN.
+            io.credit = Some(ready.intersects(PollFlags::ERR | PollFlags::HUP));
+        }
+        Ok(())
+    }
+    #[cfg(target_os = "linux")]
+    pub(super) fn serve(
+        address: &str,
+        context: Option<SecurityContext>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let io = LevelUdp::bind(address)?;
+        let security = if context.is_some() {
+            "oscore"
+        } else {
+            "unprotected"
+        };
+        let mut app = bind_resources!(coaptic::resources::SmallDevice::new(), io, context)?;
+        println!(
+            "{{\"schema\":\"coaptic-native-level-resources/1\",\"server_kind\":\"coaptic-mio-level\",\"resource_profile\":\"small-device\",\"storage\":\"fixed\",\"security\":\"{security}\",\"udp_scratch_bytes\":2049,\"adapter_inline_bytes\":{},\"app_including_adapter_bytes\":{},\"credit_inline_bytes\":{},\"pollfd_inline_bytes\":{},\"pollfd_count\":1,\"poll_inline_bytes\":0,\"events_inline_bytes\":0,\"event_capacity\":0,\"selector_count\":0,\"retained_datagram_capacity\":0,\"worker_threads\":0,\"pending_kernel_operations\":0,\"routes\":4,\"populated_routes\":1,\"calls\":1,\"deferred\":0,\"associations\":1,\"security_requests\":4,\"blockwise\":false,\"rx_slots\":2,\"tx_slots\":2,\"rx_datagram_bytes\":1152,\"tx_datagram_bytes\":1152,\"dedup\":4,\"observe\":2,\"rx_body_slots\":0,\"tx_body_slots\":0,\"rx_body_bytes\":0,\"tx_body_bytes\":0,\"representation_bytes\":32,\"representation_heap_bytes\":0,\"app_requested_heap_bytes\":0,\"runtime_heap_bytes\":null,\"runtime_stack_bytes\":null,\"kernel_bytes\":null,\"allocator_overhead_bytes\":null,\"initialization_stack_bytes\":null,\"events_heap_bytes\":0,\"nesting\":\"scratch and credit inside adapter inside App; borrowed pollfd temporary separate; representation32B borrowed\",\"limits\":\"inline requested owners only; allocator, peak stack, socket/kernel readiness costs unknown; no whole-memory or CPU claim\"}}",
+            std::mem::size_of::<LevelUdp>(),
+            std::mem::size_of_val(&app),
+            std::mem::size_of::<Option<bool>>(),
+            std::mem::size_of::<rustix::event::PollFd<'static>>()
+        );
+        std::io::stdout().flush()?;
+        run_readiness(&mut app, |io| io.inner.received, wait)
+    }
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -1516,62 +1572,6 @@ mod level_control {
                 }
             }
         }
-    }
-    // Match pinned Mio1.2.4's ceil-ms and i32::MAX clamp. The absolute deadline
-    // is resampled on every wait; EINTR never restarts a stale relative timeout.
-    fn timeout(deadline: Option<Instant>, now: Instant) -> Option<Duration> {
-        deadline.map(|due| {
-            let remaining = due.saturating_duration_since(now);
-            let ms = remaining
-                .checked_add(Duration::from_nanos(999_999))
-                .unwrap_or(remaining)
-                .as_millis()
-                .min(i32::MAX as u128);
-            Duration::from_millis(ms as u64)
-        })
-    }
-    #[cfg(target_os = "linux")]
-    fn wait(io: &mut LevelUdp, deadline: Option<Instant>) -> io::Result<()> {
-        use rustix::event::{PollFd, PollFlags, Timespec};
-        io.credit = None;
-        let time = timeout(deadline, Instant::now())
-            .map(Timespec::try_from)
-            .transpose()
-            .map_err(io::Error::other)?;
-        let mut fd = [PollFd::new(&io.inner.socket, PollFlags::IN)];
-        rustix::event::poll(&mut fd, time.as_ref())?;
-        let ready = fd[0].revents();
-        if ready.contains(PollFlags::NVAL) {
-            return Err(rustix::io::Errno::BADF.into());
-        }
-        if ready.intersects(PollFlags::IN | PollFlags::ERR | PollFlags::HUP) {
-            // Native receive failures still flow through App's maintenance and
-            // error-priority path. A spurious ordinary readiness may be EAGAIN.
-            io.credit = Some(ready.intersects(PollFlags::ERR | PollFlags::HUP));
-        }
-        Ok(())
-    }
-    #[cfg(target_os = "linux")]
-    pub(super) fn serve(
-        address: &str,
-        context: Option<SecurityContext>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let io = LevelUdp::bind(address)?;
-        let security = if context.is_some() {
-            "oscore"
-        } else {
-            "unprotected"
-        };
-        let mut app = bind_resources!(coaptic::resources::SmallDevice::new(), io, context)?;
-        println!(
-            "{{\"schema\":\"coaptic-native-level-resources/1\",\"server_kind\":\"coaptic-mio-level\",\"resource_profile\":\"small-device\",\"storage\":\"fixed\",\"security\":\"{security}\",\"udp_scratch_bytes\":2049,\"adapter_inline_bytes\":{},\"app_including_adapter_bytes\":{},\"credit_inline_bytes\":{},\"pollfd_inline_bytes\":{},\"pollfd_count\":1,\"poll_inline_bytes\":0,\"events_inline_bytes\":0,\"event_capacity\":0,\"selector_count\":0,\"retained_datagram_capacity\":0,\"worker_threads\":0,\"pending_kernel_operations\":0,\"routes\":4,\"populated_routes\":1,\"calls\":1,\"deferred\":0,\"associations\":1,\"security_requests\":4,\"blockwise\":false,\"rx_slots\":2,\"tx_slots\":2,\"rx_datagram_bytes\":1152,\"tx_datagram_bytes\":1152,\"dedup\":4,\"observe\":2,\"rx_body_slots\":0,\"tx_body_slots\":0,\"rx_body_bytes\":0,\"tx_body_bytes\":0,\"representation_bytes\":32,\"representation_heap_bytes\":0,\"app_requested_heap_bytes\":0,\"runtime_heap_bytes\":null,\"runtime_stack_bytes\":null,\"kernel_bytes\":null,\"allocator_overhead_bytes\":null,\"initialization_stack_bytes\":null,\"events_heap_bytes\":0,\"nesting\":\"scratch and credit inside adapter inside App; borrowed pollfd temporary separate; representation32B borrowed\",\"limits\":\"inline requested owners only; allocator, peak stack, socket/kernel readiness costs unknown; no whole-memory or CPU claim\"}}",
-            std::mem::size_of::<LevelUdp>(),
-            std::mem::size_of_val(&app),
-            std::mem::size_of::<Option<bool>>(),
-            std::mem::size_of::<rustix::event::PollFd<'static>>()
-        );
-        std::io::stdout().flush()?;
-        run_readiness(&mut app, |io| io.inner.received, wait)
     }
 }
 

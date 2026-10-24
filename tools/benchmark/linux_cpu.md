@@ -43,7 +43,12 @@ This draft awaits actual Windows/Linux native functional validation. Linux run
 40125433101 passed 207 Python checks and formatting, then stopped during native
 test compilation: three direct-receive test callers still named the former burst
 helper. No native tests or functional cells ran. Those callers now use the shared
-`read_burst` and their existing `received` flag; compilation remains pending.
+`read_burst` and their existing `received` flag. Corrected run 40126563887 passed
+207 Python checks, formatting, 33 client tests and 71 server tests, including
+13 level-control tests and one level CLI test. Strict Clippy then refused items
+after the nested test module. That module is now moved unchanged after the
+production items; strict Clippy, release binaries and all six functional cells
+remain pending. Both failed runs are retained.
 The first local preparation stopped on its evidence
 budget; a later attempt stopped below the disk floor before any native build.
 The retained intermediate Python run completed 204 tests with 195 passes, one
@@ -83,7 +88,7 @@ The wheel-only, no-build bootstrap caps combined pip output while it is produced
 and settles its direct child on failure. Subsequent command cleanup reuses the
 portable eight-member owner and fails on unresolved members or retained pipes;
 neither establishes containment of escaped descendants.
-Actual execution of this mode is still pending.
+Complete Linux/Windows fixture execution in this mode is still pending.
 
 ## Bounded syscall diagnostic
 
