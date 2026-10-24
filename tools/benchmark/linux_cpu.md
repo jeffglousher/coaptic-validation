@@ -774,7 +774,7 @@ These options are documented in the upstream
 `--force` permits reading this runner's sudo-owned capture without an ownership
 check; it grants no filesystem permissions. The initial report is a flat ranked
 DSO/function summary of sampled self costs, sample counts and event periods.
-Callchain display and inline expansion are disabled to bound processing; the
+Callchain display and inline expansion are disabled in this flat view; the
 original frame-pointer callchains remain in raw `perf.data` for later inspection.
 Headers, event/sample totals, any exposed first/last sample times, lost-sample
 counts and warnings remain verbatim, including stderr and unresolved symbols.
@@ -791,6 +791,33 @@ refusal does not invalidate eligible clean pairs. Unresolved termination of eith
 the version command or report process is fatal to the campaign, as for capture
 helpers. Binaries retain original build paths in debug information; copied
 symbolized binaries and raw profiles remain available even if reporting fails.
+
+Socket record windows explicitly request two additional readouts after the
+capture and flat report succeed, on that runner while the copied ELF paths exist.
+`perf-callers.txt` uses `perf report --sort pid,dso,symbol --children --call-graph
+graph,0,caller --inline --percent-limit 0 --percentage absolute`, retaining the
+header, sample and period totals. `perf-samples.txt` uses `perf script --ns
+--demangle --inline --show-task-events --show-lost-events -F
+comm,pid,tid,time,event,period,ip,sym,dso`. Both explicitly filter `--pid` to the
+capture's positive server PID and use `--force --input OWNED_PERF_DATA`.
+The sampling controls and other default `perf_pass` callers keep their flat-only
+behavior; clean and stat windows do not run these additional helpers.
+
+Each readout runs sequentially through the existing elevated owned-process path,
+with the current per-file quota reapplied by `prlimit` after `sudo -n`, empty
+`DEBUGINFOD_URLS`, and `timeout --foreground --signal=TERM --kill-after=5 25`
+inside the 30-second owned wait. Exact argv, PID, output size, limits, exit and
+error/deadline status are retained under `attribution` in `perf.json`. A failed
+capture, failed window or unavailable flat report explicitly skips attribution.
+An unavailable first readout skips the second without retry; partial output and
+warnings remain. Unresolved process or output-close cleanup prevents another
+readout and aborts the campaign through the existing fatal flag. Readout
+availability establishes no inline completeness, App ancestry, eligible sample
+count, exposure, removable cost or CPU share. Source-guided review must still
+establish at least 200 eligible App-rooted samples per cohort/source, with
+user/kernel/client costs and unknowns kept separate. Strict raw/report count
+integrity, including refusal of rounded sample headers, remains unchanged.
+This source integration has no native Linux readout qualification by itself.
 
 Bounds: 1..3 distinct rates, 1..100000 ops/s; 2..30 scheduled seconds;
 2..8 repeats; the 60000-datagram admission bound above applies to each socket
@@ -825,15 +852,15 @@ constraints. Even the combination of those maxima with 2M samples needs at most
 admission member uses the existing fixed report/summary reserves and adds no
 allowance. Report status fits the existing capped `perf.json`.
 Each perf data/stat output has a hard `RLIMIT_FSIZE` applied **after sudo**;
-its command/version log and privileged report have the same quota. Reserve
-**three file quotas per profile pass**, conservatively including a report quota
-for stat passes too. The per-file quota is
-`min(8 MiB, floor(160 MiB / (3 * profile_passes)))` when profiling is enabled.
+its command/version log, flat report and two inline readouts have the same quota.
+Reserve **five file quotas per profile pass**, conservatively including the
+three report/readout quotas for stat passes too. The per-file quota is
+`min(8 MiB, floor(160 MiB / (5 * profile_passes)))` when profiling is enabled.
 The original metadata/profile allowance of **256 MiB excluded copied binaries
 and setup logs**; historical manifests retain that narrower meaning. It was not
 a whole-upload bound. Now a named **WHOLE_UPLOAD_BUDGET = 256 MiB** includes all
 uploaded owners: planned metadata (including build/window logs), actual copied
-binaries, a combined **16 MiB setup-log reserve** when supplied, and all three
+binaries, a combined **16 MiB setup-log reserve** when supplied, and all five
 quotas per profile slot. Each binary still has its existing 128 MiB copy limit;
 four such maxima cannot fit and will refuse before measurement. After copying,
 the runner reduces only capture quotas as needed within their existing per-file
