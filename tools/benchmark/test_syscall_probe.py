@@ -112,6 +112,61 @@ class LifecycleTests(unittest.TestCase):
                 stop.assert_called_once_with(capture.helper,elevated=True)
                 self.assertFalse(capture["available"])
 
+    def test_real_reply_timeout_names_helper_ack_and_still_cleans_up(self):
+        for cleanup_error in (None, PermissionError("cannot reap helper")):
+            with self.subTest(cleanup_error=cleanup_error), tempfile.TemporaryDirectory() as temporary:
+                owner,capture=self.capture(Path(temporary))
+                release,finished=threading.Event(),threading.Event()
+
+                def readline(limit):
+                    try:
+                        release.wait(1)  # Bounded even if cleanup regresses.
+                        return ""
+                    finally:
+                        finished.set()
+
+                stream=Mock(readline=readline,close=release.set)
+                capture.helper=Mock(stdin=io.StringIO(),stdout=stream)
+                capture.log=io.BytesIO()
+                capture.deadline=.02
+                try:
+                    # Stable controller clock; the shared reader still waits 20ms.
+                    with patch.object(capture,"check"), \
+                            patch.object(probe.time,"monotonic",return_value=0), \
+                            patch.object(cpu,"scheduler_snapshot",return_value={"available":False}), \
+                            patch.object(cpu,"stop",side_effect=cleanup_error) as stop:
+                        with self.assertRaisesRegex(TimeoutError,"syscall helper enabled ACK deadline") as raised:
+                            with owner(capture.target,Path(temporary)):
+                                capture.enable()
+                    self.assertIsInstance(raised.exception.__cause__,TimeoutError)
+                    self.assertEqual(str(raised.exception.__cause__),"native client control deadline")
+                    self.assertIsNotNone(raised.exception.__cause__.__cause__)
+                    self.assertIs(raised.exception.syscall_capture,capture)
+                    stop.assert_called_once_with(capture.helper,elevated=True)
+                    self.assertFalse(capture["available"])
+                    self.assertNotIn("enable_ack_ns",capture)
+                    self.assertEqual(owner.unresolved,cleanup_error is not None)
+                    if cleanup_error is not None:
+                        self.assertTrue(raised.exception.cleanup_unresolved)
+                        with patch.object(cpu,"spawn") as spawn:
+                            with self.assertRaisesRegex(RuntimeError,"previous privileged"):
+                                owner.prepare_target(Mock(),Path(temporary))
+                            spawn.assert_not_called()
+                finally:
+                    release.set()
+                    self.assertTrue(finished.wait(1),"bounded control reader did not settle")
+
+    def test_non_timeout_reply_failure_is_not_relabelled(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            owner,capture=self.capture(Path(temporary))
+            capture.helper=Mock(stdout=io.StringIO())
+            original=RuntimeError("native client line exceeded bound or ended incompletely")
+            with patch.object(capture,"check"), \
+                    patch.object(probe.native,"control_line",side_effect=original):
+                with self.assertRaises(RuntimeError) as raised:
+                    capture.reply("enabled")
+            self.assertIs(raised.exception,original)
+
     def test_cleanup_failure_is_fatal_and_prevents_next_helper(self):
         with tempfile.TemporaryDirectory() as temporary:
             owner,capture=self.capture(Path(temporary))
