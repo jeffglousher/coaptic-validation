@@ -34,7 +34,7 @@ def mapping():
     return record(10, bytes(body) + EXE.encode() + b"\0", 2)
 
 
-def capture(records=None, event="cpu-clock", ids=(101, 102), trailer=False, feature=None, frequency_hz=997):
+def capture(records=None, event="cpu-clock", ids=(101, 102), trailer=False, feature=None):
     records = mapping() + sample() if records is None else records
     header = bytearray(104)
     header[:8] = b"PERFILE2"
@@ -45,7 +45,7 @@ def capture(records=None, event="cpu-clock", ids=(101, 102), trailer=False, feat
     attr = bytearray(160)
     flags = (1 << 10) | ((1 << 18) if trailer else 0)
     struct.pack_into("<II5Q", attr, 0, 1, 144, 0 if event == "cpu-clock" else 1,
-                     frequency_hz, 295, 20, flags)
+                     997, 295, 20, flags)
     struct.pack_into("<QQ", attr, 144, 104, len(ids_raw))
     footer = b""
     if feature is not None:
@@ -75,8 +75,7 @@ def tracked_record(kind, body, *, identifier=26, pid=PID, tid=None, stamp=123456
     return record(kind, body + trailer, misc)
 
 
-def observed_capture(records=None, event="cpu-clock", clock_ids=CLOCK_IDS, tracking_ids=TRACKING_IDS,
-                     frequency_hz=997):
+def observed_capture(records=None, event="cpu-clock", clock_ids=CLOCK_IDS, tracking_ids=TRACKING_IDS):
     if records is None:
         body = bytearray(64)
         struct.pack_into("<II", body, 0, PID, PID)
@@ -99,7 +98,7 @@ def observed_capture(records=None, event="cpu-clock", clock_ids=CLOCK_IDS, track
     for index, config, sample_type, flags, offset, size in (
             (0, 0 if event == "cpu-clock" else 1, 65831, 263171, io, len(clock_raw)),
             (1, 9, 65799, 18816972643, ti, len(tracking_raw))):
-        struct.pack_into("<II5Q", attributes, index * stride, 1, 136, config, frequency_hz, sample_type, 20, flags)
+        struct.pack_into("<II5Q", attributes, index * stride, 1, 136, config, 997, sample_type, 20, flags)
         struct.pack_into("<QQ", attributes, index * stride + 136, offset, size)
     return bytes(header) + clock_raw + tracking_raw + bytes(attributes) + records
 
@@ -143,24 +142,12 @@ class FakeClocks:
     def usage(self):
         return SimpleNamespace(ru_nvcsw=self.sleeps, ru_nivcsw=0)
 
-    def measure(self, pattern, *, frequency_hz=997):
+    def measure(self, pattern):
         return probe.measure_control(pattern, cpu=self.cpu, thread=self.thread, wall=self.wall,
-                                     sleep=self.sleep, usage=self.usage, frequency_hz=frequency_hz)
+                                     sleep=self.sleep, usage=self.usage)
 
 
 class WorkerTests(unittest.TestCase):
-    def test_higher_frequency_changes_only_nominal_short_burst_threshold(self):
-        self.assertEqual(probe.PERIOD_NS, 1_000_000_000 // 997)
-        for hz in (997, 9970):
-            value = FakeClocks().measure("bursty", frequency_hz=hz)
-            probe.validate_receipt(value, os.getpid(), "bursty", frequency_hz=hz)
-        value = FakeClocks(cpu_step=125_000).measure("bursty", frequency_hz=9970)
-        self.assertFalse(value["short_blocks_valid"])
-        with self.assertRaises(ValueError):
-            probe.validate_receipt(value, os.getpid(), "bursty", frequency_hz=9970)
-        # The same length is short at the historical default rate.
-        probe.validate_receipt(FakeClocks(cpu_step=125_000).measure("bursty"), os.getpid(), "bursty")
-
     def test_bounded_pipe_parser_faults_without_real_pipe(self):
         for pieces, limit, error in (([b"x", b""], 16, EOFError), ([b"x"] * 5, 4, ValueError)):
             with patch.object(probe.select, "select", return_value=([123], [], [])), \
@@ -232,7 +219,7 @@ class WorkerTests(unittest.TestCase):
              patch.object(probe.os, "set_blocking"), \
              patch.object(probe, "read_line", side_effect=lambda *a: events.append("read") or (b"run\n" if events.count("read") == 1 else b"report\n")), \
              patch.object(probe, "write_gate", side_effect=lambda fd, gate, dl: events.append(gate)), \
-             patch.object(probe, "measure_control", side_effect=lambda p, **kw: events.append("measure") or result), \
+             patch.object(probe, "measure_control", side_effect=lambda p: events.append("measure") or result), \
              patch.object(probe, "bounded_bytes", side_effect=lambda *a: events.append("format") or b"{}\n"), \
              patch.object(probe.select, "select", return_value=([], [1], [])), \
              patch.object(probe.os, "write", return_value=3), \
@@ -243,27 +230,6 @@ class WorkerTests(unittest.TestCase):
 
 
 class RawParserTests(unittest.TestCase):
-    def test_requested_frequency_independent_of_both_supported_raw_layouts(self):
-        for fixture in (capture, observed_capture):
-            for event in ("cpu-clock", "task-clock"):
-                old = fixture(event=event)
-                self.assertEqual(probe.parse_perf(old, event, PID, EXE),
-                                 probe.parse_perf(old, event, PID, EXE, frequency_hz=997))
-                high = fixture(event=event, frequency_hz=9970)
-                self.assertEqual(probe.parse_perf(high, event, PID, EXE, frequency_hz=9970)["frequency_hz"], 9970)
-                for data, hz in ((old, 9970), (high, 997)):
-                    with self.subTest(fixture=fixture.__name__, event=event, hz=hz), self.assertRaises(ValueError):
-                        probe.parse_perf(data, event, PID, EXE, frequency_hz=hz)
-                for hz in (True, False, 997.0, 9970.0, "997", "9970", None, 998, 99700):
-                    with self.assertRaises(ValueError):
-                        probe.parse_perf(old, event, PID, EXE, frequency_hz=hz)
-        # The dummy attribute must match the request as well as the clock.
-        data = bytearray(observed_capture(frequency_hz=9970))
-        ao = struct.unpack_from("<Q", data, 24)[0]
-        struct.pack_into("<Q", data, ao + 152 + 16, 997)
-        with self.assertRaises(ValueError):
-            probe.parse_perf(data, "cpu-clock", PID, EXE, frequency_hz=9970)
-
     def parse(self, data, event="cpu-clock"):
         return probe.parse_perf(data, event, PID, EXE)
 
@@ -511,26 +477,6 @@ class ObservedIdentifierTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
-    def test_frequency_cli_and_workflow_propagate_exact_request(self):
-        text = (probe.SUITE / ".github/workflows/perf-sampling-probe.yml").read_text()
-        self.assertIn("default: '997'\n        options: ['997', '9970']", text)
-        self.assertIn("FREQUENCY_HZ: ${{ inputs.frequency_hz }}", text)
-        self.assertIn('--frequency-hz "$FREQUENCY_HZ"', text)
-        for hz in (997, 9970):
-            with patch.object(probe, "run_probe", return_value=0) as run:
-                self.assertEqual(probe.main(["--output", "unused", "--frequency-hz", str(hz)]), 0)
-            run.assert_called_once_with(Path("unused"), frequency_hz=hz)
-        with patch.object(probe, "run_probe", return_value=0) as run:
-            probe.main(["--output", "unused"])
-        run.assert_called_once_with(Path("unused"), frequency_hz=997)
-        with patch.object(probe, "worker_main", return_value=0) as worker:
-            probe.main(["--worker", "bursty", "--frequency-hz", "9970"])
-        worker.assert_called_once_with("bursty", frequency_hz=9970)
-        for value in ("998", "997.0", "99700", "true"):
-            with patch.object(probe, "run_probe") as run, patch("sys.stderr"), self.assertRaises(SystemExit):
-                probe.main(["--output", "unused", "--frequency-hz", value])
-            run.assert_not_called()
-
     def test_manual_pinned_bounded_existing_runner_transport(self):
         text = (probe.SUITE / ".github/workflows/perf-sampling-probe.yml").read_text()
         self.assertIn("on:\n  workflow_dispatch:\n", text)
@@ -565,7 +511,7 @@ class ControllerTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.addCleanup(self.temp.cleanup)
 
-    def control(self, *, fail_enter=False, fail_finish=False, fail_cleanup=False, bad_receipt=False, bad_header=False, bad_deadline=False, startup_cleanup_failure=False, frequency_hz=997):
+    def control(self, *, fail_enter=False, fail_finish=False, fail_cleanup=False, bad_receipt=False, bad_header=False, bad_deadline=False, startup_cleanup_failure=False):
         events = []
         stdin, stdout = Mock(), Mock()
         stdin.fileno.return_value, stdout.fileno.return_value = 101, 102
@@ -583,7 +529,7 @@ class ControllerTests(unittest.TestCase):
         @contextmanager
         def perf(*args, **kwargs):
             self.assertEqual(args[:3], ("record", PID, 5))
-            self.assertEqual(kwargs, {"event": "cpu-clock", "target": worker, "frequency_hz": frequency_hz})
+            self.assertEqual(kwargs, {"event": "cpu-clock", "target": worker})
             events.append("enable-ack")
             if fail_enter:
                 if startup_cleanup_failure:
@@ -609,24 +555,15 @@ class ControllerTests(unittest.TestCase):
         real_reader = probe.read_regular
         raw = {"executable_mapping_matches": True, "sample_records": 5, "total_period": 100,
                "lost": 0, "lost_samples": 0}
-        with patch.object(probe, "spawn", return_value=worker) as spawn, patch.object(probe, "stop", side_effect=cleanup), \
+        with patch.object(probe, "spawn", return_value=worker), patch.object(probe, "stop", side_effect=cleanup), \
              patch.object(probe.os, "set_blocking"), patch.object(probe.os, "read", return_value=b""), \
              patch.object(probe, "read_line", side_effect=read), \
              patch.object(probe, "write_gate", side_effect=lambda fd, gate, dl: events.append(gate)), \
              patch.object(probe, "proc_snapshot", side_effect=snapshot), patch.object(probe, "perf_pass", side_effect=perf), \
-             patch.object(probe, "read_regular", side_effect=lambda path, limit: real_reader(path, limit) if Path(path).name == "perf.json" else b"data"), patch.object(probe, "parse_perf", return_value=raw) as parse, \
+             patch.object(probe, "read_regular", side_effect=lambda path, limit: real_reader(path, limit) if Path(path).name == "perf.json" else b"data"), patch.object(probe, "parse_perf", return_value=raw), \
              patch.object(probe, "report_counts", return_value={"samples": 6 if bad_header else 5, "period": 100, "lost": 0}):
-            result = probe.collect_control("cpu-clock", "continuous", directory, frequency_hz=frequency_hz)
-        self.assertEqual(spawn.call_args.args[0][-2:], ["--frequency-hz", str(frequency_hz)])
-        if result["valid"]:
-            self.assertEqual(parse.call_args.kwargs, {"frequency_hz": frequency_hz})
+            result = probe.collect_control("cpu-clock", "continuous", directory)
         return result, events, directory
-
-    def test_explicit_higher_rate_reaches_capture_worker_parser_and_identity(self):
-        result, _, directory = self.control(frequency_hz=9970)
-        self.assertTrue(result["valid"])
-        self.assertEqual(result["frequency_hz"], 9970)
-        self.assertEqual(json.loads((directory / "control.json").read_bytes())["frequency_hz"], 9970)
 
     def test_fence_snapshot_and_report_order(self):
         result, events, _ = self.control()
@@ -681,8 +618,7 @@ class ControllerTests(unittest.TestCase):
 
     def test_serial_plan_stops_after_invalid_without_extension(self):
         calls = []
-        def collect(event, pattern, directory, *, frequency_hz):
-            self.assertEqual(frequency_hz, 997)
+        def collect(event, pattern, directory):
             calls.append((event, pattern))
             return {"valid": False, "event": event, "pattern": pattern}
         with patch.object(probe.sys, "platform", "linux"), patch.object(probe.shutil, "which", return_value="/existing/tool"), \
@@ -695,17 +631,13 @@ class ControllerTests(unittest.TestCase):
 
     def test_four_controls_once_in_fixed_serial_order_and_complete_index(self):
         calls = []
-        def collect(event, pattern, directory, *, frequency_hz):
-            self.assertEqual(frequency_hz, 9970)
+        def collect(event, pattern, directory):
             calls.append((event, pattern))
             return {"valid": True, "event": event, "pattern": pattern}
         with patch.object(probe.sys, "platform", "linux"), patch.object(probe.shutil, "which", return_value="/existing/tool"), \
              patch.object(probe, "command", return_value="source"), patch.object(probe, "digest_file", return_value={"sha256": "a" * 64}), \
              patch.object(probe, "collect_control", side_effect=collect), patch("builtins.print"):
-            self.assertEqual(probe.run_probe(self.root / "new", frequency_hz=9970), 0)
-        for name in ("manifest.json", "summary.json"):
-            self.assertEqual(json.loads((self.root / "new" / name).read_bytes())["frequency_hz"], 9970)
-        self.assertEqual(json.loads((self.root / "new/manifest.json").read_bytes())["period_ns"], 100300)
+            self.assertEqual(probe.run_probe(self.root / "new"), 0)
         self.assertEqual(calls, list(probe.PLAN))
         index = json.loads((self.root / "new/evidence-index.json").read_bytes())
         self.assertIn("summary.json", [f["path"] for f in index["files"]])

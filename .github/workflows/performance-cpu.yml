@@ -47,11 +47,6 @@ on:
         description: Additional bounded perf record and stat passes (permission refusal retained)
         type: boolean
         default: true
-      frequency_hz:
-        description: Record Hz; 9970 only for same-source SmallDevice32 Mio C1 CON diagnostic at4000/s, two pairs
-        type: choice
-        default: '997'
-        options: ['997', '9970']
       admission_diagnostics:
         description: Local admission intervals; identical core/adapter and C1 required, perf must be false, CPU ratios vetoed
         type: boolean
@@ -93,7 +88,6 @@ jobs:
       SERVER_KIND: ${{ inputs.server_kind }}
       CANDIDATE_SERVER_KIND: ${{ inputs.candidate_server_kind }}
       PERF_ENABLED: ${{ inputs.perf }}
-      FREQUENCY_HZ: ${{ inputs.frequency_hz }}
       ADMISSION_DIAGNOSTICS: ${{ inputs.admission_diagnostics }}
       CLIENT_CONCURRENCY: ${{ inputs.client_concurrency }}
       MESSAGE_TYPE: ${{ inputs.message_type }}
@@ -116,7 +110,6 @@ jobs:
               resource_profile=os.environ['RESOURCE_PROFILE'],
               seconds=int(os.environ['WINDOW_SECONDS']), repeats=int(os.environ['REPEATS']),
               server_kind=os.environ['SERVER_KIND'], perf=os.environ['PERF_ENABLED'] == 'true',
-              frequency_hz=int(os.environ['FREQUENCY_HZ']),
               admission_diagnostics=os.environ['ADMISSION_DIAGNOSTICS'] == 'true',
               candidate_server_kind=(None if os.environ['CANDIDATE_SERVER_KIND'] == 'same'
                                      else os.environ['CANDIDATE_SERVER_KIND']),
@@ -200,7 +193,6 @@ jobs:
             --build-lane "$RUNNER_TEMP/cpu-build-lane" --output "$RUNNER_TEMP/cpu-evidence" \
             --sizes "$RESPONSE_SIZES" --rates "$OFFERED_RATES" \
             --resource-profile "$RESOURCE_PROFILE" \
-            --frequency-hz "$FREQUENCY_HZ" \
             --seconds "$WINDOW_SECONDS" --repeats "$REPEATS" --server-kind "$SERVER_KIND" \
             --concurrency "$CLIENT_CONCURRENCY" --message-type "$MESSAGE_TYPE" \
             "${options[@]}"

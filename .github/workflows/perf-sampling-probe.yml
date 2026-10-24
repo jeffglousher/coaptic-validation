@@ -2,12 +2,6 @@ name: Manual finite perf sampling suitability controls
 
 on:
   workflow_dispatch:
-    inputs:
-      frequency_hz:
-        description: Requested sampling Hz for the four finite controls
-        type: choice
-        default: '997'
-        options: ['997', '9970']
 
 permissions:
   contents: read
@@ -19,8 +13,6 @@ jobs:
   probe:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    env:
-      FREQUENCY_HZ: ${{ inputs.frequency_hz }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -40,7 +32,6 @@ jobs:
         run: >-
           timeout --signal=INT --kill-after=60 300
           python3 -B tools/benchmark/perf_sampling_probe.py
-          --frequency-hz "$FREQUENCY_HZ"
           --output "$RUNNER_TEMP/perf-sampling-probe-evidence/controls"
       - name: Retain success or explicit refusal evidence
         if: always()
