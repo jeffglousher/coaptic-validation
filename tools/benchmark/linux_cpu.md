@@ -1122,3 +1122,33 @@ canonical lock and junction afterward. Preserve failures. Windows functional
 proof and per-poll wall arrays are supporting evidence only: they do not qualify
 future Linux/profile probes, socket latency, server CPU, transport share, peak
 stack or whole RAM. Both 50% targets and the remaining matrix obligations stay open.
+
+For the remaining Linux #187 functional proof, the existing **Manual fixed
+socket-free core cost diagnosis** workflow has one explicit `small-device-proof`
+choice. Select a reviewed immutable companion commit containing the unchanged
+PR #188 probe; the parent authorizes any dispatch. This fixed mode builds original
+`b8f44fa16b3e16f4c9c6cc5f1205d2aee9cb0b57` and accepted
+`d23f93c0699b75ec17e692999d62ff89bb71463d` serially with source-specific locks,
+Rust 1.99.0 and the existing Linux release flags. Ten unfiltered release tests
+must actually pass per core. Both copied executable/source/lock/compiler records
+are frozen before eight fresh serial processes: each core, both security modes,
+SmallDevice32 and the old Default64 control, sixteen operations plus 128 warmups
+per cell. All 1,152 exchanges must fully verify; 32,768 separate calibrations
+remain unadjusted. Each process has a 30-second deadline, 512 MiB address-space
+limit and separate 512 KiB raw output limits through the existing owned-process
+group/thread settlement path. Native source barriers and verification are unchanged.
+
+The opt-in phase restores the initial hosted b8 checkout and exact canonical lock
+before cells and on ordinary exit, refusing unexpected edits; abrupt job death
+cannot guarantee restoration, so the next clean gate refuses leftovers. It reserves
+16 MiB for non-ELF records, including final receipts, and at most 111 MiB for the
+two copied ELFs within a 127 MiB proof owner; the entire upload including the
+existing test log must pass 128 MiB. Failed/refused cells remain raw and later
+cells stay NOT RUN, with no retry or replacement. Actual Linux inline sizes and
+nested fixture owners are captured without assuming Windows sizes. Legacy
+`original` and `server-app-batch-cpu` choices keep their pins/plans and batch-only
+custody checks. The new mode does not invoke their profiling/CPU phases.
+Linux execution and independent receipt review remain pending until a separately
+authorized run completes. Issue #187, both 50% targets, remaining representative
+probes and whole-memory acceptance stay open; this workflow adds no CPU or
+statistical wall-time claim.
