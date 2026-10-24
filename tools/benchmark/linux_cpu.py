@@ -34,6 +34,8 @@ from native_profiles import validate_concurrency, PROFILE_SIZES, dimensions, val
 
 MIB = 1024 * 1024
 PERF_BUDGET = 256 * MIB
+WHOLE_UPLOAD_BUDGET = 256 * MIB  # Evidence, copied binaries AND uploaded setup logs.
+SETUP_LOG_BUDGET = 16 * MIB
 METADATA_BUDGET = 96 * MIB
 SUMMARY_LIMIT = 64 * 1024
 WINDOW_LIMIT = 16 * 1024
@@ -101,24 +103,96 @@ def configuration(args):
     if len(set(rates)) != len(rates):
         raise ValueError("rates must be numerically distinct")
     kinds = list(KINDS) if args.server_kind == "all" else [args.server_kind]
-    if (not 2 <= args.seconds <= 30 or not 2 <= args.repeats <= 8
+    long_window = getattr(args, "long_window", False)
+    security = getattr(args, "security_mode", "both")
+    if type(long_window) is not bool or security not in ("both", "unprotected", "oscore"):
+        raise ValueError("invalid long-window/security selection")
+    if long_window:
+        if (profile == "host-control" or len(sizes) != 1 or len(rates) != 1
+                or security == "both" or args.server_kind != "coaptic-mio"
+                or args.candidate_server_kind is not None or args.concurrency != 1
+                or args.message_type != "con" or getattr(args, "independent_endpoints", False)
+                or args.repeats != 4 or args.perf or diagnostic):
+            raise ValueError("long windows require one representative profile/payload/rate/security, same Mio, C1 CON, four pairs, no perf/diagnostics/independent endpoints")
+    elif security != "both":
+        raise ValueError("individual security selection requires --long-window")
+    low, high = (31, 1500) if long_window else (2, 30)
+    if (not low <= args.seconds <= high or not 2 <= args.repeats <= 8
             or any(not 1 <= r <= 100_000 for r in rates) or args.server_kind not in (*EXPLICIT_KINDS, "all")):
-        raise ValueError("seconds 2..30, repeats 2..8, rates 1..100000, supported host adapter")
-    cells = list(itertools.product(("unprotected", "oscore"), sizes, rates, kinds))
+        raise ValueError(f"seconds {low}..{high}, repeats 2..8, rates 1..100000, supported host adapter")
+    cells = list(itertools.product(("unprotected", "oscore") if security == "both" else (security,), sizes, rates, kinds))
     windows = len(cells) * 2 * args.repeats
     samples = sum(rate * (2 * args.repeats * args.seconds + (4 * PROFILE_SECONDS if args.perf else 0))
                   for _, _, rate, _ in cells)
-    if windows > 96 or windows * args.seconds > 1200 or samples > 2_000_000:
-        raise ValueError("campaign exceeds 96 clean windows, 1200 clean seconds or 2M latency samples")
+    window_limit, seconds_limit = (8, 12000) if long_window else (96, 1200)
+    if windows > window_limit or windows * args.seconds > seconds_limit or samples > 2_000_000:
+        raise ValueError(f"campaign exceeds {window_limit} clean windows, {seconds_limit} clean seconds or 2M latency samples")
     plan = rotation(args, cells)
     for mode, _, (_, size, rate, _), _ in plan:
         operations = rate * (args.seconds if mode == "clean" else PROFILE_SECONDS)
+        if long_window and not 1 <= operations <= 60_000:
+            raise ValueError("native operation count must be 1..60000")
         minimum = (WARMUP + operations) * math.ceil(size / 1024)
         if minimum > DATAGRAM_BUDGET:
             raise ValueError(f"{mode} {size}B {rate}/s: warmup plus operations require "
                              f"at least {minimum} datagrams; socket budget is {DATAGRAM_BUDGET}")
     metadata_allowance(plan, args.seconds)
     return cells
+
+
+def measurement_timeout(seconds, long_window=False):
+    if long_window:
+        if type(seconds) is not int or not 31 <= seconds <= 1500:
+            raise ValueError("long measurement duration must be 31..1500")
+        return min(1600, math.ceil(seconds / .95) + 3 + 10)
+    return 60
+
+
+def upload_bytes(*roots):
+    """Disjoint upload owners, counted once; refuse unexpected links/large trees."""
+    roots = [Path(root).resolve() for root in roots if root is not None]
+    if any(a.is_relative_to(b) or b.is_relative_to(a)
+           for index, a in enumerate(roots) for b in roots[index + 1:]):
+        raise ValueError("upload owners must be disjoint, not nested")
+    total, entries = 0, 0
+    for root in roots:
+        if not root.is_dir():
+            raise ValueError("upload owner directory missing")
+        for directory, dirs, files in os.walk(root, followlinks=False):
+            for name in (*dirs, *files):
+                path = Path(directory) / name
+                entries += 1
+                if entries > 4096 or path.is_symlink() or not (path.is_dir() or path.is_file()):
+                    raise ValueError("unexpected upload entry or entry bound exceeded")
+                if path.is_file():
+                    total += path.stat().st_size
+    return total
+
+
+def check_upload(out, setup_logs=None):
+    if setup_logs is not None and upload_bytes(setup_logs) > SETUP_LOG_BUDGET:
+        raise ValueError("setup logs exceed combined 16MiB allowance")
+    actual = upload_bytes(out, setup_logs)
+    if actual > WHOLE_UPLOAD_BUDGET:
+        raise ValueError("whole upload exceeds 256MiB allowance")
+    return actual
+
+
+def upload_plan(out, setup_logs, metadata_bytes, perf_slots):
+    # Metadata already owns build logs and all nested window metadata. Binaries
+    # and the disjoint setup owner are added exactly once, never the whole out tree.
+    check_upload(out, setup_logs)
+    binaries = upload_bytes(out / "binaries")
+    setup = SETUP_LOG_BUDGET if setup_logs is not None else 0
+    remaining = WHOLE_UPLOAD_BUDGET - metadata_bytes - binaries - setup
+    if remaining < 0 or (perf_slots and remaining < PERF_FILES_PER_SLOT * perf_slots):
+        raise ValueError("planned whole upload exceeds 256MiB allowance before measurement")
+    quota = min(8 * MIB, (PERF_BUDGET - METADATA_BUDGET) // max(1, PERF_FILES_PER_SLOT * perf_slots),
+                remaining // max(1, PERF_FILES_PER_SLOT * perf_slots))
+    return dict(whole_upload_budget_bytes=WHOLE_UPLOAD_BUDGET, copied_binary_bytes=binaries,
+                setup_log_budget_bytes=setup, metadata_allowance_bytes=metadata_bytes,
+                perf_file_quota_bytes=quota,
+                planned_whole_upload_bytes=metadata_bytes + binaries + setup + PERF_FILES_PER_SLOT * perf_slots * quota)
 
 
 def rotation(args, cells):
@@ -1404,7 +1478,9 @@ def save_window(directory, result):
         identity_fields = {key: result[key] for key in
                            ("mode", "security", "bytes", "rate", "server_kind", "operations",
                             "concurrency", "message_type", "cleanup_errors", "revision_label",
-                            "core_sha", "repeat", "index", "comparison_type", "admission_diagnostics")
+                            "core_sha", "repeat", "index", "comparison_type", "admission_diagnostics",
+                            "long_window", "measurement_timeout_seconds", "paced_span_limit_seconds",
+                            "operation_deadline_ms", "outbound_datagram_limit")
                            if key in result}
         if unresolved_cleanup(result):
             identity_fields["cleanup_unresolved"] = True
@@ -1419,13 +1495,21 @@ def save_window(directory, result):
 
 def window(server, client, cell, operations, directory, mode="clean", quota=8 * MIB,
            *, concurrency=1, message_type="con", admission_diagnostics=False,
-           resource_profile="host-control", independent_endpoints=False):
+           resource_profile="host-control", independent_endpoints=False, long_window=False):
     security, size, rate, kind = cell
     if security not in ("unprotected", "oscore"):
         raise ValueError("unsupported profile security")
     validate_profile(resource_profile, kind, size, concurrency=concurrency,
                      message_type=message_type, security=security, independent_endpoints=independent_endpoints,
                      admission_diagnostics=admission_diagnostics)
+    duration = operations // rate if type(rate) is int and rate > 0 else 0
+    wait_seconds = measurement_timeout(duration, long_window)
+    if long_window and (mode != "clean" or resource_profile == "host-control" or kind != "coaptic-mio"
+                        or concurrency != 1 or message_type != "con" or independent_endpoints
+                        or admission_diagnostics or operations != duration * rate
+                        or not 1 <= operations <= 60_000
+                        or (operations + WARMUP) * math.ceil(size / 1024) > DATAGRAM_BUDGET):
+        raise ValueError("invalid long measurement partition")
     if type(admission_diagnostics) is not bool or (admission_diagnostics and
             (mode != "clean" or concurrency != 1 or type(cell[2]) is not int or cell[2] <= 0)):
         raise ValueError("admission diagnostics require an unprofiled paced C1 window")
@@ -1436,6 +1520,9 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
               "rate": rate, "server_kind": kind, "operations": operations,
               "concurrency": concurrency, "message_type": message_type,
               "resource_profile": resource_profile, "independent_endpoints": independent_endpoints,
+              "long_window": long_window, "measurement_timeout_seconds": wait_seconds,
+              "paced_span_limit_seconds": 1500 if long_window else 120,
+              "operation_deadline_ms": 3000, "outbound_datagram_limit": DATAGRAM_BUDGET,
               "load_before": os.getloadavg()}
     if admission_diagnostics:
         result["admission_diagnostics"] = True
@@ -1461,6 +1548,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                        "--concurrency", str(concurrency), "--message-type", message_type]
         if independent_endpoints:
             client_args.append("--independent-endpoints")
+        if long_window:
+            client_args.append("--long-window")
         if admission_diagnostics:
             client_args.append("--admission-diagnostics")
         if security == "oscore":
@@ -1484,8 +1573,9 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                     raise RuntimeError("server bind deadline")
                 child = spawn(client_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, text=True)
-                def gate(expected, deadline=None):
-                    timeout = 60 if deadline is None else min(60, PerfCapture._remaining(deadline))
+                def gate(expected, deadline=None, *, long_measurement=False):
+                    timeout = (PerfCapture._remaining(deadline) if long_measurement else
+                               60 if deadline is None else min(60, PerfCapture._remaining(deadline)))
                     line = native.control_line(child.stderr, timeout)
                     data = (line + "\n").encode("utf-8")
                     if client_log.tell() + len(data) > WINDOW_LIMIT:
@@ -1513,9 +1603,12 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                     started = time.perf_counter_ns()
                     if perf.deadline is not None:
                         PerfCapture._remaining(perf.deadline)
+                    # One deadline before releasing the client, including every
+                    # partial pipe read. control_line waits once for the full line.
+                    deadline = time.monotonic() + wait_seconds if long_window else perf.deadline
                     child.stdin.write("run\n")
                     child.stdin.flush()
-                    gate("measured", perf.deadline)
+                    gate("measured", deadline, long_measurement=long_window)
                     after = {name: native.snapshot(proc) for name, proc in peers.items()}
                     resource_ns = time.perf_counter_ns() - started
                     if clocks:
@@ -1534,6 +1627,12 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                     result["report"] = report_summary(report)
                     native.validate_report(report, size, operations, "spin", security, rate,
                                            concurrency, message_type, admission_diagnostics, independent_endpoints=independent_endpoints)
+                    if long_window and any(type(report.get(key)) is not type(value) or report[key] != value
+                                           for key, value in (("long_window", True), ("paced_span_limit_seconds", 1500),
+                                                              ("operation_deadline_ms", 3000),
+                                                              ("outbound_datagram_limit", DATAGRAM_BUDGET),
+                                                              ("minimum_planned_datagrams", (operations + WARMUP) * math.ceil(size / 1024)))):
+                        raise ValueError("mismatched long native limits")
                     if report["warmup"] != WARMUP:
                         raise ValueError("mismatched warmup")
                     if sut.poll() is not None:
@@ -1656,6 +1755,9 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
         valid = campaign_complete and not cleanup_failed and not diagnostic and all(
                     len(group) == repeats and {i["repeat"] for i in group} == set(range(repeats))
                     and all(accepted(i, tick) for i in group) for group in labels.values())
+        long_partition = any(i.get("long_window", False) for i in items)
+        if long_partition:
+            valid = valid and repeats == 4 and all(i.get("long_window") is True for i in items)
         if adapter_pair:
             valid = valid and all(i["server_kind"] == kinds[label]
                                   for label, group in labels.items() for i in group)
@@ -1686,6 +1788,28 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
                                     p99_latency_ns=latencies[math.ceil(len(latencies) * .99) - 1])
             record.update(cpu_ns_per_verified_operation=costs,
                           server_cpu_ratio=costs["candidate"]["server"]["total_ns"] / costs["baseline"]["server"]["total_ns"])
+            if long_partition:
+                # Single-security evidence still needs EVERY pair and pooled
+                # latency guard. Keep failed statistics; withhold qualified ratios.
+                def guard(baseline, candidate):
+                    delta = {key: candidate[key] - baseline[key]
+                             for key in ("median_latency_ns", "p99_latency_ns")}
+                    return dict(**delta, passed=delta["median_latency_ns"] <= 2000
+                                and delta["p99_latency_ns"] <= 10000)
+                pair_guards = []
+                for repeat in range(4):
+                    statistics_by_label = {}
+                    for label, group in labels.items():
+                        values = sorted(report_latencies(next(i for i in group if i["repeat"] == repeat)))
+                        statistics_by_label[label] = dict(median_latency_ns=statistics.median(values),
+                                                         p99_latency_ns=values[math.ceil(len(values) * .99) - 1])
+                    pair_guards.append(dict(repeat=repeat, **guard(statistics_by_label["baseline"], statistics_by_label["candidate"])))
+                pooled = guard(costs["baseline"], costs["candidate"])
+                passed = pooled["passed"] and all(pair["passed"] for pair in pair_guards)
+                record.update(partial_matrix=True, latency_pair_guards=pair_guards,
+                              latency_pooled_guard=pooled, latency_guards_passed=passed)
+                if not passed:
+                    record.update(comparable=False, server_cpu_ratio=None)
         output.append(record)
     return output
 
@@ -1694,6 +1818,13 @@ def run(args):
     cells = configuration(args)
     profile = getattr(args, "resource_profile", "host-control")
     diagnostic = getattr(args, "admission_diagnostics", False)
+    long_window = getattr(args, "long_window", False)
+    security_mode = getattr(args, "security_mode", "both")
+    setup_logs = getattr(args, "setup_logs", None)
+    partition = dict(long_window=long_window, security_mode=security_mode,
+                     partial_matrix=long_window, measurement_timeout_seconds=measurement_timeout(args.seconds, long_window),
+                     paced_span_limit_seconds=1500 if long_window else 120,
+                     operation_deadline_ms=3000, outbound_datagram_limit=DATAGRAM_BUDGET)
     adapter_pair = ((args.server_kind, args.candidate_server_kind)
                     if args.candidate_server_kind is not None else None)
     comparison_type = "admission_diagnostic" if diagnostic else ("application_scheduling" if adapter_pair else "core_revision")
@@ -1722,6 +1853,7 @@ def run(args):
                                    "resource_profile": profile,
                                    "candidate_sha": args.candidate_sha, "cells": cells,
                                    "seconds": args.seconds, "repeats": args.repeats,
+                                   **partition,
                                    "perf": args.perf, "concurrency": args.concurrency,
                                    "independent_endpoints": getattr(args, "independent_endpoints", False),
                                    "admission_diagnostics": diagnostic,
@@ -1733,6 +1865,7 @@ def run(args):
         if suite_identity["status"] or identity(SUITE / "coaptic")["status"]:
             raise ValueError("commit the source first; clean suite/core required")
         manifest = {"schema": "coaptic-linux-cpu/1", "baseline_sha": args.baseline_sha,
+                **partition, "whole_upload_budget_bytes": WHOLE_UPLOAD_BUDGET,
                 "resource_profile": profile,
                 "profile_dimensions": [dimensions(profile, size) for size in sorted({c[1] for c in cells})],
                 "native_profiles_sha256": digest(Path(__file__).with_name("native_profiles.py")),
@@ -1765,6 +1898,12 @@ def run(args):
         # Use the SAME baseline client for both servers: core/client work cannot silently move.
         client = Path(baseline["binaries"]["bench-native-client"]["path"])
         builds = {"baseline": baseline, "candidate": candidate}
+        # Actual copied binaries and bounded disjoint setup logs must fit with
+        # all future metadata/captures before the first measurement can start.
+        upload = upload_plan(out, setup_logs, metadata_bytes, perf_slots)
+        quota = upload["perf_file_quota_bytes"]
+        manifest.update(upload, artifact_bound_bytes_excluding_binaries=metadata_bytes + PERF_FILES_PER_SLOT * perf_slots * quota)
+        save(out / "manifest.json", manifest)
         save(out / "rotation.json", plan)
         for index, (mode, repeat, cell, label) in enumerate(plan):
             print(f"{index + 1}/{len(plan)} {mode} {label} {cell}", flush=True)
@@ -1774,7 +1913,7 @@ def run(args):
                             out / f"window-{index:03}", mode, quota,
                             concurrency=args.concurrency, message_type=args.message_type,
                             admission_diagnostics=diagnostic, resource_profile=profile,
-                            independent_endpoints=getattr(args, "independent_endpoints", False))
+                            independent_endpoints=getattr(args, "independent_endpoints", False), long_window=long_window)
             result.update(revision_label=label, core_sha=builds[label]["core"]["revision"], repeat=repeat,
                           server_sha256=digest(server), client_sha256=digest(client), index=index)
             result["comparison_type"] = comparison_type
@@ -1788,7 +1927,9 @@ def run(args):
                 stream.write(entry)
             if unresolved_cleanup(result):
                 raise RuntimeError("owned process termination unresolved; campaign aborted")
-        return all(r["passed"] for r in results if r["mode"] == "clean")
+        return (all(r["passed"] for r in results if r["mode"] == "clean")
+                and (not long_window or all(row["comparable"] for row in
+                     aggregate(results, args.repeats, 1 / os.sysconf("SC_CLK_TCK")))))
     except Exception as error:
         save(out / "failure.json", {"type": type(error).__name__, "reason": str(error)[:4096]})
         raise
@@ -1799,6 +1940,7 @@ def run(args):
                                                             campaign_complete=complete,
                                                             adapter_pair=adapter_pair) if results else [],
                                    "comparison_type": comparison_type,
+                                   **partition,
                                    "admission_diagnostics": diagnostic,
                                    "campaign_complete": complete, "cleanup_unresolved": cleanup_failed,
                                    "windows_recorded": len(results),
@@ -1809,6 +1951,14 @@ def run(args):
                                                            and r.get("perf", {}).get("available")
                                                            and not r["perf"].get("report", {}).get("available")],
                                    "interpretation": "ratios only for eligible complete pairs; raw failures and low-resolution/load-mismatched windows retained; no acceptance claim"})
+        primary = sys.exception()
+        try:
+            check_upload(out, setup_logs)
+        except Exception as error:
+            if primary is not None:
+                primary.add_note("final upload verification failed: " + str(error))
+            else:
+                raise
 
 
 def argument_parser():
@@ -1821,6 +1971,9 @@ def argument_parser():
     parser.add_argument("--resource-profile", choices=tuple(PROFILE_SIZES), default="host-control")
     parser.add_argument("--rates", default="100,1000")
     parser.add_argument("--seconds", type=int, default=10)
+    parser.add_argument("--long-window", action="store_true", help="explicit single-security representative 31..1500s partition")
+    parser.add_argument("--security-mode", choices=("both", "unprotected", "oscore"), default="both")
+    parser.add_argument("--setup-logs", type=Path, help="disjoint uploaded setup owner, combined cap 16MiB")
     parser.add_argument("--repeats", type=int, default=4)
     parser.add_argument("--server-kind", choices=(*EXPLICIT_KINDS, "all"), default="coaptic-reusable")
     parser.add_argument("--candidate-server-kind", choices=EXPLICIT_KINDS,

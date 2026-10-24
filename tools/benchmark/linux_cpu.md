@@ -133,6 +133,57 @@ remain unchanged. Low-rate windows can lack sufficient CPU resolution; retain
 them as ineligible. This C1 extension establishes neither independent-endpoint CON
 coverage nor either 50% CPU target. Physical and release checks remain separate.
 
+### Explicit long representative partitions
+
+`--long-window --security-mode unprotected|oscore` enables **31..1500 clean
+seconds** only for one representative profile, one payload and one rate, ordinary
+Mio on both labels (`--candidate-server-kind` absent), C1 CON, independent
+endpoints off, exactly four rotated pairs, perf and admission diagnostics off.
+It produces eight clean windows and at most 12,000 scheduled clean seconds.
+The default remains both security modes, 2..30 seconds and the existing short
+campaign bounds/options. Individual security selection without long mode refuses
+before checkout/build/native preflight. The workflow adds the same two inputs;
+select `perf=false` explicitly. Its default job limit remains 60 minutes; explicit
+long jobs have a hard 360-minute ceiling including setup, builds and cleanup.
+
+For a separately predeclared partition on committed clean source, use the usual
+immutable baseline/candidate, existing lane and fresh output arguments, plus
+`--resource-profile small-device --server-kind coaptic-mio --sizes 32 --rates 100
+--seconds 599 --repeats 4 --long-window --security-mode oscore`. This is an example
+plan, **not an authorized campaign or a qualified duration**. A single-security
+partition is partial matrix evidence. All four pairs must stay together; every
+individual window must pass the unchanged twenty-tick CPU floor, rate/pacing,
+complete-operation and cleanup gates. Every pair AND pooled stratum must retain
+the existing median +2 microsecond and p99 +10 microsecond latency guards.
+Passing pooled values cannot erase a failed pair. No sub-floor pooling or process
+clock substitution qualifies a window, and this software change establishes no
+CPU reduction. Both #650 targets and #183 Linux qualification remain OPEN.
+
+Operations remain <=60,000, with the stricter necessary pre-build minimum
+`ceil(payload/1024) * (operations + 20 warmups) <= 60000`. One live global sender
+counter still charges warmups, measured requests, retries and controls. Ideal
+maxima are 59,980 one-block, 14,980 four-block and 3,730 sixteen-block operations;
+actual extra sends can refuse earlier. Some required cells remain impossible
+regardless of duration. Pools, packet/Call/body capacities, representations,
+nonce/replay state, cancellation/collection and pacing are unchanged.
+
+Only explicit native `--long-window` permits a paced dispatch span <=1500 seconds;
+the default remains 120 seconds. Native long mode requires paced C1 CON, spin,
+no diagnostics/independent endpoints and the same **3000 ms deadline for each
+complete operation**, including its entire Block2 representation. Short functional
+flag checks need not wait 31 seconds; the acceptance runner enforces that lower
+bound. Request/manifest/results record the selection, partial-matrix status and
+limits; native reports include selected pacing/deadline/send limits and minimum
+planned sends. Historical reports/manifests remain readable without these fields.
+
+The long measurement wait has one absolute monotonic deadline, set before
+releasing the client: `ceil(D/0.95) + 3 + 10` seconds, hard capped at 1600
+(1592 at D=1500). The full bounded line read shares that deadline; partial reads
+do not restart it. Ready/startup guards, report 15 seconds, profiler, cleanup and
+900-second build-command deadlines remain unchanged. The independent diagnostic
+runner's 120-second planning guard is outside this path and remains unchanged.
+Unresolved cleanup remains fatal and vetoes comparisons.
+
 ### Optional C1 admission-interval diagnostic
 
 `--admission-diagnostics` is explicitly opt-in in the native client,
@@ -711,14 +762,28 @@ its command/version log and privileged report have the same quota. Reserve
 **three file quotas per profile pass**, conservatively including a report quota
 for stat passes too. The per-file quota is
 `min(8 MiB, floor(160 MiB / (3 * profile_passes)))` when profiling is enabled.
-All perf data/log/report quotas fit the remaining 160 MiB, so runner metadata,
-logs and profiles together stay within
-**256 MiB**, excluding binaries and the workflow's separate setup logs. The
-manifest records the exact planned metadata allowance, three-files-per-slot
-reservation, per-file perf quota and total artifact ceiling. Truncation/refusal
-remains an unavailable capture or report, with raw evidence retained. Each binary
-copy is capped at 128 MiB (four copies <=512 MiB). Workflow timeout is 60 minutes, artifacts
-retain 14 days, and the
+The original metadata/profile allowance of **256 MiB excluded copied binaries
+and setup logs**; historical manifests retain that narrower meaning. It was not
+a whole-upload bound. Now a named **WHOLE_UPLOAD_BUDGET = 256 MiB** includes all
+uploaded owners: planned metadata (including build/window logs), actual copied
+binaries, a combined **16 MiB setup-log reserve** when supplied, and all three
+quotas per profile slot. Each binary still has its existing 128 MiB copy limit;
+four such maxima cannot fit and will refuse before measurement. After copying,
+the runner reduces only capture quotas as needed within their existing per-file
+maxima, or refuses if the whole plan cannot fit. Clean work/latency/output caps
+and profiling defaults remain unchanged.
+
+The workflow bounds shell setup-log files to 2 MiB during production, uses the
+existing 2 MiB bounded command helper for native setup, and checks their combined
+reserve before each native check. `--setup-logs` names the disjoint upload owner.
+The runner checks actual setup bytes and actual copied binaries with planned
+metadata/captures before measurement, and verifies actual final upload bytes.
+The workflow independently verifies both upload roots before upload, including
+failure paths; excess refuses upload without deleting evidence. Nested owners
+are never added twice. Credentials and the build lane stay outside uploads.
+This is a retained-file bound, not a transient disk, RSS, allocator, runtime or
+peak-memory measurement. Default timeout is 60 minutes, explicit long timeout
+360 minutes, artifacts retain 14 days, and the
 one job has no matrix/parallel build. Raw failed windows and earlier successful
 windows survive later failure and upload with `if: always()`. Credentials and
 the Cargo lane are excluded from uploads. Cancellation can interrupt cleanup;
