@@ -1,5 +1,72 @@
 # Manual Linux CPU qualification
 
+### Bounded process memory observations (#185)
+
+Each existing `native_diagnostic.snapshot(process)` now attempts one optional
+`process_memory` object (`coaptic-proc-memory/1`) after the unchanged psutil CPU
+then `memory_info` reads. Linux reads only `/proc/<owned-child-pid>/status` and
+`limits`, serially at the existing before/after gates. There is no operation-loop
+read, sampler, thread, worker, dependency or PID action. The caller retains sole
+custody of its unreaped children; these are non-atomic observations, not an
+independent PID-identity or descendant-containment mechanism. Existing identity,
+cleanup, source and CPU acceptance checks still apply.
+
+Status requires exactly one each of `VmHWM`, `VmPeak`, `VmStk` (literal `kB`,
+converted with 1024 bytes per kB) and unitless positive `Threads`. Results are
+`vm_hwm_bytes`, `vm_peak_bytes`, `vm_stk_bytes` and `threads`. Limits requires one
+exact `Max stack size` row with `bytes`, producing `stack_soft_bytes` and
+`stack_hard_bytes`: each is a nonnegative integer or the explicit string
+`unlimited`. Unlimited is neither zero nor missing. Numeric input is ASCII
+decimal, at most 20 digits; converted values must fit unsigned 64 bits. Finite
+hard limits must be at least the soft limit. Selected rows are at most 128 bytes;
+unrelated rows are ignored. This intentionally narrow format may refuse future
+kernel output rather than guessing its meaning.
+
+Each unbuffered file capture requests 8191 bytes then one EOF-check byte,
+**16384 bytes total per process snapshot**. Any nonempty EOF check refuses,
+including a short read ending at a newline before more data. Full-cap files
+refuse even if the selected fields precede the cap; only shorter complete
+newline-terminated files are parsed. Empty/incomplete input,
+missing/duplicate selected rows, wrong units, invalid numbers, oversized input
+and open/read failures give explicit per-source `available=false` reasons and
+no values from that source. Independent successful sources can remain visible;
+the outer `available` requires both. No raw proc content, exception text or
+fallback zero is emitted. Non-Linux returns `unsupported_platform` without proc
+access and retains the original psutil memory fields. Original CPU/memory errors
+still propagate. Historical records without this member remain readable.
+
+Parent capture costs are additional to child memory: one <=8192-byte raw buffer,
+one line at a time and bounded field/token/numeric scratch (selected lines <=128
+bytes, at most four stored status values), plus Python object, file/path and
+exception overhead. Raw/line/partition byte payloads together stay below 32 KiB;
+this is not a measured Python heap or allocator ceiling. Buffers are released
+between files. Compact ASCII JSON, including the member key/comma, is checked
+within 1024 bytes per snapshot: four peer/boundary snapshots add at most 4096
+bytes per window inside existing metadata quotas. Existing serializers may add
+whitespace within their unchanged caps. CPU counters, verified denominator,
+measurement loops and gates are unchanged; serial gate capture adds boundary
+work to existing resource windows and can affect their raw readings. No CPU
+floor, latency failure or other acceptance failure is rescued by these fields.
+
+Field scope follows [Linux 6.12 proc documentation](https://www.kernel.org/doc/html/v6.12/filesystems/proc.html)
+and the Linux man-pages [status](https://www.man7.org/linux/man-pages/man5/proc_pid_status.5.html),
+[limits](https://www.man7.org/linux/man-pages/man5/proc_pid_limits.5.html) and
+[getrlimit](https://www.man7.org/linux/man-pages/man2/getrlimit.2.html) interfaces.
+`VmHWM` is an approximate kernel-reported lifetime resident high-water value;
+`VmPeak` is lifetime virtual high water. They include startup/warmup and are not
+measurement-window deltas or proven physical peaks. `VmStk` describes stack
+segments, not used/peak stack or the sum of all thread stacks. Stack limits are
+configuration, not allocation or usage. These observations establish no minimum
+RAM or whole-object/whole-process ceiling. Socket/kernel allocator metadata,
+allocator overhead, runtime, initialization and true physical/stack peaks remain
+separate OPEN accounting items.
+
+Focused fixture/portable tests establish software behavior only. Actual Linux
+proof for #185 remains pending. Run `40065560596` is pinned to companion
+`430722d73818e6b23ceecc6e6edb567a20111958`, has **none of these new fields**, and
+cannot be retroactively credited. Both #650 50% CPU targets and whole-memory
+acceptance remain OPEN; no new campaign is authorized by this addition.
+
 `performance-cpu.yml` is opt-in platform qualification for core issue #650.
 It is not required hosted CI or release authorization. The workflow runs the
 committed companion ref selected at dispatch. Select **full immutable core SHAs** for
