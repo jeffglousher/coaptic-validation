@@ -12,8 +12,6 @@ import select
 import subprocess
 import sys
 import tempfile
-import textwrap
-import shlex
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -86,101 +84,6 @@ def mock_record_control(timeline=None):
 
 
 class ValidationTests(unittest.TestCase):
-    def test_frequency_default_and_higher_rate_scope_refuse_before_build(self):
-        selected = dict(frequency_hz=9970, candidate_sha="a" * 40, server_kind="coaptic-mio",
-                        resource_profile="small-device", sizes="32", rates="4000", repeats=2)
-        args = options(**selected)
-        cells = cpu.configuration(args)
-        self.assertEqual(cells, [(security, 32, 4000, "coaptic-mio") for security in ("unprotected", "oscore")])
-        self.assertEqual(len(cpu.rotation(args, cells)), 16)
-        self.assertEqual(cpu.configuration(options()), cpu.configuration(options(frequency_hz=997)))
-        changes = [dict(perf=False), dict(perf=1), dict(admission_diagnostics=True),
-                   dict(candidate_sha="b" * 40), dict(candidate_sha="a" * 39),
-                   dict(baseline_sha="a" * 39), dict(server_kind="coaptic-ready"),
-                   dict(server_kind="coaptic-mio-direct"), dict(server_kind="all"),
-                   dict(candidate_server_kind="coaptic-mio"), dict(candidate_server_kind="coaptic-ready"),
-                   dict(resource_profile="host-control", sizes="64"),
-                   dict(resource_profile="small-blockwise", sizes="64"), dict(sizes="32,64"),
-                   dict(concurrency=2), dict(concurrency=True), dict(message_type="non"),
-                   dict(independent_endpoints=True), dict(independent_endpoints=0),
-                   dict(rates="1000"), dict(rates="4000,1000"), dict(repeats=4),
-                   dict(seconds=1), dict(seconds=31)]
-        changes += [dict(frequency_hz=hz) for hz in (True, False, 997.0, 9970.0, "997", "9970", None, 998, 99700)]
-        for change in changes:
-            with self.subTest(change=change), patch.object(cpu, "build") as build, \
-                    patch.object(cpu, "spawn") as spawn, self.assertRaises((ValueError, argparse.ArgumentTypeError)):
-                cpu.run(options(**(selected | change)))
-            build.assert_not_called()
-            spawn.assert_not_called()
-        for seconds in (2, 5, 10):
-            self.assertTrue(cpu.configuration(options(**(selected | dict(seconds=seconds)))))
-
-    def test_frequency_cli_and_command_preserve_default_and_stat(self):
-        base = ["--baseline-sha", "a" * 40, "--candidate-sha", "a" * 40,
-                "--build-lane", "unused", "--output", "unused"]
-        self.assertEqual(cpu.argument_parser().parse_args(base).frequency_hz, 997)
-        for hz in (997, 9970):
-            self.assertEqual(cpu.argument_parser().parse_args(base + ["--frequency-hz", str(hz)]).frequency_hz, hz)
-            argv = cpu.perf_command("record", 123, 5, Path("data"), 99,
-                                    control_paths=("ctl", "ack"), frequency_hz=hz)
-            self.assertEqual(argv[argv.index("-F") + 1], str(hz))
-            self.assertEqual(argv[argv.index("-m") + 1], "128")
-        self.assertEqual(cpu.perf_command("stat", 123, 5, Path("data"), 99),
-                         cpu.perf_command("stat", 123, 5, Path("data"), 99, frequency_hz=9970))
-        for value in ("998", "997.0", "99700", "true"):
-            with patch("sys.stderr", new=io.StringIO()), self.assertRaises(SystemExit):
-                cpu.argument_parser().parse_args(base + ["--frequency-hz", value])
-        for hz in (True, 997.0, "997", 998):
-            with self.assertRaises(ValueError):
-                cpu.perf_command("stat", 123, 5, Path("data"), 99, frequency_hz=hz)
-            with patch.object(cpu, "spawn") as spawn, self.assertRaises(ValueError):
-                with cpu.perf_pass("record", 123, 5, Path("unused"), 99, frequency_hz=hz):
-                    self.fail("invalid request yielded")
-            spawn.assert_not_called()
-
-    def test_higher_capture_command_and_refusal_metadata_keep_requested_rate(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            with mock_record_control(), patch.object(cpu, "spawn", side_effect=PermissionError("refused")), \
-                    self.assertRaises(PermissionError):
-                with cpu.perf_pass("record", 123, 5, root, 4096, frequency_hz=9970):
-                    self.fail("refused capture yielded")
-            metadata = json.loads((root / "perf.json").read_bytes())
-            self.assertEqual(metadata["frequency_hz"], 9970)
-            self.assertEqual(metadata["command"][metadata["command"].index("-F") + 1], "9970")
-            self.assertFalse(metadata["available"])
-
-    def test_workflow_embedded_validation_and_actual_runner_argv(self):
-        text = (cpu.SUITE / ".github/workflows/performance-cpu.yml").read_text()
-        self.assertIn("FREQUENCY_HZ: ${{ inputs.frequency_hz }}", text)
-        self.assertIn("default: '997'\n        options: ['997', '9970']", text)
-        code = textwrap.dedent(text.split("import argparse, os, sys", 1)[1].split("\n          PY", 1)[0])
-        code = "import argparse, os, sys\n" + code
-        # Execute the workflow's exact pre-setup code, never its build steps.
-        env = dict(BASELINE_SHA="a" * 40, CANDIDATE_SHA="a" * 40, RESPONSE_SIZES="32",
-                   RESOURCE_PROFILE="small-device", OFFERED_RATES="4000", WINDOW_SECONDS="5",
-                   REPEATS="2", SERVER_KIND="coaptic-mio", CANDIDATE_SERVER_KIND="same",
-                   PERF_ENABLED="true", ADMISSION_DIAGNOSTICS="false", CLIENT_CONCURRENCY="1",
-                   MESSAGE_TYPE="con", INDEPENDENT_ENDPOINTS="false", FREQUENCY_HZ="9970")
-        for hz, rates, valid in (("9970", "4000", True), ("9970", "1000", False),
-                                  ("997", "1000", True), ("998", "4000", False)):
-            with patch.dict(os.environ, env | dict(FREQUENCY_HZ=hz, OFFERED_RATES=rates)):
-                if valid:
-                    exec(compile(code, "workflow-input-validation", "exec"), {})
-                else:
-                    with self.assertRaises(ValueError):
-                        exec(compile(code, "workflow-input-validation", "exec"), {})
-        self.assertLess(text.index("configuration(argparse.Namespace"),
-                        text.index("repository: jeffglousher/coaptic"))
-        runner = text.split('"$RUNNER_TEMP/cpu-venv/bin/python" tools/benchmark/linux_cpu.py', 1)[1].split('\n      - uses:', 1)[0]
-        tokens = shlex.split(runner.replace("\\\n", " "))
-        self.assertEqual(tokens[tokens.index("--frequency-hz") + 1], "$FREQUENCY_HZ")
-        replacements = {"$" + key: value for key, value in env.items()}
-        tokens = [replacements.get(token, token.replace("$RUNNER_TEMP", "/tmp")) for token in tokens if token != "${options[@]}"]
-        parsed = cpu.argument_parser().parse_args(tokens + ["--perf"])
-        self.assertEqual(parsed.frequency_hz, 9970)
-        self.assertEqual(len(cpu.configuration(parsed)), 2)
-
     def test_representative_c1_profiles_and_invalid_choices_refuse_before_build(self):
         for profile, sizes in (("small-device", "32"), ("small-blockwise", "64,1024,4096"),
                                ("service-fixed", "64,1024,16384"),
@@ -502,8 +405,7 @@ class RecordControlTests(unittest.TestCase):
             other = cpu.PerfCapture(mode, 5)
             other.finish_recording()
             self.assertIsNone(other.deadline)
-            self.assertEqual(set(other), {"mode", "window_seconds", "boundary", "frequency_hz"})
-            self.assertEqual(other["frequency_hz"], 997)
+            self.assertEqual(set(other), {"mode", "window_seconds", "boundary"})
 
     def test_stale_malformed_extra_eof_and_byte_bound_refuse(self):
         for replies, message, already in [
@@ -1542,7 +1444,7 @@ class MetadataTests(unittest.TestCase):
 class CampaignTests(unittest.TestCase):
     def exercise(self, *, failure_index=None, oversize=False, target_mismatch=False, report_error=None,
                  report_error_command="report", adapter_comparison=False, startup_refusal=None,
-                 adapter_candidate="coaptic-async", frequency_hz=997):
+                 adapter_candidate="coaptic-async"):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             suite, lane, out = root / "source", root / "lane", root / "evidence"
@@ -1550,10 +1452,6 @@ class CampaignTests(unittest.TestCase):
             lane.mkdir()
             args = options(sizes="64", rates="100", repeats=2, build_lane=lane, output=out,
                            baseline_sha="a" * 40, candidate_sha="b" * 40)
-            if frequency_hz == 9970:
-                args = options(sizes="32", rates="4000", repeats=2, seconds=5, build_lane=lane,
-                               output=out, baseline_sha="a" * 40, candidate_sha="a" * 40,
-                               server_kind="coaptic-mio", resource_profile="small-device", frequency_hz=9970)
             if adapter_comparison:
                 args.server_kind, args.candidate_server_kind = "coaptic-ready", adapter_candidate
                 args.candidate_sha = args.baseline_sha
@@ -1570,7 +1468,6 @@ class CampaignTests(unittest.TestCase):
                                       for name in ("bench-rust-server", "bench-native-client")})
 
             def window(server, client, cell, operations, directory, mode, quota, **kwargs):
-                self.assertEqual(kwargs["frequency_hz"], frequency_hz)
                 index = len(calls)
                 calls.append((server, client, mode))
                 if index == 8 and startup_refusal is not None:
@@ -1667,16 +1564,14 @@ class CampaignTests(unittest.TestCase):
                     patch.object(cpu, "build", side_effect=build), patch.object(cpu, "window", side_effect=window), \
                     patch("builtins.print"):
                 if (failure_index is not None or target_mismatch or getattr(report_error, "cleanup_unresolved", False)
-                        or startup_refusal == "unresolved" or frequency_hz == 9970):
-                    with self.assertRaisesRegex((ValueError, RuntimeError), "target|termination unresolved|9970 Hz diagnostic refused"):
+                        or startup_refusal == "unresolved"):
+                    with self.assertRaisesRegex((ValueError, RuntimeError), "target|termination unresolved"):
                         cpu.run(args)
                     self.assertTrue((out / "failure.json").exists())
                 else:
                     self.assertTrue(cpu.run(args))
             summary = json.loads((out / "summary.json").read_text())
             manifest = json.loads((out / "manifest.json").read_text())
-            for metadata in (summary, manifest, json.loads((out / "request.json").read_bytes())):
-                self.assertEqual(metadata["frequency_hz"], frequency_hz)
             slots = sum(mode != "clean" for mode, *_ in cpu.rotation(args, cpu.configuration(args)))
             quota = manifest["perf_file_quota_bytes"]
             self.assertEqual(manifest["perf_files_per_slot"], 3)
@@ -1700,13 +1595,6 @@ class CampaignTests(unittest.TestCase):
                         self.assertTrue(cpu.unresolved_cleanup(entries[index]))
                 self.assertTrue(all(client.parent.name == "baseline" for _, client, _ in calls))
             return summary, calls
-
-    def test_higher_frequency_stops_on_first_unavailable_capture_with_identity_retained(self):
-        summary, calls = self.exercise(frequency_hz=9970)
-        self.assertEqual(len(calls), 9)  # Eight clean windows then the first refused record.
-        self.assertFalse(summary["campaign_complete"])
-        self.assertEqual(summary["unavailable_profiles"], [8])
-        self.assertTrue(all(not row["comparable"] for row in summary["comparisons"]))
 
     def test_adapter_campaign_executes_both_selected_fixtures_with_one_frozen_client(self):
         for candidate in ("coaptic-async", "coaptic-staged-ready"):

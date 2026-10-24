@@ -70,14 +70,7 @@ def selection(value, allowed=None):
     return parts
 
 
-def sampling_frequency(frequency_hz):
-    if type(frequency_hz) is not int or frequency_hz not in (997, 9970):
-        raise ValueError("frequency_hz must be integer 997 or 9970")
-    return frequency_hz
-
-
 def configuration(args):
-    frequency_hz = sampling_frequency(getattr(args, "frequency_hz", 997))
     profile = getattr(args, "resource_profile", "host-control")
     if profile not in PROFILE_SIZES:
         raise ValueError("unknown resource profile")
@@ -105,15 +98,6 @@ def configuration(args):
         if profile != "host-control" and args.candidate_server_kind is not None:
             raise ValueError("representative profile requires same Mio on both labels")
     rates = [int(p) for p in selection(args.rates)]
-    if frequency_hz == 9970:
-        if (args.perf is not True or diagnostic is not False
-                or sha40(args.baseline_sha) != sha40(args.candidate_sha)
-                or args.server_kind != "coaptic-mio" or args.candidate_server_kind is not None
-                or profile != "small-device" or sizes != [32] or rates != [4000]
-                or args.concurrency != 1 or args.message_type != "con"
-                or getattr(args, "independent_endpoints", False) is not False or args.repeats != 2):
-            raise ValueError("9970 Hz requires same-source same-Mio SmallDevice32 C1 CON, "
-                             "4000/s, two rotated pairs, perf on and admission diagnostics off")
     if len(set(rates)) != len(rates):
         raise ValueError("rates must be numerically distinct")
     kinds = list(KINDS) if args.server_kind == "all" else [args.server_kind]
@@ -932,9 +916,7 @@ def matching_lock_inputs(baseline, candidate):
             raise ValueError("native lock input pair differs: " + field)
 
 
-def perf_command(mode, pid, seconds, output, quota, *, event="cpu-clock", control_paths=None,
-                 frequency_hz=997):
-    sampling_frequency(frequency_hz)
+def perf_command(mode, pid, seconds, output, quota, *, event="cpu-clock", control_paths=None):
     # Apply a hard RLIMIT_FSIZE after sudo so sudo policy cannot reset the bound.
     prefix = ["sudo", "-n", "--", "prlimit", f"--fsize={quota}:{quota}", "--",
               "timeout", "--signal=TERM", "--kill-after=5",
@@ -945,7 +927,7 @@ def perf_command(mode, pid, seconds, output, quota, *, event="cpu-clock", contro
         if (control_paths is None or len(control_paths) != 2
                 or any(not str(path) or any(c in str(path) for c in ",\n\r") for path in control_paths)):
             raise ValueError("record requires two unambiguous control FIFO paths")
-        return prefix + ["record", "-e", event, "-F", str(frequency_hz), "--call-graph", "fp",
+        return prefix + ["record", "-e", event, "-F", "997", "--call-graph", "fp",
                          "-m", "128", "--no-buildid-cache", "-o", str(output), "-p", str(pid),
                          "-D", "-1", "--control", "fifo:" + ",".join(map(str, control_paths))]
     else:
@@ -960,9 +942,8 @@ class PerfCapture(dict):
     The record ACK fences command processing, not representative sampling or
     success of every kernel enable operation. No control state affects clean/stat.
     """
-    def __init__(self, mode, seconds, target=None, *, frequency_hz=997):
+    def __init__(self, mode, seconds, target=None):
         super().__init__(mode=mode, window_seconds=seconds,
-                         frequency_hz=sampling_frequency(frequency_hz),
                          boundary="attach after warmup; bounded wall window; may include idle/control overhead; never clean timing")
         self.deadline = None
         self._target = target
@@ -1249,9 +1230,8 @@ def perf_report(directory, quota, log):
 
 
 @contextmanager
-def perf_pass(mode, pid, seconds, directory, quota, *, event="cpu-clock", target=None,
-              frequency_hz=997):
-    state = PerfCapture(mode, seconds, target, frequency_hz=frequency_hz)
+def perf_pass(mode, pid, seconds, directory, quota, *, event="cpu-clock", target=None):
+    state = PerfCapture(mode, seconds, target)
     if mode == "clean":
         yield state
         return
@@ -1278,7 +1258,7 @@ def perf_pass(mode, pid, seconds, directory, quota, *, event="cpu-clock", target
                     state.update(control_error=type(error).__name__, control_reason=str(error)[:512])
                     raise
             argv = perf_command(mode, pid, seconds, path, quota, event=event,
-                                control_paths=state._control_paths, frequency_hz=frequency_hz)
+                                control_paths=state._control_paths)
             state["command"] = argv
             if mode == "record":
                 state["recorder_spawn_started_monotonic"] = time.monotonic()
@@ -1424,7 +1404,7 @@ def save_window(directory, result):
         identity_fields = {key: result[key] for key in
                            ("mode", "security", "bytes", "rate", "server_kind", "operations",
                             "concurrency", "message_type", "cleanup_errors", "revision_label",
-                            "core_sha", "repeat", "index", "comparison_type", "admission_diagnostics", "frequency_hz")
+                            "core_sha", "repeat", "index", "comparison_type", "admission_diagnostics")
                            if key in result}
         if unresolved_cleanup(result):
             identity_fields["cleanup_unresolved"] = True
@@ -1439,8 +1419,7 @@ def save_window(directory, result):
 
 def window(server, client, cell, operations, directory, mode="clean", quota=8 * MIB,
            *, concurrency=1, message_type="con", admission_diagnostics=False,
-           resource_profile="host-control", independent_endpoints=False, frequency_hz=997):
-    sampling_frequency(frequency_hz)
+           resource_profile="host-control", independent_endpoints=False):
     security, size, rate, kind = cell
     if security not in ("unprotected", "oscore"):
         raise ValueError("unsupported profile security")
@@ -1457,7 +1436,6 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
               "rate": rate, "server_kind": kind, "operations": operations,
               "concurrency": concurrency, "message_type": message_type,
               "resource_profile": resource_profile, "independent_endpoints": independent_endpoints,
-              "frequency_hz": frequency_hz,
               "load_before": os.getloadavg()}
     if admission_diagnostics:
         result["admission_diagnostics"] = True
@@ -1525,8 +1503,7 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                            (("server", sut), ("client", child))} if mode == "clean" else {})
                 if clocks:
                     clock_evidence["setup"] = {name: clock.status for name, clock in clocks.items()}
-                with perf_pass(mode, sut.pid, PROFILE_SECONDS, directory, quota, target=sut,
-                               frequency_hz=frequency_hz) as perf:
+                with perf_pass(mode, sut.pid, PROFILE_SECONDS, directory, quota, target=sut) as perf:
                     result["perf"] = perf
                     if clocks:
                         clock_evidence["before"] = {name: clock.snapshot() for name, clock in clocks.items()}
@@ -1715,7 +1692,6 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
 
 def run(args):
     cells = configuration(args)
-    frequency_hz = getattr(args, "frequency_hz", 997)
     profile = getattr(args, "resource_profile", "host-control")
     diagnostic = getattr(args, "admission_diagnostics", False)
     adapter_pair = ((args.server_kind, args.candidate_server_kind)
@@ -1746,8 +1722,7 @@ def run(args):
                                    "resource_profile": profile,
                                    "candidate_sha": args.candidate_sha, "cells": cells,
                                    "seconds": args.seconds, "repeats": args.repeats,
-                                   "perf": args.perf, "frequency_hz": frequency_hz,
-                                   "concurrency": args.concurrency,
+                                   "perf": args.perf, "concurrency": args.concurrency,
                                    "independent_endpoints": getattr(args, "independent_endpoints", False),
                                    "admission_diagnostics": diagnostic,
                                    "message_type": args.message_type,
@@ -1771,7 +1746,6 @@ def run(args):
                 "perf_files_per_slot": PERF_FILES_PER_SLOT,
                 "artifact_bound_bytes_excluding_binaries": metadata_bytes + PERF_FILES_PER_SLOT * perf_slots * quota,
                 "cells": cells, "seconds": args.seconds, "repeats": args.repeats,
-                "frequency_hz": frequency_hz,
                 "concurrency": args.concurrency, "message_type": args.message_type,
                 "independent_endpoints": getattr(args, "independent_endpoints", False),
                 "adapter_pair": adapter_pair, "comparison_type": comparison_type,
@@ -1800,8 +1774,7 @@ def run(args):
                             out / f"window-{index:03}", mode, quota,
                             concurrency=args.concurrency, message_type=args.message_type,
                             admission_diagnostics=diagnostic, resource_profile=profile,
-                            independent_endpoints=getattr(args, "independent_endpoints", False),
-                            frequency_hz=frequency_hz)
+                            independent_endpoints=getattr(args, "independent_endpoints", False))
             result.update(revision_label=label, core_sha=builds[label]["core"]["revision"], repeat=repeat,
                           server_sha256=digest(server), client_sha256=digest(client), index=index)
             result["comparison_type"] = comparison_type
@@ -1815,12 +1788,6 @@ def run(args):
                 stream.write(entry)
             if unresolved_cleanup(result):
                 raise RuntimeError("owned process termination unresolved; campaign aborted")
-            if frequency_hz == 9970:
-                capture = result.get("perf", {})
-                available = mode == "clean" or (capture.get("available") and
-                            (mode != "record" or capture.get("report", {}).get("available")))
-                if not result["passed"] or not available:
-                    raise RuntimeError("9970 Hz diagnostic refused; stop without further captures")
         return all(r["passed"] for r in results if r["mode"] == "clean")
     except Exception as error:
         save(out / "failure.json", {"type": type(error).__name__, "reason": str(error)[:4096]})
@@ -1832,7 +1799,6 @@ def run(args):
                                                             campaign_complete=complete,
                                                             adapter_pair=adapter_pair) if results else [],
                                    "comparison_type": comparison_type,
-                                   "frequency_hz": frequency_hz,
                                    "admission_diagnostics": diagnostic,
                                    "campaign_complete": complete, "cleanup_unresolved": cleanup_failed,
                                    "windows_recorded": len(results),
@@ -1860,8 +1826,6 @@ def argument_parser():
     parser.add_argument("--candidate-server-kind", choices=EXPLICIT_KINDS,
                         help="compare two adapters at identical core SHAs; otherwise both use --server-kind")
     parser.add_argument("--perf", action="store_true")
-    parser.add_argument("--frequency-hz", type=int, choices=(997, 9970), default=997,
-                        help="record frequency; 9970 is a narrow same-source SmallDevice diagnostic")
     parser.add_argument("--admission-diagnostics", action="store_true",
                         help="same-core, same-adapter paced C1 intervals; perf refused and CPU ratios vetoed")
     parser.add_argument("--concurrency", type=int, choices=range(1, 5), default=1)
