@@ -22,6 +22,7 @@
 //! Explicit coaptic-staged-mio combines staging with direct Mio and immediate send_to.
 //! Linux-only coaptic-mio-direct receives into the borrowed Engine RX slot with
 //! MSG_TRUNC, retaining Mio's scheduler and immediate send acceptance semantics.
+//! Linux-only `coaptic-mio-level` is the SmallDevice32 one-attempt readiness control.
 #![forbid(unsafe_code)]
 macro_rules! conn_as_any {
     () => {
@@ -106,6 +107,13 @@ impl ResourceProfile {
     }
 
     fn validate(self, kind: &str, size: usize, rx_bytes: usize) -> Result<(), &'static str> {
+        if kind == "coaptic-mio-level" {
+            return if self == Self::SmallDevice && size == 32 && rx_bytes == 1152 {
+                Ok(())
+            } else {
+                Err("level control requires SmallDevice32 and exact RX capacity")
+            };
+        }
         if self == Self::HostControl {
             return Ok(());
         }
@@ -723,39 +731,69 @@ where
         capacities.tx_body_bytes.unwrap_or(0),
     );
     std::io::stdout().flush()?;
+    run_readiness(
+        &mut app,
+        |io| io.received,
+        move |_, deadline| {
+            let timeout = deadline.map(|due| due.saturating_duration_since(Instant::now()));
+            poll.poll(&mut events, timeout)
+        },
+    )
+}
+
+// Both controls share App progress, clocks, burst bounds and error precedence.
+fn run_readiness<P, S, T, const N: usize, const B: bool, const D: usize, const C: usize>(
+    app: &mut App<P, T, N, B, S, D, C>,
+    received: fn(&T) -> bool,
+    mut wait: impl FnMut(&mut T, Option<Instant>) -> std::io::Result<()>,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    P: MemoryLayout<B> + AppAssembled<B>,
+    S: AppStorage<Token = P::Token>,
+    T: DatagramIo<Error = std::io::Error>,
+{
     let started = Instant::now();
     loop {
-        let idle = mio_burst(&mut app, started)?;
-        let now_ms = started.elapsed().as_millis() as u64;
-        let timeout = if idle {
-            app.next_poll_at(now_ms).map(|due| {
-                (started + Duration::from_millis(due)).saturating_duration_since(Instant::now())
-            })
-        } else {
-            Some(Duration::ZERO)
-        };
-        match poll.poll(&mut events, timeout) {
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-            result => result?,
-        }
+        readiness_turn(app, started, received, &mut wait)?;
     }
 }
 
-fn mio_burst<
-    P,
-    S,
-    const SCRATCH: usize,
-    const N: usize,
-    const B: bool,
-    const D: usize,
-    const C: usize,
->(
-    app: &mut App<P, MioUdp<SCRATCH>, N, B, S, D, C>,
+// A finite production turn also lets tests exercise App progress and the wait
+// boundary together. Borrow the App: fixed Service storage stays with its owner.
+fn readiness_turn<P, S, T, const N: usize, const B: bool, const D: usize, const C: usize>(
+    app: &mut App<P, T, N, B, S, D, C>,
     started: Instant,
+    received: fn(&T) -> bool,
+    mut wait: impl FnMut(&mut T, Option<Instant>) -> std::io::Result<()>,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    P: MemoryLayout<B> + AppAssembled<B>,
+    S: AppStorage<Token = P::Token>,
+    T: DatagramIo<Error = std::io::Error>,
+{
+    let idle = read_burst(app, started, received)?;
+    let now_ms = started.elapsed().as_millis() as u64;
+    let deadline = if idle {
+        app.next_poll_at(now_ms)
+            .map(|due| started + Duration::from_millis(due))
+    } else {
+        Some(Instant::now())
+    };
+    match wait(app.transport_mut(), deadline) {
+        Err(error) if error.kind() == std::io::ErrorKind::Interrupted => Ok(()),
+        result => Ok(result?),
+    }
+}
+
+fn read_burst<P, S, T, const N: usize, const B: bool, const D: usize, const C: usize>(
+    app: &mut App<P, T, N, B, S, D, C>,
+    started: Instant,
+    received: fn(&T) -> bool,
 ) -> Result<bool, Box<dyn std::error::Error>>
 where
     P: MemoryLayout<B> + AppAssembled<B>,
     S: AppStorage<Token = P::Token>,
+    T: DatagramIo<Error = std::io::Error>,
 {
     for _ in 0..32 {
         match app.poll(started.elapsed().as_millis() as u64) {
@@ -769,11 +807,772 @@ where
             }
             Err(error) => return Err(error.into()),
         }
-        if !app.transport().received {
+        if !received(app.transport()) {
             return Ok(true);
         }
     }
     Ok(false)
+}
+
+#[cfg(any(target_os = "linux", test))]
+mod level_control {
+    use super::*;
+    use std::io;
+
+    // None: no receive eligibility; Some(false): readable; Some(true): error
+    // readiness. This stores no datagram and leaves ordinary MioUdp unchanged.
+    pub(super) struct LevelUdp {
+        inner: MioUdp,
+        credit: Option<bool>,
+    }
+    impl LevelUdp {
+        fn bind(address: &str) -> io::Result<Self> {
+            let socket = UdpSocket::bind(address)?;
+            socket.set_nonblocking(true)?;
+            Ok(Self {
+                inner: MioUdp {
+                    socket: mio::net::UdpSocket::from_std(socket),
+                    scratch: [0; 2049],
+                    received: false,
+                },
+                credit: None,
+            })
+        }
+        fn receive_with(
+            &mut self,
+            output: &mut [u8],
+            receive: impl FnOnce(&mut MioUdp, &mut [u8]) -> io::Result<Option<(usize, Endpoint)>>,
+        ) -> io::Result<Option<(usize, Endpoint)>> {
+            self.inner.received = false;
+            let Some(error_ready) = self.credit.take() else {
+                return Ok(None);
+            };
+            // Eligibility is spent BEFORE any native attempt/error/oversize.
+            let result = receive(&mut self.inner, output);
+            if error_ready && matches!(result, Ok(None)) {
+                // Refuse unsupported sticky error readiness rather than spinning.
+                return Err(io::Error::other(
+                    "UDP error readiness without native outcome",
+                ));
+            }
+            result
+        }
+        fn send_with(
+            &mut self,
+            peer: Endpoint,
+            bytes: &[u8],
+            send: impl FnOnce(&mio::net::UdpSocket, &[u8], std::net::SocketAddr) -> io::Result<usize>,
+        ) -> io::Result<usize> {
+            send(&self.inner.socket, bytes, peer.into())
+        }
+    }
+    impl coaptic::storage::DatagramTransport for LevelUdp {
+        type Error = io::Error;
+    }
+    impl DatagramIo for LevelUdp {
+        fn recv(&mut self, output: &mut [u8]) -> io::Result<Option<(usize, Endpoint)>> {
+            self.receive_with(output, |inner, output| inner.recv(output))
+        }
+        fn send(&mut self, peer: Endpoint, bytes: &[u8]) -> io::Result<usize> {
+            self.send_with(peer, bytes, |socket, bytes, peer| {
+                socket.send_to(bytes, peer)
+            })
+        }
+    }
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use coaptic::message::{Message, MessageId, Type};
+
+        #[test]
+        fn credit_is_one_attempt_including_empty_native_error_and_oversize() {
+            let mut io = LevelUdp::bind("127.0.0.1:0").unwrap();
+            let mut bytes = [0; 1152];
+            for kind in [
+                io::ErrorKind::Interrupted,
+                io::ErrorKind::InvalidData,
+                io::ErrorKind::ConnectionReset,
+            ] {
+                assert!(
+                    io.receive_with(&mut bytes, |_, _| panic!("uncredited receive"))
+                        .unwrap()
+                        .is_none()
+                );
+                io.credit = Some(false);
+                let error = io
+                    .receive_with(&mut bytes, |_, _| Err(kind.into()))
+                    .unwrap_err();
+                assert_eq!(error.kind(), kind);
+                assert_eq!(io.credit, None);
+            }
+            io.credit = Some(false);
+            assert!(
+                io.receive_with(&mut bytes, |_, _| Ok(None))
+                    .unwrap()
+                    .is_none()
+            );
+            assert_eq!(io.credit, None);
+            io.credit = Some(true);
+            assert!(io.receive_with(&mut bytes, |_, _| Ok(None)).is_err());
+            assert_eq!(io.credit, None); // Error readiness cannot create an idle spin.
+            io.credit = Some(true);
+            assert_eq!(
+                io.receive_with(&mut bytes, |_, _| Err(io::Error::from_raw_os_error(123)))
+                    .unwrap_err()
+                    .raw_os_error(),
+                Some(123)
+            );
+        }
+        #[test]
+        fn absolute_timeout_matches_mio_ceil_clamp_without_restarting() {
+            let now = Instant::now();
+            let due = now + Duration::from_micros(1500);
+            assert_eq!(timeout(None, now), None);
+            assert_eq!(timeout(Some(due), now), Some(Duration::from_millis(2)));
+            assert_eq!(
+                timeout(Some(due), now + Duration::from_millis(1)),
+                Some(Duration::from_millis(1))
+            );
+            assert_eq!(timeout(Some(due), due), Some(Duration::ZERO));
+            assert_eq!(
+                timeout(Some(due), due + Duration::from_secs(1)),
+                Some(Duration::ZERO)
+            );
+            assert_eq!(
+                timeout(Some(now + Duration::from_secs(i32::MAX as u64)), now),
+                Some(Duration::from_millis(i32::MAX as u64))
+            );
+        }
+        #[test]
+        fn small_capacity_and_native_send_acceptance_are_unchanged() {
+            let mut io = LevelUdp::bind("127.0.0.1:0").unwrap();
+            let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
+            receiver
+                .set_read_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
+            assert_eq!(
+                io.send(receiver.local_addr().unwrap().into(), b"reply")
+                    .unwrap(),
+                5
+            );
+            assert_eq!(receiver.recv_from(&mut [0; 8]).unwrap().0, 5);
+            assert_eq!(io.credit, None); // Sends are immediate and not read-gated.
+            let dummy = LevelUdp::bind("127.0.0.1:0").unwrap();
+            let mut app =
+                bind_resources!(coaptic::resources::SmallDevice::new(), dummy, None).unwrap();
+            while app.engine_mut().acquire_rx().is_some() {}
+            io.credit = Some(false);
+            assert!(matches!(
+                app.engine_mut().recv_from(&mut io),
+                Err(coaptic::storage::DatagramIoError::Saturated)
+            ));
+            assert_eq!(io.credit, Some(false)); // No socket attempt on RX refusal.
+        }
+        #[test]
+        fn send_refusal_and_short_send_leave_encoded_tx_and_pending_owner() {
+            struct Refuse(LevelUdp, u8);
+            impl coaptic::storage::DatagramTransport for Refuse {
+                type Error = io::Error;
+            }
+            impl DatagramIo for Refuse {
+                fn recv(&mut self, output: &mut [u8]) -> io::Result<Option<(usize, Endpoint)>> {
+                    self.0.recv(output)
+                }
+                fn send(&mut self, peer: Endpoint, bytes: &[u8]) -> io::Result<usize> {
+                    self.0.send_with(peer, bytes, |_, bytes, _| match self.1 {
+                        0 => Err(io::ErrorKind::WouldBlock.into()),
+                        1 => Ok(bytes.len() - 1),
+                        _ => Err(io::Error::from_raw_os_error(123)),
+                    })
+                }
+            }
+            let io = LevelUdp::bind("127.0.0.1:0").unwrap();
+            let mut app =
+                bind_resources!(coaptic::resources::SmallDevice::new(), io, None).unwrap();
+            let tx = app.engine_mut().acquire_tx().unwrap();
+            let peer = Endpoint::v4([127, 0, 0, 1], 9);
+            app.engine_mut()
+                .write_tx(tx, &[0x40, 1, 0, 7], peer)
+                .unwrap();
+            app.engine_mut()
+                .record_pending_con(tx, peer, MessageId::new(7), 0, 0)
+                .unwrap();
+            let before = app.engine_mut().pending_con(tx);
+            let mut refused = Refuse(LevelUdp::bind("127.0.0.1:0").unwrap(), 0);
+            for mode in 0..3 {
+                refused.1 = mode;
+                assert!(app.engine_mut().send_tx(&mut refused, tx).is_err());
+                assert_eq!(
+                    app.engine_mut().access_tx(tx).unwrap().as_bytes(),
+                    &[0x40, 1, 0, 7]
+                );
+                assert!(!app.engine_mut().tx_is_pinned(tx));
+                assert_eq!(app.engine_mut().pending_con(tx), before);
+            }
+        }
+        #[test]
+        fn maintenance_retransmits_without_any_receive_credit() {
+            let io = LevelUdp::bind("127.0.0.1:0").unwrap();
+            let mut app =
+                bind_resources!(coaptic::resources::SmallDevice::new(), io, None).unwrap();
+            let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
+            receiver
+                .set_read_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
+            let peer = receiver.local_addr().unwrap().into();
+            let tx = app.engine_mut().acquire_tx().unwrap();
+            let mid = MessageId::new(7);
+            app.engine_mut()
+                .encode_tx(
+                    tx,
+                    &Message::new(Type::Confirmable, coaptic::Code::GET, mid),
+                )
+                .unwrap();
+            app.engine_mut()
+                .record_pending_con(tx, peer, mid, 0, 0)
+                .unwrap();
+            let due = app.next_timeout().unwrap();
+            let epoch = Instant::now() - Duration::from_millis(due);
+            assert!(read_burst(&mut app, epoch, |io| io.inner.received).unwrap());
+            let mut bytes = [0; 8];
+            assert_eq!(receiver.recv_from(&mut bytes).unwrap().0, 4);
+            assert_eq!(&bytes[..4], &[0x40, 1, 0, 7]);
+            assert!(app.next_timeout().unwrap() > due);
+            assert_eq!(app.transport().credit, None);
+            assert_eq!(app.engine_mut().rx_occupied(), 0);
+        }
+        #[test]
+        fn production_turn_resamples_after_interrupted_or_spurious_wait() {
+            let io = LevelUdp::bind("127.0.0.1:0").unwrap();
+            let mut app =
+                bind_resources!(coaptic::resources::SmallDevice::new(), io, None).unwrap();
+            let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
+            receiver
+                .set_read_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
+            let peer = receiver.local_addr().unwrap().into();
+            let tx = app.engine_mut().acquire_tx().unwrap();
+            let mid = MessageId::new(7);
+            app.engine_mut()
+                .encode_tx(
+                    tx,
+                    &Message::new(Type::Confirmable, coaptic::Code::GET, mid),
+                )
+                .unwrap();
+            app.engine_mut()
+                .record_pending_con(tx, peer, mid, 0, 0)
+                .unwrap();
+            let due = app.next_timeout().unwrap();
+            let epoch = Instant::now() - Duration::from_millis(due);
+            // Inject the wait outcomes at the production boundary. This does not
+            // establish that a real kernel signal interrupted ppoll.
+            for interrupted in [true, false] {
+                let mut observed = None;
+                readiness_turn(
+                    &mut app,
+                    epoch,
+                    |io| io.inner.received,
+                    |io, deadline| {
+                        observed = deadline;
+                        assert_eq!(io.credit, None);
+                        if interrupted {
+                            Err(io::ErrorKind::Interrupted.into())
+                        } else {
+                            Ok(())
+                        }
+                    },
+                )
+                .unwrap();
+                assert_eq!(
+                    observed,
+                    Some(epoch + Duration::from_millis(app.next_timeout().unwrap()))
+                );
+            }
+            assert_eq!(receiver.recv_from(&mut [0; 8]).unwrap().0, 4);
+            assert_eq!(app.metrics().con_retransmit, 1);
+            assert!(app.next_timeout().unwrap() > due);
+        }
+        #[test]
+        fn production_turn_rx_saturation_keeps_ingress_unread_but_runs_due_maintenance() {
+            let io = LevelUdp::bind("127.0.0.1:0").unwrap();
+            let address = io.inner.socket.local_addr().unwrap();
+            let mut app =
+                bind_resources!(coaptic::resources::SmallDevice::new(), io, None).unwrap();
+            let sender = UdpSocket::bind("127.0.0.1:0").unwrap();
+            sender
+                .set_read_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
+            let peer = sender.local_addr().unwrap().into();
+            for _ in 0..2 {
+                let rx = app.engine_mut().acquire_rx().unwrap();
+                app.engine_mut()
+                    .write_rx(rx, &[0x40, 0, 0, 9], peer)
+                    .unwrap();
+            }
+            let tx = app.engine_mut().acquire_tx().unwrap();
+            let mid = MessageId::new(7);
+            app.engine_mut()
+                .encode_tx(
+                    tx,
+                    &Message::new(Type::Confirmable, coaptic::Code::GET, mid),
+                )
+                .unwrap();
+            app.engine_mut()
+                .record_pending_con(tx, peer, mid, 0, 0)
+                .unwrap();
+            let due = app.next_timeout().unwrap();
+            let epoch = Instant::now() - Duration::from_millis(due);
+            sender.send_to(&[0x60, 0, 0, 8], address).unwrap();
+            app.transport_mut().credit = Some(false);
+            let error = readiness_turn(
+                &mut app,
+                epoch,
+                |io| io.inner.received,
+                |_, _| panic!("fatal refusal must precede wait"),
+            )
+            .unwrap_err();
+            assert!(matches!(
+                error.downcast_ref::<coaptic::app::Error<io::Error>>(),
+                Some(coaptic::app::Error::Saturated)
+            ));
+            assert_eq!(app.transport().credit, Some(false));
+            assert_eq!(app.metrics().con_retransmit, 1);
+            assert!(app.next_timeout().unwrap() > due);
+            assert_eq!(sender.recv_from(&mut [0; 8]).unwrap().0, 4);
+            // The native packet remains queued even though retained RX was progressed.
+            let mut bytes = [0; 1152];
+            assert_eq!(app.transport_mut().recv(&mut bytes).unwrap().unwrap().0, 4);
+            assert_eq!(&bytes[..4], &[0x60, 0, 0, 8]);
+        }
+        #[test]
+        fn production_turn_native_error_preserves_due_maintenance_and_send_error_priority() {
+            struct Faulty(LevelUdp, bool);
+            impl coaptic::storage::DatagramTransport for Faulty {
+                type Error = io::Error;
+            }
+            impl DatagramIo for Faulty {
+                fn recv(&mut self, output: &mut [u8]) -> io::Result<Option<(usize, Endpoint)>> {
+                    self.0
+                        .receive_with(output, |_, _| Err(io::ErrorKind::ConnectionReset.into()))
+                }
+                fn send(&mut self, peer: Endpoint, bytes: &[u8]) -> io::Result<usize> {
+                    if self.1 {
+                        self.0
+                            .send_with(peer, bytes, |_, _, _| Err(io::ErrorKind::WouldBlock.into()))
+                    } else {
+                        self.0.send(peer, bytes)
+                    }
+                }
+            }
+            for send_error in [false, true] {
+                let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
+                receiver
+                    .set_read_timeout(Some(Duration::from_secs(1)))
+                    .unwrap();
+                let peer = receiver.local_addr().unwrap().into();
+                let io = Faulty(LevelUdp::bind("127.0.0.1:0").unwrap(), send_error);
+                let mut app =
+                    bind_resources!(coaptic::resources::SmallDevice::new(), io, None).unwrap();
+                let tx = app.engine_mut().acquire_tx().unwrap();
+                let mid = MessageId::new(7);
+                app.engine_mut()
+                    .encode_tx(
+                        tx,
+                        &Message::new(Type::Confirmable, coaptic::Code::GET, mid),
+                    )
+                    .unwrap();
+                app.engine_mut()
+                    .record_pending_con(tx, peer, mid, 0, 0)
+                    .unwrap();
+                let epoch = Instant::now() - Duration::from_millis(app.next_timeout().unwrap());
+                app.transport_mut().0.credit = Some(true);
+                let error = readiness_turn(
+                    &mut app,
+                    epoch,
+                    |io| io.0.inner.received,
+                    |_, _| panic!("native failure must precede wait"),
+                )
+                .unwrap_err();
+                let expected = if send_error {
+                    io::ErrorKind::WouldBlock
+                } else {
+                    io::ErrorKind::ConnectionReset
+                };
+                assert!(matches!(
+                    error.downcast_ref::<coaptic::app::Error<io::Error>>(),
+                    Some(coaptic::app::Error::Io(coaptic::storage::DatagramIoError::Io(error)))
+                        if error.kind() == expected
+                ));
+                assert_eq!(app.transport().0.credit, None);
+                assert_eq!(app.metrics().rx_error, 1);
+                assert_eq!(app.metrics().tx_fail, u32::from(send_error));
+                assert_eq!(
+                    app.engine_mut().access_tx(tx).unwrap().as_bytes(),
+                    &[0x40, 1, 0, 7]
+                );
+                assert!(!app.engine_mut().tx_is_pinned(tx));
+                if !send_error {
+                    assert_eq!(app.metrics().con_retransmit, 1);
+                    assert_eq!(receiver.recv_from(&mut [0; 8]).unwrap().0, 4);
+                }
+            }
+        }
+        #[cfg(target_os = "linux")]
+        #[test]
+        fn production_turn_queued_progress_and_fresh_due_work_with_silent_sender() {
+            for host in ["127.0.0.1:0", "[::1]:0"] {
+                for count in [2u16, 3, 35] {
+                    let io = LevelUdp::bind(host).unwrap();
+                    let address = io.inner.socket.local_addr().unwrap();
+                    let mut app =
+                        bind_resources!(coaptic::resources::SmallDevice::new(), io, None).unwrap();
+                    let sender = UdpSocket::bind(host).unwrap();
+                    sender
+                        .set_read_timeout(Some(Duration::from_secs(1)))
+                        .unwrap();
+                    let peer = sender.local_addr().unwrap().into();
+                    let tx = app.engine_mut().acquire_tx().unwrap();
+                    let mid = MessageId::new(600);
+                    app.engine_mut()
+                        .encode_tx(
+                            tx,
+                            &Message::new(Type::Confirmable, coaptic::Code::GET, mid),
+                        )
+                        .unwrap();
+                    app.engine_mut()
+                        .record_pending_con(tx, peer, mid, 0, 0)
+                        .unwrap();
+                    let due = app.next_timeout().unwrap();
+                    for n in 0..count {
+                        let [a, b] = n.to_be_bytes();
+                        sender.send_to(&[0x60, 0, a, b], address).unwrap();
+                    }
+                    let epoch =
+                        Instant::now() - Duration::from_millis(due.checked_sub(50).unwrap());
+                    let until = Instant::now() + Duration::from_secs(1);
+                    for n in 0..=count {
+                        assert!(Instant::now() < until);
+                        let mut observed = None;
+                        readiness_turn(
+                            &mut app,
+                            epoch,
+                            |io| io.inner.received,
+                            |io, deadline| {
+                                observed = deadline;
+                                if n == 0 {
+                                    assert_eq!(deadline, Some(epoch + Duration::from_millis(due)));
+                                    // Becomes due while the socket stays readable.
+                                    // No new ingress wakes the following turn.
+                                    std::thread::sleep(Duration::from_millis(60));
+                                }
+                                // Bound only the final idle wait, retaining the
+                                // actual production deadline for assertions.
+                                wait(io, Some(deadline.unwrap().min(until)))
+                            },
+                        )
+                        .unwrap();
+                        assert_eq!(app.metrics().rx_accepted, u32::from(n));
+                        assert_eq!(
+                            observed,
+                            Some(epoch + Duration::from_millis(app.next_timeout().unwrap()))
+                        );
+                        if n != 0 {
+                            assert_eq!(app.metrics().con_retransmit, 1);
+                        }
+                    }
+                    assert_eq!(sender.recv_from(&mut [0; 8]).unwrap().0, 4);
+                    assert!(app.next_timeout().unwrap() > due);
+                }
+            }
+        }
+        #[cfg(target_os = "linux")]
+        #[test]
+        fn production_turn_oversize_recovery_and_arrival_after_credit_spent() {
+            fn reply(_: Request<'_>) -> Response<'static> {
+                Response::content(&[0x5a; 32])
+            }
+            for host in ["127.0.0.1:0", "[::1]:0"] {
+                let io = LevelUdp::bind(host).unwrap();
+                let address = io.inner.socket.local_addr().unwrap();
+                let mut app = App::with_resources(coaptic::resources::SmallDevice::new())
+                    .randomness(|b| getrandom::fill(b).is_ok())
+                    .route("bench", get(reply))
+                    .allow_unprotected()
+                    .bind(io)
+                    .unwrap();
+                let sender = UdpSocket::bind(host).unwrap();
+                // A valid NON GET carrying a body fills exactly one RX datagram.
+                let mut exact = [0; 1152];
+                exact[..11]
+                    .copy_from_slice(&[0x50, 1, 0, 1, 0xb5, b'b', b'e', b'n', b'c', b'h', 0xff]);
+                sender.send_to(&exact, address).unwrap();
+                sender.send_to(&[0x39; 1153], address).unwrap();
+                sender.send_to(&[0x39; 4096], address).unwrap();
+                sender.send_to(&[0x60, 0, 0, 2], address).unwrap();
+                let epoch = Instant::now();
+                let until = epoch + Duration::from_secs(1);
+                // Initial turn grants the first credit; four turns consume the
+                // prequeued packets through the real App and production wait.
+                for _ in 0..5 {
+                    assert!(Instant::now() < until);
+                    readiness_turn(
+                        &mut app,
+                        epoch,
+                        |io| io.inner.received,
+                        |io, deadline| wait(io, Some(deadline.map_or(until, |at| at.min(until)))),
+                    )
+                    .unwrap();
+                }
+                assert_eq!(app.metrics().rx_accepted, 2);
+                assert_eq!(app.metrics().tx_ok, 1);
+                assert_eq!(app.transport().credit, None);
+                // Arrival after the no-credit maintenance pass but before the
+                // next wait must still grant progress without a hidden probe.
+                readiness_turn(
+                    &mut app,
+                    epoch,
+                    |io| io.inner.received,
+                    |io, _| {
+                        sender.send_to(&[0x60, 0, 0, 3], address)?;
+                        wait(io, Some(Instant::now() + Duration::from_secs(1)))
+                    },
+                )
+                .unwrap();
+                assert_eq!(app.metrics().rx_accepted, 2);
+                readiness_turn(
+                    &mut app,
+                    epoch,
+                    |io| io.inner.received,
+                    |io, _| wait(io, Some(Instant::now())),
+                )
+                .unwrap();
+                assert_eq!(app.metrics().rx_accepted, 3);
+                assert_eq!(app.transport().credit, None);
+            }
+        }
+        #[test]
+        fn full_small_responses_are_authenticated_and_complete() {
+            use super::super::staged_udp::tests::context;
+            fn reply(_: Request<'_>) -> Response<'static> {
+                Response::content(&[0x5a; 32])
+                    .content_format(ContentFormat::OCTET_STREAM)
+                    .etag(b"level")
+            }
+            for protected in [false, true] {
+                let io = LevelUdp::bind("127.0.0.1:0").unwrap();
+                let peer = io.inner.socket.local_addr().unwrap().into();
+                let builder = App::with_resources(coaptic::resources::SmallDevice::new())
+                    .randomness(|b| getrandom::fill(b).is_ok())
+                    .route("bench", get(reply));
+                let builder = if protected {
+                    builder.oscore(context(true))
+                } else {
+                    builder.allow_unprotected()
+                };
+                let mut server = builder.bind(io).unwrap();
+                let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+                socket.set_nonblocking(true).unwrap();
+                let builder = App::with_resources(coaptic::resources::SmallDevice::new())
+                    .randomness(|b| getrandom::fill(b).is_ok());
+                let builder = if protected {
+                    builder.oscore(context(false))
+                } else {
+                    builder.allow_unprotected()
+                };
+                let mut client = builder
+                    .bind(UdpSocketIo::new(socket, [0; 1153]).unwrap())
+                    .unwrap();
+                let epoch = Instant::now();
+                for _ in 0..4 {
+                    let call = client
+                        .get("bench")
+                        .to(peer)
+                        .send(epoch.elapsed().as_millis() as u64)
+                        .unwrap();
+                    let mut completed = false;
+                    for _ in 0..64 {
+                        assert!(epoch.elapsed() < Duration::from_secs(1));
+                        // Portable core/credit proof; the real Linux wait is tested separately.
+                        server.transport_mut().credit = Some(false);
+                        read_burst(&mut server, epoch, |io| io.inner.received).unwrap();
+                        client.poll(epoch.elapsed().as_millis() as u64).unwrap();
+                        if let Some(response) = client.take_response(call) {
+                            let response = response.unwrap(); // Includes OSCORE authentication.
+                            assert_eq!(response.code(), coaptic::Code::CONTENT);
+                            assert_eq!(response.format(), Some(ContentFormat::OCTET_STREAM));
+                            assert_eq!(response.etag_bytes(), Some(&b"level"[..]));
+                            assert!(!response.payload_truncated());
+                            assert_eq!(response.payload(), &[0x5a; 32]);
+                            completed = true;
+                            break;
+                        }
+                    }
+                    assert!(completed);
+                }
+                assert_eq!(server.metrics().tx_ok, 4);
+                if protected {
+                    use coaptic::message::{Opt, Token};
+                    let mut sender_context = context(false);
+                    let options = [Opt::uri_path("bench")];
+                    let request =
+                        Message::new(Type::Confirmable, coaptic::Code::GET, MessageId::new(999))
+                            .with_token(Token::new(&[0x51]).unwrap())
+                            .with_options(&options);
+                    let mut wire = [0; 1152];
+                    let mut n = 0;
+                    for _ in 0..5 {
+                        n = sender_context.protect_request(&request, &mut wire).unwrap();
+                    }
+                    let sender = UdpSocket::bind("127.0.0.1:0").unwrap();
+                    sender
+                        .set_read_timeout(Some(Duration::from_secs(1)))
+                        .unwrap();
+                    wire[n - 1] ^= 1; // Fresh sequence, invalid authentication tag.
+                    sender
+                        .send_to(&wire[..n], std::net::SocketAddr::from(peer))
+                        .unwrap();
+                    server.transport_mut().credit = Some(false);
+                    read_burst(&mut server, epoch, |io| io.inner.received).unwrap();
+                    assert_eq!(server.metrics().tx_ok, 4);
+                    wire[n - 1] ^= 1;
+                    sender
+                        .send_to(&wire[..n], std::net::SocketAddr::from(peer))
+                        .unwrap();
+                    server.transport_mut().credit = Some(false);
+                    read_burst(&mut server, epoch, |io| io.inner.received).unwrap();
+                    assert!(sender.recv_from(&mut [0; 1152]).unwrap().0 > 0);
+                    assert_eq!(server.metrics().tx_ok, 5); // Tag refusal did not spend replay state.
+                    wire[2..4].copy_from_slice(&1000u16.to_be_bytes()); // New MID, same protected sequence.
+                    sender
+                        .send_to(&wire[..n], std::net::SocketAddr::from(peer))
+                        .unwrap();
+                    server.transport_mut().credit = Some(false);
+                    read_burst(&mut server, epoch, |io| io.inner.received).unwrap();
+                    assert_eq!(server.metrics().tx_ok, 5);
+                }
+                let caps = server.engine().capacities();
+                assert_eq!(
+                    (
+                        caps.rx_datagram_slots,
+                        caps.tx_datagram_slots,
+                        caps.rx_datagram_bytes
+                    ),
+                    (2, 2, 1152)
+                );
+            }
+        }
+        #[cfg(target_os = "linux")]
+        #[test]
+        fn level_wait_preserves_queued_packets_and_arrival_after_credit_spent() {
+            for host in ["127.0.0.1:0", "[::1]:0"] {
+                for count in [2u8, 3, 35] {
+                    let mut io = LevelUdp::bind(host).unwrap();
+                    let local = io.inner.socket.local_addr().unwrap();
+                    let sender = UdpSocket::bind(host).unwrap();
+                    for n in 0..count {
+                        sender.send_to(&[n], local).unwrap();
+                    }
+                    let deadline = Instant::now() + Duration::from_secs(1);
+                    let mut bytes = [0; 1152];
+                    for n in 0..count {
+                        wait(&mut io, Some(deadline)).unwrap();
+                        assert_eq!(io.recv(&mut bytes).unwrap().unwrap().0, 1);
+                        assert_eq!(bytes[0], n);
+                        assert!(io.recv(&mut bytes).unwrap().is_none());
+                        assert!(Instant::now() < deadline); // Sender is silent throughout drain.
+                    }
+                    sender.send_to(b"race", local).unwrap();
+                    wait(&mut io, Some(deadline)).unwrap();
+                    assert_eq!(io.recv(&mut bytes).unwrap().unwrap().0, 4);
+                    wait(&mut io, Some(Instant::now())).unwrap();
+                    assert_eq!(io.credit, None); // Timeout does not fabricate a credit.
+                }
+            }
+        }
+        #[cfg(target_os = "linux")]
+        #[test]
+        fn oversize_refuses_prefix_and_recovers_queued_valid_datagrams() {
+            for host in ["127.0.0.1:0", "[::1]:0"] {
+                let mut io = LevelUdp::bind(host).unwrap();
+                let local = io.inner.socket.local_addr().unwrap();
+                let sender = UdpSocket::bind(host).unwrap();
+                for size in [1152, 1153, 4096, 3] {
+                    sender.send_to(&vec![0x39; size], local).unwrap();
+                }
+                let deadline = Instant::now() + Duration::from_secs(1);
+                let mut output = [0xa5; 1152];
+                for size in [1152, 1153, 4096, 3] {
+                    output.fill(0xa5);
+                    wait(&mut io, Some(deadline)).unwrap();
+                    let result = io.recv(&mut output);
+                    if size <= output.len() {
+                        assert_eq!(result.unwrap().unwrap().0, size);
+                    } else {
+                        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidData);
+                        assert!(output.iter().all(|b| *b == 0xa5));
+                    }
+                    assert_eq!(io.credit, None);
+                    assert!(io.recv(&mut output).unwrap().is_none());
+                }
+            }
+        }
+    }
+    // Match pinned Mio1.2.4's ceil-ms and i32::MAX clamp. The absolute deadline
+    // is resampled on every wait; EINTR never restarts a stale relative timeout.
+    fn timeout(deadline: Option<Instant>, now: Instant) -> Option<Duration> {
+        deadline.map(|due| {
+            let remaining = due.saturating_duration_since(now);
+            let ms = remaining
+                .checked_add(Duration::from_nanos(999_999))
+                .unwrap_or(remaining)
+                .as_millis()
+                .min(i32::MAX as u128);
+            Duration::from_millis(ms as u64)
+        })
+    }
+    #[cfg(target_os = "linux")]
+    fn wait(io: &mut LevelUdp, deadline: Option<Instant>) -> io::Result<()> {
+        use rustix::event::{PollFd, PollFlags, Timespec};
+        io.credit = None;
+        let time = timeout(deadline, Instant::now())
+            .map(Timespec::try_from)
+            .transpose()
+            .map_err(io::Error::other)?;
+        let mut fd = [PollFd::new(&io.inner.socket, PollFlags::IN)];
+        rustix::event::poll(&mut fd, time.as_ref())?;
+        let ready = fd[0].revents();
+        if ready.contains(PollFlags::NVAL) {
+            return Err(rustix::io::Errno::BADF.into());
+        }
+        if ready.intersects(PollFlags::IN | PollFlags::ERR | PollFlags::HUP) {
+            // Native receive failures still flow through App's maintenance and
+            // error-priority path. A spurious ordinary readiness may be EAGAIN.
+            io.credit = Some(ready.intersects(PollFlags::ERR | PollFlags::HUP));
+        }
+        Ok(())
+    }
+    #[cfg(target_os = "linux")]
+    pub(super) fn serve(
+        address: &str,
+        context: Option<SecurityContext>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let io = LevelUdp::bind(address)?;
+        let security = if context.is_some() {
+            "oscore"
+        } else {
+            "unprotected"
+        };
+        let mut app = bind_resources!(coaptic::resources::SmallDevice::new(), io, context)?;
+        println!(
+            "{{\"schema\":\"coaptic-native-level-resources/1\",\"server_kind\":\"coaptic-mio-level\",\"resource_profile\":\"small-device\",\"storage\":\"fixed\",\"security\":\"{security}\",\"udp_scratch_bytes\":2049,\"adapter_inline_bytes\":{},\"app_including_adapter_bytes\":{},\"credit_inline_bytes\":{},\"pollfd_inline_bytes\":{},\"pollfd_count\":1,\"poll_inline_bytes\":0,\"events_inline_bytes\":0,\"event_capacity\":0,\"selector_count\":0,\"retained_datagram_capacity\":0,\"worker_threads\":0,\"pending_kernel_operations\":0,\"routes\":4,\"populated_routes\":1,\"calls\":1,\"deferred\":0,\"associations\":1,\"security_requests\":4,\"blockwise\":false,\"rx_slots\":2,\"tx_slots\":2,\"rx_datagram_bytes\":1152,\"tx_datagram_bytes\":1152,\"dedup\":4,\"observe\":2,\"rx_body_slots\":0,\"tx_body_slots\":0,\"rx_body_bytes\":0,\"tx_body_bytes\":0,\"representation_bytes\":32,\"representation_heap_bytes\":0,\"app_requested_heap_bytes\":0,\"runtime_heap_bytes\":null,\"runtime_stack_bytes\":null,\"kernel_bytes\":null,\"allocator_overhead_bytes\":null,\"initialization_stack_bytes\":null,\"events_heap_bytes\":0,\"nesting\":\"scratch and credit inside adapter inside App; borrowed pollfd temporary separate; representation32B borrowed\",\"limits\":\"inline requested owners only; allocator, peak stack, socket/kernel readiness costs unknown; no whole-memory or CPU claim\"}}",
+            std::mem::size_of::<LevelUdp>(),
+            std::mem::size_of_val(&app),
+            std::mem::size_of::<Option<bool>>(),
+            std::mem::size_of::<rustix::event::PollFd<'static>>()
+        );
+        std::io::stdout().flush()?;
+        run_readiness(&mut app, |io| io.inner.received, wait)
+    }
 }
 
 fn ready_burst(
@@ -898,11 +1697,14 @@ fn codec_server(address: &str, body: &[u8]) -> Result<(), Box<dyn std::error::Er
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args: Vec<_> = env::args().collect();
-    let profile = ResourceProfile::take_option(&mut args)?;
+fn validate_startup_profile(
+    args: &[String],
+    profile: ResourceProfile,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Reject unsupported combinations before credentials, representation or sockets.
-    if profile != ResourceProfile::HostControl {
+    if profile != ResourceProfile::HostControl
+        || args.get(1).map(String::as_str) == Some("coaptic-mio-level")
+    {
         let kind = args.get(1).ok_or("missing server kind")?;
         let size = args.get(4).ok_or("missing representation bytes")?.parse()?;
         let rx_bytes = args
@@ -915,6 +1717,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("representative fixtures require loopback".into());
         }
     }
+    Ok(())
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args: Vec<_> = env::args().collect();
+    let profile = ResourceProfile::take_option(&mut args)?;
+    validate_startup_profile(&args, profile)?;
     if args.len() == 2 && args[1] == "--security-profile" {
         println!(
             "{{\"security\":\"OSCORE-AES-CCM-16-64-128\",\"replay_window\":{}}}",
@@ -993,6 +1802,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 | "coaptic-staged-ready"
                 | "coaptic-staged-mio"
                 | "coaptic-mio"
+                | "coaptic-mio-level"
                 | "coaptic-mio-direct"
                 | "coaptic-async"
                 | "coaptic-blocking"
@@ -1010,6 +1820,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 | "coaptic-staged-ready"
                 | "coaptic-staged-mio"
                 | "coaptic-mio"
+                | "coaptic-mio-level"
                 | "coaptic-mio-direct"
                 | "coaptic-async"
                 | "coaptic-blocking"
@@ -1084,6 +1895,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "coaptic-staged-mio" => staged_mio::serve(&address, size, rx_bytes, context),
         "coaptic-mio" => mio_server::<2049>(&address, size, rx_bytes, context, profile),
         #[cfg(target_os = "linux")]
+        "coaptic-mio-level" => level_control::serve(&address, context),
+        #[cfg(not(target_os = "linux"))]
+        "coaptic-mio-level" => Err("coaptic-mio-level requires Linux level readiness".into()),
+        #[cfg(target_os = "linux")]
         "coaptic-mio-direct" => mio_server::<0>(&address, size, rx_bytes, context, profile),
         #[cfg(not(target_os = "linux"))]
         "coaptic-mio-direct" => Err("coaptic-mio-direct requires Linux MSG_TRUNC semantics".into()),
@@ -1112,6 +1927,66 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use super::*;
     use coaptic::message::{Message, MessageId, Type};
+
+    #[test]
+    fn level_cli_preflight_requires_explicit_small32_before_other_startup_work() {
+        for (selected, host, size, rx, accepted) in [
+            (None, "127.0.0.1", "32", "1152", false),
+            (Some("host-control"), "127.0.0.1", "32", "1152", false),
+            (Some("small-device"), "127.0.0.1", "64", "1152", false),
+            (Some("small-device"), "127.0.0.1", "32", "1472", false),
+            (Some("small-device"), "0.0.0.0", "32", "1152", false),
+            (Some("small-device"), "192.0.2.1", "32", "1152", false),
+            (Some("small-device"), "127.0.0.1", "32", "1152", true),
+        ] {
+            let mut args: Vec<String> = [
+                "server",
+                "coaptic-mio-level",
+                host,
+                "0",
+                size,
+                rx,
+                "missing-credentials-must-not-be-opened-by-preflight",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect();
+            if let Some(profile) = selected {
+                args.extend(["--resource-profile".into(), profile.into()]);
+            }
+            let profile = ResourceProfile::take_option(&mut args).unwrap();
+            // This is the same helper main calls before credentials, BODY and bind.
+            assert_eq!(validate_startup_profile(&args, profile).is_ok(), accepted);
+        }
+        let mut args: Vec<String> = [
+            "server",
+            "coaptic-mio-level",
+            "127.0.0.1",
+            "0",
+            "32",
+            "--resource-profile",
+            "small-device",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        let profile = ResourceProfile::take_option(&mut args).unwrap();
+        assert!(validate_startup_profile(&args, profile).is_ok()); // Default RX1152.
+        for kind in [
+            "coaptic",
+            "coaptic-mio",
+            "coaptic-mio-direct",
+            "coaptic-small",
+            "coaptic-async",
+            "coaptic-blocking",
+            "coap-rs",
+            "coap-rs-dtls",
+            "--security-profile",
+        ] {
+            let args = vec!["server".into(), kind.into()];
+            assert!(validate_startup_profile(&args, ResourceProfile::HostControl).is_ok());
+        }
+    }
 
     #[test]
     fn representative_profiles_refuse_unsupported_selection_before_binding() {
@@ -1180,7 +2055,7 @@ mod tests {
         assert_eq!(app.client_capacity(), 4);
         assert_eq!(app.security_request_capacity(), 4);
         assert_eq!(app.association_capacity(), 1);
-        assert!(mio_burst(&mut app, Instant::now()).unwrap());
+        assert!(read_burst(&mut app, Instant::now(), |io| io.received).unwrap());
         assert_eq!(app.engine_mut().rx_occupied(), 0);
     }
 

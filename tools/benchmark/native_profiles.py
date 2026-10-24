@@ -24,6 +24,11 @@ def validate_profile(profile, kind, size, *, concurrency=1, message_type="con",
     if security is not None and security not in ("unprotected", "oscore"):
         raise ValueError("unsupported profile security")
     validate_concurrency(concurrency, message_type, independent_endpoints)
+    if kind == "coaptic-mio-level":
+        if (profile != "small-device" or type(size) is not int or size != 32 or concurrency != 1
+                or message_type != "con" or admission_diagnostics or independent_endpoints):
+            raise ValueError("level control requires exact SmallDevice32 C1 CON")
+        return
     if independent_endpoints:
         if (kind != "coaptic-mio" or admission_diagnostics or profile.startswith("small-")
                 or (profile == "host-control" and size > 1024 and concurrency > 2)):

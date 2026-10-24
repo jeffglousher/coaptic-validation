@@ -1,5 +1,84 @@
 # Manual Linux CPU qualification
 
+## Linux level receive control (#201)
+
+`coaptic-mio-level` is an explicit Linux-only SmallDevice32/C1 CON functional
+control. Ordinary `coaptic-mio` retains its edge-triggered drain-to-WouldBlock
+behavior and remains the default Mio fixture. The control uses the same
+nonblocking Mio UDP receive/send calls, guarded 2049-byte transient scratch,
+fixed SmallDevice pools and complete authenticated response path. It retains
+no additional packet and creates no worker, socket clone, ring or selector.
+
+A single borrowed pollfd uses rustix 1.1.4's Linux `ppoll` backend. Remaining
+absolute deadlines use pinned Mio 1.2.4's ceil-to-millisecond rounding/clamp;
+every wait and App poll resamples the clock. Readiness grants one receive
+attempt, spent before errors, EAGAIN or oversize refusal. The next App poll
+still performs maintenance but has no receive eligibility. A subsequent level
+wait sees packets remaining queued; this skip would be unsafe with Mio's edge
+wait. Error readiness permits one native outcome through App's error-priority
+path; an error hint followed by EAGAIN refuses instead of spinning. Interrupted
+waits grant no credit and return to fresh maintenance/deadline evaluation.
+
+The startup ledger reports the actual adapter/App/credit sizes, a separate
+temporary borrowed pollfd, zero Mio Poll/Events/selector owners and unchanged
+capacities. Scratch and credit are nested in App; do not add them twice.
+Allocator, initialization/peak stack and socket/kernel readiness costs remain
+unknown. Windows refuses this control. Portable credit/protocol tests and
+Linux-target compilation cannot establish actual Linux readiness execution.
+
+Only the exact ordinary-Mio baseline/level candidate SmallDevice32 C1 comparison
+on the same full core revision is
+admitted. Existing CPU/native/latency/cleanup guards remain; all required pair
+and pooled guards must pass before reporting a security stratum's comparison.
+Missing, reversed, same-kind or different-core level pairs refuse planning;
+aggregation also refuses level results without the explicit matched pair.
+No performance campaign is authorized by this prototype. Source reasoning
+predicts four to three syscall entries for sparse traffic, not CPU percentages:
+for `n` queued packets a drain is approximately `2n+2` calls versus `3n` for
+this control, so `n>=3` can lose. Counts, whole-memory acceptance and both 50%
+CPU targets remain separate claims. Issue 195's failed overhead guards and
+older failed runs remain retained; no replacement cohort is implied.
+
+This is a source-only draft awaiting independent review and actual Windows/Linux
+functional validation. The first local preparation stopped on its evidence
+budget; a later attempt stopped below the disk floor before any native build.
+The retained intermediate Python run completed 204 tests with 195 passes, one
+exception-expectation error and eight skips. That expectation and the native
+profile/planner bypasses are repaired in source; no new validation result is
+claimed for these bytes. Draft tests cover production App turns as well as
+adapter credits, queued traffic, oversize recovery, due maintenance, native
+error priority, complete OSCORE responses and replay refusal. Interrupted and
+spurious wait outcomes are injected at the production wait boundary; a real
+kernel-signal interruption remains unproved.
+
+The shared readiness loop borrows App, preserving the owning fixed-Service
+frame and its existing `inline(never)` construction boundary. This avoids an
+additional by-value App handoff; it is not emitted stack or startup evidence.
+The standalone `native_diagnostic.measure`/CLI remains a host-control diagnostic
+and excludes level mode; only the matched `linux_cpu.window` path forwards the
+required SmallDevice profile and RX capacity. A separate finite ordinary-Mio
+ServiceFixed startup/full-response regression on Windows must select the native
+profile explicitly. Actual startup, allocator,
+peak stack, Linux readiness, whole memory and both 50% targets remain open.
+
+The existing manual workflow has an opt-in `native_validation_only=true` mode
+with `native_validation_os=ubuntu-24.04` or `windows-latest`. Both source inputs
+must be exactly `d23f93c0699b75ec17e692999d62ff89bb71463d`. It runs the affected
+Python suites, locked release server/client tests, formatting and strict package
+Clippy, then freezes both actual binary hashes before functional cells. Each
+cell verifies two complete operations plus one warmup in each security mode.
+Linux covers ordinary-Mio SmallDevice32, level SmallDevice32 and ordinary-Mio
+fixed Service16KiB; Windows covers the two ordinary-Mio profiles. This is six
+Linux cells or four Windows cells, with explicit native profile selection.
+There is no CPU campaign, profiling or performance acceptance in this mode.
+The existing manual job serialization remains in force. Logs are bounded to
+256 KiB per captured stream, metadata to 256 KiB per record and the complete
+text upload to 8 MiB; binaries, credentials and build outputs are excluded.
+The job samples a 4 GiB build-lane ceiling; this is not a peak-memory bound.
+Cleanup reuses the portable eight-member owner and fails on unresolved members
+or retained pipes; it does not prove containment of escaped descendants.
+Actual execution of this mode is still pending.
+
 ## Bounded syscall diagnostic
 
 The [measured syscall result](evidence/ebpf-syscalls-20261024/README.md) records

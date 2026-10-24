@@ -49,7 +49,7 @@ PROFILE_SECONDS = 5
 PERF_REPORT_SECONDS = 30
 PERF_FILES_PER_SLOT = 5  # Data/stat, command log, flat report, inline callers/samples.
 KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready")
-EXPLICIT_KINDS = (*KINDS, "coaptic-async", "coaptic-blocking", "coaptic-staged-ready", "coaptic-staged-mio", "coaptic-mio-direct")
+EXPLICIT_KINDS = (*KINDS, "coaptic-async", "coaptic-blocking", "coaptic-staged-ready", "coaptic-staged-mio", "coaptic-mio-direct", "coaptic-mio-level")
 FLAGS = {"RUSTUP_TOOLCHAIN": "1.99.0", "RUSTC": "rustc",
          "RUSTFLAGS": "-C force-frame-pointers=yes", "CARGO_PROFILE_RELEASE_DEBUG": "1",
          "CARGO_PROFILE_RELEASE_STRIP": "none", "CARGO_INCREMENTAL": "0",
@@ -77,6 +77,10 @@ def configuration(args):
     if profile not in PROFILE_SIZES:
         raise ValueError("unknown resource profile")
     diagnostic = getattr(args, "admission_diagnostics", False)
+    if "coaptic-mio-level" in (args.server_kind, args.candidate_server_kind):
+        if ((args.server_kind, args.candidate_server_kind) != ("coaptic-mio", "coaptic-mio-level")
+                or sha40(args.baseline_sha) != sha40(args.candidate_sha)):
+            raise ValueError("level control requires ordinary Mio baseline and level candidate with identical full core SHAs")
     if type(diagnostic) is not bool:
         raise ValueError("admission diagnostics selection must be boolean")
     if diagnostic:
@@ -97,8 +101,16 @@ def configuration(args):
         validate_profile(profile, args.server_kind, size, concurrency=args.concurrency,
                          message_type=args.message_type, admission_diagnostics=diagnostic,
                          independent_endpoints=getattr(args, "independent_endpoints", False))
-        if profile != "host-control" and args.candidate_server_kind is not None:
+        if profile != "host-control" and args.candidate_server_kind is not None and not (
+                profile == "small-device" and size == 32 and args.server_kind == "coaptic-mio"
+                and args.candidate_server_kind == "coaptic-mio-level" and not diagnostic
+                and args.concurrency == 1 and args.message_type == "con"
+                and not getattr(args, "independent_endpoints", False)):
             raise ValueError("representative profile requires same Mio on both labels")
+        if args.candidate_server_kind == "coaptic-mio-level":
+            validate_profile(profile, args.candidate_server_kind, size, concurrency=args.concurrency,
+                             message_type=args.message_type, admission_diagnostics=diagnostic,
+                             independent_endpoints=getattr(args, "independent_endpoints", False))
     rates = [int(p) for p in selection(args.rates)]
     if len(set(rates)) != len(rates):
         raise ValueError("rates must be numerically distinct")
@@ -1573,7 +1585,7 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
            *, concurrency=1, message_type="con", admission_diagnostics=False,
            resource_profile="host-control", independent_endpoints=False, long_window=False, syscall_observer=None):
     security, size, rate, kind = cell
-    if syscall_observer is not None and (mode != "clean" or kind != "coaptic-mio"
+    if syscall_observer is not None and (mode != "clean" or kind not in ("coaptic-mio", "coaptic-mio-level")
             or concurrency != 1 or message_type != "con" or admission_diagnostics
             or independent_endpoints or long_window):
         raise ValueError("syscall diagnostic requires ordinary Mio, C1 CON, no other instrumentation")
@@ -1827,6 +1839,9 @@ def report_latencies(result):
 
 def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=None):
     """Never pool security/body/load/adapter strata, partial pairs or perf timings."""
+    level_selected = any(item.get("server_kind") == "coaptic-mio-level" for item in results)
+    if (level_selected or (adapter_pair and "coaptic-mio-level" in adapter_pair)) and adapter_pair != ("coaptic-mio", "coaptic-mio-level"):
+        raise ValueError("level results require the explicit ordinary Mio/level pair")
     groups = {}
     for item in results:
         if item["mode"] == "clean":
@@ -1889,7 +1904,7 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
                                     p99_latency_ns=latencies[math.ceil(len(latencies) * .99) - 1])
             record.update(cpu_ns_per_verified_operation=costs,
                           server_cpu_ratio=costs["candidate"]["server"]["total_ns"] / costs["baseline"]["server"]["total_ns"])
-            if long_partition:
+            if long_partition or adapter_pair == ("coaptic-mio", "coaptic-mio-level"):
                 # Single-security evidence still needs EVERY pair and pooled
                 # latency guard. Keep failed statistics; withhold qualified ratios.
                 def guard(baseline, candidate):
@@ -1898,7 +1913,7 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
                     return dict(**delta, passed=delta["median_latency_ns"] <= 2000
                                 and delta["p99_latency_ns"] <= 10000)
                 pair_guards = []
-                for repeat in range(4):
+                for repeat in range(repeats):
                     statistics_by_label = {}
                     for label, group in labels.items():
                         values = sorted(report_latencies(next(i for i in group if i["repeat"] == repeat)))

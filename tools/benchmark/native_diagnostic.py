@@ -40,7 +40,7 @@ def server_resources(log_path, server_kind, *, deadline, server,
     never seeks or reads the file description inherited by the server.
     """
     if server_kind not in ("coaptic-async", "coaptic-blocking", "coaptic-staged-ready", "coaptic-staged-mio",
-                           "coaptic-mio", "coaptic-mio-direct"):
+                           "coaptic-mio", "coaptic-mio-direct", "coaptic-mio-level"):
         return None
     if type(deadline) not in (int, float) or not math.isfinite(deadline):
         raise ValueError("server startup ledger needs a finite monotonic deadline")
@@ -61,6 +61,32 @@ def server_resources(log_path, server_kind, *, deadline, server,
     record = json.loads(raw)
     if not isinstance(record, dict):
         raise ValueError("invalid server startup ledger")
+    if server_kind == "coaptic-mio-level":
+        if (resource_profile != "small-device" or size != 32 or rx_bytes != 1152
+                or record.get("schema") != "coaptic-native-level-resources/1"
+                or record.get("server_kind") != server_kind
+                or record.get("security") not in ("unprotected", "oscore")
+                or (security is not None and record["security"] != security)):
+            raise ValueError("level startup requires exact SmallDevice32 identity")
+        for key, expected in dimensions(resource_profile, size, rx_bytes).items():
+            if type(record.get(key)) is not type(expected) or record[key] != expected:
+                raise ValueError("mismatched level profile ledger: " + key)
+        if (any(type(record.get(key)) is not int or record[key] != value for key, value in
+                (("udp_scratch_bytes", 2049), ("pollfd_count", 1), ("credit_inline_bytes", 1),
+                 ("selector_count", 0), ("poll_inline_bytes", 0), ("events_inline_bytes", 0),
+                 ("event_capacity", 0), ("retained_datagram_capacity", 0), ("worker_threads", 0),
+                 ("pending_kernel_operations", 0), ("app_requested_heap_bytes", 0), ("events_heap_bytes", 0)))
+                or any(type(record.get(key)) is not int or not 0 < record[key] < 2**64 for key in
+                       ("adapter_inline_bytes", "app_including_adapter_bytes", "pollfd_inline_bytes"))
+                or not 2050 <= record["adapter_inline_bytes"] <= record["app_including_adapter_bytes"]
+                or record["pollfd_inline_bytes"] > 64
+                or any(key not in record or record[key] is not None for key in
+                       ("runtime_heap_bytes", "runtime_stack_bytes", "kernel_bytes",
+                        "allocator_overhead_bytes", "initialization_stack_bytes"))
+                or any(type(record.get(key)) is not str or not 0 < len(record[key]) <= 1024
+                       for key in ("nesting", "limits"))):
+            raise ValueError("invalid level control owner ledger")
+        return record
     if server_kind in ("coaptic-mio", "coaptic-mio-direct"):
         fields = ("adapter_inline_bytes", "app_including_adapter_bytes", "poll_inline_bytes",
                   "events_inline_bytes", "event_capacity")

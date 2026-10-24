@@ -154,6 +154,33 @@ class ProcessMemoryTests(unittest.TestCase):
 
 
 class ReportTests(unittest.TestCase):
+    def test_level_ledger_reports_real_disjoint_owners_and_exact_small_capacities(self):
+        record = dict(schema="coaptic-native-level-resources/1", server_kind="coaptic-mio-level",
+            **dimensions("small-device",32), security="oscore", udp_scratch_bytes=2049,
+            adapter_inline_bytes=2060, app_including_adapter_bytes=14024, credit_inline_bytes=1,
+            pollfd_inline_bytes=8,pollfd_count=1,poll_inline_bytes=0,events_inline_bytes=0,
+            event_capacity=0,selector_count=0,retained_datagram_capacity=0,worker_threads=0,
+            pending_kernel_operations=0,app_requested_heap_bytes=0,events_heap_bytes=0,
+            runtime_heap_bytes=None,runtime_stack_bytes=None,kernel_bytes=None,
+            allocator_overhead_bytes=None,initialization_stack_bytes=None,nesting="nested credit",limits="unknown peak")
+        changes = [{key: value+1} for key,value in record.items() if type(value) is int
+                   and key not in ("adapter_inline_bytes","app_including_adapter_bytes","pollfd_inline_bytes")]
+        changes += [dict(credit_inline_bytes=True),dict(pollfd_inline_bytes=0),dict(selector_count=1),
+                    dict(events_heap_bytes=None),dict(runtime_heap_bytes=0),dict(security="unprotected"),
+                    dict(allocator_overhead_bytes=0),dict(adapter_inline_bytes=2049),dict(nesting="")]
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"server.log"
+            for delta in ({},*changes):
+                path.write_text(json.dumps(record|delta)+"\n")
+                with self.subTest(delta=delta):
+                    if delta:
+                        with self.assertRaises(ValueError):
+                            server_resources(path,"coaptic-mio-level",deadline=0,server=None,
+                                resource_profile="small-device",size=32,security="oscore",rx_bytes=1152)
+                    else:
+                        self.assertEqual(server_resources(path,"coaptic-mio-level",deadline=0,server=None,
+                            resource_profile="small-device",size=32,security="oscore",rx_bytes=1152),record)
+
     def test_profile_ledgers_match_actual_dimensions_and_disjoint_owner_categories(self):
         for profile, sizes in PROFILE_SIZES.items():
             for size in sizes:
@@ -285,6 +312,24 @@ class ReportTests(unittest.TestCase):
             self.assertIn("--gated", command)
             snapshot.assert_not_called()
             child.stdin.write.assert_not_called()
+
+    def test_standalone_level_refuses_before_credentials_or_native_spawn(self):
+        # The level ledger reader serves linux_cpu.window, whose matched plan
+        # supplies SmallDevice32/RX1152. Standalone measure keeps HostControl.
+        with patch("native_diagnostic.subprocess.Popen") as spawn, \
+                patch("native_diagnostic.secrets.token_bytes") as key, \
+                self.assertRaisesRegex(ValueError, "bounds"):
+            measure("missing", "missing", 32, 1, 0, 1000, "spin", "oscore",
+                    server_kind="coaptic-mio-level")
+        spawn.assert_not_called()
+        key.assert_not_called()
+        argv = ["native_diagnostic.py", "--server", "missing", "--client", "missing",
+                "--output", "unused", "--policy", "spin", "--security", "oscore",
+                "--server-kind", "coaptic-mio-level"]
+        with patch("sys.argv", argv), patch("native_diagnostic.measure") as run, \
+                patch("sys.stderr", io.StringIO()), self.assertRaises(SystemExit):
+            main()
+        run.assert_not_called()
 
     @staticmethod
     def mio_record(kind="coaptic-mio"):

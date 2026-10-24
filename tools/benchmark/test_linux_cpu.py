@@ -84,6 +84,33 @@ def mock_record_control(timeline=None):
 
 
 class ValidationTests(unittest.TestCase):
+    def test_level_control_is_only_exact_same_core_small32_c1_pair(self):
+        chosen = dict(baseline_sha="a"*40, candidate_sha="a"*40,
+                      resource_profile="small-device", sizes="32", rates="1000", seconds=30,
+                      repeats=4, server_kind="coaptic-mio", candidate_server_kind="coaptic-mio-level")
+        self.assertEqual(len(cpu.configuration(options(**chosen))), 2)
+        for changes in (dict(candidate_sha="b"*40), dict(resource_profile="host-control", sizes="64"),
+                        dict(resource_profile="service-fixed", sizes="64"),
+                        dict(concurrency=2), dict(message_type="non"), dict(admission_diagnostics=True),
+                        dict(independent_endpoints=True), dict(candidate_server_kind="coaptic-staged-mio"),
+                        dict(server_kind="coaptic-mio-level", candidate_server_kind="coaptic-mio"),
+                        dict(server_kind="coaptic-mio-level", candidate_server_kind=None),
+                        dict(server_kind="coaptic-mio-level", candidate_server_kind="coaptic-mio-level"),
+                        dict(server_kind="coaptic-mio-level", candidate_server_kind=None, candidate_sha="b"*40)):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                cpu.configuration(options(**(chosen | changes)))
+        with self.assertRaises(argparse.ArgumentTypeError):
+            cpu.configuration(options(**(chosen | dict(sizes="64"))))
+
+    def test_level_window_refuses_unsupported_profile_before_any_spawn(self):
+        for profile, size, concurrency, message_type in (("host-control",64,1,"con"),
+                ("small-device",32,2,"non"), ("service-fixed",64,1,"con"),
+                ("small-device",64,1,"con")):
+            with patch.object(cpu,"spawn") as spawn, self.assertRaises(ValueError):
+                cpu.window(None,None,("oscore",size,1000,"coaptic-mio-level"),2,Path("unused"),
+                           resource_profile=profile,concurrency=concurrency,message_type=message_type)
+            spawn.assert_not_called()
+
     def test_representative_c1_profiles_and_invalid_choices_refuse_before_build(self):
         for profile, sizes in (("small-device", "32"), ("small-blockwise", "64,1024,4096"),
                                ("service-fixed", "64,1024,16384"),
@@ -1402,6 +1429,67 @@ class AggregationTests(unittest.TestCase):
             result = cpu.aggregate(invalid, 2, .01, adapter_pair=kinds)[0]
             self.assertFalse(result["comparable"])
             self.assertIsNone(result["server_cpu_ratio"])
+
+    def test_level_results_refuse_missing_reverse_same_kind_or_unmatched_pair(self):
+        kinds = ("coaptic-mio", "coaptic-mio-level")
+        values = [observation(self.root, label, repeat, size=32) for repeat in range(2)
+                  for label in ("baseline", "candidate")]
+        for item in values:
+            item.update(server_kind=kinds[item["revision_label"] == "candidate"],
+                        resource_profile="small-device", core_sha="a" * 40)
+        for invalid_pair in (None, kinds[::-1], (kinds[1], kinds[1]),
+                             (kinds[0], kinds[0]), ("coaptic-ready", kinds[1])):
+            with self.subTest(pair=invalid_pair), self.assertRaises(ValueError):
+                cpu.aggregate(values, 2, .01, adapter_pair=invalid_pair)
+        for changes in (dict(core_sha="b" * 40), dict(core_sha=None),
+                        dict(server_kind="coaptic-mio-level")):
+            invalid = deepcopy(values)
+            invalid[0].update(changes)
+            row = cpu.aggregate(invalid, 2, .01, adapter_pair=kinds)[0]
+            self.assertFalse(row["comparable"])
+            self.assertIsNone(row["server_cpu_ratio"])
+
+    def test_level_latency_needs_every_pair_and_pooled_guard_without_diagnostic_rescue(self):
+        kinds = ("coaptic-mio", "coaptic-mio-level")
+        values = [observation(self.root, label, repeat, size=32) for repeat in range(4)
+                  for label in ("baseline", "candidate")]
+        for item in values:
+            item.update(server_kind=kinds[item["revision_label"] == "candidate"],
+                        resource_profile="small-device", core_sha="a" * 40)
+
+        def latency(item):
+            if item["revision_label"] == "baseline":
+                return [100_000] * 1000
+            return [103_000 if item["repeat"] == 0 else 90_000] * 1000
+
+        with patch.object(cpu, "report_latencies", side_effect=latency):
+            row = cpu.aggregate(values, 4, .01, adapter_pair=kinds)[0]
+        self.assertTrue(row["latency_pooled_guard"]["passed"])
+        self.assertEqual(len(row["latency_pair_guards"]), 4)
+        self.assertFalse(row["latency_pair_guards"][0]["passed"])
+        self.assertFalse(row["comparable"])
+        self.assertIsNone(row["server_cpu_ratio"])
+
+        def tail(item):
+            return [100_000] * 980 + [111_000 if item["revision_label"] == "candidate"
+                                     else 100_000] * 20
+
+        with patch.object(cpu, "report_latencies", side_effect=tail):
+            row = cpu.aggregate(values, 4, .01, adapter_pair=kinds)[0]
+        self.assertFalse(row["latency_pooled_guard"]["passed"])
+        self.assertEqual(row["latency_pooled_guard"]["p99_latency_ns"], 11_000)
+        self.assertFalse(row["comparable"])
+        self.assertIsNone(row["server_cpu_ratio"])
+        with patch.object(cpu, "report_latencies", return_value=[100_000] * 1000):
+            self.assertTrue(cpu.aggregate(values, 4, .01, adapter_pair=kinds)[0]["comparable"])
+        for flag in ("syscall_diagnostic", "admission_diagnostics"):
+            diagnostic = deepcopy(values)
+            diagnostic[0][flag] = True
+            with patch.object(cpu, "report_latencies") as reader:
+                row = cpu.aggregate(diagnostic, 4, .01, adapter_pair=kinds)[0]
+            reader.assert_not_called()
+            self.assertFalse(row["comparable"])
+            self.assertIsNone(row["server_cpu_ratio"])
 
     def test_no_ratio_for_failure_missing_duplicate_or_quantized_pairs(self):
         mutations = []

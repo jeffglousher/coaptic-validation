@@ -12,6 +12,15 @@ on:
         description: Immutable full candidate core SHA (hex40)
         required: true
         type: string
+      native_validation_only:
+        description: Fixed d23 native tests and authenticated fixture proof; no CPU campaign
+        type: boolean
+        default: false
+      native_validation_os:
+        description: Runner for native_validation_only; ordinary campaigns remain Linux
+        type: choice
+        default: ubuntu-24.04
+        options: [ubuntu-24.04, windows-latest]
       sizes:
         description: Profile-supported response bytes (host-control 64,1024,65536; see guide)
         type: string
@@ -51,7 +60,7 @@ on:
         description: Same adapter, or explicit scheduling comparison requiring identical core SHAs
         type: choice
         default: same
-        options: [same, coaptic-reusable, coaptic-mio, coaptic-ready, coaptic-async, coaptic-blocking, coaptic-staged-ready, coaptic-staged-mio, coaptic-mio-direct]
+        options: [same, coaptic-reusable, coaptic-mio, coaptic-ready, coaptic-async, coaptic-blocking, coaptic-staged-ready, coaptic-staged-mio, coaptic-mio-direct, coaptic-mio-level]
       perf:
         description: Additional bounded perf record and stat passes (permission refusal retained)
         type: boolean
@@ -83,7 +92,7 @@ concurrency:
 
 jobs:
   cpu:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.native_validation_only && inputs.native_validation_os || 'ubuntu-24.04' }}
     timeout-minutes: ${{ inputs.long_window && 360 || 60 }}
     env:
       RUSTUP_TOOLCHAIN: 1.99.0
@@ -103,11 +112,13 @@ jobs:
       CLIENT_CONCURRENCY: ${{ inputs.client_concurrency }}
       MESSAGE_TYPE: ${{ inputs.message_type }}
       INDEPENDENT_ENDPOINTS: ${{ inputs.independent_endpoints }}
+      NATIVE_VALIDATION_ONLY: ${{ inputs.native_validation_only }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Validate immutable inputs and every clean/profile plan before setup
+        if: ${{ !inputs.native_validation_only }}
         run: |
           mkdir -p "$RUNNER_TEMP/cpu-setup-logs"
           ulimit -f 2048
@@ -139,8 +150,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
         with:
           toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
-          components: clippy
+          components: ${{ inputs.native_validation_only && 'clippy,rustfmt' || 'clippy' }}
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        if: inputs.native_validation_only
+        with:
+          python-version: '3.13'
       - name: Python checks and one runner build lane
+        if: ${{ !inputs.native_validation_only }}
         env:
           COAPTIC_PRIVILEGED_CLEANUP_TESTS: '1'
         run: |
@@ -155,6 +171,7 @@ jobs:
           # Missing perf/sudo, unsupported events and permission refusal are raw artifacts.
           (ulimit -f 2048; { command -v perf; perf --version; command -v prlimit; uname -a; } >"$RUNNER_TEMP/cpu-setup-logs/perf-tools.log" 2>&1) || true
       - name: Native endpoint and staged driver proof before measurement
+        if: ${{ !inputs.native_validation_only }}
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/cpu-build-lane
           CARGO_INCREMENTAL: '0'
@@ -184,6 +201,10 @@ jobs:
           if 'coaptic-mio-direct' in (os.environ['SERVER_KIND'], os.environ['CANDIDATE_SERVER_KIND']):
               checks.append(('direct-tests', ['cargo', 'test', *common, '--bin',
                                                'bench-rust-server', 'direct_udp::tests']))
+          if os.environ['CANDIDATE_SERVER_KIND'] == 'coaptic-mio-level':
+              checks.append(('level-tests', ['cargo', 'test', *common, '--bin',
+                                              'bench-rust-server', 'level_control::tests',
+                                              '--', '--test-threads=1']))
           checks.append(('native-clippy', ['cargo', 'clippy', *common, '--all-targets',
                                           '--', '-D', 'warnings']))
           with native_lock(SUITE / 'coaptic') as lock_input:
@@ -196,7 +217,227 @@ jobs:
               raise ValueError('native preflight source identity changed')
           save(logs / 'native-lock-input.json', dict(suite=before[0], core=before[1], native_lock_input=lock_input))
           PY
+      - name: Fixed native validation without a CPU campaign
+        if: inputs.native_validation_only
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/cpu-build-lane
+          CARGO_INCREMENTAL: '0'
+          CARGO_BUILD_JOBS: '2'
+          CARGO_PROFILE_RELEASE_DEBUG: '1'
+          CARGO_PROFILE_RELEASE_STRIP: none
+          RUSTFLAGS: -C force-frame-pointers=yes
+          RUSTC: rustc
+        run: |
+          python -B - <<'PY'
+          import importlib, json, os, platform, socket, subprocess, sys, tempfile, time, traceback
+          from pathlib import Path
+
+          CORE = 'd23f93c0699b75ec17e692999d62ff89bb71463d'
+          ROOT = Path(os.environ['RUNNER_TEMP']) / 'cpu-evidence'
+          LANE = Path(os.environ['CARGO_TARGET_DIR'])
+          LIMIT, OUTPUT, META = 8 * 1024**2, 256 * 1024, 256 * 1024
+          if ROOT.exists():
+              raise ValueError('refuse existing native proof output')
+          ROOT.mkdir()
+          LANE.mkdir(exist_ok=True)
+          STATE = dict(schema='coaptic-native-validation/1', passed=False,
+                       primary_acceptance=False, cpu_campaign=False, checks={}, cells=[])
+          STATE['checks'] = {name: dict(status='NOT RUN') for name in (
+              'setup', 'rustc', 'cargo-version', 'python-tests', 'native-diagnostic-tests', 'syscall-tests',
+              'rustfmt', 'native-tests', 'native-clippy', 'native-build')}
+
+          def total(path):
+              return sum(p.stat().st_size for p in path.rglob('*') if p.is_file())
+
+          def guard(reserve=0):
+              if total(ROOT) + reserve > LIMIT or total(LANE) > 4 * 1024**3:
+                  raise ValueError('native proof output/build-lane bound exceeded')
+
+          def save(name, value):
+              raw = (json.dumps(value, ensure_ascii=True, sort_keys=True) + '\n').encode()
+              if len(raw) > META:
+                  raise ValueError('native proof metadata bound exceeded')
+              path = ROOT / name
+              if total(ROOT) - (path.stat().st_size if path.exists() else 0) + len(raw) > LIMIT:
+                  raise ValueError('native proof whole-upload bound exceeded')
+              path.write_bytes(raw)
+
+          save('state.json', STATE)
+          try:
+              if os.environ['BASELINE_SHA'] != CORE or os.environ['CANDIDATE_SHA'] != CORE:
+                  raise ValueError('native-only proof requires exact accepted d23 on both labels')
+              STATE['checks']['setup']['status'] = 'RUNNING'
+              save('state.json', STATE)
+              with (ROOT / 'pip.log').open('wb') as log:
+                  subprocess.run([sys.executable, '-m', 'pip', 'install', '--disable-pip-version-check',
+                                  '--no-input', '--no-deps', '--only-binary=:all:', '--no-compile',
+                                  'psutil==7.0.0'], stdout=log, stderr=log, timeout=120, check=True)
+              if (ROOT / 'pip.log').stat().st_size > OUTPUT:
+                  raise ValueError('native proof setup log bound exceeded')
+              STATE['checks']['setup']['status'] = 'PASS'
+              importlib.invalidate_caches()
+              sys.path.insert(0, 'tools/benchmark')
+              import campaign
+              import native_diagnostic as native
+              from native_lock import native_lock
+              # Existing portable owner/drainer, narrowed for this finite proof.
+              campaign.MAX_OUTPUT = OUTPUT
+              before = [native.source_identity(Path.cwd()), native.source_identity(Path('coaptic'))]
+              if (any(item['status'] for item in before) or before[1]['revision'] != CORE
+                      or before[0]['revision'] != os.environ['GITHUB_SHA']):
+                  raise ValueError('native proof source identity refused')
+              STATE.update(sources=before, platform=platform.platform(), python=sys.version,
+                           output_per_stream_bytes=OUTPUT, upload_limit_bytes=LIMIT,
+                           build_lane_limit_bytes=4 * 1024**3,
+                           cleanup_limit='existing portable owner: eight process members; no escaped-process census')
+              cases = [('coaptic-mio', 'small-device', 32), ('coaptic-mio', 'service-fixed', 16384)]
+              if sys.platform == 'linux':
+                  cases.insert(1, ('coaptic-mio-level', 'small-device', 32))
+              STATE['cells'] = [dict(kind=kind, profile=profile, bytes=size, security=security,
+                                     operations=2, warmup=1, status='NOT RUN')
+                                for kind, profile, size in cases for security in ('unprotected', 'oscore')]
+              save('state.json', STATE)
+
+              def run(name, command, timeout=900, health=None):
+                  guard(2 * OUTPUT + META)
+                  STATE['checks'][name] = dict(command=command, status='RUNNING')
+                  save('state.json', STATE)
+                  owned = campaign.CapturedProcess(command)
+                  try:
+                      deadline = time.monotonic() + timeout
+                      while owned.process.poll() is None:
+                          guard()
+                          if owned.overflow.is_set() or (health is not None and not health()):
+                              raise ValueError('native proof output/server health refused')
+                          if time.monotonic() >= deadline:
+                              raise TimeoutError('native proof command deadline')
+                          time.sleep(.1)
+                  finally:
+                      try:
+                          owned.close()
+                      finally:
+                          (ROOT / (name + '.stdout.log')).write_bytes(owned.output)
+                          (ROOT / (name + '.stderr.log')).write_bytes(owned.errors)
+                  if owned.overflow.is_set() or owned.process.returncode:
+                      raise ValueError('native proof command failed: ' + name)
+                  STATE['checks'][name]['status'] = 'PASS'
+                  save('state.json', STATE)
+                  return bytes(owned.output)
+
+              rustc = run('rustc', ['rustc', '-Vv']).decode()
+              cargo = run('cargo-version', ['cargo', '-Vv']).decode()
+              host = 'x86_64-unknown-linux-gnu' if sys.platform == 'linux' else 'x86_64-pc-windows-msvc'
+              if (not rustc.startswith('rustc 1.99.0 ') or not cargo.startswith('cargo 1.99.0 ')
+                      or ('host: ' + host) not in rustc):
+                  raise ValueError('native proof compiler identity refused')
+              STATE.update(rustc=rustc, cargo=cargo)
+              run('python-tests', [sys.executable, '-B', '-m', 'unittest', 'discover',
+                                   '-s', 'tools/benchmark', '-p', 'test_linux_cpu.py'], 180)
+              run('native-diagnostic-tests', [sys.executable, '-B', '-m', 'unittest', 'discover',
+                                               '-s', 'tools/benchmark', '-p', 'test_native_diagnostic.py'], 180)
+              run('syscall-tests', [sys.executable, '-B', '-m', 'unittest', 'discover',
+                                    '-s', 'tools/benchmark', '-p', 'test_syscall_probe.py'], 180)
+              run('rustfmt', ['cargo', 'fmt', '--manifest-path', 'tools/benchmark/native/Cargo.toml',
+                              '-p', 'bench-rust-server', '--', '--check'])
+              common = ['--manifest-path', 'tools/benchmark/native/Cargo.toml',
+                        '--release', '--locked', '-p', 'bench-rust-server']
+              bins = ['--bin', 'bench-rust-server', '--bin', 'bench-native-client']
+              try:
+                  with native_lock(Path('coaptic')) as selected:
+                      save('native-lock-input.json', selected)
+                      run('native-tests', ['cargo', 'test', *common, *bins, '--', '--test-threads=1'])
+                      run('native-clippy', ['cargo', 'clippy', *common, '--all-targets', '--', '-D', 'warnings'])
+                      run('native-build', ['cargo', 'build', *common, *bins])
+              finally:
+                  restored = [native.source_identity(Path.cwd()), native.source_identity(Path('coaptic'))]
+                  STATE['source_restored'] = restored == before
+                  save('state.json', STATE)
+                  if restored != before:
+                      raise ValueError('native proof source/lock restoration failed')
+              suffix = '.exe' if sys.platform == 'win32' else ''
+              server, client = (LANE / 'release' / (name + suffix)
+                                for name in ('bench-rust-server', 'bench-native-client'))
+              STATE['binaries'] = {}
+              for binary in (server, client):
+                  if binary.is_symlink() or not 0 < binary.stat().st_size <= 128 * 1024**2:
+                      raise ValueError('native binary type/size refused')
+                  STATE['binaries'][binary.name] = dict(bytes=binary.stat().st_size,
+                                                       sha256=native.digest(binary))
+              save('state.json', STATE)  # Both actual binary/input identities precede ALL cells.
+              for index, cell in enumerate(STATE['cells']):
+                  guard(3 * OUTPUT + META)
+                  name = 'cell-' + str(index)
+                  cell['status'] = 'RUNNING'
+                  save('state.json', STATE)
+                  with tempfile.TemporaryDirectory(dir=os.environ['RUNNER_TEMP']) as temporary:
+                      keys = Path(temporary) / 'credentials'
+                      keys.write_bytes(os.urandom(24))
+                      with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as reserve:
+                          reserve.bind(('127.0.0.1', 0))
+                          port = reserve.getsockname()[1]
+                      rx = 1152 if cell['profile'] == 'small-device' else 1472
+                      command = [str(server), cell['kind'], '127.0.0.1', str(port), str(cell['bytes']), str(rx)]
+                      if cell['security'] == 'oscore':
+                          command.append(str(keys))
+                      command += ['--resource-profile', cell['profile']]
+                      owned = campaign.CapturedProcess(command)
+                      try:
+                          deadline = time.monotonic() + 5
+                          while True:
+                              if owned.process.poll() is not None or owned.overflow.is_set():
+                                  raise ValueError('native fixture failed during startup')
+                              with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+                                  try:
+                                      probe.bind(('127.0.0.1', port))
+                                  except OSError:
+                                      break
+                              if time.monotonic() >= deadline:
+                                  raise TimeoutError('native fixture bind deadline')
+                              time.sleep(.01)
+                          command = [str(client), str(port), str(cell['bytes']), '2', '1', '3000',
+                                     'sleep1', cell['security']]
+                          if cell['security'] == 'oscore':
+                              command.append(str(keys))
+                          command += ['--concurrency', '1', '--message-type', 'con']
+                          raw = run(name, command, 30, lambda: owned.process.poll() is None
+                                    and not owned.overflow.is_set())
+                          report = json.loads(raw)
+                          save(name + '.json', report)
+                          native.validate_report(report, cell['bytes'], 2, 'sleep1', cell['security'])
+                          if report['warmup'] != 1:
+                              raise ValueError('native proof warmup mismatch')
+                      finally:
+                          try:
+                              owned.close()
+                          finally:
+                              (ROOT / (name + '.server.log')).write_bytes(owned.output)
+                              (ROOT / (name + '.server.stderr.log')).write_bytes(owned.errors)
+                      cell['server_resources'] = native.server_resources(
+                          ROOT / (name + '.server.log'), cell['kind'], deadline=time.monotonic() + 1,
+                          server=owned.process, resource_profile=cell['profile'], size=cell['bytes'],
+                          security=cell['security'], rx_bytes=rx)
+                      cell.update(status='PASS', primary_acceptance=False)
+                      save('state.json', STATE)
+              for binary in (server, client):
+                  if native.digest(binary) != STATE['binaries'][binary.name]['sha256']:
+                      raise ValueError('native binary changed during functional cells')
+              if [native.source_identity(Path.cwd()), native.source_identity(Path('coaptic'))] != before:
+                  raise ValueError('native proof final source changed')
+              STATE['passed'] = True
+          except BaseException as error:
+              for item in [*STATE['checks'].values(), *STATE['cells']]:
+                  if item['status'] == 'RUNNING':
+                      item['status'] = 'FAIL'
+              STATE['error'] = dict(type=type(error).__name__, reason=str(error)[:2048],
+                                    traceback=traceback.format_exc()[:16384])
+              raise
+          finally:
+              save('state.json', STATE)
+              guard()
+          PY
       - name: Sequential source-matched builds, clean windows, then profiling
+        if: ${{ !inputs.native_validation_only }}
         run: |
           options=()
           if [[ "$LONG_WINDOW" == true ]]; then options+=(--long-window); fi
@@ -216,14 +457,20 @@ jobs:
       - name: Verify whole upload including setup logs and copied binaries
         id: upload-bounds
         if: always()
+        shell: bash
+        env:
+          VALIDATOR_PYTHON: ${{ inputs.native_validation_only && 'python' || 'python3' }}
         run: |
-          PYTHONPATH=tools/benchmark python3 -B - <<'PY'
+          PYTHONPATH=tools/benchmark "$VALIDATOR_PYTHON" -B - <<'PY'
           import os
           from pathlib import Path
           from linux_cpu import check_upload, upload_bytes, SETUP_LOG_BUDGET
           root = Path(os.environ['RUNNER_TEMP'])
           logs, evidence = root / 'cpu-setup-logs', root / 'cpu-evidence'
-          if evidence.exists():
+          if os.environ['NATIVE_VALIDATION_ONLY'] == 'true':
+              if evidence.exists() and upload_bytes(evidence) > 8 * 1024**2:
+                  raise ValueError('native-only proof upload exceeds 8 MiB')
+          elif evidence.exists():
               check_upload(evidence, logs if logs.exists() else None)
           elif logs.exists() and upload_bytes(logs) > SETUP_LOG_BUDGET:
               raise ValueError('setup logs exceed combined upload allowance')
@@ -231,7 +478,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always() && steps.upload-bounds.outcome == 'success'
         with:
-          name: linux-cpu-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ inputs.native_validation_only && format('native-proof-{0}', inputs.native_validation_os) || 'linux-cpu' }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/cpu-evidence
             ${{ runner.temp }}/cpu-setup-logs
