@@ -1152,3 +1152,67 @@ Linux execution and independent receipt review remain pending until a separately
 authorized run completes. Issue #187, both 50% targets, remaining representative
 probes and whole-memory acceptance stay open; this workflow adds no CPU or
 statistical wall-time claim.
+
+### Opt-in complete Service core wall probe (#190)
+
+The existing socket-free executable also accepts explicit C1 Service modes:
+
+```sh
+bench-core 16 unprotected --service-fixed 16384
+bench-core 16 oscore --service-allocated 16384
+```
+
+Only payloads 64, 1024 and 16384 are supported. Both storage choices preserve
+Service's 32 routes/one GET, four Calls/eight deferred rows, one association/four
+bindings, RX/TX 32 by 1472, dedup 64/Observe 32, and RX/TX four bodies of 16384.
+The separate allocated full-response client has one route/no handler, four Calls,
+zero deferred rows, one association/four bindings, RX/TX four by 1472, dedup
+eight/Observe four, one 16384 RX body and one 1024 TX body. Startup pools are reused
+without growth. One client Call owns each complete operation; no C4 claim follows.
+
+For 16KiB the initial CON requests 1024-byte Block2 fragments. Two real Apps
+exchange through two counted single-packet ports, each with nested 1472-byte input
+and output buffers. No extra bridge buffer or queue is added. Every wire response's
+ACK/MID/Token is checked against its request. Client App authenticates OSCORE and
+assembles the complete varied body; terminal collection verifies code, format,
+single ETag, peer, first-fragment MID/Token and all bytes. Completed Block2 metadata
+retains the first fragment header (possibly NUM0/M=1); it is not compared to the
+last continuation MID or rejected merely for containing Block2.
+
+Each reported `server_poll_wall_sum_ns` is the sum of **every server App::poll wall
+interval** for one fully verified operation; `server_poll_counts` records clock
+multiplicity. Server receive/send fixture copies, maintenance, dispatch, body
+snapshot and crypto stay inside those intervals. Bridge copies and client request
+preparation, polls, protection, authentication, assembly and verification are
+outside. Optimizer barriers retain observable inputs, App results and full bodies.
+The 4096 clock calibrations remain separate and are never subtracted.
+
+Absolute three-second deadlines cover initial send through verification, with at
+most 32 rounds. Each port permits at most 30000 accepted sends: the combined
+60000 bound includes 128 warmups, continuations, retransmissions and controls.
+Admission requires `(operations+128)*ceil(payload/1024)<=30000`: measured ceilings
+are 1747 for 16KiB and 29872 for 64/1024; runtime refusal can occur sooner. Missing
+packets, unexpected extra work, occupied ports or failed verification stop the run.
+Old modes retain their existing limits, layouts and output contracts.
+
+The new JSON names actual inline Apps (including security, scratch and transports),
+requested allocated pools, nested pool payloads, all four nested packet buffers,
+and separate static 16384-byte representation, reusable verification buffer,
+timing/poll-count/calibration payload capacities, vector headers and pending metadata.
+Fixed server pools request zero heap. Nested owners must not be added twice.
+Allocator overhead, initialization temporaries, generated peak stack and runtime
+remain unknown; these are not Mio sizes or a whole-memory ceiling. Fixed Service
+construction uses a separate safe entry point, without boxing or another thread;
+stack fit must be validated for each executable's recorded process stack budget.
+
+Build the same source against immutable b8/d23 using source-specific locks and the
+pinned Rust release configuration. Freeze both actual executable/input identities
+before eight finite 16KiB cells (two cores, both securities, both storage choices).
+Sixteen measured plus 128 warmups per cell means 1152 verified operations and
+32768 separate calibrations. Preserve failures and restore the canonical lock and
+junction. Windows functionality is not Linux qualification. Existing Small32
+workflow source pins and legacy helper plans remain unchanged; any future Service
+Linux integration requires a separate reviewed change. This wall supporting
+evidence cannot rescue failed socket guards, establish CPU/transport shares or
+either 50% target. #190 Linux proof and whole-memory acceptance remain open;
+delivered #187 is not reopened.
