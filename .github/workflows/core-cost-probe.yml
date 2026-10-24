@@ -10,6 +10,7 @@ on:
         options:
           - original
           - server-app-batch-cpu
+          - small-device-proof
 
 permissions:
   contents: read
@@ -33,23 +34,29 @@ jobs:
           persist-credentials: false
           repository: jeffglousher/coaptic
           # b9b83 is PLAN-only over 1629; Rust is source-equivalent.
-          ref: ${{ inputs.mode == 'server-app-batch-cpu' && 'b9b83d8663cbdcb7a80bf143670a05019f25cf25' || 'ff08926422d570602069d2231a555559d1154f3f' }}
+          ref: ${{ inputs.mode == 'small-device-proof' && 'b8f44fa16b3e16f4c9c6cc5f1205d2aee9cb0b57' || inputs.mode == 'server-app-batch-cpu' && 'b9b83d8663cbdcb7a80bf143670a05019f25cf25' || 'ff08926422d570602069d2231a555559d1154f3f' }}
           path: coaptic
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
         with:
           toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
       - name: Isolated stdlib tests with bounded retained log
+        env:
+          PROBE_MODE: ${{ inputs.mode }}
         run: |
           mkdir "$RUNNER_TEMP/core-cost-probe-evidence"
           PYTHONPATH=tools/benchmark python3 -B - <<'PY'
           import os, sys
           from pathlib import Path
           from linux_cpu import run_logged
+          modules = ['test_core_cost_probe']
+          if os.environ['PROBE_MODE'] == 'small-device-proof':
+              modules.append('test_native_lock')
           with (Path(os.environ['RUNNER_TEMP']) / 'core-cost-probe-evidence/tests.log').open('xb') as log:
-              run_logged([sys.executable, '-B', '-m', 'unittest', 'test_core_cost_probe'], log,
+              run_logged([sys.executable, '-B', '-m', 'unittest', *modules], log,
                          timeout=90, limit=64 * 1024)
           PY
       - name: One build and fixed serial diagnostic phases
+        if: inputs.mode != 'small-device-proof'
         # No apt/pip install, policy change, cache install, UDP or device action.
         env:
           DIAGNOSIS_MODE: ${{ inputs.mode }}
@@ -59,6 +66,407 @@ jobs:
           else
             python3 -B tools/benchmark/core_cost_probe.py
           fi
+      - name: Fixed SmallDevice Linux functional proof
+        if: inputs.mode == 'small-device-proof'
+        run: |
+          PYTHONPATH=tools/benchmark python3 -B - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import shutil
+          import stat
+          import subprocess
+          import sys
+          import tomllib
+
+          from core_cost_probe import build, directory_bytes, inventory, save_new
+          from linux_cpu import (FLAGS, SUITE, bounded_bytes, bounded_read, command, digest,
+                                 identity, matching_lock_inputs, run_logged, run_owned)
+          from native_lock import native_lock
+
+          MIB, META = 1024 * 1024, 64 * 1024
+          PAIR = (("original", "b8f44fa16b3e16f4c9c6cc5f1205d2aee9cb0b57"),
+                  ("accepted", "d23f93c0699b75ec17e692999d62ff89bb71463d"))
+          PROBE = "tools/benchmark/native/servers/src/bin/bench-core.rs"
+          PROBE_BLOB = "2f3f2845f47cd854a68ba74a7c7e83fce99a77cb"
+          PROBE_SHA = "737bc14600d458788df27d1d9c76f19d2406b62284112490659e536050fa0f8a"
+          ROOT = Path(os.environ["RUNNER_TEMP"]) / "core-cost-probe-evidence/proof"
+          LANE = Path(os.environ["RUNNER_TEMP"]) / "cpu-build-lane"
+          CORE = SUITE / "coaptic"
+          NATIVE = SUITE / "tools/benchmark/native"
+          SHARED = (PROBE, ".github/workflows/core-cost-probe.yml", "tools/benchmark/linux_cpu.md",
+                    "tools/benchmark/core_cost_probe.py", "tools/benchmark/linux_cpu.py",
+                    "tools/benchmark/native_lock.py", "tools/benchmark/native_profiles.py",
+                    "tools/benchmark/native/Cargo.toml", "tools/benchmark/native/servers/Cargo.toml",
+                    "tools/benchmark/native/Cargo.lock", "tools/benchmark/native/Cargo.syn3.lock")
+          PLAN = [{"label": label, "security": security, "small_device": small, "status": "NOT RUN"}
+                  for label, _ in PAIR for security in ("unprotected", "oscore") for small in (True, False)]
+          STATE = {"complete": False, "mode": "small-device-proof", "builds": [], "cells": PLAN,
+                   "scope": "finite socket-free wall functional proof; no CPU ratios, profiling, socket "
+                            "latency, transport share, peak stack or whole-memory acceptance",
+                   "both_50_percent_targets": "OPEN", "issue187": "OPEN pending independent Linux receipts",
+                   "owner": "root650/Coaptic", "release": "parent reviewed/settled and no consumers",
+                   "budgets": {"proof_bytes": 127 * MIB, "non_elf_bytes": 16 * MIB,
+                               "paired_elf_bytes": 111 * MIB, "final_receipt_reserve_bytes": MIB // 2,
+                               "files_less_than": 100, "outer_upload_bytes": 128 * MIB}}
+          INITIAL = None
+          INPUTS = {}
+          CANONICAL = ALTERNATE = None
+          COPIES = {}
+          PRIMARY = None
+          CREATED = False
+
+
+          def error_record(error):
+              return {"type": type(error).__name__, "reason": str(error)[:512],
+                      "notes": [str(note)[:512] for note in getattr(error, "__notes__", [])[:8]],
+                      "cleanup_unresolved": bool(getattr(error, "cleanup_unresolved", False))}
+
+
+          def proof_budget(*, additional_elf=0, reserve=MIB // 2):
+              result = inventory(ROOT)
+              elf = sum(row["bytes"] for row in result["files"] if Path(row["path"]).name == "bench-core")
+              non_elf = result["bytes_before_index"] - elf
+              # Reserve the ENTIRE non-ELF allowance before either copy and before cells.
+              if (elf + additional_elf > 111 * MIB
+                      or elf + additional_elf + 16 * MIB > 127 * MIB
+                      or non_elf + reserve > 16 * MIB
+                      or result["bytes_before_index"] + additional_elf + reserve > 127 * MIB
+                      or len(result["files"]) + (4 if reserve else 0) >= 100):
+                  raise ValueError("SmallDevice proof evidence/reserve budget exceeded")
+              return result
+
+
+          def unchanged_inputs():
+              failures = []
+              for name, expected in INPUTS.items():
+                  try:
+                      if digest(SUITE / name) != expected:
+                          raise ValueError("input changed: " + name)
+                  except Exception as error:
+                      failures.append(error)
+              for name, expected in (("Cargo.lock", CANONICAL), ("Cargo.syn3.lock", ALTERNATE)):
+                  try:
+                      if bounded_read(NATIVE / name, MIB) != expected:
+                          raise ValueError("native lock bytes changed: " + name)
+                  except Exception as error:
+                      failures.append(error)
+              try:
+                  if identity(SUITE) != INITIAL["suite"]:
+                      raise ValueError("suite identity changed")
+              except Exception as error:
+                  failures.append(error)
+              if failures:
+                  error = RuntimeError("source/lock restoration gate refused")
+                  for failure in failures:
+                      error.add_note(str(failure)[:512])
+                  raise error
+
+
+          def invoke(log, argv, timeout, env):
+              line = bounded_bytes({"command": argv, "timeout_seconds": timeout}, META)
+              if log.tell() + len(line) > META:
+                  raise ValueError("command log budget")
+              log.write(line)
+              log.flush()
+              run_logged(argv, log, timeout=timeout, limit=META, cwd=SUITE, env=env)
+
+
+          def restore_initial(env):
+              unchanged_inputs()  # Never overwrite an unexpected lock/source edit.
+              current = identity(CORE)
+              if current["status"] or current["revision"] not in {revision for _, revision in PAIR}:
+                  raise ValueError("refusing to restore unexpected/dirty core")
+              if current != INITIAL["core"]:
+                  with (ROOT / "restore.log").open("xb") as log:
+                      invoke(log, ["git", "-C", str(CORE), "checkout", "--detach",
+                                   INITIAL["core"]["revision"]], 60, env)
+              if identity(CORE) != INITIAL["core"]:
+                  raise ValueError("initial core revision/tree/status not restored")
+              unchanged_inputs()
+
+
+          def validate_wall(data, security, small):
+              expected = {"operations": 16, "warmup": 128, "security": security, "black_box": True}
+              base_keys = {*expected, "measurement", "latencies_ns", "clock_calibration_ns"}
+              for key, value in expected.items():
+                  if type(data.get(key)) is not type(value) or data[key] != value:
+                      raise ValueError("native wall field mismatch: " + key)
+              if not isinstance(data.get("measurement"), str) or len(data["measurement"]) > 1024:
+                  raise ValueError("native measurement scope missing/oversize")
+              for key, count in (("latencies_ns", 16), ("clock_calibration_ns", 4096)):
+                  values = data.get(key)
+                  if (type(values) is not list or len(values) != count
+                          or any(type(value) is not int or not 0 <= value < 2**128 for value in values)):
+                      raise ValueError("native u128 array mismatch: " + key)
+              if not small:
+                  if set(data) != base_keys:
+                      raise ValueError("Default64 seven-key schema changed")
+                  return
+              preset = {"profile": "SmallDevice", "pools": "Constrained", "storage": "fixed",
+                        "payload_bytes": 32, "concurrency": 1, "message_type": "CON", "routes": 4,
+                        "populated_routes": 1, "calls": 1, "deferred": 0, "associations": 1,
+                        "security_requests": 4, "blockwise": False, "rx_slots": 2,
+                        "rx_datagram_bytes": 1152, "tx_slots": 2, "tx_datagram_bytes": 1152,
+                        "dedup": 4, "observe": 2, "rx_body_slots": 0, "tx_body_slots": 0,
+                        "verified": 144, "calibration_samples": 4096}
+              if set(data) != base_keys | set(preset) | {"memory", "scope"}:
+                  raise ValueError("SmallDevice schema mismatch")
+              for key, value in preset.items():
+                  if type(data.get(key)) is not type(value) or data[key] != value:
+                      raise ValueError("SmallDevice preset mismatch: " + key)
+              memory = data["memory"]
+              if type(memory) is not dict:
+                  raise ValueError("SmallDevice memory ledger missing")
+              fixed = {"fixed_pool_heap_bytes": 0, "transport_input_nested_bytes": 1472,
+                       "transport_output_nested_bytes": 1472, "separate_latency_requested_bytes": 256,
+                       "separate_calibration_requested_bytes": 65536, "separate_verification_buffer_bytes": 1472,
+                       "separate_representation_static_bytes": 32}
+              sizes = {"app_including_transport_inline_bytes": (1, 512 * 1024),
+                       "transport_nested_in_app_inline_bytes": (2944, 8192),
+                       "separate_timing_vec_headers_bytes": (1, 256),
+                       "separate_optional_client_context_inline_bytes": (1, 64 * 1024)}
+              if set(memory) != set(fixed) | set(sizes) | {"remaining"}:
+                  raise ValueError("SmallDevice memory owners differ")
+              for key, value in fixed.items():
+                  if type(memory.get(key)) is not int or memory[key] != value:
+                      raise ValueError("fixed memory owner mismatch: " + key)
+              for key, (low, high) in sizes.items():
+                  if type(memory.get(key)) is not int or not low <= memory[key] <= high:
+                      raise ValueError("Linux inline owner outside bound: " + key)
+              if memory["app_including_transport_inline_bytes"] < memory["transport_nested_in_app_inline_bytes"] + 4608:
+                  raise ValueError("App does not enclose transport and fixed packet pools")
+              if (not isinstance(memory["remaining"], str) or not 1 <= len(memory["remaining"]) <= 1024
+                      or not isinstance(data["scope"], str) or not 1 <= len(data["scope"]) <= 1024):
+                  raise ValueError("memory/timing uncertainty scope missing")
+
+
+          def strict_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError("duplicate native JSON key")
+                  result[key] = value
+              return result
+
+
+          try:
+              if (sys.platform != "linux" or os.environ.get("GITHUB_ACTIONS") != "true"
+                      or os.getuid() <= 0 or os.getgid() <= 0):
+                  raise ValueError("manual non-root Linux runner required")
+              ROOT.mkdir(mode=0o700)
+              CREATED = True
+              INITIAL = {"suite": identity(SUITE), "core": identity(CORE)}
+              if (any(value["status"] for value in INITIAL.values())
+                      or INITIAL["core"]["revision"] != PAIR[0][1]):
+                  raise ValueError("clean suite/initial b8 core required")
+              CANONICAL = bounded_read(NATIVE / "Cargo.lock", MIB)
+              ALTERNATE = bounded_read(NATIVE / "Cargo.syn3.lock", MIB)
+              INPUTS = {name: digest(SUITE / name) for name in SHARED}
+              if (command(["git", "rev-parse", "HEAD:" + PROBE]) != PROBE_BLOB
+                      or INPUTS[PROBE] != PROBE_SHA):
+                  raise ValueError("PR188 immutable probe differs")
+              workspace = tomllib.loads(bounded_read(NATIVE / "Cargo.toml", META).decode())
+              package = tomllib.loads(bounded_read(NATIVE / "servers/Cargo.toml", META).decode())
+              dependency = package["dependencies"]["coaptic"]
+              if (workspace["profile"]["release"].get("lto") != "thin"
+                      or workspace["profile"]["release"].get("codegen-units") != 1
+                      or dependency.get("default-features") is not False
+                      or dependency.get("features") != ["std", "alloc", "oscore"]):
+                  raise ValueError("native profile/features differ")
+              LANE.mkdir(exist_ok=True)
+              env = dict(os.environ)
+              for key in list(env):
+                  if (key.startswith("CORE_COST_")
+                          or key.startswith("CARGO_PROFILE_RELEASE_") and key not in FLAGS
+                          or key in ("CARGO_ENCODED_RUSTFLAGS", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER")):
+                      del env[key]
+              env.update(FLAGS, CARGO_TARGET_DIR=str(LANE.resolve()))
+              versions = {tool: command([tool, "-Vv"], env=env, timeout=10) for tool in ("rustc", "cargo")}
+              for tool, value in versions.items():
+                  if (re.findall(r"^release: (.+)$", value, re.M) != ["1.99.0"]
+                          or len(re.findall(r"^commit-hash: [0-9a-f]{40}$", value, re.M)) != 1):
+                      raise ValueError("toolchain identity differs: " + tool)
+              hosts = re.findall(r"^host: ([A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)+)$", versions["rustc"], re.M)
+              if len(hosts) != 1:
+                  raise ValueError("one explicit native host target required")
+              host = hosts[0]
+              save_new(ROOT / "setup.json", {"initial": INITIAL, "inputs": INPUTS, "probe_blob": PROBE_BLOB,
+                                            "versions": versions, "flags": FLAGS, "target": host,
+                                            "plan": PLAN, "budgets": STATE["budgets"]})
+              for label, revision in PAIR:
+                  unchanged_inputs()
+                  before = identity(CORE)
+                  if before["status"] or before["revision"] not in {value for _, value in PAIR}:
+                      raise ValueError("dirty/unexpected core before selection")
+                  directory = ROOT / label
+                  directory.mkdir(mode=0o700)
+                  record = {"label": label, "revision": revision, "complete": False}
+                  STATE["builds"].append(record)
+                  with (directory / "source.log").open("xb") as log:
+                      invoke(log, ["git", "-C", str(CORE), "fetch", "--depth", "1", "origin", revision], 60, env)
+                      if identity(CORE) != before:
+                          raise ValueError("core changed during exact fetch")
+                      invoke(log, ["git", "-C", str(CORE), "checkout", "--detach", revision], 60, env)
+                  selected = identity(CORE)
+                  if selected["revision"] != revision or selected["status"]:
+                      raise ValueError("selected core source differs")
+                  record.update(core=selected, core_lock_sha256=digest(CORE / "Cargo.lock"),
+                                suite=INITIAL["suite"], shared_inputs=INPUTS, rustc=versions["rustc"],
+                                cargo=versions["cargo"], target=host, flags=FLAGS)
+                  with native_lock(CORE, NATIVE) as lock:
+                      if lock["syn_requirement"] != ("2" if label == "original" else "3"):
+                          raise ValueError("unexpected core-specific syn requirement")
+                      record.update(native_lock_input=lock, native_lock_sha256=digest(NATIVE / "Cargo.lock"))
+                      save_new(directory / "lock-installed.json", record)
+                      test = ["cargo", "test", "--release", "--locked", "--target", host,
+                              "--manifest-path", "tools/benchmark/native/Cargo.toml", "-p",
+                              "bench-rust-server", "--bin", "bench-core", "--", "--test-threads=1"]
+                      record["test_command"] = test
+                      if directory_bytes(LANE) > 4 * 1024 * MIB:
+                          raise ValueError("4 GiB lane exceeded before tests")
+                      with (directory / "tests.log").open("xb") as log:
+                          run_logged(test, log, timeout=120, limit=META, cwd=SUITE, env=env)
+                      text = bounded_read(directory / "tests.log", META).decode("utf-8")
+                      if (re.findall(r"^running ([0-9]+) tests$", text, re.M) != ["10"]
+                              or len(re.findall(r"^test result: ok\. 10 passed; 0 failed; 0 ignored; "
+                                                r"0 measured; 0 filtered out; finished in [^\r\n]+$",
+                                                text, re.M)) != 1):
+                          raise ValueError("all ten unfiltered release tests must run/pass")
+                      record["tests_passed"] = 10
+                      if directory_bytes(LANE) > 4 * 1024 * MIB:
+                          raise ValueError("4 GiB lane exceeded after tests")
+                      build(directory, LANE, env, host)  # Existing 4 GiB watchdog/900s/2MiB log/custody.
+                      record["build_command"] = ["cargo", "build", "--release", "--locked", "--target", host,
+                                                 "--manifest-path", "tools/benchmark/native/Cargo.toml",
+                                                 "-p", "bench-rust-server", "--bin", "bench-core"]
+                  # Only accept source identities AFTER selected lock restoration succeeds.
+                  unchanged_inputs()
+                  if identity(CORE) != selected:
+                      raise ValueError("core changed during test/build")
+                  origin = LANE.resolve() / host / "release/bench-core"
+                  info = origin.lstat()
+                  if (not stat.S_ISREG(info.st_mode) or not info.st_mode & 0o111
+                          or not 0 < info.st_size <= 64 * MIB):
+                      raise ValueError("built ELF size/type/mode refused")
+                  with origin.open("rb") as stream:
+                      if stream.read(4) != b"\x7fELF":
+                          raise ValueError("built executable is not ELF")
+                  proof_budget(additional_elf=info.st_size)
+                  copied = directory / "bench-core"
+                  shutil.copy2(origin, copied)
+                  if (copied.stat().st_size != info.st_size or digest(copied) != digest(origin)
+                          or stat.S_IMODE(copied.stat().st_mode) != stat.S_IMODE(info.st_mode)):
+                      raise ValueError("copied executable differs")
+                  record.update(binary={"path": str(copied), "bytes": info.st_size,
+                                        "sha256": digest(copied), "mode": stat.S_IMODE(copied.stat().st_mode)},
+                                complete=True)
+                  COPIES[label] = record["binary"]
+                  save_new(directory / "build.json", record)
+                  proof_budget()
+              matching_lock_inputs(*STATE["builds"])
+              restore_initial(env)
+              proof_budget()
+              save_new(ROOT / "freeze.json", {"builds": STATE["builds"], "initial_restored": INITIAL,
+                                              "inputs": INPUTS, "fixed_cells": PLAN})
+              for row in PLAN:
+                  proof_budget()
+                  binary = COPIES[row["label"]]
+                  if digest(binary["path"]) != binary["sha256"]:
+                      raise ValueError("copied ELF changed before cell")
+                  directory = ROOT / (row["label"] + "-" + row["security"]
+                                      + ("-small32" if row["small_device"] else "-default64"))
+                  directory.mkdir(mode=0o700)
+                  argv = ["prlimit", "--as=536870912:536870912", "--", binary["path"],
+                          "16", row["security"]] + (["--small-device"] if row["small_device"] else [])
+                  row.update(status="RUNNING", command=argv, timeout_seconds=30, file_limit_bytes=MIB // 2,
+                             owner="linux_cpu.run_owned reserved group/thread settlement")
+                  cell_error = None
+                  try:
+                      with (directory / "stdout.jsonlog").open("xb") as output, (directory / "stderr.jsonlog").open("xb") as errors:
+                          row["returncode"] = run_owned(argv, timeout=30, check=False, cwd=SUITE, env=env,
+                                                        stdin=subprocess.DEVNULL, stdout=output, stderr=errors,
+                                                        file_limit=MIB // 2)
+                      row["cleanup_settled"] = True
+                      if row["returncode"] != 0:
+                          raise ValueError("native wall process failed")
+                      data = json.loads(bounded_read(directory / "stdout.jsonlog", MIB // 2),
+                                        object_pairs_hook=strict_object,
+                                        parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+                      if type(data) is not dict:
+                          raise ValueError("native wall JSON object required")
+                      validate_wall(data, row["security"], row["small_device"])
+                      row.update(status="PASS", measured_verified=16, warmup_verified=128,
+                                 verified=144, separate_calibrations=4096, payload_bytes=32 if row["small_device"] else 64)
+                      if row["small_device"]:
+                          row["memory"] = data["memory"]  # Actual Linux sizes, no Windows layout assumption.
+                  except BaseException as error:
+                      cell_error = error
+                      row.update(status="FAILED", error=error_record(error))
+                      raise
+                  finally:
+                      try:
+                          if digest(binary["path"]) != binary["sha256"]:
+                              raise ValueError("copied ELF changed after cell")
+                          row["binary_after_sha256"] = binary["sha256"]
+                          save_new(directory / "cell.json", row)
+                      except BaseException as error:
+                          if cell_error is None:
+                              raise
+                          cell_error.add_note("independent cell retention/hash: " + str(error)[:512])
+              STATE.update(measured_verified=128, warmup_verified=1024, verified=1152,
+                           separate_calibrations=32768)
+          except BaseException as error:
+              PRIMARY = error
+          finally:
+              checks = []
+              if INITIAL is not None and INPUTS and CANONICAL is not None and ALTERNATE is not None:
+                  try:
+                      restore_initial(locals().get("env", dict(os.environ, **FLAGS)))
+                      checks.append({"source_and_lock_restoration": "PASS", "initial": INITIAL})
+                  except BaseException as error:
+                      checks.append({"restoration": error_record(error)})
+                      if PRIMARY is None:
+                          PRIMARY = error
+                      else:
+                          PRIMARY.add_note("independent restoration: " + str(error)[:512])
+                          for note in getattr(error, "__notes__", [])[:8]:
+                              PRIMARY.add_note("restoration detail: " + str(note)[:512])
+              for label, binary in COPIES.items():
+                  try:
+                      if digest(binary["path"]) != binary["sha256"]:
+                          raise ValueError("final copied ELF identity differs: " + label)
+                      checks.append({"binary": label, "sha256": binary["sha256"], "status": "PASS"})
+                  except BaseException as error:
+                      checks.append({"binary": label, "error": error_record(error)})
+                      if PRIMARY is None:
+                          PRIMARY = error
+                      else:
+                          PRIMARY.add_note("independent final ELF: " + str(error)[:512])
+              STATE["complete"] = PRIMARY is None and all(row["status"] == "PASS" for row in PLAN)
+              if PRIMARY is not None:
+                  STATE["error"] = error_record(PRIMARY)
+              if CREATED:
+                  try:
+                      proof_budget()
+                      save_new(ROOT / "final-checks.json", checks)
+                      save_new(ROOT / "summary.json", STATE)
+                      with (ROOT / "index.json").open("xb") as stream:
+                          stream.write(bounded_bytes(inventory(ROOT), 2 * META))
+                      proof_budget(reserve=0)  # Includes final summary/check/index/refusal owners.
+                  except BaseException as error:
+                      if PRIMARY is None:
+                          PRIMARY = error
+                      else:
+                          PRIMARY.add_note("independent final retention: " + str(error)[:512])
+                      try:
+                          save_new(ROOT / "refusal.json", error_record(PRIMARY))
+                      except Exception as retention:
+                          PRIMARY.add_note("refusal retention: " + str(retention)[:512])
+          if PRIMARY is not None:
+              raise PRIMARY
+          PY
       - name: Batch native custody checks
         if: inputs.mode == 'server-app-batch-cpu'
         run: |
@@ -81,8 +489,40 @@ jobs:
           if code:
               raise RuntimeError('native custody checks failed: ' + str(code))
           PY
+      - name: Bound entire SmallDevice proof upload even on failure
+        id: proof-upload
+        if: always() && inputs.mode == 'small-device-proof'
+        run: |
+          PYTHONPATH=tools/benchmark python3 -B - <<'PY'
+          import os
+          from pathlib import Path
+          from core_cost_probe import inventory
+          from linux_cpu import bounded_bytes, upload_bytes
+          mib = 1024 * 1024
+          root = Path(os.environ["RUNNER_TEMP"]) / "core-cost-probe-evidence"
+          # Reserve this receipt before writing; refuse links, overlarge files or trees.
+          size = upload_bytes(root)
+          if size + 64 * 1024 > 128 * mib:
+              raise ValueError("whole core-cost evidence exceeds 128 MiB with final receipt")
+          proof = root / "proof"
+          if proof.exists():
+              index = inventory(proof)
+              elf = sum(row["bytes"] for row in index["files"]
+                        if Path(row["path"]).name == "bench-core")
+              if (elf > 111 * mib or index["bytes_before_index"] > 127 * mib
+                      or index["bytes_before_index"] - elf > 16 * mib
+                      or len(index["files"]) >= 100):
+                  raise ValueError("SmallDevice proof final byte/file bound")
+          with (root / "upload-budget.json").open("xb") as stream:
+              stream.write(bounded_bytes({"bytes_before_receipt": size,
+                                         "whole_upload_limit_bytes": 128 * mib}, 64 * 1024))
+          if upload_bytes(root) > 128 * mib:
+              raise ValueError("whole core-cost evidence exceeds 128 MiB")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
+              stream.write("allowed=true\n")
+          PY
       - name: Retain diagnosis or explicit refusal
-        if: always()
+        if: always() && (inputs.mode != 'small-device-proof' || steps.proof-upload.outputs.allowed == 'true')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: core-cost-probe-${{ github.run_id }}-${{ github.run_attempt }}
