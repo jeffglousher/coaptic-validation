@@ -3,7 +3,9 @@
 //! Loopback only; bounded allocations happen before timing. Spin consumes CPU,
 //! while sleep1 deliberately demonstrates a caller-imposed per-poll delay.
 //! Optional absolute-deadline pacing never drops operations to catch up. The
-//! paced dispatch schedules are limited to two minutes. A conservative 60,000
+//! paced dispatch schedules default to two minutes; explicit --long-window
+//! permits at most 1500 seconds with the same complete-operation deadline.
+//! A conservative 60,000
 //! outbound-datagram budget includes warmup and measurement on this fresh socket;
 //! it avoids scheduling a campaign that reaches the core's safe Message ID
 //! lifetime refusal. This diagnostic budget is not a product capacity. Every
@@ -99,6 +101,7 @@ impl From<[Endpoint; 4]> for Peers {
 const MAX_OPERATIONS: usize = 60_000;
 const MAX_RATE: u32 = 1_000_000;
 const MAX_PACED_SECONDS: u64 = 120;
+const LONG_PACED_SECONDS: u64 = 1500;
 const MAX_OUTBOUND_DATAGRAMS: usize = 60_000;
 const MAX_CONCURRENCY: usize = 4;
 
@@ -162,6 +165,7 @@ struct RunOptions {
     message_type: MessageType,
     admission_diagnostics: bool,
     independent_endpoints: bool,
+    long_window: bool,
 }
 impl Default for RunOptions {
     fn default() -> Self {
@@ -172,6 +176,7 @@ impl Default for RunOptions {
             message_type: MessageType::Con,
             admission_diagnostics: false,
             independent_endpoints: false,
+            long_window: false,
         }
     }
 }
@@ -183,6 +188,13 @@ fn run_options(args: &mut Vec<String>) -> Result<RunOptions, &'static str> {
     let mut index = 1;
     while index < args.len() {
         match args[index].as_str() {
+            "--long-window" => {
+                if options.long_window {
+                    return Err("duplicate long window");
+                }
+                options.long_window = true;
+                args.remove(index);
+            }
             "--independent-endpoints" => {
                 if options.independent_endpoints {
                     return Err("duplicate independent endpoints");
@@ -269,7 +281,38 @@ fn run_options(args: &mut Vec<String>) -> Result<RunOptions, &'static str> {
     if options.admission_diagnostics && (options.rate.is_none() || options.concurrency != 1) {
         return Err("admission diagnostics require paced concurrency 1");
     }
+    if options.long_window
+        && (options.rate.is_none()
+            || options.concurrency != 1
+            || options.message_type != MessageType::Con
+            || options.independent_endpoints
+            || options.admission_diagnostics)
+    {
+        return Err(
+            "long window requires paced C1 CON without diagnostics or independent endpoints",
+        );
+    }
     Ok(options)
+}
+
+fn paced_span_limit(options: &RunOptions) -> u64 {
+    if options.long_window {
+        LONG_PACED_SECONDS
+    } else {
+        MAX_PACED_SECONDS
+    }
+}
+
+fn validate_schedule(options: &RunOptions, operations: usize) -> Result<(), &'static str> {
+    if !(1..=MAX_OPERATIONS).contains(&operations) {
+        return Err("diagnostic operation bounds");
+    }
+    if options.rate.is_some_and(|rate| {
+        scheduled_offset(operations - 1, rate) > Duration::from_secs(paced_span_limit(options))
+    }) {
+        return Err("paced dispatch schedule exceeds selected limit");
+    }
+    Ok(())
 }
 
 fn scheduled_offset(index: usize, rate: u32) -> Duration {
@@ -622,7 +665,7 @@ fn run_client<T: ClientIo>(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let gated = options.gate != GateMode::None;
     if !(8..=9).contains(&args.len()) {
-        return Err("usage: bench-native-client PORT BYTES OPERATIONS WARMUP TIMEOUT_MS spin|sleep1 unprotected|oscore [CREDENTIALS] [--gated|--cpu-gated] [--rate OPS_PER_SEC] [--concurrency 1..4] [--message-type con|non] [--admission-diagnostics] [--independent-endpoints]".into());
+        return Err("usage: bench-native-client PORT BYTES OPERATIONS WARMUP TIMEOUT_MS spin|sleep1 unprotected|oscore [CREDENTIALS] [--gated|--cpu-gated] [--rate OPS_PER_SEC] [--concurrency 1..4] [--message-type con|non] [--admission-diagnostics] [--independent-endpoints] [--long-window]".into());
     }
     let port: u16 = args[1].parse()?;
     let size: usize = args[2].parse()?;
@@ -640,13 +683,17 @@ fn run_client<T: ClientIo>(
     // This is the minimum request count for the fixed 1024-byte Block2 fixture.
     // Retries or smaller negotiated blocks can spend more; CountIo refuses them
     // at the same total bound instead of silently dropping a scheduled Call.
-    outbound_budget(size, operations, warmup)?;
+    let minimum_planned_datagrams = outbound_budget(size, operations, warmup)?;
+    validate_schedule(&options, operations)?;
+    if options.long_window && (timeout_ms != 3000 || args[6] != "spin") {
+        return Err(
+            "long window requires unchanged 3000ms complete-operation deadline and spin policy"
+                .into(),
+        );
+    }
     let scheduled_span = options
         .rate
         .map(|rate| scheduled_offset(operations - 1, rate));
-    if scheduled_span.is_some_and(|span| span > Duration::from_secs(MAX_PACED_SECONDS)) {
-        return Err("paced dispatch schedule exceeds two minutes".into());
-    }
     let sleep = match args[6].as_str() {
         "spin" => false,
         "sleep1" => true,
@@ -778,8 +825,10 @@ fn run_client<T: ClientIo>(
         .admission_diagnostics
         .as_ref()
         .map_or_else(String::new, AdmissionDiagnostics::json);
+    let long_window = options.long_window;
+    let paced_span_limit_seconds = paced_span_limit(&options);
     println!(
-        "{{\"schema\":\"coaptic-native-complete/1\",\"bytes\":{size},\"requested_operations\":{operations},\"attempted\":{attempted},\"completed\":{completed},\"failed\":{failed},\"unattempted\":{unattempted},\"failure\":{failure_json},\"concurrency\":{concurrency},\"message_type\":\"{message_type}\",\"peak_pending\":{peak_pending},\"cancelled_inflight\":{cancelled_inflight},\"pending_call_metadata_bytes\":{pending_call_metadata_bytes},\"rx_body_slots\":{rx_body_slots},\"total_sent_datagrams\":{total_sent_datagrams},\"warmup\":{warmup},\"elapsed_ns\":{elapsed},\"scheduled_rate_ops_per_second\":{rate_json},\"achieved_ops_per_second\":{achieved_rate},\"scheduled_dispatch_span_ns\":{span_json},\"pacing_late_operations\":{pacing_late_operations},\"pacing_missed_period_operations\":{pacing_missed_period_operations},\"pacing_total_lateness_ns\":{pacing_lateness_ns},\"pacing_max_lateness_ns\":{pacing_max_lateness_ns},\"pacing_dropped_operations\":0,\"pacing_semantics\":\"absolute operation-start deadlines; bounded outstanding Calls; late starts catch up without dropping; elapsed includes pacing; latencies exclude pacing\",\"received_datagrams\":{received},\"sent_datagrams\":{sent},\"latencies_ns\":{timings:?},\"core_heap_limit_bytes\":{heap_limit},\"app_inline_bytes\":{app_inline_bytes},\"verification_heap_bytes\":{verification_heap_bytes},\"timing_heap_bytes\":{timing_heap_bytes},\"udp_scratch_bytes\":1473,\"policy\":\"{}\",\"security\":\"{}\",\"measurement\":\"Coaptic client/server diagnostic; complete authenticated body verification; setup excluded; no durable recovery; heap request excludes allocator overhead; App inline includes UDP scratch\"{admission_json}{endpoint_json}{overlap_json}}}",
+        "{{\"long_window\":{long_window},\"paced_span_limit_seconds\":{paced_span_limit_seconds},\"operation_deadline_ms\":{timeout_ms},\"outbound_datagram_limit\":{MAX_OUTBOUND_DATAGRAMS},\"minimum_planned_datagrams\":{minimum_planned_datagrams},\"schema\":\"coaptic-native-complete/1\",\"bytes\":{size},\"requested_operations\":{operations},\"attempted\":{attempted},\"completed\":{completed},\"failed\":{failed},\"unattempted\":{unattempted},\"failure\":{failure_json},\"concurrency\":{concurrency},\"message_type\":\"{message_type}\",\"peak_pending\":{peak_pending},\"cancelled_inflight\":{cancelled_inflight},\"pending_call_metadata_bytes\":{pending_call_metadata_bytes},\"rx_body_slots\":{rx_body_slots},\"total_sent_datagrams\":{total_sent_datagrams},\"warmup\":{warmup},\"elapsed_ns\":{elapsed},\"scheduled_rate_ops_per_second\":{rate_json},\"achieved_ops_per_second\":{achieved_rate},\"scheduled_dispatch_span_ns\":{span_json},\"pacing_late_operations\":{pacing_late_operations},\"pacing_missed_period_operations\":{pacing_missed_period_operations},\"pacing_total_lateness_ns\":{pacing_lateness_ns},\"pacing_max_lateness_ns\":{pacing_max_lateness_ns},\"pacing_dropped_operations\":0,\"pacing_semantics\":\"absolute operation-start deadlines; bounded outstanding Calls; late starts catch up without dropping; elapsed includes pacing; latencies exclude pacing\",\"received_datagrams\":{received},\"sent_datagrams\":{sent},\"latencies_ns\":{timings:?},\"core_heap_limit_bytes\":{heap_limit},\"app_inline_bytes\":{app_inline_bytes},\"verification_heap_bytes\":{verification_heap_bytes},\"timing_heap_bytes\":{timing_heap_bytes},\"udp_scratch_bytes\":1473,\"policy\":\"{}\",\"security\":\"{}\",\"measurement\":\"Coaptic client/server diagnostic; complete authenticated body verification; setup excluded; no durable recovery; heap request excludes allocator overhead; App inline includes UDP scratch\"{admission_json}{endpoint_json}{overlap_json}}}",
         args[6], args[7]
     );
     std::io::stdout().flush()?;
@@ -1262,6 +1311,111 @@ mod tests {
     }
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|s| (*s).to_owned()).collect()
+    }
+    #[test]
+    fn long_window_is_explicit_bounded_and_keeps_operation_send_limits() {
+        let normal = RunOptions {
+            rate: Some(1),
+            ..RunOptions::default()
+        };
+        assert_eq!(paced_span_limit(&normal), 120);
+        assert!(validate_schedule(&normal, 121).is_ok());
+        assert!(validate_schedule(&normal, 122).is_err());
+        let long = RunOptions {
+            long_window: true,
+            ..normal
+        };
+        assert_eq!(paced_span_limit(&long), 1500);
+        assert!(validate_schedule(&long, 1501).is_ok());
+        assert!(validate_schedule(&long, 1502).is_err());
+        assert!(validate_schedule(&long, 0).is_err());
+        assert!(validate_schedule(&long, 60_001).is_err());
+        for (size, operations) in [(32, 59_980), (4096, 14_980), (16384, 3730)] {
+            assert_eq!(outbound_budget(size, operations, 20), Ok(60_000));
+            assert!(outbound_budget(size, operations + 1, 20).is_err());
+        }
+        for mut invalid in [
+            args(&["client", "--long-window"]),
+            args(&["client", "--long-window", "--rate", "10", "--long-window"]),
+            args(&[
+                "client",
+                "--long-window",
+                "--rate",
+                "10",
+                "--message-type",
+                "non",
+            ]),
+            args(&[
+                "client",
+                "--long-window",
+                "--rate",
+                "10",
+                "--concurrency",
+                "2",
+                "--independent-endpoints",
+            ]),
+            args(&[
+                "client",
+                "--long-window",
+                "--rate",
+                "10",
+                "--admission-diagnostics",
+            ]),
+        ] {
+            assert!(run_options(&mut invalid).is_err());
+        }
+        let mut input = args(&["client", "--long-window", "--rate", "10"]);
+        assert!(run_options(&mut input).unwrap().long_window);
+        assert_eq!(input, args(&["client"]));
+    }
+
+    #[test]
+    fn long_window_cannot_extend_complete_operation_deadline_or_allocate_before_refusal() {
+        for (operations, timeout, policy) in [
+            ("2", "3001", "spin"),
+            ("2", "3000", "sleep1"),
+            ("60001", "3000", "spin"),
+        ] {
+            let input = args(&[
+                "client",
+                "12345",
+                "32",
+                operations,
+                "20",
+                timeout,
+                policy,
+                "unprotected",
+            ]);
+            let options = RunOptions {
+                rate: Some(100),
+                long_window: true,
+                ..RunOptions::default()
+            };
+            assert!(
+                run_client::<CountIo>(&input, options, |_| panic!(
+                    "must refuse before socket/pools"
+                ))
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn warmup_and_control_sends_share_the_existing_counter() {
+        let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let peer = Endpoint::v4([127, 0, 0, 1], receiver.local_addr().unwrap().port());
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let mut io = CountIo {
+            io: UdpSocketIo::new(socket, [0; 1473]).unwrap(),
+            received: 0,
+            sent: MAX_OUTBOUND_DATAGRAMS as u64 - 2,
+        };
+        io.send(peer, b"warmup").unwrap();
+        // An empty CoAP ACK consumes the same counter as an operation request.
+        io.send(peer, &[0x60, 0, 0, 1]).unwrap();
+        assert_eq!(io.sent, MAX_OUTBOUND_DATAGRAMS as u64);
+        assert!(io.send(peer, b"measurement").is_err());
+        assert_eq!(io.sent, MAX_OUTBOUND_DATAGRAMS as u64);
     }
     #[test]
     fn pacing_and_gate_options_preserve_positionals_and_refuse_ambiguity() {

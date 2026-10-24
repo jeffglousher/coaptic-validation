@@ -26,9 +26,18 @@ on:
         type: string
         default: 100,1000
       seconds:
-        description: Clean window scheduled seconds (2..30)
+        description: Clean seconds (2..30 default; explicit long partition 31..1500)
         type: number
         default: 10
+      long_window:
+        description: Single-security representative Mio C1 CON partition; four pairs, perf/diagnostics off
+        type: boolean
+        default: false
+      security_mode:
+        description: Individual mode only with explicit long_window; partial matrix evidence
+        type: choice
+        default: both
+        options: [both, unprotected, oscore]
       repeats:
         description: Rotated clean pairs (2..8)
         type: number
@@ -75,7 +84,7 @@ concurrency:
 jobs:
   cpu:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: ${{ inputs.long_window && 360 || 60 }}
     env:
       RUSTUP_TOOLCHAIN: 1.99.0
       BASELINE_SHA: ${{ inputs.baseline_sha }}
@@ -84,6 +93,8 @@ jobs:
       RESOURCE_PROFILE: ${{ inputs.resource_profile }}
       OFFERED_RATES: ${{ inputs.rates }}
       WINDOW_SECONDS: ${{ inputs.seconds }}
+      LONG_WINDOW: ${{ inputs.long_window }}
+      SECURITY_MODE: ${{ inputs.security_mode }}
       REPEATS: ${{ inputs.repeats }}
       SERVER_KIND: ${{ inputs.server_kind }}
       CANDIDATE_SERVER_KIND: ${{ inputs.candidate_server_kind }}
@@ -99,7 +110,8 @@ jobs:
       - name: Validate immutable inputs and every clean/profile plan before setup
         run: |
           mkdir -p "$RUNNER_TEMP/cpu-setup-logs"
-          python3 - <<'PY' >"$RUNNER_TEMP/cpu-setup-logs/input-validation.log" 2>&1
+          ulimit -f 2048
+          python3 -B - <<'PY' >"$RUNNER_TEMP/cpu-setup-logs/input-validation.log" 2>&1
           import argparse, os, sys
           sys.path.insert(0, 'tools/benchmark')
           from linux_cpu import configuration, sha40
@@ -109,6 +121,7 @@ jobs:
               sizes=os.environ['RESPONSE_SIZES'], rates=os.environ['OFFERED_RATES'],
               resource_profile=os.environ['RESOURCE_PROFILE'],
               seconds=int(os.environ['WINDOW_SECONDS']), repeats=int(os.environ['REPEATS']),
+              long_window=os.environ['LONG_WINDOW'] == 'true', security_mode=os.environ['SECURITY_MODE'],
               server_kind=os.environ['SERVER_KIND'], perf=os.environ['PERF_ENABLED'] == 'true',
               admission_diagnostics=os.environ['ADMISSION_DIAGNOSTICS'] == 'true',
               candidate_server_kind=(None if os.environ['CANDIDATE_SERVER_KIND'] == 'same'
@@ -133,14 +146,14 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/cpu-build-lane" "$RUNNER_TEMP/cpu-setup-logs"
           python3 -m venv "$RUNNER_TEMP/cpu-venv"
-          "$RUNNER_TEMP/cpu-venv/bin/pip" install 'psutil==7.0.0' >"$RUNNER_TEMP/cpu-setup-logs/python.log" 2>&1
+          (ulimit -f 2048; "$RUNNER_TEMP/cpu-venv/bin/pip" install 'psutil==7.0.0' >"$RUNNER_TEMP/cpu-setup-logs/python.log" 2>&1)
           "$RUNNER_TEMP/cpu-venv/bin/python" -m unittest discover -s tools/benchmark -p 'test_linux*.py'
           "$RUNNER_TEMP/cpu-venv/bin/python" -m unittest discover -s tools/benchmark -p 'test_native_diagnostic.py'
           PYTHONPATH=tools/benchmark "$RUNNER_TEMP/cpu-venv/bin/python" -B -m unittest \
             test_core_cost_probe test_perf_sampling_probe test_native_lock
           # Never change perf_event_paranoid or install a kernel/profiling service.
           # Missing perf/sudo, unsupported events and permission refusal are raw artifacts.
-          { command -v perf; perf --version; command -v prlimit; uname -a; } >"$RUNNER_TEMP/cpu-setup-logs/perf-tools.log" 2>&1 || true
+          (ulimit -f 2048; { command -v perf; perf --version; command -v prlimit; uname -a; } >"$RUNNER_TEMP/cpu-setup-logs/perf-tools.log" 2>&1) || true
       - name: Native endpoint and staged driver proof before measurement
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/cpu-build-lane
@@ -154,7 +167,7 @@ jobs:
           PYTHONPATH=tools/benchmark python3 -B - <<'PY'
           import os
           from pathlib import Path
-          from linux_cpu import SUITE, identity, run_logged, save
+          from linux_cpu import SUITE, identity, run_logged, save, upload_bytes, SETUP_LOG_BUDGET, BUILD_LOG_LIMIT, SUMMARY_LIMIT
           from native_lock import native_lock
           before = identity(SUITE), identity(SUITE / 'coaptic')
           if any(source['status'] for source in before):
@@ -175,6 +188,8 @@ jobs:
                                           '--', '-D', 'warnings']))
           with native_lock(SUITE / 'coaptic') as lock_input:
               for name, command in checks:
+                  if upload_bytes(logs) + BUILD_LOG_LIMIT + SUMMARY_LIMIT > SETUP_LOG_BUDGET:
+                      raise ValueError('setup logs exceed combined budget before native preflight')
                   with (logs / (name + '.log')).open('wb') as log:
                       run_logged(command, log, cwd=SUITE, timeout=900)
           if (identity(SUITE), identity(SUITE / 'coaptic')) != before:
@@ -184,6 +199,7 @@ jobs:
       - name: Sequential source-matched builds, clean windows, then profiling
         run: |
           options=()
+          if [[ "$LONG_WINDOW" == true ]]; then options+=(--long-window); fi
           if [[ "$PERF_ENABLED" == true ]]; then options+=(--perf); fi
           if [[ "$ADMISSION_DIAGNOSTICS" == true ]]; then options+=(--admission-diagnostics); fi
           if [[ "$INDEPENDENT_ENDPOINTS" == true ]]; then options+=(--independent-endpoints); fi
@@ -193,11 +209,27 @@ jobs:
             --build-lane "$RUNNER_TEMP/cpu-build-lane" --output "$RUNNER_TEMP/cpu-evidence" \
             --sizes "$RESPONSE_SIZES" --rates "$OFFERED_RATES" \
             --resource-profile "$RESOURCE_PROFILE" \
+            --security-mode "$SECURITY_MODE" --setup-logs "$RUNNER_TEMP/cpu-setup-logs" \
             --seconds "$WINDOW_SECONDS" --repeats "$REPEATS" --server-kind "$SERVER_KIND" \
             --concurrency "$CLIENT_CONCURRENCY" --message-type "$MESSAGE_TYPE" \
             "${options[@]}"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - name: Verify whole upload including setup logs and copied binaries
+        id: upload-bounds
         if: always()
+        run: |
+          PYTHONPATH=tools/benchmark python3 -B - <<'PY'
+          import os
+          from pathlib import Path
+          from linux_cpu import check_upload, upload_bytes, SETUP_LOG_BUDGET
+          root = Path(os.environ['RUNNER_TEMP'])
+          logs, evidence = root / 'cpu-setup-logs', root / 'cpu-evidence'
+          if evidence.exists():
+              check_upload(evidence, logs if logs.exists() else None)
+          elif logs.exists() and upload_bytes(logs) > SETUP_LOG_BUDGET:
+              raise ValueError('setup logs exceed combined upload allowance')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always() && steps.upload-bounds.outcome == 'success'
         with:
           name: linux-cpu-${{ github.run_id }}-${{ github.run_attempt }}
           path: |

@@ -1459,12 +1459,16 @@ class CampaignTests(unittest.TestCase):
             real_window = cpu.window
 
             def build(args, label, revision, out, *, expected=None):
+                binary_dir = out / "binaries" / label
+                binary_dir.mkdir(parents=True)
+                for name in ("bench-rust-server", "bench-native-client"):
+                    (binary_dir / name).write_bytes(b"binary fixture")
                 return dict(core=dict(revision=revision), native_lock_sha256="lock", flags=cpu.FLAGS,
                             native_lock_input=dict(syn_requirement="2", selected_sha256="lock",
                                                    canonical_base_sha256="lock", syn3_sha256="syn3"),
                             native_manifest_sha256="manifest", rustc="rustc", cargo="cargo",
                             target=label if target_mismatch else "x86_64-unknown-linux-gnu",
-                            binaries={name: dict(path=str(out / label / name))
+                            binaries={name: dict(path=str(binary_dir / name))
                                       for name in ("bench-rust-server", "bench-native-client")})
 
             def window(server, client, cell, operations, directory, mode, quota, **kwargs):
@@ -2451,8 +2455,11 @@ class SchedulerAccountingTests(unittest.TestCase):
 class RetentionTests(unittest.TestCase):
     def exercise(self, report, *, invalid=True, cleanup_errors=None, tail_error=None, mode="clean", timeline=None,
                  scheduler_snapshots=None, clock_output=None, gate_error=None, server_exited=False,
-                 admission_diagnostics=False):
+                 admission_diagnostics=False, long_window=False):
         report = dict(report, warmup=cpu.WARMUP)
+        if long_window:
+            report = dict(report, long_window=True, paced_span_limit_seconds=1500, operation_deadline_ms=3000,
+                          outbound_datagram_limit=60_000, minimum_planned_datagrams=59_920)
         timeline = [] if timeline is None else timeline
         native = Mock()
         native.server_resources.return_value = None
@@ -2502,10 +2509,14 @@ class RetentionTests(unittest.TestCase):
                     patch.object(cpu, "scheduler_snapshot", side_effect=scheduler), \
                     patch.object(cpu.os, "getloadavg", return_value=(0, 0, 0), create=True):
                 result = cpu.window(Path("server"), Path("client"),
-                                    ("oscore", 64, 100, "coaptic-reusable"), 10, out, mode=mode,
-                                    admission_diagnostics=admission_diagnostics)
+                                    ("oscore", 64, 100, "coaptic-mio" if long_window else "coaptic-reusable"),
+                                    59_900 if long_window else 10, out, mode=mode,
+                                    admission_diagnostics=admission_diagnostics, long_window=long_window,
+                                    resource_profile="small-blockwise" if long_window else "host-control")
             self.assertEqual(spawn.call_args_list[1].args[0].count("--admission-diagnostics"),
                              int(admission_diagnostics))
+            self.assertEqual(spawn.call_args_list[1].args[0].count("--long-window"), int(long_window))
+            self.assertIn("3000", spawn.call_args_list[1].args[0])
             if gate_error is None:
                 self.assertEqual(native.validate_report.call_args.args[-1], admission_diagnostics)
             if gate_error is None:
@@ -2535,8 +2546,23 @@ class RetentionTests(unittest.TestCase):
                              ["run\n", "report\n"] + ([] if invalid or server_exited else ["exit\n"]))
             self.assertLessEqual((out / "result.json").stat().st_size, cpu.WINDOW_LIMIT)
             timeout = native.control_line.call_args_list[1].args[1]
-            self.assertTrue(0 < timeout < 15 if mode == "record" else timeout == 60)
+            self.assertTrue(0 < timeout < 15 if mode == "record" else
+                            120 < timeout <= cpu.measurement_timeout(599, True) if long_window else timeout == 60)
+            self.assertEqual(native.control_line.call_args_list[0].args[1], 60)
+            if gate_error is None:
+                self.assertEqual(native.control_line.call_args_list[2].args[1], 15)
         return result
+
+    def test_long_measurement_deadline_and_timeout_keep_cleanup_ownership(self):
+        result = self.exercise(dict(completed=59_900, latencies_ns=[1] * 59_900),
+                               invalid=False, long_window=True)
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["measurement_timeout_seconds"], 644)
+        result = self.exercise({}, long_window=True, gate_error=TimeoutError("partial measured line deadline"),
+                               cleanup_errors=[RuntimeError("client still live"), None])
+        self.assertFalse(result["passed"])
+        self.assertTrue(cpu.unresolved_cleanup(result))
+        self.assertEqual(result["reason"], "partial measured line deadline")
 
     def test_invalid_native_report_keeps_raw_bytes_and_stops_both_children(self):
         result = self.exercise(dict(completed=9, requested_operations=10, failure="body mismatch",
@@ -3016,6 +3042,219 @@ class IndependentEndpointsTests(unittest.TestCase):
         bad=deepcopy(report);bad["overlapping_completions"]=[0]*4;bad["peak_pending"]=1
         validate_endpoint_report(bad,4,True)
         with self.assertRaises(ValueError): validate_endpoint_report(bad,4,True,require_overlap=True)
+
+
+class LongWindowTests(unittest.TestCase):
+    @staticmethod
+    def selected(**changes):
+        return options(resource_profile="small-device", sizes="32", rates="100", seconds=599,
+                       repeats=4, server_kind="coaptic-mio", perf=False, long_window=True,
+                       security_mode="oscore", **changes)
+
+    def test_defaults_and_short_bounds_remain_both_modes(self):
+        parsed = cpu.argument_parser().parse_args(["--baseline-sha", "a"*40, "--candidate-sha", "b"*40,
+                                                 "--build-lane", "unused", "--output", "unused"])
+        self.assertFalse(parsed.long_window)
+        self.assertEqual(parsed.security_mode, "both")
+        self.assertEqual((parsed.seconds, parsed.repeats), (10, 4))
+        cells = cpu.configuration(parsed)
+        self.assertEqual(len(cells), 8)
+        self.assertEqual(len(cpu.rotation(parsed, cells)), 64)
+        for seconds in (1, 31, 1500):
+            with self.assertRaises(ValueError): cpu.configuration(options(seconds=seconds))
+        for mode in ("oscore", "unprotected"):
+            with self.assertRaisesRegex(ValueError, "requires --long-window"):
+                cpu.configuration(options(security_mode=mode))
+
+    def test_exact_partition_rotation_and_bounds(self):
+        for security in ("oscore", "unprotected"):
+            args = self.selected()
+            args.security_mode = security
+            cells = cpu.configuration(args)
+            self.assertEqual(cells, [(security, 32, 100, "coaptic-mio")])
+            plan = cpu.rotation(args, cells)
+            self.assertEqual(len(plan), 8)
+            self.assertEqual([p[3] for p in plan], ["baseline", "candidate", "candidate", "baseline"]*2)
+            self.assertEqual([p[1] for p in plan], [0, 0, 1, 1, 2, 2, 3, 3])
+            self.assertTrue(all(p[0] == "clean" for p in plan))
+            self.assertEqual(8*args.seconds, 4792)
+            self.assertLessEqual(cpu.metadata_allowance(plan, args.seconds), cpu.METADATA_BUDGET)
+        args = self.selected()
+        for seconds, rate in ((31, 100), (1500, 1)):
+            args.seconds, args.rates = seconds, str(rate)
+            self.assertEqual(len(cpu.configuration(args)), 1)
+        for seconds in (30, 1501):
+            args.seconds = seconds
+            with self.assertRaises(ValueError): cpu.configuration(args)
+
+    def test_all_incompatibilities_refuse_before_build_and_native_start(self):
+        invalid = [dict(resource_profile="host-control", sizes="64"), dict(sizes="64,1024", resource_profile="small-blockwise"),
+                   dict(rates="10,50"), dict(security_mode="both"), dict(server_kind="coaptic-mio-direct"),
+                   dict(candidate_server_kind="coaptic-ready", candidate_sha="a"*40), dict(concurrency=2, message_type="non"),
+                   dict(message_type="non"), dict(independent_endpoints=True), dict(repeats=3), dict(repeats=5),
+                   dict(perf=True), dict(admission_diagnostics=True), dict(long_window="true"), dict(security_mode="dtls")]
+        for change in invalid:
+            args = self.selected()
+            vars(args).update(change)
+            with self.subTest(change=change), patch.object(cpu, "identity") as identity, \
+                    patch.object(cpu, "build") as build, patch.object(cpu, "spawn") as spawn, \
+                    self.assertRaises((ValueError, argparse.ArgumentTypeError)):
+                cpu.run(args)
+            identity.assert_not_called(); build.assert_not_called(); spawn.assert_not_called()
+
+    def test_minimum_warmup_send_limits_for_every_block_count(self):
+        for profile, size, rate, good, bad in (("small-device", 32, 100, 599, 600),
+                ("small-device", 32, 1000, 59, 60), ("small-blockwise", 4096, 10, 1498, 1499),
+                ("small-blockwise", 4096, 50, 299, 300), ("service-fixed", 16384, 10, 373, 374),
+                ("service-allocated", 16384, 50, 74, 75)):
+            args = self.selected()
+            vars(args).update(resource_profile=profile, sizes=str(size), rates=str(rate), seconds=good)
+            self.assertEqual(len(cpu.configuration(args)), 1)
+            self.assertLessEqual((rate*good+cpu.WARMUP)*((size+1023)//1024), 60000)
+            args.seconds=bad
+            with self.assertRaisesRegex(ValueError, "datagrams"):
+                cpu.configuration(args)
+        args = self.selected()
+        args.seconds, args.rates = 1500, "100"
+        with self.assertRaisesRegex(ValueError, "operation count"): cpu.configuration(args)
+
+    def test_one_absolute_monotonic_wait_cannot_reset_on_partial_line(self):
+        import native_diagnostic as native
+        # One queue wait owns the entire bounded readline, including partial bytes.
+        queue = Mock()
+        queue.get.return_value = "meas"
+        with patch.object(native.queue, "Queue", return_value=queue), patch.object(native.threading, "Thread") as thread:
+            with self.assertRaisesRegex(RuntimeError, "incompletely"):
+                native.control_line(Mock(), cpu.measurement_timeout(1500, True))
+            queue.get.assert_called_once_with(timeout=1592)
+            thread.assert_called_once()
+        self.assertEqual(cpu.measurement_timeout(31, True), 46)
+        self.assertEqual(cpu.measurement_timeout(30), 60)
+
+    def test_whole_upload_counts_binaries_setup_and_metadata_once_and_refuses_before_measurement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            out, logs = root/'out', root/'setup'
+            (out/'binaries'/'baseline').mkdir(parents=True); logs.mkdir()
+            binary = out/'binaries'/'baseline'/'client'
+            binary.write_bytes(b'x'*40)
+            (out/'build.log').write_bytes(b'x'*10)
+            (logs/'setup.log').write_bytes(b'x'*20)
+            with patch.object(cpu, 'WHOLE_UPLOAD_BUDGET', 200), patch.object(cpu, 'SETUP_LOG_BUDGET', 50):
+                plan=cpu.upload_plan(out, logs, 100, 0)
+                self.assertEqual(plan['copied_binary_bytes'], 40)
+                self.assertEqual(plan['planned_whole_upload_bytes'], 190)
+                self.assertEqual(cpu.check_upload(out, logs), 70)
+                self.assertEqual(cpu.upload_plan(out, logs, 100, 2)['perf_file_quota_bytes'], 1)
+                binary.write_bytes(b'x'*51)
+                with self.assertRaisesRegex(ValueError, 'before measurement'): cpu.upload_plan(out, logs, 100, 0)
+                (logs/'setup.log').write_bytes(b'x'*51)
+                with self.assertRaisesRegex(ValueError, 'setup logs'): cpu.upload_plan(out, logs, 100, 0)
+                (logs/'setup.log').write_bytes(b'x'*20)
+                binary.write_bytes(b'x'*171)
+                with self.assertRaisesRegex(ValueError, 'whole upload'): cpu.check_upload(out, logs)
+            with self.assertRaisesRegex(ValueError, 'disjoint'): cpu.upload_bytes(out, out/'binaries')
+
+    def test_long_four_pairs_never_pool_subfloor_or_missing_windows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            values = [observation(Path(directory), label, repeat) for repeat in range(4)
+                      for label in ('baseline', 'candidate')]
+            for item in values:
+                item.update(long_window=True, resource_profile='small-blockwise', server_kind='coaptic-mio')
+            expected = cpu.aggregate(values, 4, .01)[0]
+            self.assertTrue(expected['comparable'])
+            self.assertFalse(cpu.aggregate(values[:-1], 4, .01)[0]['comparable'])
+            for item in values:
+                item['cpu_cost']['server']['total_seconds'] = .19
+            self.assertFalse(cpu.aggregate(values, 4, .01)[0]['comparable'])
+
+    def test_long_latency_requires_every_pair_and_pooled_guard(self):
+        with tempfile.TemporaryDirectory() as directory:
+            values = [observation(Path(directory), label, repeat) for repeat in range(4)
+                      for label in ('baseline', 'candidate')]
+            for item in values:
+                item.update(long_window=True, resource_profile='small-blockwise', server_kind='coaptic-mio')
+            def latency(item):
+                if item['revision_label'] == 'baseline': return [100_000] * 1000
+                # One failed median pair can coexist with a passing pooled median.
+                return [103_000 if item['repeat'] == 0 else 90_000] * 1000
+            with patch.object(cpu, 'report_latencies', side_effect=latency):
+                row = cpu.aggregate(values, 4, .01)[0]
+            self.assertTrue(row['latency_pooled_guard']['passed'])
+            self.assertFalse(row['latency_pair_guards'][0]['passed'])
+            self.assertFalse(row['comparable'])
+            self.assertIsNone(row['server_cpu_ratio'])
+            def tail(item):
+                return [100_000] * 980 + [111_000 if item['revision_label'] == 'candidate' else 100_000] * 20
+            with patch.object(cpu, 'report_latencies', side_effect=tail):
+                row = cpu.aggregate(values, 4, .01)[0]
+            self.assertFalse(row['latency_pooled_guard']['passed'])
+            self.assertEqual(row['latency_pooled_guard']['p99_latency_ns'], 11_000)
+            self.assertFalse(row['comparable'])
+            for item in values:
+                item['cpu_cost']['server']['total_seconds'] = 1
+            values[0]['cleanup_unresolved'] = True
+            self.assertFalse(cpu.aggregate(values, 4, .01)[0]['comparable'])
+
+    def test_long_run_freezes_identity_and_whole_upload_refuses_before_first_window(self):
+        for refusal in (False, True):
+            with self.subTest(refusal=refusal), tempfile.TemporaryDirectory() as directory:
+                root=Path(directory); suite=root/'suite'; lane=root/'lane'; logs=root/'logs'
+                for path in (suite, lane, logs): path.mkdir()
+                (logs/'setup.log').write_bytes(b'setup')
+                args=self.selected(); args.build_lane=lane; args.output=root/'evidence'; args.setup_logs=logs
+                cells=cpu.configuration(args)
+                metadata=cpu.metadata_allowance(cpu.rotation(args,cells),args.seconds)
+                def build(args,label,revision,out,**kwargs):
+                    binary_dir=out/'binaries'/label; binary_dir.mkdir(parents=True)
+                    for name in ('bench-rust-server','bench-native-client'): (binary_dir/name).write_bytes(b'binary')
+                    return dict(core=dict(revision=revision),native_lock_sha256='lock',flags=cpu.FLAGS,
+                                native_lock_input=dict(syn_requirement='2',selected_sha256='lock',canonical_base_sha256='lock',syn3_sha256='syn3'),
+                                native_manifest_sha256='manifest',rustc='rustc',cargo='cargo',target=HOST,
+                                binaries={name:dict(path=str(binary_dir/name)) for name in ('bench-rust-server','bench-native-client')})
+                calls=[]
+                def window(server,client,cell,operations,directory,*args,**kwargs):
+                    self.assertTrue(kwargs['long_window'])
+                    self.assertEqual(operations,59_900)
+                    self.assertEqual(client.parent.name,'baseline')
+                    directory.mkdir()
+                    item=observation(directory,server.parent.name,len(calls)//2,security=cell[0],size=cell[1])
+                    item.update(long_window=True,resource_profile='small-device',server_kind='coaptic-mio')
+                    calls.append(item)
+                    return item
+                with patch.object(cpu,'SUITE',suite), patch.object(cpu.sys,'platform','linux'), \
+                        patch.object(cpu.os,'sysconf',return_value=100,create=True), patch.object(cpu,'hardware',return_value={}), \
+                        patch.object(cpu,'identity',return_value=dict(status='')), patch.object(cpu,'digest',return_value='hash'), \
+                        patch.object(cpu.importlib.metadata,'version',return_value='7.0.0'), patch.object(cpu,'build',side_effect=build), \
+                        patch.object(cpu,'window',side_effect=window), patch('builtins.print'), \
+                        patch.object(cpu,'WHOLE_UPLOAD_BUDGET',metadata-1 if refusal else 256*cpu.MIB):
+                    if refusal:
+                        with self.assertRaisesRegex(ValueError,'before measurement'): cpu.run(args)
+                        self.assertEqual(calls,[])
+                    else:
+                        self.assertTrue(cpu.run(args))
+                request=json.loads((args.output/'request.json').read_text())
+                summary=json.loads((args.output/'summary.json').read_text())
+                self.assertTrue(request['partial_matrix']); self.assertTrue(summary['partial_matrix'])
+                self.assertEqual(request['security_mode'],'oscore')
+                self.assertEqual(request['measurement_timeout_seconds'],644)
+                if not refusal:
+                    manifest=json.loads((args.output/'manifest.json').read_text())
+                    self.assertEqual(manifest['copied_binary_bytes'],24)
+                    self.assertEqual(manifest['setup_log_budget_bytes'],cpu.SETUP_LOG_BUDGET)
+                    self.assertEqual(manifest['planned_whole_upload_bytes'],metadata+24+cpu.SETUP_LOG_BUDGET)
+                    self.assertEqual(summary['windows_recorded'],8)
+                    self.assertTrue(summary['comparisons'][0]['latency_guards_passed'])
+                    self.assertLessEqual(cpu.check_upload(args.output,logs),manifest['planned_whole_upload_bytes'])
+
+    def test_workflow_plumbs_only_explicit_long_partition_and_bounds_upload(self):
+        workflow = (cpu.SUITE/'.github/workflows/performance-cpu.yml').read_text()
+        for expected in ('inputs.long_window && 360 || 60', 'default: both', 'default: false',
+                         'options+=(--long-window)', '--security-mode "$SECURITY_MODE"', '--setup-logs',
+                         "long_window=os.environ['LONG_WINDOW'] == 'true'", "security_mode=os.environ['SECURITY_MODE']",
+                         'ulimit -f 2048', 'check_upload(evidence, logs', "steps.upload-bounds.outcome == 'success'"):
+            self.assertIn(expected, workflow)
+        self.assertLess(workflow.index('configuration(argparse.Namespace('), workflow.index('repository: jeffglousher/coaptic'))
 
 if __name__ == "__main__":
     unittest.main()
