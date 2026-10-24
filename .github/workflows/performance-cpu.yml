@@ -230,7 +230,7 @@ jobs:
           RUSTC: rustc
         run: |
           python -B - <<'PY'
-          import importlib, json, os, platform, socket, subprocess, sys, tempfile, time, traceback
+          import importlib, json, os, platform, socket, subprocess, sys, tempfile, threading, time, traceback
           from pathlib import Path
 
           CORE = 'd23f93c0699b75ec17e692999d62ff89bb71463d'
@@ -263,18 +263,63 @@ jobs:
                   raise ValueError('native proof whole-upload bound exceeded')
               path.write_bytes(raw)
 
+          def bootstrap(command, timeout=120):
+              # psutil is not installed yet. This wheel-only pip invocation has
+              # no build/compiler child; retain bounded combined output from its
+              # owned direct child, including nonzero exits and timeouts.
+              guard(OUTPUT + META)
+              output, errors = bytearray(), []
+              overflow = threading.Event()
+              child = subprocess.Popen(command, stdin=subprocess.DEVNULL,
+                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0)
+
+              def drain():
+                  try:
+                      while chunk := child.stdout.read(8192):
+                          remaining = OUTPUT - len(output)
+                          output.extend(chunk[:remaining])
+                          if len(chunk) > remaining:
+                              overflow.set()
+                              break
+                  except BaseException as error:
+                      errors.append(str(error)[:1024])
+
+              reader = threading.Thread(target=drain, daemon=True)
+              try:
+                  reader.start()
+                  deadline = time.monotonic() + timeout
+                  while child.poll() is None:
+                      guard()
+                      if overflow.is_set() or errors:
+                          raise ValueError('native proof setup output refused')
+                      if time.monotonic() >= deadline:
+                          raise TimeoutError('native proof setup deadline')
+                      time.sleep(.01)
+              finally:
+                  try:
+                      if child.poll() is None:
+                          child.kill()
+                      child.wait(timeout=3)
+                      if reader.ident is not None:
+                          reader.join(timeout=1)
+                      if reader.is_alive():
+                          raise ValueError('native proof setup pipe cleanup unresolved')
+                      child.stdout.close()
+                  finally:
+                      (ROOT / 'pip.log').write_bytes(output)
+              if overflow.is_set() or errors or child.returncode:
+                  raise ValueError('native proof setup failed or exceeded output bound')
+
           save('state.json', STATE)
           try:
               if os.environ['BASELINE_SHA'] != CORE or os.environ['CANDIDATE_SHA'] != CORE:
                   raise ValueError('native-only proof requires exact accepted d23 on both labels')
               STATE['checks']['setup']['status'] = 'RUNNING'
               save('state.json', STATE)
-              with (ROOT / 'pip.log').open('wb') as log:
-                  subprocess.run([sys.executable, '-m', 'pip', 'install', '--disable-pip-version-check',
-                                  '--no-input', '--no-deps', '--only-binary=:all:', '--no-compile',
-                                  'psutil==7.0.0'], stdout=log, stderr=log, timeout=120, check=True)
-              if (ROOT / 'pip.log').stat().st_size > OUTPUT:
-                  raise ValueError('native proof setup log bound exceeded')
+              bootstrap([sys.executable, '-m', 'pip', '--isolated', 'install',
+                         '--disable-pip-version-check', '--keyring-provider', 'disabled',
+                         '--no-input', '--no-deps', '--only-binary=:all:', '--no-compile',
+                         'psutil==7.0.0'])
               STATE['checks']['setup']['status'] = 'PASS'
               importlib.invalidate_caches()
               sys.path.insert(0, 'tools/benchmark')

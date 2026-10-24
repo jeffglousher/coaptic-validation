@@ -75,8 +75,10 @@ The existing manual job serialization remains in force. Logs are bounded to
 256 KiB per captured stream, metadata to 256 KiB per record and the complete
 text upload to 8 MiB; binaries, credentials and build outputs are excluded.
 The job samples a 4 GiB build-lane ceiling; this is not a peak-memory bound.
-Cleanup reuses the portable eight-member owner and fails on unresolved members
-or retained pipes; it does not prove containment of escaped descendants.
+The wheel-only, no-build bootstrap caps combined pip output while it is produced
+and settles its direct child on failure. Subsequent command cleanup reuses the
+portable eight-member owner and fails on unresolved members or retained pipes;
+neither establishes containment of escaped descendants.
 Actual execution of this mode is still pending.
 
 ## Bounded syscall diagnostic
