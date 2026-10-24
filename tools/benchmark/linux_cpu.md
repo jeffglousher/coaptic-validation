@@ -39,13 +39,17 @@ this control, so `n>=3` can lose. Counts, whole-memory acceptance and both 50%
 CPU targets remain separate claims. Issue 195's failed overhead guards and
 older failed runs remain retained; no replacement cohort is implied.
 
-This is a source-only draft awaiting independent review and actual Windows/Linux
-functional validation. The first local preparation stopped on its evidence
+This draft awaits actual Windows/Linux native functional validation. Linux run
+40125433101 passed 207 Python checks and formatting, then stopped during native
+test compilation: three direct-receive test callers still named the former burst
+helper. No native tests or functional cells ran. Those callers now use the shared
+`read_burst` and their existing `received` flag; compilation remains pending.
+The first local preparation stopped on its evidence
 budget; a later attempt stopped below the disk floor before any native build.
 The retained intermediate Python run completed 204 tests with 195 passes, one
 exception-expectation error and eight skips. That expectation and the native
-profile/planner bypasses are repaired in source; no new validation result is
-claimed for these bytes. Draft tests cover production App turns as well as
+profile/planner bypasses are repaired and the affected Python checks pass in the
+retained Linux run. Native test source covers production App turns as well as
 adapter credits, queued traffic, oversize recovery, due maintenance, native
 error priority, complete OSCORE responses and replay refusal. Interrupted and
 spurious wait outcomes are injected at the production wait boundary; a real

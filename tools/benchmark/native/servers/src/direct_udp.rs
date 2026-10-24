@@ -71,7 +71,7 @@ mod tests {
             let epoch = Instant::now();
             let until = epoch + Duration::from_secs(1);
             let (app, _) = verify_four(app, local.into(), epoch, until, protected, |app| {
-                crate::mio_burst(app, epoch).unwrap();
+                crate::read_burst(app, epoch, |io| io.received).unwrap();
             });
             assert_eq!(app.metrics().rx_accepted, 4);
         }
@@ -90,12 +90,12 @@ mod tests {
         let mut app = crate::bind_fixture(io, 64, 1472, None).unwrap();
         sender.send_to(&[0x40; 1473], local).unwrap();
         sender.send_to(&[0x60, 0, 0, 7], local).unwrap();
-        assert!(crate::mio_burst(&mut app, Instant::now()).unwrap());
+        assert!(crate::read_burst(&mut app, Instant::now(), |io| io.received).unwrap());
         assert_eq!(app.metrics().rx_error, 1);
         assert_eq!(app.metrics().rx_accepted, 1);
         assert_eq!(app.engine_mut().rx_occupied(), 0);
         sender.send_to(&[0x60, 0, 0, 8], local).unwrap();
-        assert!(crate::mio_burst(&mut app, Instant::now()).unwrap());
+        assert!(crate::read_burst(&mut app, Instant::now(), |io| io.received).unwrap());
         assert_eq!(app.metrics().rx_accepted, 2);
     }
 
