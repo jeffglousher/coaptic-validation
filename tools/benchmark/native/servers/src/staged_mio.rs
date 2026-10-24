@@ -30,6 +30,10 @@ use std::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Stage {
     Empty,
+    Oversized,
+    // Scoped to one driver poll; a failed progress send invalidates its marker.
+    RejectOversized,
+    RejectedOversized,
     Packet {
         len: u16,
         peer: Endpoint,
@@ -76,10 +80,7 @@ impl StagedMio {
                 len: u16::try_from(len).expect("bounded scratch"),
                 peer: Endpoint::from(peer).physical(),
             },
-            Ok(_) => Stage::Error {
-                raw: None,
-                kind: io::ErrorKind::InvalidData,
-            },
+            Ok(_) => Stage::Oversized,
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => Stage::Empty,
             Err(error) => Stage::Error {
                 raw: error.raw_os_error(),
@@ -93,15 +94,12 @@ impl StagedMio {
             return Ok(());
         }
         let scratch = super::guarded_scratch(capacity, &mut self.scratch)?;
-        let result = self.socket.recv_from(scratch).and_then(|packet| {
-            if packet.0 > capacity {
-                Err(io::ErrorKind::InvalidData.into())
-            } else {
-                Ok(packet)
-            }
-        });
+        let result = self.socket.recv_from(scratch);
         // No suspension between consuming the socket and owning its result.
         self.stage_result(result);
+        if matches!(self.stage, Stage::Packet { len, .. } if usize::from(len) > capacity) {
+            self.stage = Stage::Oversized;
+        }
         Ok(())
     }
 
@@ -113,7 +111,40 @@ impl StagedMio {
     ) -> io::Result<usize> {
         #[cfg(test)]
         TransportCounts::inc(&mut self.counts.socket_send_calls);
-        send(&self.socket, bytes, peer.into())
+        let result = send(&self.socket, bytes, peer.into());
+        if result.is_err() && self.stage == Stage::RejectedOversized {
+            self.stage = Stage::Empty;
+        }
+        result
+    }
+
+    fn begin_poll(&mut self) -> Stage {
+        let previous = self.stage;
+        if previous == Stage::Oversized {
+            self.stage = Stage::RejectOversized;
+        }
+        previous
+    }
+
+    fn finish_poll(
+        &mut self,
+        previous: Stage,
+        result: Result<(), AppError>,
+    ) -> Result<(), AppError> {
+        let rejected = self.stage == Stage::RejectedOversized;
+        if self.stage == Stage::RejectOversized {
+            self.stage = previous;
+        } else if rejected {
+            self.stage = Stage::Empty;
+        }
+        match result {
+            Err(AppError::Io(DatagramIoError::Io(error)))
+                if rejected && error.kind() == io::ErrorKind::InvalidData =>
+            {
+                Ok(())
+            }
+            result => result,
+        }
     }
 }
 
@@ -132,6 +163,11 @@ impl DatagramIo for StagedMio {
         // Invalid destinations retain legitimate packets. Oversize probe errors
         // are consumed normally even if the destination later has more room.
         match mem::replace(&mut self.stage, Stage::Empty) {
+            Stage::Oversized | Stage::RejectedOversized => Err(io::ErrorKind::InvalidData.into()),
+            Stage::RejectOversized => {
+                self.stage = Stage::RejectedOversized;
+                Err(io::ErrorKind::InvalidData.into())
+            }
             Stage::Empty => {
                 #[cfg(test)]
                 TransportCounts::inc(&mut self.counts.recv_empty);
@@ -235,7 +271,9 @@ impl Driver {
         };
         #[cfg(test)]
         TransportCounts::inc(&mut app.transport_mut().counts.app_polls);
-        match app.poll(now) {
+        let previous = app.transport_mut().begin_poll();
+        let result = app.poll(now);
+        match app.transport_mut().finish_poll(previous, result) {
             Ok(()) | Err(AppError::Oscore(_)) => Ok(Turn::Polled(now)),
             Err(error) => Err(error),
         }
@@ -375,7 +413,7 @@ pub(super) fn serve(
 
 #[cfg(test)]
 mod tests {
-    use super::super::staged_udp::tests::{context, verify_four};
+    use super::super::staged_udp::tests::{context, oversized_packet, verify_four};
     use super::*;
 
     fn fixture() -> StagedApp {
@@ -384,6 +422,153 @@ mod tests {
 
     fn finite(epoch: Instant) -> Instant {
         epoch.checked_add(Duration::from_secs(1)).unwrap()
+    }
+
+    #[test]
+    fn oversized_driver_turn_recovers_complete_operations() {
+        for protected in [false, true] {
+            let epoch = Instant::now();
+            let until = finite(epoch);
+            let io = StagedMio::bind("127.0.0.1:0").unwrap();
+            let local = io.socket.local_addr().unwrap();
+            let mut app = bind_fixture(io, 64, 1472, protected.then(|| context(true))).unwrap();
+            let mut driver = Driver::new(&mut app, epoch, Some(until)).unwrap();
+            let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+            sender.send_to(&oversized_packet(), local).unwrap();
+            assert!(matches!(driver.turn(&mut app).unwrap(), Turn::Polled(_)));
+            assert_eq!(app.transport().stage, Stage::Empty);
+            assert_eq!(app.engine_mut().rx_occupied(), 0);
+            assert_eq!(
+                (
+                    app.metrics().rx_accepted,
+                    app.metrics().tx_ok,
+                    app.metrics().rx_error
+                ),
+                (0, 0, 1)
+            );
+            let (app, _) = verify_four(app, local.into(), epoch, until, protected, |app| {
+                assert_ne!(driver.turn(app).unwrap(), Turn::Stop);
+            });
+            assert_eq!(app.transport().stage, Stage::Empty);
+            assert_eq!(app.metrics().rx_error, 1);
+        }
+    }
+
+    #[test]
+    fn driver_turn_preserves_native_receive_errors() {
+        for kind in [io::ErrorKind::InvalidData, io::ErrorKind::ConnectionReset] {
+            let mut app = fixture();
+            app.transport_mut().stage_result(Err(kind.into()));
+            let epoch = Instant::now();
+            let mut driver = Driver::new(&mut app, epoch, Some(finite(epoch))).unwrap();
+            assert!(
+                matches!(driver.turn(&mut app), Err(AppError::Io(DatagramIoError::Io(error))) if error.kind() == kind)
+            );
+            assert_eq!(app.transport().stage, Stage::Empty);
+            assert_eq!(app.engine_mut().rx_occupied(), 0);
+            assert_eq!(app.metrics().rx_error, 1);
+        }
+    }
+
+    #[test]
+    fn driver_turn_progress_send_failure_preserves_ingress_provenance() {
+        let bad_peer: Endpoint = "[::1]:9".parse::<SocketAddr>().unwrap().into();
+        for saturated in [false, true] {
+            let mut app = fixture();
+            let expected = app
+                .transport()
+                .socket
+                .send_to(b"no", SocketAddr::from(bad_peer))
+                .unwrap_err();
+            let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+            sender
+                .send_to(
+                    &oversized_packet(),
+                    app.transport().socket.local_addr().unwrap(),
+                )
+                .unwrap();
+            let due = pending(&mut app, bad_peer);
+            let epoch = Instant::now() - Duration::from_millis(due);
+            let mut driver = Driver::new(&mut app, epoch, Some(finite(Instant::now()))).unwrap();
+            stage(app.transport_mut(), &mut driver, 1472);
+            assert_eq!(app.transport().stage, Stage::Oversized);
+            let held: Option<[_; 4]> = saturated.then(|| {
+                std::array::from_fn(|_| {
+                    let slot = app.engine_mut().acquire_rx().unwrap();
+                    app.engine_mut()
+                        .write_rx(slot, &[0x40, 0, 0, 9], bad_peer)
+                        .unwrap();
+                    slot
+                })
+            });
+            let Err(AppError::Io(DatagramIoError::Io(error))) = driver.turn(&mut app) else {
+                panic!("due progress send failure must propagate");
+            };
+            assert_eq!(error.kind(), expected.kind());
+            assert_eq!(error.raw_os_error(), expected.raw_os_error());
+            assert_eq!(
+                app.transport().stage,
+                if saturated {
+                    Stage::Oversized
+                } else {
+                    Stage::Empty
+                }
+            );
+            assert_eq!(app.metrics().rx_error, u32::from(!saturated));
+            assert_eq!(app.metrics().tx_fail, 1);
+            if let Some(held) = held {
+                for slot in held {
+                    app.engine_mut().release_rx(slot).unwrap();
+                }
+            }
+            assert_eq!(app.engine_mut().rx_occupied(), 0);
+        }
+    }
+
+    #[test]
+    fn oversize_marker_preserves_saturation_and_send_errors() {
+        let mut app = fixture();
+        let epoch = Instant::now();
+        let mut driver = Driver::new(&mut app, epoch, Some(finite(epoch))).unwrap();
+        app.transport_mut().stage = Stage::Oversized;
+        let peer = Endpoint::v4([127, 0, 0, 1], 9);
+        let held: [_; 4] = std::array::from_fn(|_| {
+            let slot = app.engine_mut().acquire_rx().unwrap();
+            app.engine_mut()
+                .write_rx(slot, &[0x40, 0, 0, 9], peer)
+                .unwrap();
+            slot
+        });
+        assert!(matches!(driver.turn(&mut app), Err(AppError::Saturated)));
+        assert_eq!(app.transport().stage, Stage::Oversized);
+        for slot in held {
+            if app.engine_mut().access_rx(slot).is_ok() {
+                app.engine_mut().release_rx(slot).unwrap();
+            }
+        }
+        driver.turn(&mut app).unwrap();
+        assert_eq!(app.transport().stage, Stage::Empty);
+        for consumed in [false, true] {
+            for kind in [io::ErrorKind::InvalidData, io::ErrorKind::ConnectionReset] {
+                let io = app.transport_mut();
+                io.stage = Stage::Oversized;
+                let previous = io.begin_poll();
+                if consumed {
+                    assert_eq!(
+                        io.recv(&mut [0; 1472]).unwrap_err().kind(),
+                        io::ErrorKind::InvalidData
+                    );
+                }
+                let error = io
+                    .send_with(peer, b"retained", |_, _, _| Err(kind.into()))
+                    .unwrap_err();
+                assert!(
+                    matches!(io.finish_poll(previous, Err(app_io(error))), Err(AppError::Io(DatagramIoError::Io(error))) if error.kind() == kind)
+                );
+                assert_eq!(io.stage, if consumed { Stage::Empty } else { previous });
+                io.stage = Stage::Empty;
+            }
+        }
     }
 
     fn stage(io: &mut StagedMio, driver: &mut Driver, capacity: usize) {
@@ -941,6 +1126,9 @@ mod tests {
 
     #[test]
     fn startup_ledger_is_single_bounded_flushed_line_without_future_or_timeout() {
+        if cfg!(all(target_os = "windows", target_pointer_width = "64")) {
+            assert_eq!(mem::size_of::<Stage>(), 32);
+        }
         #[derive(Default)]
         struct Output {
             bytes: Vec<u8>,
