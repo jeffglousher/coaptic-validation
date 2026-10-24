@@ -71,7 +71,9 @@ jobs:
                   c.run_logged(argv,stream,cwd=c.SUITE,timeout=120,limit=128*1024)
           PY
           mkdir "$RUNNER_TEMP/syscall-linker"
-          (ulimit -f 16384; curl --fail --location --retry 2 https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-x86_64-unknown-linux-musl.tar.zst -o "$RUNNER_TEMP/syscall-linker/archive.tar.zst")
+          # Bash file-size units are KiB: the pinned archive is 27,995,844 bytes.
+          # Keep the larger download ceiling local to curl, not compiler outputs.
+          (ulimit -f 32768; curl --fail --location --retry 2 --max-time 120 --max-filesize 33554432 https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-x86_64-unknown-linux-musl.tar.zst -o "$RUNNER_TEMP/syscall-linker/archive.tar.zst")
           echo "6789717c8cb6a2a5d920f3b6bfac2bd7efc00f6228ecd149108a99699a75c679  $RUNNER_TEMP/syscall-linker/archive.tar.zst" | sha256sum --check
           test "$(tar --zstd -tf "$RUNNER_TEMP/syscall-linker/archive.tar.zst")" = bpf-linker
           [[ "$(tar --zstd -tvf "$RUNNER_TEMP/syscall-linker/archive.tar.zst")" == -* ]]

@@ -2,6 +2,13 @@
 
 ## Bounded syscall diagnostic
 
+The first Linux proof, `40107158379`, stopped before builds: the pinned
+27,995,844-byte linker archive exceeded the 16 MiB download file limit. Its
+199 Python tests passed, but all sixteen benchmark windows were NOT RUN; no
+syscall counts or overhead results exist. The download-only ceiling is now
+32 MiB, with a 120-second transfer timeout and the same pinned checksum.
+The failed run is retained; Linux attachment and OFF/ON proof remain pending.
+
 Issue 195 adds an opt-in `syscall_probe.py` path over the existing ordinary Mio
 server, native client and complete response verification. The default benchmark
 and core remain unchanged. The manual `ebpf-syscalls.yml` workflow builds one
