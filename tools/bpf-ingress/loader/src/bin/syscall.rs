@@ -14,7 +14,7 @@ mod linux {
         error::Error,
         fs::File,
         io::{Read, Write},
-        os::fd::{AsRawFd, FromRawFd, OwnedFd},
+        os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
         time::{Duration, Instant},
     };
     type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -133,13 +133,18 @@ mod linux {
         Ok(())
     }
     fn command(deadline: Instant) -> Result<String> {
+        command_fd(libc::STDIN_FILENO, deadline)
+    }
+    // Borrow the descriptor; never close it or mix poll with a buffered reader.
+    // Stdin can prefetch the rest of a line while the polled pipe becomes empty.
+    fn command_fd(fd: RawFd, deadline: Instant) -> Result<String> {
         let mut bytes = Vec::with_capacity(8);
         while bytes.len() < 9 {
             let remaining = deadline
                 .checked_duration_since(Instant::now())
                 .ok_or("helper deadline")?;
             let mut poll = libc::pollfd {
-                fd: 0,
+                fd,
                 events: libc::POLLIN,
                 revents: 0,
             };
@@ -152,7 +157,11 @@ mod linux {
                 continue;
             }
             let mut byte = [0];
-            if std::io::stdin().read(&mut byte)? != 1 {
+            let n = unsafe { libc::read(fd, byte.as_mut_ptr().cast(), byte.len()) };
+            if n < 0 {
+                return Err(std::io::Error::last_os_error().into());
+            }
+            if n != 1 {
                 return Err("controller EOF".into());
             }
             bytes.push(byte[0]);
@@ -346,6 +355,105 @@ mod linux {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        fn pipe() -> (OwnedFd, OwnedFd) {
+            let mut fds = [-1; 2];
+            assert_eq!(unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) }, 0);
+            unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) }
+        }
+        fn write_once(fd: &OwnedFd, bytes: &[u8]) {
+            assert_eq!(
+                unsafe { libc::write(fd.as_raw_fd(), bytes.as_ptr().cast(), bytes.len()) },
+                bytes.len() as isize
+            );
+        }
+        fn read_command(fd: &OwnedFd) -> Result<String> {
+            command_fd(fd.as_raw_fd(), Instant::now() + Duration::from_secs(1))
+        }
+        #[test]
+        fn whole_enable_then_disable_with_writer_open() {
+            let (reader, writer) = pipe();
+            write_once(&writer, b"enable\n");
+            assert_eq!(read_command(&reader).unwrap(), "enable\n");
+            write_once(&writer, b"disable\n");
+            assert_eq!(read_command(&reader).unwrap(), "disable\n");
+        }
+        #[test]
+        fn queued_commands_are_not_overread() {
+            let (reader, writer) = pipe();
+            write_once(&writer, b"enable\ndisable\n");
+            assert_eq!(read_command(&reader).unwrap(), "enable\n");
+            assert_eq!(read_command(&reader).unwrap(), "disable\n");
+        }
+        #[test]
+        fn eof_and_partial_eof_refuse() {
+            for bytes in [b"".as_slice(), b"enable"] {
+                let (reader, writer) = pipe();
+                write_once(&writer, bytes);
+                drop(writer);
+                assert_eq!(
+                    read_command(&reader).unwrap_err().to_string(),
+                    "controller EOF"
+                );
+            }
+        }
+        #[test]
+        fn partial_line_with_open_writer_keeps_absolute_deadline() {
+            let (reader, writer) = pipe();
+            write_once(&writer, b"enable");
+            let deadline = Instant::now() + Duration::from_millis(20);
+            assert_eq!(
+                command_fd(reader.as_raw_fd(), deadline)
+                    .unwrap_err()
+                    .to_string(),
+                "helper deadline"
+            );
+            assert!(Instant::now() >= deadline);
+        }
+        #[test]
+        fn expired_deadline_does_not_consume_queued_command() {
+            let (reader, writer) = pipe();
+            write_once(&writer, b"enable\n");
+            assert_eq!(
+                command_fd(reader.as_raw_fd(), Instant::now())
+                    .unwrap_err()
+                    .to_string(),
+                "helper deadline"
+            );
+            assert_eq!(read_command(&reader).unwrap(), "enable\n");
+        }
+        #[test]
+        fn nine_byte_bound_and_invalid_text_refuse() {
+            let (reader, writer) = pipe();
+            write_once(&writer, b"12345678\n");
+            assert_eq!(read_command(&reader).unwrap(), "12345678\n");
+            let (reader, writer) = pipe();
+            write_once(&writer, b"123456789\n");
+            assert_eq!(
+                read_command(&reader).unwrap_err().to_string(),
+                "helper command byte bound"
+            );
+            let (reader, writer) = pipe();
+            write_once(&writer, b"\xff\n");
+            assert!(read_command(&reader).is_err());
+        }
+        #[test]
+        fn buffered_read_can_hide_bytes_from_poll() {
+            // Reproduce the old mechanism on an owned pipe, not global stdin.
+            let (reader, writer) = pipe();
+            write_once(&writer, b"enable\n");
+            let mut buffered = std::io::BufReader::with_capacity(32, File::from(reader));
+            let mut first = [0];
+            buffered.read_exact(&mut first).unwrap();
+            assert_eq!(first, [b'e']);
+            assert_eq!(buffered.buffer(), b"nable\n");
+            let mut poll = libc::pollfd {
+                fd: buffered.get_ref().as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            assert_eq!(unsafe { libc::poll(&mut poll, 1, 10) }, 0);
+        }
         #[test]
         fn rejects_absent_or_changed_layout() {
             assert!(format("", false).is_err());

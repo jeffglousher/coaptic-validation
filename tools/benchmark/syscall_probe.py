@@ -92,8 +92,12 @@ class Capture(dict):
 
     def reply(self, event):
         self.check()
-        value = json.loads(native.control_line(self.helper.stdout,
-                          min(5, self.deadline - time.monotonic()), META - 1))
+        try:
+            line = native.control_line(self.helper.stdout,
+                                       min(5, self.deadline - time.monotonic()), META - 1)
+        except TimeoutError as error:
+            raise TimeoutError(f"syscall helper {event} ACK deadline") from error
+        value = json.loads(line)
         if value.get("event") != event:
             raise ValueError("syscall helper protocol order")
         self.check()
@@ -321,7 +325,7 @@ def run(args):
         raise ValueError("native/BPF build source identity differs from current checkout")
     # Trace ELF has no reachable Coaptic code; its path dependency can be built
     # against the explicitly recorded current syn3 core, while the SAME native
-    # SUT/client use accepted d23 and native_lock's unchanged syn2 input.
+    # SUT/client use accepted d23 and native_lock's unchanged core-selected input.
     cpu.sha40(bpf_build["core"]["revision"])
     if bpf_build["core"]["status"]:
         raise ValueError("dirty BPF build core")

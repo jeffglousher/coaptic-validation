@@ -7,7 +7,29 @@ The first Linux proof, `40107158379`, stopped before builds: the pinned
 199 Python tests passed, but all sixteen benchmark windows were NOT RUN; no
 syscall counts or overhead results exist. The download-only ceiling is now
 32 MiB, with a 120-second transfer timeout and the same pinned checksum.
-The failed run is retained; Linux attachment and OFF/ON proof remain pending.
+The failed run is retained.
+
+The corrected Linux proof, `40109321826` at suite `5615ba9737e895c128b681bb7c52d118b65c8b75`,
+built the BPF object, helper and native binaries and passed 199 Python tests,
+three classifier tests, two loader tests and strict loader Clippy. Its first
+unprotected OFF window verified 30,000 measured complete operations plus 20
+warmups with no helper attached. The next ON window loaded/attached programs
+94/95 on a four-possible-CPU host (2,632 map-value bytes), but timed out waiting
+for the enable ACK. No ON measured report, syscall counts or overhead pair
+exists; the fourteen later windows, including every OSCORE window, were NOT RUN.
+Normal disable/detach ACK was not completed. This partial failure is retained.
+
+Source inspection identified a control-reader bug: polling the OS descriptor
+then reading through Rust's buffered `Stdin` can prefetch the rest of a command,
+leaving later polls waiting on an empty pipe. The repair reads one byte directly
+from the same borrowed descriptor it polls, retaining the nine-byte bound and
+absolute 55-second helper deadline. Focused Linux pipe tests cover whole-line
+writes with the writer open, queued commands, EOF, partial lines and deadlines;
+they also reproduce the mixed-buffer mechanism on an owned pipe. This explains
+a concrete source defect, not a dynamically traced first byte in the failed run.
+Controller reply timeouts now name the expected helper ACK and retain the cause
+and fatal cleanup path. Actual Linux execution of the repair and authenticated
+OFF/ON proof remain pending; no CPU gain or whole-memory claim follows.
 
 Issue 195 adds an opt-in `syscall_probe.py` path over the existing ordinary Mio
 server, native client and complete response verification. The default benchmark
