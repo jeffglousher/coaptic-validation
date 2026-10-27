@@ -154,6 +154,151 @@ class ProcessMemoryTests(unittest.TestCase):
 
 
 class ReportTests(unittest.TestCase):
+    def run_profile_fixture(self, profile, size, *, security="unprotected", cpu_gated=False,
+                            concurrency=1, independent_endpoints=False, ledger_changes=None):
+        """Exercise the real command/startup/gate/cleanup path with no native processes."""
+        expected = dimensions(profile, size)
+        record = self.mio_record() | expected | dict(
+            security=security, app_requested_heap_bytes=0 if expected["storage"] == "fixed" else 1_000_000,
+            allocator_overhead_bytes=None, initialization_stack_bytes=None, events_heap_bytes=None)
+        record.update(ledger_changes or {})
+        clock, commands = [0], []
+        sut, child = Mock(pid=123), Mock(pid=124)
+        for process in (sut, child):
+            process.poll.return_value = None
+            def terminate(p=process):
+                clock[0] += 19
+                p.poll.return_value = 0
+            def wait(timeout, p=process):
+                clock[0] += 23 if p is sut else 17
+                p.poll.return_value = 0
+                return 0
+            process.terminate.side_effect, process.wait.side_effect = terminate, wait
+        child.stdin, child.stderr = io.StringIO(), io.StringIO()
+        reserve, probe = MagicMock(), MagicMock()
+        reserve.__enter__.return_value, probe.__enter__.return_value = reserve, probe
+        reserve.getsockname.return_value = ("127.0.0.1", 5683)
+        def bound(_):
+            clock[0] += 3
+            raise OSError("bound")
+        probe.bind.side_effect = bound
+        def launch(command, **kwargs):
+            commands.append(command)
+            clock[0] += 2 if len(commands) == 1 else 5
+            if len(commands) == 1:
+                kwargs["stdout"].write(json.dumps(record).encode() + b"\n")
+                kwargs["stdout"].flush()
+                return sut
+            return child
+        lines = iter((["ready", "measured"] if cpu_gated else ["ready"]) +
+                     [json.dumps(dict(completed=2, warmup=3))])
+        def control(*args):
+            line = next(lines)
+            clock[0] += 7 if line == "ready" else 11 if line == "measured" else 13
+            return line
+        def sample(_):
+            clock[0] += 1
+            return {}
+        class TimedDirectory(tempfile.TemporaryDirectory):
+            def __exit__(self, *args):
+                result = super().__exit__(*args)
+                clock[0] += 29
+                return result
+        with patch("native_diagnostic.subprocess.Popen", side_effect=launch), \
+                patch("native_diagnostic.tempfile.TemporaryDirectory", TimedDirectory), \
+                patch("native_diagnostic.socket.socket", side_effect=(reserve, probe)), \
+                patch("native_diagnostic.control_line", side_effect=control), \
+                patch("native_diagnostic.psutil.Process"), \
+                patch("native_diagnostic.snapshot", side_effect=sample) as snapshots, \
+                patch("native_diagnostic.validate_report"), patch("native_diagnostic.cpu_cost", return_value={}), \
+                patch("native_diagnostic.digest", return_value="fixture"), \
+                patch("native_diagnostic.source_identity", return_value={}), \
+                patch("native_diagnostic.time.perf_counter_ns", side_effect=lambda: clock[0] * 10**9):
+            if ledger_changes:
+                with self.assertRaisesRegex(ValueError, "profile ledger"):
+                    measure("server", "client", size, 2, 3, 1000, "spin", security,
+                            server_kind="coaptic-mio", resource_profile=profile)
+                snapshots.assert_not_called()
+                self.assertEqual(child.stdin.getvalue(), "")
+                result = None
+            else:
+                result = measure("server", "client", size, 2, 3, 1000, "spin", security,
+                                 server_kind="coaptic-mio", resource_profile=profile, cpu_gated=cpu_gated,
+                                 concurrency=concurrency, independent_endpoints=independent_endpoints)
+                self.assertEqual(child.stdin.getvalue(), "run\nreport\nexit\n" if cpu_gated else "run\nexit\n")
+                self.assertEqual(snapshots.call_count, 4)
+        sut.terminate.assert_called_once()
+        sut.wait.assert_called_once_with(timeout=5)
+        self.assertIsNotNone(child.poll())
+        reserve.sendto.assert_not_called()
+        probe.sendto.assert_not_called()
+        return result, commands
+
+    def test_measure_profiles_reach_commands_and_real_startup_ledger(self):
+        for profile, sizes in PROFILE_SIZES.items():
+            for size in sizes:
+                for security in ("unprotected", "oscore"):
+                    with self.subTest(profile=profile, size=size, security=security):
+                        result, commands = self.run_profile_fixture(profile, size, security=security)
+                        server, client = commands
+                        self.assertEqual(server[1:6], ["coaptic-mio", "127.0.0.1", "5683", str(size),
+                                                       str(dimensions(profile, size)["rx_datagram_bytes"])])
+                        self.assertEqual(server.count("--resource-profile"), int(profile != "host-control"))
+                        if profile != "host-control":
+                            self.assertEqual(server[-2:], ["--resource-profile", profile])
+                        self.assertNotIn("--resource-profile", client)
+                        if security == "oscore":
+                            self.assertEqual(server[6], client[8])
+                        self.assertEqual(result["server_resources"]["resource_profile"], profile)
+        # Preserve the pre-existing arbitrary bounded host representation sizes.
+        result, commands = self.run_profile_fixture("host-control", 2048)
+        self.assertEqual(result["server_resources"]["representation_bytes"], 2048)
+        self.assertNotIn("--resource-profile", commands[0])
+
+    def test_profile_capacity_selection_refuses_before_credentials_socket_or_process(self):
+        invalid = [dict(resource_profile="unknown"),
+                   dict(resource_profile="small-device", size=64),
+                   dict(resource_profile="small-blockwise", size=16384),
+                   dict(resource_profile="service-fixed", server_kind="coaptic-ready"),
+                   dict(resource_profile="service-allocated", security="unknown"),
+                   dict(resource_profile="small-device", concurrency=2, message_type="non"),
+                   dict(resource_profile="small-device", concurrency=2, independent_endpoints=True),
+                   dict(resource_profile="service-fixed", message_type="non"),
+                   dict(resource_profile="service-fixed", admission_diagnostics=True, rate=1000),
+                   dict(resource_profile="host-control", size=65536, concurrency=3, independent_endpoints=True)]
+        for changes in invalid:
+            selected = dict(size=32, server_kind="coaptic-mio", security="oscore") | changes
+            with self.subTest(changes=changes), \
+                    patch("native_diagnostic.tempfile.TemporaryDirectory") as directory, \
+                    patch("native_diagnostic.secrets.token_bytes") as key, \
+                    patch("native_diagnostic.socket.socket") as sock, \
+                    patch("native_diagnostic.subprocess.Popen") as spawn:
+                with self.assertRaises(ValueError):
+                    measure("missing", "missing", operations=2, warmup=0, timeout_ms=1000,
+                            policy="spin", **selected)
+                for boundary in (directory, key, sock, spawn):
+                    boundary.assert_not_called()
+        result, _ = self.run_profile_fixture("service-fixed", 16384, concurrency=4, independent_endpoints=True)
+        self.assertEqual(result["server_resources"]["tx_body_slots"], 4)
+
+    def test_wrong_profile_or_capacity_startup_refuses_before_cpu_gate_and_cleans_up(self):
+        for changes in (dict(resource_profile="host-control"), dict(rx_datagram_bytes=1472),
+                        dict(calls=4), dict(tx_body_slots=2)):
+            with self.subTest(changes=changes):
+                self.run_profile_fixture("small-blockwise", 4096, ledger_changes=changes)
+
+    def test_phase_durations_keep_combined_warmup_cpu_boundary_and_final_cleanup(self):
+        for gated in (False, True):
+            with self.subTest(cpu_gated=gated):
+                result, _ = self.run_profile_fixture("small-device", 32, cpu_gated=gated)
+                phases = result["phase_durations_seconds"]
+                self.assertEqual(phases, dict(server_startup_bind=5, client_startup_and_warmup=12,
+                    measurement_and_report=26 if gated else 15, resource_window=13 if gated else 15,
+                    cleanup=42, total=133 if gated else 122))
+                self.assertEqual(phases["resource_window"], result["resource_window_ns"] / 1e9)
+                self.assertNotIn("warmup", phases)
+                self.assertNotIn("client_startup", phases)
+
     def test_profile_ledgers_match_actual_dimensions_and_disjoint_owner_categories(self):
         for profile, sizes in PROFILE_SIZES.items():
             for size in sizes:
@@ -649,6 +794,7 @@ class ReportTests(unittest.TestCase):
                 with patch("sys.argv", argv), patch("native_diagnostic.measure", return_value={}) as run:
                     main()
                 self.assertEqual(run.call_args.kwargs["server_kind"], kind or "coaptic-reusable")
+                self.assertEqual(run.call_args.kwargs["resource_profile"], "host-control")
                 self.assertFalse(run.call_args.kwargs["admission_diagnostics"])
                 self.assertEqual(json.loads(output.read_text()), dict(passed=True))
             argv += ["--admission-diagnostics", "--rate", "1000"]
@@ -656,6 +802,36 @@ class ReportTests(unittest.TestCase):
             with patch("sys.argv", argv), patch("native_diagnostic.measure", return_value={}) as run:
                 main()
             self.assertTrue(run.call_args.kwargs["admission_diagnostics"])
+
+    def test_cli_profile_selection_choices_and_exact_failure_propagation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for profile in PROFILE_SIZES:
+                output = Path(directory) / (profile + ".json")
+                argv = ["native_diagnostic.py", "--server", "server", "--client", "client",
+                        "--output", str(output), "--policy", "spin", "--security", "oscore",
+                        "--server-kind", "coaptic-mio", "--resource-profile", profile,
+                        "--bytes", str(PROFILE_SIZES[profile][0])]
+                with patch("sys.argv", argv), patch("native_diagnostic.measure", return_value={}) as run:
+                    main()
+                self.assertEqual(run.call_args.kwargs["resource_profile"], profile)
+                self.assertEqual(run.call_args.args[2], PROFILE_SIZES[profile][0])
+            output = Path(directory) / "refused.json"
+            argv[argv.index("--output") + 1] = str(output)
+            refusal = ValueError("profile startup refusal")
+            refusal.diagnostic = dict(server_log="retained startup")
+            with patch("sys.argv", argv), patch("native_diagnostic.measure", side_effect=refusal):
+                with self.assertRaises(ValueError) as caught:
+                    main()
+            self.assertIs(caught.exception, refusal)
+            self.assertEqual(json.loads(output.read_text()), dict(passed=False, error_type="ValueError",
+                reason="profile startup refusal", diagnostic=refusal.diagnostic))
+            argv[argv.index("--resource-profile") + 1] = "wrong-profile"
+            with patch("sys.argv", argv), patch("native_diagnostic.measure") as run, \
+                    patch("sys.stderr", new_callable=io.StringIO):
+                with self.assertRaises(SystemExit) as caught:
+                    main()
+            self.assertEqual(caught.exception.code, 2)
+            run.assert_not_called()
 
     def test_control_lines_refuse_unbounded_or_incomplete_reports(self):
         self.assertEqual(control_line(io.StringIO("ready\n"), 1), "ready")
