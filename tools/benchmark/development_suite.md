@@ -50,7 +50,8 @@ python -B tools/benchmark/development_suite.py run --prepared AFTER_DIRECTORY --
 python -B tools/benchmark/development_suite.py compare --before BEFORE.json --after AFTER.json --output NEW_COMPARISON.json
 ```
 
-Comparison refuses failed/incomplete runs, differing hosts, harness/build inputs,
+Comparison refuses failed/incomplete runs, differing hosts, complete companion
+fixture trees, harness/build inputs,
 client binaries or configurations. It reports descriptive socket/core medians and
 App/requested-pool owners; no automatic baseline replacement or pass/fail speedup
 claim. Keep the original #650 baseline separately from rolling development results.
@@ -65,6 +66,11 @@ gate until assigned to a Windows kill-on-close Job Object or reserved Linux
 process group. Timeout, output overflow, remaining descendants and unresolved
 cleanup fail the run. This custody assumes the supplied cooperative workers;
 Linux fixtures do not escape their inherited group/session.
+After worker exit, Windows allows at most100ms for Job accounting to observe
+natural exit; any member still active remains a fatal failure. Termination and
+bounded exit observation still run independently. Nested helper temporary files
+stay inside the owned task directory and are removed only after settlement;
+unresolved custody retains that path with the primary failure.
 Windows uses CPython's `_winapi` process adapter: create suspended, assign to a
 Job Object capped at16active processes, then resume. Two bounded pipe-reader
 threads belong to the harness, not the library. Unsupported custody is refused.

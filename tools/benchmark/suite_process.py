@@ -237,7 +237,15 @@ if sys.platform == "win32":
             return info.ActiveProcesses
 
         def descendants(self):
-            return self.active() != 0  # Called only after the worker exits.
+            # Worker HANDLE exit and Job accounting can become visible in either
+            # order. Observe a bounded natural-exit grace, then refuse any member
+            # still active; termination/settlement remains independent below.
+            deadline = time.monotonic() + .1
+            while self.active():
+                if time.monotonic() >= deadline:
+                    return True
+                time.sleep(.01)
+            return False
 
         def settle(self):
             if self.process is None:

@@ -212,6 +212,17 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual(helper.ctypes.sizeof(helper._Accounting), 48)
 
     @unittest.skipUnless(sys.platform == "win32", "real Windows Job only")
+    def test_job_accounting_exit_grace_is_bounded_and_not_permission_to_keep_members(self):
+        if sys.platform != "win32":
+            self.skipTest("Windows Job accounting")
+        owner = object.__new__(helper._WindowsOwner)
+        with patch.object(owner, "active", side_effect=[1, 1, 0]):
+            self.assertFalse(owner.descendants())
+        started = time.monotonic()
+        with patch.object(owner, "active", return_value=1):
+            self.assertTrue(owner.descendants())
+        self.assertLess(time.monotonic() - started, 1)
+
     def test_job_policy_is_fixed_16_with_kill_on_close_and_no_breakaway(self):
         owner = helper._WindowsOwner()
         try:

@@ -132,7 +132,7 @@ class PreparedInputs(unittest.TestCase):
 
 class RunFailure(unittest.TestCase):
     def test_core_failure_preserves_completed_socket_and_later_not_run(self):
-        bundle = dict(harness={}, host={}, compiler="x", cargo="x", flags={})
+        bundle = dict(harness={}, host={}, compiler="x", cargo="x", flags={}, sources=dict(suite=dict(tree="same")))
         def work(spec, **kwargs):
             kind = spec["kind"]
             if kind == "core":
@@ -157,7 +157,7 @@ class RunFailure(unittest.TestCase):
             self.assertIn("core:", result["failed_phase"])
 
     def test_first_failure_keeps_all_pending_cells(self):
-        bundle = dict(harness={}, host={}, compiler="x", cargo="x", flags={})
+        bundle = dict(harness={}, host={}, compiler="x", cargo="x", flags={}, sources=dict(suite=dict(tree="same")))
         with tempfile.TemporaryDirectory() as d, \
              patch.object(suite, "verify_prepared", return_value=(bundle, {"client": "unused"})), \
              patch.object(suite, "task", side_effect=TimeoutError("owned deadline")):
@@ -187,7 +187,7 @@ class ComparisonTests(unittest.TestCase):
     def observation():
         prep = dict(harness={}, compiler="rust", cargo="cargo", flags={},
                     native_manifest_sha256="native", server_manifest_sha256="server",
-                    sources=dict(core=dict(commit="a" * 40)))
+                    sources=dict(core=dict(commit="a" * 40), suite=dict(tree="fixed fixtures")))
         client = dict(binaries=dict(client=dict(file="client", bytes=10, sha256="frozen")))
         rows = []
         for profile, size in suite.PROFILES:
@@ -241,10 +241,49 @@ class ComparisonTests(unittest.TestCase):
         def failure(r): r["cells"][0]["socket"]["report"]["failed"] = 1
         def duplicate(r): r["cells"][1] = r["cells"][0]
         def reliability(r): r["reliability"][0]["passed"] = False
-        for change in (host, client, harness, capacity, missing, failure, duplicate, reliability):
+        def fixture(r): r["preparation"]["sources"]["suite"]["tree"] = "changed native server"
+        for change in (host, client, harness, capacity, missing, failure, duplicate, reliability, fixture):
             a, b = self.observation(), self.observation(); change(b)
             with self.subTest(change=change.__name__), self.assertRaises(ValueError):
                 self.compare(a, b)
+
+
+class TaskTemporaryOwnership(unittest.TestCase):
+    def test_nested_helpers_use_owned_temp_and_cleanup_after_settlement(self):
+        paths = []
+        def failed(command, **kwargs):
+            environment = kwargs["env"]
+            directory = Path(environment["TEMP"])
+            self.assertEqual(environment["TMP"], str(directory))
+            self.assertEqual(environment["TMPDIR"], str(directory))
+            (directory / "helper-credentials").write_bytes(b"temporary fixture")
+            paths.append(directory)
+            raise TimeoutError("settled timeout")
+        with patch.object(suite, "run_worker", side_effect=failed):
+            with self.assertRaisesRegex(TimeoutError, "settled timeout"):
+                suite.task({"kind": "core"}, 1)
+        self.assertFalse(paths[0].exists())
+
+    def test_unresolved_custody_retains_temp_and_primary(self):
+        error = TimeoutError("original timeout")
+        error.cleanup_unresolved = True
+        def failed(command, **kwargs):
+            (Path(kwargs["env"]["TEMP"]) / "helper-log").write_text("retain")
+            raise error
+        try:
+            with patch.object(suite, "run_worker", side_effect=failed):
+                with self.assertRaises(TimeoutError) as caught:
+                    suite.task({"kind": "core"}, 1)
+            self.assertIs(caught.exception, error)
+            retained = Path(error.temporary_directory)
+            self.assertTrue((retained / "helper-log").exists())
+        finally:
+            # Mocked failure created no process/consumer; clean this exact test owner.
+            if getattr(error, "temporary_directory", None):
+                retained = Path(error.temporary_directory).resolve()
+                self.assertEqual(retained.parent, Path(tempfile.gettempdir()).resolve())
+                self.assertTrue(retained.name.startswith("coaptic-suite-task-"))
+                suite.shutil.rmtree(retained)
 
 
 if __name__ == "__main__":

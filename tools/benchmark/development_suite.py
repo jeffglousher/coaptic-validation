@@ -100,13 +100,17 @@ def host_identity():
 
 
 def task(spec, timeout, limit=JSON_LIMIT):
-    with tempfile.TemporaryDirectory(prefix="coaptic-suite-task-") as directory:
-        path = Path(directory) / "task.json"
+    base = Path(tempfile.gettempdir()).resolve()
+    directory = Path(tempfile.mkdtemp(prefix="coaptic-suite-task-", dir=base)).resolve()
+    primary = None
+    try:
+        path = directory / "task.json"
         save(path, spec)
         # Windows venv redirectors may spawn the real interpreter before the
         # ownership gate. Launch the base interpreter directly; retain this
         # environment's module search path for psutil and existing helpers.
-        environment = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
+        environment = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path),
+                           TMP=str(directory), TEMP=str(directory), TMPDIR=str(directory))
         result = run_worker([sys._base_executable, "-B", str(Path(__file__).resolve()),
                              "_task", str(path)], timeout=timeout, limit=limit,
                             cwd=str(SUITE), env=environment)
@@ -115,6 +119,24 @@ def task(spec, timeout, limit=JSON_LIMIT):
             error.stdout, error.stderr = result.stdout, result.stderr
             raise error
         return result
+    except BaseException as error:
+        primary = error
+        raise
+    finally:
+        if primary is not None and getattr(primary, "cleanup_unresolved", False):
+            primary.temporary_directory = str(directory)
+        else:
+            try:
+                # Only the exact owned directory, after group/job settlement.
+                if directory.resolve() != directory or directory.parent != base or not directory.name.startswith("coaptic-suite-task-"):
+                    raise RuntimeError("temporary cleanup target identity changed")
+                shutil.rmtree(directory)
+            except BaseException as cleanup:
+                if primary is None:
+                    cleanup.temporary_directory = str(directory)
+                    raise
+                primary.temporary_directory = str(directory)
+                primary.add_note("temporary cleanup: " + str(cleanup)[:512])
 
 
 def resolved_core():
@@ -148,7 +170,10 @@ def prepare(output, expected_core):
                    str(NATIVE / "Cargo.toml"), "-p", "bench-rust-server"]
         for name in ("bench-rust-server", "bench-native-client", "bench-core"):
             command += ["--bin", name]
+        record.update(sources=before, harness=harness, compiler=compiler, cargo=cargo,
+                      flags=flags, host=host_identity(), build_command=command)
         with native_lock(core) as selected:
+            record["lock"] = dict(selected)
             build = task(dict(kind="build", command=command), timeout=900, limit=BUILD_LIMIT)
             (output / "build.log").write_bytes(build.stdout + build.stderr)
             lock_input = dict(selected)
@@ -179,6 +204,8 @@ def prepare(output, expected_core):
                       prepared_binary_bytes=total, build_seconds=build.duration_seconds)
     except BaseException as error:
         record.update(error=type(error).__name__ + ": " + str(error)[:1024])
+        if getattr(error, "temporary_directory", None):
+            record["retained_temporary_directory"] = error.temporary_directory
         for attr in ("stdout", "stderr"):
             raw = getattr(error, attr, b"")
             if raw:
@@ -260,6 +287,8 @@ def run_suite(prepared, output, client_from=None):
     client_bundle, client_bins = verify_prepared(client_from or prepared)
     if any(bundle[k] != client_bundle[k] for k in ("harness", "host", "compiler", "cargo", "flags")):
         raise ValueError("frozen client preparation differs")
+    if bundle["sources"]["suite"]["tree"] != client_bundle["sources"]["suite"]["tree"]:
+        raise ValueError("frozen client native fixture tree differs")
     bins["client"] = client_bins["client"]
     config, host = configuration(), host_identity()
     result = dict(schema=SCHEMA, kind="run", passed=False, configuration=config,
@@ -320,6 +349,7 @@ def run_suite(prepared, output, client_from=None):
         if result["cells"] and result["cells"][-1]["status"] == "running":
             result["cells"][-1]["status"] = "failed"
         result["error"] = dict(type=type(error).__name__, reason=str(error)[:1024],
+                               retained_temporary_directory=getattr(error, "temporary_directory", None),
                                stdout=getattr(error, "stdout", b"")[:65536].decode(errors="replace"),
                                stderr=getattr(error, "stderr", b"")[:65536].decode(errors="replace"))
         raise
@@ -371,6 +401,8 @@ def compare(before, after):
     for key in ("harness", "compiler", "cargo", "flags", "native_manifest_sha256", "server_manifest_sha256"):
         if a["preparation"][key] != b["preparation"][key]:
             raise ValueError("build/harness mismatch: " + key)
+    if a["preparation"]["sources"]["suite"]["tree"] != b["preparation"]["sources"]["suite"]["tree"]:
+        raise ValueError("native fixture companion tree differs")
     if a["client_preparation"]["binaries"]["client"] != b["client_preparation"]["binaries"]["client"]:
         raise ValueError("comparison requires the same frozen loopback client")
     rows = []
@@ -392,6 +424,7 @@ def compare(before, after):
                        core_poll_median_ns_after=right["core"]["summary"]["median_ns"])
         rows.append(row)
     return dict(schema=SCHEMA, kind="comparison", rows=rows,
+                before_result_sha256=digest(before), after_result_sha256=digest(after),
                 before_core=a["preparation"]["sources"]["core"],
                 after_core=b["preparation"]["sources"]["core"],
                 interpretation="short-run descriptive differences, not a gain/regression acceptance verdict; original CPU and latency gates remain separate")
