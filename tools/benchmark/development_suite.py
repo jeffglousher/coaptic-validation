@@ -30,8 +30,8 @@ SECURITY = ("unprotected", "oscore")
 OPERATIONS, WARMUP = 32, 4
 JSON_LIMIT = 2 * 1024 * 1024
 BUILD_LIMIT = 16 * 1024 * 1024
-BINARY_LIMIT = 128 * 1024 * 1024
-PREPARED_LIMIT = 256 * 1024 * 1024
+BINARY_LIMIT = 32 * 1024 * 1024
+PREPARED_LIMIT = 32 * 1024 * 1024
 SCHEMA = "coaptic-development-suite/2"
 SOURCES = ("development_suite.py", "suite_process.py", "native_profiles.py",
            "native_diagnostic.py", "native_check.py", "native_lock.py", "linux_cpu.py")

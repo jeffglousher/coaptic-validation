@@ -65,8 +65,8 @@ Cargo build/target/profile/env configuration or compiler wrappers. Explicit
 RUSTFLAGS/encoded Rust flags are recorded; permitted registry/network config files
 are hashed and matched. This narrow contract prevents hidden configuration from
 silently changing compared builds.
-It refuses an existing output directory. Each binary is capped at128MiB and the
-copied aggregate at256MiB; build output at16MiB and build execution at900seconds.
+It refuses an existing output directory. Each binary and the copied
+aggregate are capped at32MiB, bounding a two-revision pair to64MiB; build output at16MiB and build execution at900seconds.
 Use a budgeted existing disk, not a new Cargo target per revision.
 
 Prepared receipts describe the source at build time. Later checkout changes do
