@@ -5,13 +5,39 @@ before timing: independent exact/corrupt response checks, security refusal and
 fresh recovery, then each profile's oversize/refusal/recovery checks. The native
 client authenticates OSCORE and verifies complete bodies before completion.
 
-Four unchanged configurations run C1 GET/CON in unprotected and established
-volatile OSCORE modes: SmallDevice32, SmallDevice blockwise4096, Service fixed16KiB,
-and the allocated Service equivalent. `native_profiles.py` defines every capacity.
+Eight versioned configurations run GET/CON in unprotected and established volatile
+OSCORE modes, with one populated route and one security association/four bindings:
+
+- SmallDevice: fixed Constrained, 32 bytes, blockwise off, C1.
+- SmallDevice blockwise: fixed Constrained, 4,096 bytes, one RX/TX body, C1.
+- SmallDevice Observe: the same 4,096-byte blockwise pools, one Observe entry, C1.
+- Device: fixed Default pools, 4,096 bytes, two RX/TX bodies, C2.
+- Gateway: fixed Gateway pools, 8,192 bytes, two RX/TX bodies, C2.
+- Service datagram: fixed Service pools, 1,024 bytes, blockwise/body pools off, C4.
+- Service blockwise: fixed Service pools, 16,384 bytes, four RX/TX bodies, C4.
+- Service allocated: the same Service capacities and 16,384-byte workload, C4.
+
+`native_profiles.py` defines every route, Call, deferred, security, packet, body,
+Observe and dedup capacity. C2/C4 use actual independent local UDP endpoints with
+one shared client sequence owner, retaining NSTART=1 per endpoint. Reports must
+prove distinct ports, actual simultaneous Calls, per-lane service and complete
+body verification; a configured concurrency number alone cannot pass.
+
+Observe has a separate real-UDP functional lifecycle proof at the exact small
+blockwise/one-interest server bounds: registration, a changed complete notification,
+deregistration, cancellation/release and fresh recovery. Both security modes must
+pass before timing. Ordinary GET socket timing is not notification timing. Merely
+reserving an Observe table is not evidence of Observe behavior.
+
 Allocated Service requested core pools have a 282,640-byte ceiling; automatic
-expansion is off. App sizes are observed separately, not hidden by pool changes.
-Six existing socket-free `black_box` core cells accompany eight native loopback
-cells. The two SmallDevice-blockwise core cells are explicitly unsupported.
+expansion is off. App sizes are observed separately. Six existing socket-free
+`black_box` C1 core cells accompany sixteen native loopback cells. These core
+probes remain separately scoped C1 supporting evidence even for Service rows
+whose socket workload is C4. The ten core cells for other exact configurations
+are explicitly unsupported; there is no substitution with a differently sized App.
+
+Configuration/schema version 2 intentionally refuses comparisons with the
+historical four-profile version 1. Its committed evidence remains unchanged.
 
 ## Prepare once per source/build
 
@@ -28,7 +54,7 @@ python -B tools/benchmark/development_suite.py run --prepared PREPARED_DIRECTORY
 ```
 
 Preparation holds the existing resource lease, selects the source-specific lock
-with `native_lock`, runs one locked release build of the three native binaries,
+with `native_lock`, runs one locked release build of the four native binaries,
 restores the canonical lock and verifies sources. It copies binaries and records
 actual source trees, harness hashes, compiler/build inputs and executable hashes.
 The actual pinned Cargo/rustc executables are recorded and invoked directly.
@@ -39,8 +65,8 @@ Cargo build/target/profile/env configuration or compiler wrappers. Explicit
 RUSTFLAGS/encoded Rust flags are recorded; permitted registry/network config files
 are hashed and matched. This narrow contract prevents hidden configuration from
 silently changing compared builds.
-It refuses an existing output directory. Each binary is capped at128MiB and the
-copied aggregate at256MiB; build output at16MiB and build execution at900seconds.
+It refuses an existing output directory. Each binary and the copied
+aggregate are capped at32MiB, bounding a two-revision pair to64MiB; build output at16MiB and build execution at900seconds.
 Use a budgeted existing disk, not a new Cargo target per revision.
 
 Prepared receipts describe the source at build time. Later checkout changes do
@@ -67,7 +93,7 @@ claim. Keep the original #650 baseline separately from rolling development resul
 
 ## Bounds and interpretation
 
-The prepared-run target is about one minute. A full result records actual total
+The prepared-run target remains about one minute for all eight configurations. A full result records actual total
 duration and whether it met60seconds. Each reliability worker has a10second
 deadline; later cells are explicitly NOT RUN after a failure or exhausted budget.
 Output is bounded and never overwrites a prior result. A worker waits at a stdin

@@ -20,15 +20,19 @@ from suite_process import run_worker
 HERE = Path(__file__).resolve().parent
 SUITE = HERE.parents[1]
 NATIVE = HERE / "native"
-PROFILES = (("small-device", 32), ("small-blockwise", 4096),
+PROFILES = (("small-device", 32), ("small-blockwise", 4096), ("small-observe", 4096),
+            ("device-fixed", 4096), ("gateway-fixed", 8192), ("service-datagram", 1024),
             ("service-fixed", 16384), ("service-allocated", 16384))
+CORE_PROFILES = ("small-device", "service-fixed", "service-allocated")
+BINARIES = {"server": "bench-rust-server", "client": "bench-native-client",
+            "core": "bench-core", "observe": "bench-observe-proof"}
 SECURITY = ("unprotected", "oscore")
 OPERATIONS, WARMUP = 32, 4
 JSON_LIMIT = 2 * 1024 * 1024
 BUILD_LIMIT = 16 * 1024 * 1024
-BINARY_LIMIT = 128 * 1024 * 1024
-PREPARED_LIMIT = 256 * 1024 * 1024
-SCHEMA = "coaptic-development-suite/1"
+BINARY_LIMIT = 32 * 1024 * 1024
+PREPARED_LIMIT = 32 * 1024 * 1024
+SCHEMA = "coaptic-development-suite/2"
 SOURCES = ("development_suite.py", "suite_process.py", "native_profiles.py",
            "native_diagnostic.py", "native_check.py", "native_lock.py", "linux_cpu.py")
 
@@ -81,14 +85,23 @@ def harness_identity():
     return {name: digest(HERE / name) for name in SOURCES}
 
 
+def socket_options(profile):
+    concurrency = (1 if profile.startswith("small-") else
+                   2 if profile in ("device-fixed", "gateway-fixed") else 4)
+    return dict(concurrency=concurrency, independent_endpoints=concurrency > 1,
+                message_type="con")
+
+
 def configuration():
-    return dict(version=1, profiles=[dimensions(p, n) for p, n in PROFILES],
-                security=list(SECURITY), concurrency=1, message_type="con",
-                server_kind="coaptic-mio", operations=OPERATIONS, warmup=WARMUP,
-                core_operations=16, core_warmup=128, core_calibrations=4096,
+    return dict(version=2, profiles=[dimensions(p, n) | socket_options(p) for p, n in PROFILES],
+                security=list(SECURITY), server_kind="coaptic-mio", operations=OPERATIONS,
+                warmup=WARMUP, core_operations=16, core_warmup=128, core_calibrations=4096,
+                core_concurrency=1, core_scope="separate C1 supporting probes; not concurrent socket workload",
                 client_timeout_ms=1000, policy="spin",
+                observe_profile="small-observe", observe_payload_bytes=4096,
+                observe_client_requested_pool_ceiling_bytes=32768,
                 allocated_service_requested_pool_ceiling_bytes=282640,
-                unsupported_core_profiles=["small-blockwise"])
+                unsupported_core_profiles=[p for p, _ in PROFILES if p not in CORE_PROFILES])
 
 
 def host_identity():
@@ -183,7 +196,7 @@ def toolchain():
 
 def cargo_artifacts(raw, target):
     artifacts, finished = {}, False
-    wanted = {"bench-rust-server", "bench-native-client", "bench-core"}
+    wanted = set(BINARIES.values())
     target = Path(target).resolve()
     for line in raw.splitlines():
         if not line.startswith(b"{"):
@@ -230,7 +243,7 @@ def prepare(output, expected_core):
         command = [tools["cargo"]["path"], "build", "--release", "--locked",
                    "--message-format=json-render-diagnostics", "--manifest-path",
                    str(NATIVE / "Cargo.toml"), "-p", "bench-rust-server"]
-        for name in ("bench-rust-server", "bench-native-client", "bench-core"):
+        for name in BINARIES.values():
             command += ["--bin", name]
         record.update(sources=before, harness=harness, compiler=compiler, cargo=cargo,
                       flags=flags, tools=tools, host=host_identity(), build_command=command)
@@ -247,8 +260,7 @@ def prepare(output, expected_core):
             raise ValueError("compiler/Cargo changed during preparation")
         artifacts = cargo_artifacts(build.stdout, target)
         bins, total = {}, 0
-        for role, name in (("server", "bench-rust-server"), ("client", "bench-native-client"),
-                           ("core", "bench-core")):
+        for role, name in BINARIES.items():
             source = artifacts[name]
             size = source.stat().st_size
             if not 0 < size <= BINARY_LIMIT or total + size > PREPARED_LIMIT:
@@ -291,7 +303,7 @@ def verify_prepared(path):
         raise ValueError("prepared harness differs from the running harness")
     if value.get("host") != host_identity():
         raise ValueError("prepared host differs; prepare on this host")
-    if set(value.get("binaries", {})) != {"server", "client", "core"}:
+    if set(value.get("binaries", {})) != set(BINARIES):
         raise ValueError("prepared binary roles")
     for row in value["binaries"].values():
         if Path(row["file"]).name != row["file"]:
@@ -344,6 +356,86 @@ def validate_core(value, profile, security):
     return dict(median_ns=statistics.median(samples), maximum_ns=max(samples))
 
 
+def validate_socket(value, profile, security):
+    from native_diagnostic import validate_report, validate_endpoint_report
+    options = socket_options(profile)
+    validate_report(value["report"], dict(PROFILES)[profile], OPERATIONS, "spin", security,
+                    **options)
+    if value["report"]["warmup"] != WARMUP:
+        raise ValueError("suite warmup differs")
+    if options["independent_endpoints"]:
+        validate_endpoint_report(value["report"], options["concurrency"], True, require_overlap=True)
+    for key, expected in dimensions(profile, dict(PROFILES)[profile]).items():
+        if value["server_resources"].get(key) != expected:
+            raise ValueError("suite capacity differs: " + key)
+    requested = value["server_resources"].get("app_requested_heap_bytes")
+    if type(requested) is not int or not 0 <= requested <= (282640 if profile == "service-allocated" else 0):
+        raise ValueError("declared profile pool-heap ceiling exceeded")
+
+
+def validate_profile_reliability(rows, profile):
+    size = dict(PROFILES)[profile]
+    if not isinstance(rows, list) or [r.get("security") for r in rows] != list(SECURITY):
+        raise ValueError("profile reliability security cohorts differ")
+    expected = dimensions(profile, size)
+    for row in rows:
+        if (row.get("profile") != profile or row.get("size") != size or row.get("completed") != 2
+                or row.get("oversized_bytes") != expected["rx_datagram_bytes"] + 1
+                or row.get("expected_client_refusals") != (2 if row["security"] == "oscore" else 1)):
+            raise ValueError("profile reliability/refusal evidence incomplete")
+        if any(row.get("ledger", {}).get(k) != v for k, v in expected.items()):
+            raise ValueError("profile reliability capacities differ")
+
+
+def validate_observe(value, security):
+    if (value.get("schema") != "coaptic-native-observe-proof/1"
+            or value.get("cohort") != "small-device-blockwise-observe"
+            or value.get("security") != security or value.get("success") is not True
+            or value.get("functional_only") is not True):
+        raise ValueError("Observe lifecycle proof identity incomplete")
+    expected = dict(body_bytes=4096, completed=6, verified_bytes=24576,
+                    initial_registrations=1, changed_notifications=1, recovery_registrations=1,
+                    fresh_gets=1, deregistrations=2, local_cancellations=1,
+                    controlled_undelivered_datagrams=1, call_capacity_refusals=2)
+    if any(type(value.get(k)) is not int or value[k] != n for k, n in expected.items()):
+        raise ValueError("Observe lifecycle verification incomplete")
+    if value.get("bounds") != dict(rounds_per_operation=128, deadline_ms_per_operation=3000,
+                                   combined_send_limit=256, combined_receive_limit=256,
+                                   json_limit_bytes=16384):
+        raise ValueError("Observe lifecycle bounds differ")
+    server = value.get("server", {})
+    capacities = dimensions("small-observe", 4096)
+    for key in ("routes", "populated_routes", "calls", "deferred", "associations", "security_requests",
+                "observe", "dedup", "rx_slots", "tx_slots", "rx_body_slots", "tx_body_slots",
+                "rx_body_bytes", "tx_body_bytes", "blockwise", "storage"):
+        if server.get(key) != capacities[key]:
+            raise ValueError("Observe server capacity differs: " + key)
+    if server.get("datagram_bytes") != 1152:
+        raise ValueError("Observe datagram capacity differs")
+    counts = value.get("counts", {})
+    for key in ("server_sent", "server_received", "client_sent", "client_received",
+                "server_protected_sent", "client_protected_sent", "client_controls_sent"):
+        if type(counts.get(key)) is not int or not 0 <= counts[key] <= 256:
+            raise ValueError("Observe datagram accounting missing")
+    if (counts["server_sent"] != counts["client_received"]
+            or counts["client_sent"] != counts["server_received"]
+            or not 48 <= counts["server_sent"] + counts["client_sent"] <= 256
+            or counts["client_controls_sent"] < 1
+            or any((counts[k] > 0) != (security == "oscore") for k in
+                   ("server_protected_sent", "client_protected_sent"))):
+        raise ValueError("Observe send/receive/security accounting differs")
+    if type(value.get("poll_calls")) is not int or not 1 <= value["poll_calls"] <= 3 * 128 * 8:
+        raise ValueError("Observe poll budget missing")
+    memory = value.get("memory", {})
+    if (memory.get("server_pool_requested_heap_bytes") != 0
+            or type(memory.get("client_pool_requested_heap_bytes")) is not int
+            or not 0 < memory["client_pool_requested_heap_bytes"] <= 32768
+            or any(type(memory.get(k)) is not int or memory[k] <= 0 for k in
+                   ("server_app_including_transport_inline_bytes", "client_app_including_transport_inline_bytes",
+                    "each_transport_nested_in_app_inline_bytes"))):
+        raise ValueError("Observe pool/owner accounting missing")
+
+
 def run_suite(prepared, output, client_from=None):
     started = time.perf_counter()
     output = Path(output)
@@ -361,7 +453,7 @@ def run_suite(prepared, output, client_from=None):
     config, host = configuration(), host_identity()
     result = dict(schema=SCHEMA, kind="run", passed=False, configuration=config,
                   configuration_sha256=fingerprint(config), host=host, preparation=bundle,
-                  client_preparation=client_bundle, cells=[], reliability=[],
+                  client_preparation=client_bundle, cells=[], reliability=[], observe=[],
                   not_run=[], limitation="development wall-time/owner regression signals only; no qualified CPU, extreme-tail, throughput, device timing or whole-memory claims")
     pending = [(p, s) for p, _ in PROFILES for s in SECURITY]
     active_phase = "independent reliability"
@@ -375,10 +467,16 @@ def run_suite(prepared, output, client_from=None):
             active_phase = "profile reliability: " + profile
             proof = task(dict(kind="reliability-profile", profile=profile, size=size, **bins), timeout=10)
             ledgers = [json.loads(line) for line in proof.stdout.splitlines()]
-            if len(ledgers) != 2 or {r["security"] for r in ledgers} != set(SECURITY):
-                raise ValueError("profile reliability cells missing")
+            validate_profile_reliability(ledgers, profile)
             result["reliability"].append(dict(profile=profile, passed=True,
                                               seconds=proof.duration_seconds, cells=ledgers))
+        for security in SECURITY:
+            active_phase = "Observe lifecycle: " + security
+            proof = task(dict(kind="observe", security=security, **bins), timeout=10)
+            observed = json.loads(proof.stdout)
+            validate_observe(observed, security)
+            result["observe"].append(dict(security=security, passed=True, report=observed,
+                                          worker_seconds=proof.duration_seconds))
         for profile, size in PROFILES:
             for security in SECURITY:
                 elapsed = time.perf_counter() - started
@@ -391,13 +489,10 @@ def run_suite(prepared, output, client_from=None):
                 spec = dict(kind="socket", profile=profile, size=size, security=security, **bins)
                 observed = task(spec, timeout=min(10, 60 - elapsed))
                 socket_value = json.loads(observed.stdout)
-                ledger = socket_value["server_resources"]
-                heap_ceiling = 282640 if profile == "service-allocated" else 0
-                if not 0 <= ledger["app_requested_heap_bytes"] <= heap_ceiling:
-                    raise ValueError("declared profile pool-heap ceiling exceeded")
                 cell.update(socket=socket_value, socket_worker_seconds=observed.duration_seconds)
-                if profile == "small-blockwise":
-                    cell["core"] = dict(status="unsupported", reason="existing core probe has no SmallDevice blockwise mode")
+                validate_socket(socket_value, profile, security)
+                if profile not in CORE_PROFILES:
+                    cell["core"] = dict(status="unsupported", reason="no existing core probe for this exact configured profile")
                 else:
                     active_phase = "core: " + profile + "/" + security
                     elapsed = time.perf_counter() - started
@@ -405,7 +500,7 @@ def run_suite(prepared, output, client_from=None):
                         raise TimeoutError("development suite budget exhausted before core cell")
                     core = task(dict(kind="core", profile=profile, security=security, **bins), timeout=min(10, 60 - elapsed))
                     raw = json.loads(core.stdout)
-                    cell["core"] = dict(status="passed", report=raw,
+                    cell["core"] = dict(status="passed", concurrency=1, report=raw,
                                         summary=validate_core(raw, profile, security),
                                         worker_seconds=core.duration_seconds)
                 cell["status"] = "passed"
@@ -437,30 +532,40 @@ def compare(before, after):
             raise ValueError("comparison requires two complete successful runs")
         if r.get("configuration") != configuration() or r.get("configuration_sha256") != fingerprint(configuration()):
             raise ValueError("configuration mismatch")
-        if len(r.get("cells", [])) != 8 or r.get("not_run"):
+        if len(r.get("cells", [])) != len(PROFILES) * len(SECURITY) or r.get("not_run"):
             raise ValueError("incomplete comparison rows")
         wanted = [(p, s) for p, _ in PROFILES for s in SECURITY]
         if [(c.get("profile"), c.get("security")) for c in r["cells"]] != wanted:
             raise ValueError("comparison must include every exact profile/security row")
         if any(c.get("status") != "passed" for c in r["cells"]):
             raise ValueError("comparison includes an unfinished cell")
-        if (len(r.get("reliability", [])) != 5
+        if (len(r.get("reliability", [])) != len(PROFILES) + 1
                 or any(v.get("passed") is not True for v in r["reliability"])):
             raise ValueError("comparison requires completed reliability checks")
-        from native_diagnostic import validate_report
+        if (r["reliability"][0].get("kind") != "independent-body-corruption-and-security-recovery"
+                or [v.get("profile") for v in r["reliability"][1:]] != [p for p, _ in PROFILES]):
+            raise ValueError("comparison reliability profile coverage differs")
+        for proof in r["reliability"][1:]:
+            validate_profile_reliability(proof.get("cells"), proof["profile"])
+        if [x.get("security") for x in r.get("observe", [])] != list(SECURITY):
+            raise ValueError("Observe proof cohort incomplete")
+        for observed in r["observe"]:
+            if observed.get("passed") is not True:
+                raise ValueError("Observe lifecycle proof failed")
+            validate_observe(observed["report"], observed["security"])
         for cell in r["cells"]:
             size = dict(PROFILES)[cell["profile"]]
-            validate_report(cell["socket"]["report"], size, OPERATIONS, "spin", cell["security"])
+            validate_socket(cell["socket"], cell["profile"], cell["security"])
             if cell["socket"]["report"]["warmup"] != WARMUP:
                 raise ValueError("comparison warmup differs")
             ledger = cell["socket"]["server_resources"]
             for k, expected in dimensions(cell["profile"], size).items():
                 if ledger.get(k) != expected:
                     raise ValueError("comparison capacities differ: " + k)
-            if cell["profile"] == "small-blockwise":
+            if cell["profile"] not in CORE_PROFILES:
                 if cell["core"].get("status") != "unsupported":
                     raise ValueError("unsupported core cell misrepresented")
-            elif (cell["core"].get("status") != "passed"
+            elif (cell["core"].get("status") != "passed" or cell["core"].get("concurrency") != 1
                     or cell["core"].get("summary") != validate_core(cell["core"]["report"], cell["profile"], cell["security"])):
                 raise ValueError("comparison core verification differs")
     for key in ("host", "configuration_sha256"):
@@ -504,6 +609,8 @@ def worker(spec):
     if spec["kind"] == "build":
         environment = dict(os.environ, CARGO_INCREMENTAL="0", CARGO_BUILD_JOBS="2", RUSTC=spec["rustc"])
         return subprocess.call(spec["command"], cwd=SUITE, env=environment)
+    if spec["kind"] == "observe":
+        return subprocess.call([spec["observe"], spec["security"]])
     if spec["kind"] == "core":
         args = [spec["core"], "16", spec["security"]]
         args += (["--small-device"] if spec["profile"] == "small-device" else
@@ -519,7 +626,8 @@ def worker(spec):
     from native_diagnostic import measure
     report = measure(spec["server"], spec["client"], spec["size"], OPERATIONS, WARMUP,
                      1000, "spin", spec["security"], server_kind="coaptic-mio",
-                     resource_profile=spec["profile"], phase_timeout_seconds=3)
+                     resource_profile=spec["profile"], phase_timeout_seconds=3,
+                     **socket_options(spec["profile"]))
     print(json.dumps(report, allow_nan=False))
     return 0
 
@@ -559,8 +667,10 @@ def main():
     elif a.mode == "run":
         result = run_suite(a.prepared, a.output, a.client_from)
         print(json.dumps(dict(passed=result["passed"], seconds=result["total_seconds"],
-                              within_minute=result["within_minute"], socket_cells=8,
-                              core_cells=6, unsupported_core_cells=2, result=str(a.output))))
+                              within_minute=result["within_minute"], socket_cells=len(result["cells"]),
+                              core_cells=sum(c["core"]["status"] == "passed" for c in result["cells"]),
+                              unsupported_core_cells=sum(c["core"]["status"] == "unsupported" for c in result["cells"]),
+                              observe_lifecycle_cells=len(result["observe"]), result=str(a.output))))
     else:
         save(a.output, compare(a.before, a.after))
         print("Descriptive revision comparison written to " + str(a.output))
