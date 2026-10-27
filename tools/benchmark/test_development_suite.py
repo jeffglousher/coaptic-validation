@@ -29,6 +29,103 @@ def core_report(profile="small-device", security="unprotected"):
     return row
 
 
+def observe_report(security="unprotected"):
+    server = suite.dimensions("small-observe", 4096) | dict(datagram_bytes=1152)
+    return dict(schema="coaptic-native-observe-proof/1", cohort="small-device-blockwise-observe",
+        security=security, success=True, functional_only=True, body_bytes=4096, completed=6,
+        verified_bytes=24576, initial_registrations=1, changed_notifications=1, recovery_registrations=1,
+        fresh_gets=1, deregistrations=2, local_cancellations=1, controlled_undelivered_datagrams=1,
+        call_capacity_refusals=2, poll_calls=80, server=server,
+        bounds=dict(rounds_per_operation=128, deadline_ms_per_operation=3000,
+                    combined_send_limit=256, combined_receive_limit=256, json_limit_bytes=16384),
+        counts=dict(server_sent=24, server_received=26, client_sent=26, client_received=24,
+                    server_protected_sent=24 if security=="oscore" else 0,
+                    client_protected_sent=24 if security=="oscore" else 0, client_controls_sent=1),
+        memory=dict(server_pool_requested_heap_bytes=0, client_pool_requested_heap_bytes=16000,
+            server_app_including_transport_inline_bytes=28000, client_app_including_transport_inline_bytes=17000,
+            each_transport_nested_in_app_inline_bytes=1600))
+
+
+def profile_reliability(profile):
+    size=dict(suite.PROFILES)[profile]
+    return [dict(profile=profile, security=mode, size=size, completed=2,
+                 oversized_bytes=suite.dimensions(profile,size)["rx_datagram_bytes"]+1,
+                 expected_client_refusals=2 if mode=="oscore" else 1,
+                 ledger=suite.dimensions(profile,size)) for mode in suite.SECURITY]
+
+
+def socket_fixture(profile, security):
+    size = dict(suite.PROFILES)[profile]
+    options = suite.socket_options(profile)
+    concurrency = options["concurrency"]
+    blocks = (size + 1023) // 1024
+    report = dict(schema="coaptic-native-complete/1", bytes=size, completed=32,
+        requested_operations=32, attempted=32, failed=0, unattempted=0, failure=None,
+        concurrency=concurrency, message_type="con", peak_pending=concurrency, cancelled_inflight=0,
+        pending_call_metadata_bytes=256, rx_body_slots=concurrency, warmup=4,
+        total_sent_datagrams=36 * blocks, pacing_dropped_operations=0,
+        scheduled_rate_ops_per_second=None, achieved_ops_per_second=32e9 / 1000,
+        scheduled_dispatch_span_ns=None, pacing_late_operations=0,
+        pacing_missed_period_operations=0, pacing_total_lateness_ns=0,
+        pacing_max_lateness_ns=0, policy="spin", security=security,
+        latencies_ns=[10] * 32, elapsed_ns=1000, received_datagrams=32 * blocks,
+        sent_datagrams=32 * blocks, core_heap_limit_bytes=37076, app_inline_bytes=16000,
+        verification_heap_bytes=32768, timing_heap_bytes=256, udp_scratch_bytes=1473)
+    if concurrency > 1:
+        ledger = dict(schema="coaptic-local-pairs/1", local_ports=list(range(13000, 13000+concurrency)),
+            server="127.0.0.1:5683", socket_count=concurrency, scratch_bytes=1473,
+            receive_attempt_bound=concurrency, packet_queues=0, workers=0, requested_heap_bytes=0,
+            adapter_inline_bytes=1600, kernel_bytes=None, peak_stack_bytes=None,
+            sent=[36*blocks//concurrency]*concurrency, received=[36*blocks//concurrency]*concurrency,
+            measured_sent_datagrams=[32*blocks//concurrency]*concurrency,
+            measured_received_datagrams=[32*blocks//concurrency]*concurrency)
+        report.update(endpoint_transport=ledger, client_rx_slots=5, client_tx_slots=5,
+            overlapping_completions=[32//concurrency]*concurrency,
+            verified_completions=[32//concurrency]*concurrency,
+            window_metadata_bytes=100, lane_counter_snapshot_bytes=64, peer_keys_bytes=64)
+    return dict(report=report, server_resources=suite.dimensions(profile, size) |
+        dict(app_including_adapter_bytes=16000,
+             app_requested_heap_bytes=282640 if profile=="service-allocated" else 0))
+
+
+class ExpandedCoverage(unittest.TestCase):
+    def test_observe_table_capacity_without_lifecycle_proof_does_not_pass(self):
+        row = observe_report("oscore")
+        suite.validate_observe(row, "oscore")
+        for key, value in (("changed_notifications", 0), ("deregistrations", 0),
+                           ("local_cancellations", 0), ("verified_bytes", 4096), ("security", "unprotected")):
+            changed = copy.deepcopy(row); changed[key] = value
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                suite.validate_observe(changed, "oscore")
+        row["server"]["observe"] = 2
+        with self.assertRaises(ValueError):
+            suite.validate_observe(row, "oscore")
+
+    def test_eight_fixed_rows_have_feature_and_concurrency_breadth(self):
+        self.assertEqual(len(suite.PROFILES), 8)
+        config = suite.configuration()
+        rows = {r["resource_profile"]:r for r in config["profiles"]}
+        self.assertFalse(rows["small-device"]["blockwise"])
+        self.assertFalse(rows["service-datagram"]["blockwise"])
+        self.assertEqual(rows["service-datagram"]["rx_body_slots"], 0)
+        self.assertEqual(rows["small-observe"]["observe"], 1)
+        self.assertEqual([rows[p]["concurrency"] for p in ("device-fixed","gateway-fixed","service-fixed")], [2,2,4])
+        self.assertEqual(config["core_concurrency"], 1)
+        self.assertEqual(len(config["unsupported_core_profiles"]), 5)
+
+    def test_concurrency_flag_without_actual_overlap_or_unique_ports_refuses(self):
+        row = socket_fixture("service-fixed", "oscore")
+        suite.validate_socket(row, "service-fixed", "oscore")
+        for key, value in (("peak_pending", 1), ("overlapping_completions", [0]*4),
+                           ("verified_completions", [32,0,0,0])):
+            changed = copy.deepcopy(row);changed["report"][key]=value
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                suite.validate_socket(changed, "service-fixed", "oscore")
+        row["report"]["endpoint_transport"]["local_ports"]=[13000]*4
+        with self.assertRaises(ValueError):
+            suite.validate_socket(row, "service-fixed", "oscore")
+
+
 class CoreValidation(unittest.TestCase):
     def test_profiles_and_modes(self):
         for profile in ("small-device", "service-fixed", "service-allocated"):
@@ -66,7 +163,7 @@ class PreparedInputs(unittest.TestCase):
     def make_bundle(self, directory):
         path = Path(directory)
         binaries = {}
-        for role in ("server", "client", "core"):
+        for role in suite.BINARIES:
             binary = path / role
             binary.write_bytes(role.encode())
             binaries[role] = dict(file=role, bytes=binary.stat().st_size, sha256=suite.digest(binary))
@@ -138,9 +235,11 @@ class RunFailure(unittest.TestCase):
             if kind == "core":
                 raise TimeoutError("core timeout")
             if kind == "reliability-profile":
-                raw = b'\n'.join(json.dumps(dict(security=s)).encode() for s in suite.SECURITY)
+                raw = b'\n'.join(json.dumps(r).encode() for r in profile_reliability(spec['profile']))
+            elif kind == "observe":
+                raw = json.dumps(observe_report(spec["security"])).encode()
             elif kind == "socket":
-                raw = json.dumps(dict(server_resources=dict(app_requested_heap_bytes=0))).encode()
+                raw = json.dumps(socket_fixture(spec["profile"], spec["security"])).encode()
             else:
                 raw = b"independent proof"
             return SimpleNamespace(stdout=raw, duration_seconds=.01)
@@ -151,7 +250,7 @@ class RunFailure(unittest.TestCase):
             with self.assertRaisesRegex(TimeoutError, "core timeout"):
                 suite.run_suite("unused", p)
             result = suite.load(p)
-            self.assertEqual(len(result["not_run"]), 7)
+            self.assertEqual(len(result["not_run"]), 15)
             self.assertEqual(result["cells"][0]["status"], "failed")
             self.assertIn("socket", result["cells"][0])
             self.assertIn("core:", result["failed_phase"])
@@ -166,7 +265,7 @@ class RunFailure(unittest.TestCase):
                 suite.run_suite("unused", p)
             report = suite.load(p)
             self.assertFalse(report["passed"])
-            self.assertEqual(len(report["not_run"]), 8)
+            self.assertEqual(len(report["not_run"]), 16)
             self.assertEqual(report["error"]["type"], "TimeoutError")
 
     def test_comparison_does_not_rescue_failed_run(self):
@@ -192,31 +291,20 @@ class ComparisonTests(unittest.TestCase):
         rows = []
         for profile, size in suite.PROFILES:
             for security in suite.SECURITY:
-                blocks = (size + 1023) // 1024
-                report = dict(schema="coaptic-native-complete/1", bytes=size, completed=32,
-                    requested_operations=32, attempted=32, failed=0, unattempted=0, failure=None,
-                    concurrency=1, message_type="con", peak_pending=1, cancelled_inflight=0,
-                    pending_call_metadata_bytes=256, rx_body_slots=1, warmup=4,
-                    total_sent_datagrams=36 * blocks, pacing_dropped_operations=0,
-                    scheduled_rate_ops_per_second=None, achieved_ops_per_second=32e9 / 1000,
-                    scheduled_dispatch_span_ns=None, pacing_late_operations=0,
-                    pacing_missed_period_operations=0, pacing_total_lateness_ns=0,
-                    pacing_max_lateness_ns=0, policy="spin", security=security,
-                    latencies_ns=[10] * 32, elapsed_ns=1000, received_datagrams=32 * blocks,
-                    sent_datagrams=32 * blocks, core_heap_limit_bytes=37076, app_inline_bytes=16000,
-                    verification_heap_bytes=32768, timing_heap_bytes=256, udp_scratch_bytes=1473)
+                socket_value = socket_fixture(profile, security)
                 core = dict(status="unsupported")
-                if profile != "small-blockwise":
+                if profile in suite.CORE_PROFILES:
                     raw = core_report(profile, security)
-                    core = dict(status="passed", report=raw,
+                    core = dict(status="passed", concurrency=1, report=raw,
                                 summary=suite.validate_core(raw, profile, security))
-                ledger = suite.dimensions(profile, size) | dict(app_including_adapter_bytes=16000,
-                                                               app_requested_heap_bytes=0)
                 rows.append(dict(profile=profile, security=security, status="passed", core=core,
-                                 socket=dict(report=report, server_resources=ledger)))
+                                 socket=socket_value))
         return dict(schema=suite.SCHEMA, kind="run", passed=True,
                     configuration=suite.configuration(), configuration_sha256=suite.fingerprint(suite.configuration()),
-                    cells=rows, reliability=[dict(passed=True)] * 5, not_run=[], host={"host": "same"},
+                    cells=rows, reliability=[dict(kind="independent-body-corruption-and-security-recovery",passed=True)] +
+                        [dict(profile=p,passed=True,cells=profile_reliability(p)) for p,_ in suite.PROFILES],
+                    not_run=[], host={"host": "same"},
+                    observe=[dict(security=mode, passed=True, report=observe_report(mode)) for mode in suite.SECURITY],
                     preparation=prep, client_preparation=client)
 
     def compare(self, a, b):
@@ -229,7 +317,7 @@ class ComparisonTests(unittest.TestCase):
         a, b = self.observation(), self.observation()
         b["preparation"]["sources"]["core"]["commit"] = "b" * 40
         out = self.compare(a, b)
-        self.assertEqual(len(out["rows"]), 8)
+        self.assertEqual(len(out["rows"]), 16)
         self.assertIn("not a gain", out["interpretation"])
 
     def test_host_client_harness_capacity_and_missing_rows_refused(self):
@@ -241,8 +329,9 @@ class ComparisonTests(unittest.TestCase):
         def failure(r): r["cells"][0]["socket"]["report"]["failed"] = 1
         def duplicate(r): r["cells"][1] = r["cells"][0]
         def reliability(r): r["reliability"][0]["passed"] = False
+        def proof_identity(r): r["reliability"][2] = r["reliability"][1]
         def fixture(r): r["preparation"]["sources"]["suite"]["tree"] = "changed native server"
-        for change in (host, client, harness, capacity, missing, failure, duplicate, reliability, fixture):
+        for change in (host, client, harness, capacity, missing, failure, duplicate, reliability, proof_identity, fixture):
             a, b = self.observation(), self.observation(); change(b)
             with self.subTest(change=change.__name__), self.assertRaises(ValueError):
                 self.compare(a, b)
@@ -251,7 +340,7 @@ class ComparisonTests(unittest.TestCase):
 class TaskTemporaryOwnership(unittest.TestCase):
     def test_only_build_tasks_request_compiler_auxiliary_settlement(self):
         from types import SimpleNamespace
-        for kind in ("build", "core", "socket", "reliability-profile", "reliability-common"):
+        for kind in ("build", "core", "socket", "observe", "reliability-profile", "reliability-common"):
             with self.subTest(kind=kind), patch.object(suite, "run_worker", return_value=
                     SimpleNamespace(returncode=0)) as worker:
                 suite.task({"kind": kind}, 1)
@@ -313,7 +402,7 @@ class CargoBuildInputs(unittest.TestCase):
             root = Path(d).resolve()
             rows = [dict(reason="compiler-artifact", target=dict(name=n, kind=["bin"]),
                          executable=str(root / "reported" / n))
-                    for n in ("bench-rust-server", "bench-native-client", "bench-core")]
+                    for n in suite.BINARIES.values()]
             done = dict(reason="build-finished", success=True)
             raw = b'\n'.join(json.dumps(v).encode() for v in [*rows, done])
             actual = suite.cargo_artifacts(raw, root)

@@ -64,6 +64,10 @@ enum ResourceProfile {
     HostControl,
     SmallDevice,
     SmallBlockwise,
+    SmallObserve,
+    DeviceFixed,
+    GatewayFixed,
+    ServiceDatagram,
     ServiceFixed,
     ServiceAllocated,
 }
@@ -74,6 +78,10 @@ impl ResourceProfile {
             Self::HostControl => "host-control",
             Self::SmallDevice => "small-device",
             Self::SmallBlockwise => "small-blockwise",
+            Self::SmallObserve => "small-observe",
+            Self::DeviceFixed => "device-fixed",
+            Self::GatewayFixed => "gateway-fixed",
+            Self::ServiceDatagram => "service-datagram",
             Self::ServiceFixed => "service-fixed",
             Self::ServiceAllocated => "service-allocated",
         }
@@ -89,6 +97,10 @@ impl ResourceProfile {
                 Some("host-control") => Self::HostControl,
                 Some("small-device") => Self::SmallDevice,
                 Some("small-blockwise") => Self::SmallBlockwise,
+                Some("small-observe") => Self::SmallObserve,
+                Some("device-fixed") => Self::DeviceFixed,
+                Some("gateway-fixed") => Self::GatewayFixed,
+                Some("service-datagram") => Self::ServiceDatagram,
                 Some("service-fixed") => Self::ServiceFixed,
                 Some("service-allocated") => Self::ServiceAllocated,
                 _ => return Err("unknown resource profile"),
@@ -100,7 +112,7 @@ impl ResourceProfile {
 
     fn rx_bytes(self) -> usize {
         match self {
-            Self::SmallDevice | Self::SmallBlockwise => 1152,
+            Self::SmallDevice | Self::SmallBlockwise | Self::SmallObserve => 1152,
             _ => 1472,
         }
     }
@@ -115,6 +127,10 @@ impl ResourceProfile {
         let sizes: &[usize] = match self {
             Self::SmallDevice => &[32],
             Self::SmallBlockwise => &[64, 1024, 4096],
+            Self::SmallObserve => &[4096],
+            Self::DeviceFixed => &[64, 1024, 4096],
+            Self::GatewayFixed => &[64, 1024, 8192],
+            Self::ServiceDatagram => &[64, 1024],
             Self::ServiceFixed | Self::ServiceAllocated => &[64, 1024, 16384],
             Self::HostControl => unreachable!(),
         };
@@ -627,6 +643,24 @@ fn mio_server<const SCRATCH: usize>(
             io,
             context
         )),
+        // This GET fixture selects O1 storage; actual registration, notification
+        // and cancellation are exercised by the separate Observe proof binary.
+        ResourceProfile::SmallObserve => drive!(bind_resources!(
+            coaptic::resources::SmallDevice::new()
+                .block_wise::<true>()
+                .observe_entries::<1>(),
+            io,
+            context
+        )),
+        ResourceProfile::DeviceFixed => {
+            device_fixed_mio(io, poll, events, bytes, context, security)
+        }
+        ResourceProfile::GatewayFixed => {
+            gateway_fixed_mio(io, poll, events, bytes, context, security)
+        }
+        ResourceProfile::ServiceDatagram => {
+            service_datagram_mio(io, poll, events, bytes, context, security)
+        }
         ResourceProfile::ServiceFixed => {
             service_fixed_mio(io, poll, events, bytes, context, security)
         }
@@ -638,6 +672,72 @@ fn mio_server<const SCRATCH: usize>(
             drive!(bind_resources!(resources.allocated(required), io, context))
         }
     }
+}
+
+// Separate concrete setup frames keep other selections from reserving these
+// inline pools. No enum holds an App or charges smaller profiles for larger ones.
+#[inline(never)]
+fn device_fixed_mio<const SCRATCH: usize>(
+    io: MioUdp<SCRATCH>,
+    poll: mio::Poll,
+    events: mio::Events,
+    bytes: usize,
+    context: Option<SecurityContext>,
+    security: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let app = bind_resources!(coaptic::resources::Device::new(), io, context)?;
+    drive_mio(
+        app,
+        poll,
+        events,
+        ResourceProfile::DeviceFixed,
+        bytes,
+        security,
+    )
+}
+
+#[inline(never)]
+fn gateway_fixed_mio<const SCRATCH: usize>(
+    io: MioUdp<SCRATCH>,
+    poll: mio::Poll,
+    events: mio::Events,
+    bytes: usize,
+    context: Option<SecurityContext>,
+    security: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let app = bind_resources!(coaptic::resources::Gateway::new(), io, context)?;
+    drive_mio(
+        app,
+        poll,
+        events,
+        ResourceProfile::GatewayFixed,
+        bytes,
+        security,
+    )
+}
+
+#[inline(never)]
+fn service_datagram_mio<const SCRATCH: usize>(
+    io: MioUdp<SCRATCH>,
+    poll: mio::Poll,
+    events: mio::Events,
+    bytes: usize,
+    context: Option<SecurityContext>,
+    security: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let app = bind_resources!(
+        coaptic::resources::Service::new().block_wise::<false>(),
+        io,
+        context
+    )?;
+    drive_mio(
+        app,
+        poll,
+        events,
+        ResourceProfile::ServiceDatagram,
+        bytes,
+        security,
+    )
 }
 
 // Keep this large fixed construction out of every other profile's setup frame.
@@ -1118,6 +1218,10 @@ mod tests {
         for (profile, sizes, rx) in [
             (ResourceProfile::SmallDevice, &[32][..], 1152),
             (ResourceProfile::SmallBlockwise, &[64, 1024, 4096][..], 1152),
+            (ResourceProfile::SmallObserve, &[4096][..], 1152),
+            (ResourceProfile::DeviceFixed, &[64, 1024, 4096][..], 1472),
+            (ResourceProfile::GatewayFixed, &[64, 1024, 8192][..], 1472),
+            (ResourceProfile::ServiceDatagram, &[64, 1024][..], 1472),
             (ResourceProfile::ServiceFixed, &[64, 1024, 16384][..], 1472),
             (
                 ResourceProfile::ServiceAllocated,
@@ -1125,12 +1229,32 @@ mod tests {
                 1472,
             ),
         ] {
+            let mut args = vec![
+                "server".into(),
+                "coaptic-mio".into(),
+                "--resource-profile".into(),
+                profile.name().into(),
+                "127.0.0.1".into(),
+            ];
+            assert_eq!(ResourceProfile::take_option(&mut args).unwrap(), profile);
+            assert_eq!(args, ["server", "coaptic-mio", "127.0.0.1"]);
+            assert_eq!(profile.rx_bytes(), rx);
+            assert_eq!(
+                profile.allocated(),
+                profile == ResourceProfile::ServiceAllocated
+            );
             for &size in sizes {
                 assert!(profile.validate("coaptic-mio", size, rx).is_ok());
                 for kind in ["coaptic-mio-direct", "coaptic-small", "coaptic-async"] {
                     assert!(profile.validate(kind, size, rx).is_err());
                 }
                 assert!(profile.validate("coaptic-mio", size, rx + 1).is_err());
+            }
+            for size in [0, 32, 64, 1024, 4096, 8192, 16384] {
+                assert_eq!(
+                    profile.validate("coaptic-mio", size, rx).is_ok(),
+                    sizes.contains(&size)
+                );
             }
             assert!(profile.validate("coaptic-mio", 65536, rx).is_err());
         }
@@ -1148,6 +1272,155 @@ mod tests {
             "small-device".into(),
         ];
         assert!(ResourceProfile::take_option(&mut args).is_err());
+    }
+
+    fn profile_test_io() -> MioUdp {
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        socket.set_nonblocking(true).unwrap();
+        MioUdp {
+            socket: mio::net::UdpSocket::from_std(socket),
+            scratch: [0; 2049],
+            received: false,
+        }
+    }
+
+    fn expected_capacities(
+        slots: usize,
+        datagram_bytes: usize,
+        dedup: usize,
+        observe: usize,
+        body_slots: usize,
+        body_bytes: usize,
+    ) -> Capacities {
+        Capacities {
+            rx_datagram_slots: slots,
+            rx_datagram_bytes: datagram_bytes,
+            tx_datagram_slots: slots,
+            tx_datagram_bytes: datagram_bytes,
+            dedup_entries: dedup,
+            observe_entries: observe,
+            rx_body_slots: (body_slots != 0).then_some(body_slots),
+            rx_body_bytes: (body_slots != 0).then_some(body_bytes),
+            tx_body_slots: (body_slots != 0).then_some(body_slots),
+            tx_body_bytes: (body_slots != 0).then_some(body_bytes),
+        }
+    }
+
+    fn check_fixed_profile<P, S, const N: usize, const B: bool, const D: usize, const C: usize>(
+        app: &mut App<P, MioUdp, N, B, S, D, C>,
+        expected: Capacities,
+        dimensions: (usize, usize, usize),
+    ) where
+        P: MemoryLayout<B> + AppAssembled<B>,
+        S: AppStorage<Token = P::Token>,
+    {
+        assert_eq!((N, C, D), dimensions);
+        assert_eq!(app.site().len(), 1);
+        assert_eq!(app.client_capacity(), C);
+        assert_eq!(app.security_request_capacity(), 4);
+        assert_eq!(app.association_capacity(), 1);
+        assert_eq!(app.engine().capacities(), expected);
+        assert_eq!(B, expected.rx_body_slots.is_some());
+        // Exhaust and recover every concrete pool without enlarging storage.
+        let mut rx = [None; 32];
+        let mut tx = [None; 32];
+        for slot in rx.iter_mut().take(expected.rx_datagram_slots) {
+            *slot = Some(app.engine_mut().acquire_rx().unwrap());
+        }
+        for slot in tx.iter_mut().take(expected.tx_datagram_slots) {
+            *slot = Some(app.engine_mut().acquire_tx().unwrap());
+        }
+        assert!(app.engine_mut().acquire_rx().is_none());
+        assert!(app.engine_mut().acquire_tx().is_none());
+        for slot in rx.into_iter().flatten() {
+            app.engine_mut().release_rx(slot).unwrap();
+        }
+        for slot in tx.into_iter().flatten() {
+            app.engine_mut().release_tx(slot).unwrap();
+        }
+        let mut rx_body = [None; 4];
+        let mut tx_body = [None; 4];
+        for slot in rx_body.iter_mut().take(expected.rx_body_slots.unwrap_or(0)) {
+            *slot = Some(app.engine_mut().acquire_rx_body().unwrap());
+        }
+        for slot in tx_body.iter_mut().take(expected.tx_body_slots.unwrap_or(0)) {
+            *slot = Some(app.engine_mut().acquire_tx_body().unwrap());
+        }
+        assert!(app.engine_mut().acquire_rx_body().is_none());
+        assert!(app.engine_mut().acquire_tx_body().is_none());
+        for slot in rx_body.into_iter().flatten() {
+            app.engine_mut().release_rx_body(slot).unwrap();
+        }
+        for slot in tx_body.into_iter().flatten() {
+            app.engine_mut().release_tx_body(slot).unwrap();
+        }
+        if B {
+            let slot = app.engine_mut().acquire_rx_body().unwrap();
+            app.engine_mut().release_rx_body(slot).unwrap();
+            let slot = app.engine_mut().acquire_tx_body().unwrap();
+            app.engine_mut().release_tx_body(slot).unwrap();
+        }
+        let slot = app.engine_mut().acquire_rx().unwrap();
+        app.engine_mut().release_rx(slot).unwrap();
+        let slot = app.engine_mut().acquire_tx().unwrap();
+        app.engine_mut().release_tx(slot).unwrap();
+        assert!(mio_burst(app, Instant::now()).unwrap());
+        assert_eq!(app.engine().capacities(), expected);
+    }
+
+    // Separate tests keep fixed construction frames independent, as in startup.
+    #[test]
+    fn small_observe_exact_ledger_refusal_and_recovery() {
+        let mut app = bind_resources!(
+            coaptic::resources::SmallDevice::new()
+                .block_wise::<true>()
+                .observe_entries::<1>(),
+            profile_test_io(),
+            None
+        )
+        .unwrap();
+        check_fixed_profile(
+            &mut app,
+            expected_capacities(2, 1152, 4, 1, 1, 4096),
+            (4, 1, 0),
+        );
+    }
+
+    #[test]
+    fn device_fixed_exact_ledger_refusal_and_recovery() {
+        let mut app =
+            bind_resources!(coaptic::resources::Device::new(), profile_test_io(), None).unwrap();
+        check_fixed_profile(
+            &mut app,
+            expected_capacities(4, 1472, 8, 4, 2, 4096),
+            (8, 4, 2),
+        );
+    }
+
+    #[test]
+    fn gateway_fixed_exact_ledger_refusal_and_recovery() {
+        let mut app =
+            bind_resources!(coaptic::resources::Gateway::new(), profile_test_io(), None).unwrap();
+        check_fixed_profile(
+            &mut app,
+            expected_capacities(8, 1472, 16, 8, 2, 8192),
+            (16, 4, 4),
+        );
+    }
+
+    #[test]
+    fn service_datagram_exact_ledger_refusal_and_recovery() {
+        let mut app = bind_resources!(
+            coaptic::resources::Service::new().block_wise::<false>(),
+            profile_test_io(),
+            None
+        )
+        .unwrap();
+        check_fixed_profile(
+            &mut app,
+            expected_capacities(32, 1472, 64, 32, 0, 0),
+            (32, 4, 8),
+        );
     }
 
     #[test]
