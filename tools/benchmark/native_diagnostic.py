@@ -24,7 +24,7 @@ import time
 import sys
 
 import psutil
-from native_profiles import dimensions, validate_concurrency
+from native_profiles import PROFILE_SIZES, dimensions, validate_concurrency, validate_profile
 
 
 SERVER_KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready", "coaptic-async",
@@ -520,9 +520,26 @@ def validate_report(report, size, operations, policy, security, rate=None,
 
 def measure(server, client, size, operations, warmup, timeout_ms, policy, security,
             *, server_kind="coaptic-reusable", rate=None, cpu_gated=False,
-            phase_timeout_seconds=300, concurrency=1, message_type="con", admission_diagnostics=False, independent_endpoints=False):
+            phase_timeout_seconds=300, concurrency=1, message_type="con", admission_diagnostics=False,
+            independent_endpoints=False, resource_profile="host-control"):
+    """Measure complete operations with additive wall-clock phase observations.
+
+    Client startup and warmup share one ready signal and one combined duration.
+    The resource window retains its CPU-gated boundary and overlaps the broader
+    measurement/report duration. Cleanup measures the existing process-finally
+    block; total also includes temporary-directory removal and receipt metadata.
+    """
+    total_started = time.perf_counter_ns()
     validate_concurrency(concurrency, message_type, independent_endpoints)
-    if independent_endpoints and (server_kind != "coaptic-mio" or (size > 1024 and concurrency > 2)):
+    # Host diagnostics historically accept every bounded representation size.
+    # Representative fixtures use the exact existing profile selections.
+    if resource_profile != "host-control":
+        validate_profile(resource_profile, server_kind, size, concurrency=concurrency,
+                         message_type=message_type, security=security,
+                         admission_diagnostics=admission_diagnostics,
+                         independent_endpoints=independent_endpoints)
+    if independent_endpoints and (server_kind != "coaptic-mio" or
+                                 (resource_profile == "host-control" and size > 1024 and concurrency > 2)):
         raise ValueError("host diagnostic independent CON requires Mio and at most two concurrent bodies")
     if not (1 <= size <= 65536 and 1 <= operations <= 60_000 and 0 <= warmup <= 1000
             and (operations + warmup) * ((size + 1023) // 1024) <= 60_000
@@ -537,6 +554,8 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
             and (rate is None or (type(rate) is int and 1 <= rate <= 1_000_000
                                   and operations / rate <= 120))):
         raise ValueError("diagnostic bounds")
+    rx_bytes = dimensions(resource_profile, size)["rx_datagram_bytes"]
+    phases = {}
     with tempfile.TemporaryDirectory(prefix="coaptic-native-diagnostic-") as directory:
         credentials = Path(directory) / "credentials"
         credentials.write_bytes(secrets.token_bytes(24))
@@ -544,13 +563,16 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
             reserve.bind(("127.0.0.1", 0))
             port = reserve.getsockname()[1]
         command = [str(Path(server).resolve()), server_kind, "127.0.0.1",
-                   str(port), str(size), "1472"]
+                   str(port), str(size), str(rx_bytes)]
         if security == "oscore":
             command.append(str(credentials))
+        if resource_profile != "host-control":
+            command.extend(["--resource-profile", resource_profile])
         child = None
         report = None
         server_log_path = Path(directory) / "server.log"
         with server_log_path.open("wb") as server_log:
+            server_started = time.perf_counter_ns()
             sut = subprocess.Popen(command, stdout=server_log, stderr=server_log)
             try:
                 # Readiness sends no protected traffic and consumes no sequence.
@@ -565,6 +587,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                     time.sleep(.01)
                 else:
                     raise RuntimeError("server bind deadline")
+                phases["server_startup_bind"] = (time.perf_counter_ns() - server_started) / 1e9
                 command = [str(Path(client).resolve()), str(port), str(size),
                            str(operations), str(warmup), str(timeout_ms), policy, security]
                 if security == "oscore":
@@ -577,14 +600,18 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                 if admission_diagnostics:
                     command.append("--admission-diagnostics")
                 command.append("--cpu-gated" if cpu_gated else "--gated")
+                client_started = time.perf_counter_ns()
                 child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                          stderr=subprocess.PIPE, text=True)
                 ready_line = control_line(child.stderr, phase_timeout_seconds)
                 if ready_line != "ready":
                     raise RuntimeError("client initialization/warmup refused: " + ready_line)
+                # The ready signal combines process initialization and native warmup.
+                phases["client_startup_and_warmup"] = (time.perf_counter_ns() - client_started) / 1e9
                 startup = server_resources(server_log_path, server_kind,
                                            deadline=time.monotonic() + phase_timeout_seconds,
-                                           server=sut, size=size, security=security)
+                                           server=sut, resource_profile=resource_profile,
+                                           size=size, security=security, rx_bytes=rx_bytes)
                 peers = {"client": psutil.Process(child.pid), "server": psutil.Process(sut.pid)}
                 before = {name: snapshot(p) for name, p in peers.items()}
                 started = time.perf_counter_ns()
@@ -608,11 +635,14 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                 if not cpu_gated:
                     after = {name: snapshot(p) for name, p in peers.items()}
                     resource_window_ns = time.perf_counter_ns() - started
+                phases["measurement_and_report"] = (time.perf_counter_ns() - started) / 1e9
+                phases["resource_window"] = resource_window_ns / 1e9
                 child.stdin.write("exit\n")
                 child.stdin.flush()
                 if child.wait(timeout=5):
                     raise RuntimeError("client exit failed")
-                return dict(schema="coaptic-native-cost/1", report=report,
+                result = dict(schema="coaptic-native-cost/1", report=report,
+                            phase_durations_seconds=phases,
                             resource_window_ns=resource_window_ns, before=before, after=after,
                             cpu_cost=cpu_cost(before, after, report["completed"]),
                             cpu_boundary=("post-warmup ready/run to measured/report; excludes JSON formatting"
@@ -648,11 +678,15 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                     admission_diagnostics=admission_diagnostics)
                 raise
             finally:
+                cleanup_started = time.perf_counter_ns()
                 if child is not None and child.poll() is None:
                     child.terminate()
                     child.wait(timeout=5)
                 sut.terminate()
                 sut.wait(timeout=5)
+                phases["cleanup"] = (time.perf_counter_ns() - cleanup_started) / 1e9
+    phases["total"] = (time.perf_counter_ns() - total_started) / 1e9
+    return result
 
 
 def main():
@@ -670,6 +704,7 @@ def main():
     parser.add_argument("--security", choices=("unprotected", "oscore"), required=True)
     parser.add_argument("--server-kind", choices=SERVER_KINDS,
                         default="coaptic-reusable")
+    parser.add_argument("--resource-profile", choices=tuple(PROFILE_SIZES), default="host-control")
     parser.add_argument("--rate", type=int)
     parser.add_argument("--concurrency", type=int, choices=range(1, 5), default=1)
     parser.add_argument("--message-type", choices=("con", "non"), default="con")
@@ -686,7 +721,7 @@ def main():
                          server_kind=args.server_kind, rate=args.rate, cpu_gated=args.cpu_gated,
                          phase_timeout_seconds=args.phase_timeout_seconds,
                          concurrency=args.concurrency, message_type=args.message_type, independent_endpoints=args.independent_endpoints,
-                         admission_diagnostics=args.admission_diagnostics)
+                         admission_diagnostics=args.admission_diagnostics, resource_profile=args.resource_profile)
     except Exception as error:
         args.output.write_text(json.dumps(dict(passed=False, error_type=type(error).__name__,
                                               reason=str(error),

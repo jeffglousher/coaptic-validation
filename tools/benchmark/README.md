@@ -26,6 +26,12 @@ keeps exact historical sources, raw arrays and current integration limits.
 
 ## Current SmallDevice quick check
 
+For repeatable Coaptic revision comparisons, use the
+[fixed development suite](development_suite.md): four profiles, authenticated
+native loopback/reliability checks and existing core probes. Preparation/build
+is separate from the measured warm run. Its short results are development
+signals; Linux CPU acceptance and eBPF diagnosis remain separate.
+
 `coaptic-small` binds `resources::SmallDevice::new()` with fixed
 `profiles::Constrained` storage: four route slots (one GET route), one Call,
 zero deferred rows, one OSCORE association and four request bindings. Blockwise
