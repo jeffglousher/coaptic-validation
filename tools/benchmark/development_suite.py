@@ -667,8 +667,10 @@ def main():
     elif a.mode == "run":
         result = run_suite(a.prepared, a.output, a.client_from)
         print(json.dumps(dict(passed=result["passed"], seconds=result["total_seconds"],
-                              within_minute=result["within_minute"], socket_cells=8,
-                              core_cells=6, unsupported_core_cells=2, result=str(a.output))))
+                              within_minute=result["within_minute"], socket_cells=len(result["cells"]),
+                              core_cells=sum(c["core"]["status"] == "passed" for c in result["cells"]),
+                              unsupported_core_cells=sum(c["core"]["status"] == "unsupported" for c in result["cells"]),
+                              observe_lifecycle_cells=len(result["observe"]), result=str(a.output))))
     else:
         save(a.output, compare(a.before, a.after))
         print("Descriptive revision comparison written to " + str(a.output))

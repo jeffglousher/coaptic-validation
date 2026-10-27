@@ -131,19 +131,24 @@ impl Io {
         if p.oscore().is_some() != self.protected {
             return Err(invalid("wire_security"));
         }
-        let code = match (from_client, self.protected) {
-            (true, false) => Code::GET,
-            (true, true) => Code::POST,
-            (false, false) => Code::CONTENT,
-            (false, true) => Code::CHANGED,
-        };
-        if p.code() != code {
-            return Err(invalid("wire_code"));
-        }
         let observe = p
             .observe()
             .transpose()
             .map_err(|_| invalid("wire_observe"))?;
+        // RFC 8613 section 4.1.3.5 selects FETCH/Content when Observe is
+        // present; ordinary continuations and fresh GET use POST/Changed.
+        // This checks only the outer shape. App still authenticates the Inner.
+        let code = match (from_client, self.protected, observe.is_some()) {
+            (true, false, _) => Code::GET,
+            (false, false, _) => Code::CONTENT,
+            (true, true, true) => Code::FETCH,
+            (false, true, true) => Code::CONTENT,
+            (true, true, false) => Code::POST,
+            (false, true, false) => Code::CHANGED,
+        };
+        if p.code() != code {
+            return Err(invalid("wire_code"));
+        }
         if from_client {
             if p.ty() != Type::Confirmable {
                 return Err(invalid("request_type"));
@@ -759,6 +764,53 @@ mod tests {
     }
     fn request() -> ([u8; WIRE], usize) {
         packet(Type::Confirmable, Code::GET, 17, b"owner", &[])
+    }
+
+    #[test]
+    fn protected_outer_codes_follow_observe_presence_and_reject_other_pair() {
+        for observe in [
+            None,
+            Some(Opt::observe_register()),
+            Some(Opt::observe_deregister()),
+        ] {
+            let mut options = Vec::new();
+            if let Some(option) = observe {
+                options.push(option);
+            }
+            options.push(Opt::oscore(&[0]));
+            let (request_code, response_code, wrong_request, wrong_response) = if observe.is_some()
+            {
+                (Code::FETCH, Code::CONTENT, Code::POST, Code::CHANGED)
+            } else {
+                (Code::POST, Code::CHANGED, Code::FETCH, Code::CONTENT)
+            };
+            let (mut io, _) = sockets(Side::Client, true);
+            let (bytes, len) = packet(Type::Confirmable, wrong_request, 17, b"owner", &options);
+            assert!(io.check(&bytes[..len], true).is_err());
+            let (bytes, len) = packet(Type::Confirmable, request_code, 17, b"owner", &options);
+            io.check(&bytes[..len], true).unwrap();
+            let (bytes, len) = packet(
+                Type::Acknowledgement,
+                wrong_response,
+                17,
+                b"owner",
+                &options,
+            );
+            assert!(io.check(&bytes[..len], false).is_err());
+            let (bytes, len) = packet(Type::Acknowledgement, response_code, 17, b"owner", &options);
+            io.check(&bytes[..len], false).unwrap();
+        }
+    }
+
+    #[test]
+    fn full_observe_lifecycle_passes_both_security_modes() {
+        // No other test calls run or mutates VERSION; keep the two flows in
+        // one test so shared fixture version changes cannot race.
+        for protected in [false, true] {
+            let report = run(protected).unwrap();
+            assert!(report.contains("\"success\":true"));
+            assert!(report.contains("\"completed\":6"));
+        }
     }
 
     #[test]

@@ -282,6 +282,19 @@ class RunFailure(unittest.TestCase):
 
 
 class ComparisonTests(unittest.TestCase):
+    def test_cli_summary_reports_actual_expanded_coverage(self):
+        import contextlib
+        import io
+        value = self.observation() | dict(total_seconds=12.0, within_minute=True)
+        stream = io.StringIO()
+        with patch.object(suite, "run_suite", return_value=value), patch.object(suite.sys, "argv",
+                ["suite", "run", "--prepared", "unused", "--output", "unused.json"]), \
+                contextlib.redirect_stdout(stream):
+            self.assertEqual(suite.main(), 0)
+        summary = json.loads(stream.getvalue())
+        self.assertEqual((summary["socket_cells"], summary["core_cells"], summary["unsupported_core_cells"],
+                          summary["observe_lifecycle_cells"]), (16, 6, 10, 2))
+
     @staticmethod
     def observation():
         prep = dict(harness={}, compiler="rust", cargo="cargo", flags={},
