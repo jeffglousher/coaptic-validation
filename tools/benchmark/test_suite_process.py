@@ -223,6 +223,7 @@ class ProcessTests(unittest.TestCase):
             self.assertTrue(owner.descendants())
         self.assertLess(time.monotonic() - started, 1)
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows Job policy")
     def test_job_policy_is_fixed_16_with_kill_on_close_and_no_breakaway(self):
         owner = helper._WindowsOwner()
         try:

@@ -15,7 +15,8 @@ cells. The two SmallDevice-blockwise core cells are explicitly unsupported.
 
 ## Prepare once per source/build
 
-Use the existing Python environment with psutil and the registered Cargo lane.
+Use CPython3.11+ with psutil and the registered Cargo lane (Windows proof uses
+CPython3.14 x64).
 Sources must be committed and clean, Rust1.99 installed, and the companion's
 actual `coaptic` dependency checkout selected intentionally. The expected core
 must match that resolved checkout, including junctions; it is not inferred from
@@ -30,6 +31,14 @@ Preparation holds the existing resource lease, selects the source-specific lock
 with `native_lock`, runs one locked release build of the three native binaries,
 restores the canonical lock and verifies sources. It copies binaries and records
 actual source trees, harness hashes, compiler/build inputs and executable hashes.
+The actual pinned Cargo/rustc executables are recorded and invoked directly.
+Executable paths come from Cargo's JSON artifact messages, never a guessed
+`target/release` path. This initial build contract refuses ambient `CARGO_*`
+overrides except Cargo home/target-directory/jobs/incremental settings, and refuses
+Cargo build/target/profile/env configuration or compiler wrappers. Explicit
+RUSTFLAGS/encoded Rust flags are recorded; permitted registry/network config files
+are hashed and matched. This narrow contract prevents hidden configuration from
+silently changing compared builds.
 It refuses an existing output directory. Each binary is capped at128MiB and the
 copied aggregate at256MiB; build output at16MiB and build execution at900seconds.
 Use a budgeted existing disk, not a new Cargo target per revision.

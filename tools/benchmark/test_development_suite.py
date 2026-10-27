@@ -121,7 +121,7 @@ class PreparedInputs(unittest.TestCase):
             with patch.dict(suite.os.environ, {"CARGO_TARGET_DIR": d}), \
                  patch.object(suite, "identity", return_value=source), \
                  patch.object(suite, "resolved_core", return_value=Path(d)), \
-                 patch.object(suite.subprocess, "check_output", return_value="compiler"), \
+                 patch.object(suite, "toolchain", return_value=("compiler", "cargo", dict(cargo=dict(path="cargo"), rustc=dict(path="rustc")))), \
                  patch.object(suite, "native_lock") as lock, \
                  patch.object(suite, "task", side_effect=RuntimeError("build failed")):
                 with self.assertRaisesRegex(RuntimeError, "build failed"):
@@ -284,6 +284,36 @@ class TaskTemporaryOwnership(unittest.TestCase):
                 self.assertEqual(retained.parent, Path(tempfile.gettempdir()).resolve())
                 self.assertTrue(retained.name.startswith("coaptic-suite-task-"))
                 suite.shutil.rmtree(retained)
+
+
+class CargoBuildInputs(unittest.TestCase):
+    def test_target_specific_environment_flags_refuse(self):
+        with patch.dict(suite.os.environ, {"CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS": "-Copt-level=0"}):
+            with self.assertRaisesRegex(ValueError, "ambient CARGO"):
+                suite.cargo_inputs()
+
+    def test_configured_target_refuses_instead_of_copying_old_host_output(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); (root / ".cargo").mkdir()
+            (root / ".cargo/config.toml").write_text('[build]\ntarget="some-other-target"\n')
+            with patch.object(suite, "SUITE", root):
+                with self.assertRaisesRegex(ValueError, "Cargo build/target"):
+                    suite.cargo_inputs()
+
+    def test_only_complete_cargo_reported_artifacts_are_used(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d).resolve()
+            rows = [dict(reason="compiler-artifact", target=dict(name=n, kind=["bin"]),
+                         executable=str(root / "reported" / n))
+                    for n in ("bench-rust-server", "bench-native-client", "bench-core")]
+            done = dict(reason="build-finished", success=True)
+            raw = b'\n'.join(json.dumps(v).encode() for v in [*rows, done])
+            actual = suite.cargo_artifacts(raw, root)
+            self.assertEqual(actual["bench-core"], root / "reported/bench-core")
+            for values in ([*rows], [*rows, dict(done, success=False)], [*rows[:-1], done],
+                           [dict(rows[0], executable=str(root.parent / "stale")), *rows[1:], done]):
+                with self.assertRaises(ValueError):
+                    suite.cargo_artifacts(b'\n'.join(json.dumps(v).encode() for v in values), root)
 
 
 if __name__ == "__main__":

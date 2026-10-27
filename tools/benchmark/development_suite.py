@@ -145,6 +145,72 @@ def resolved_core():
     return (manifest.parent / dependency["path"]).resolve()
 
 
+def cargo_inputs():
+    """A deliberately narrow build contract, not an effective-config guess."""
+    allowed = {"CARGO_HOME", "CARGO_TARGET_DIR", "CARGO_INCREMENTAL", "CARGO_BUILD_JOBS"}
+    if any(k.startswith("CARGO_") and k not in allowed for k in os.environ):
+        raise ValueError("unsupported ambient CARGO_* setting; use the recorded native build contract")
+    if any(os.environ.get(k) for k in ("RUSTC", "RUSTDOC", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "RUSTC_BOOTSTRAP")):
+        raise ValueError("compiler overrides/wrappers are not supported by preparation")
+    home = Path(os.environ.get("CARGO_HOME", str(Path.home() / ".cargo"))).resolve()
+    locations = [p / ".cargo" / n for p in (SUITE, *SUITE.parents) for n in ("config", "config.toml")]
+    locations += [home / n for n in ("config", "config.toml")]
+    configs = {}
+    for path in dict.fromkeys(locations):
+        if not path.exists():
+            continue
+        if path.stat().st_size > 65536:
+            raise ValueError("Cargo configuration exceeds preparation bound")
+        parsed = tomllib.loads(path.read_text(encoding="utf-8"))
+        if set(parsed) - {"registry", "registries", "source", "net", "http", "credential-alias", "alias"}:
+            raise ValueError("unsupported Cargo build/target/profile/env configuration: " + str(path))
+        configs[str(path.resolve())] = digest(path)
+    return dict(config_files=configs, rustflags={k: os.environ.get(k) for k in
+                ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS")})
+
+
+def toolchain():
+    tools = {}
+    for name in ("rustc", "cargo"):
+        path = Path(subprocess.check_output(["rustup", "which", "--toolchain", "1.99.0", name],
+                                            text=True, timeout=15).strip()).resolve()
+        tools[name] = dict(path=str(path), sha256=digest(path))
+    compiler = subprocess.check_output([tools["rustc"]["path"], "-Vv"], text=True, timeout=15)
+    cargo = subprocess.check_output([tools["cargo"]["path"], "-V"], text=True, timeout=15)
+    return compiler, cargo, tools
+
+
+def cargo_artifacts(raw, target):
+    artifacts, finished = {}, False
+    wanted = {"bench-rust-server", "bench-native-client", "bench-core"}
+    target = Path(target).resolve()
+    for line in raw.splitlines():
+        if not line.startswith(b"{"):
+            continue  # Build-script output need not be Cargo JSON.
+        row = json.loads(line)
+        if row.get("reason") == "build-finished":
+            if row.get("success") is not True:
+                raise ValueError("Cargo did not report a successful build")
+            finished = True
+        if row.get("reason") != "compiler-artifact":
+            continue
+        name = row.get("target", {}).get("name")
+        if name not in wanted or "bin" not in row.get("target", {}).get("kind", []):
+            continue
+        value = row.get("executable")
+        if not isinstance(value, str) or not Path(value).is_absolute():
+            raise ValueError("Cargo executable artifact path missing")
+        path = Path(value).resolve()
+        if not path.is_relative_to(target):
+            raise ValueError("Cargo artifact outside registered target")
+        if name in artifacts and artifacts[name] != path:
+            raise ValueError("ambiguous Cargo executable artifacts")
+        artifacts[name] = path
+    if not finished or set(artifacts) != wanted:
+        raise ValueError("Cargo executable artifact receipts incomplete")
+    return artifacts
+
+
 def prepare(output, expected_core):
     """Called only inside the selected agent-resources Cargo lease."""
     started = time.perf_counter()
@@ -158,32 +224,30 @@ def prepare(output, expected_core):
         if before["core"]["commit"] != expected_core:
             raise ValueError("resolved dependency does not match --expected-core")
         harness = harness_identity()
-        compiler = subprocess.check_output(["rustc", "+1.99.0", "-Vv"], text=True, timeout=15)
-        cargo = subprocess.check_output(["cargo", "+1.99.0", "-V"], text=True, timeout=15)
-        flags = {k: os.environ.get(k) for k in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS",
-                  "CARGO_BUILD_TARGET", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER")}
-        if any(k.startswith("CARGO_PROFILE_") for k in os.environ):
-            raise ValueError("profile overrides are not supported; use the committed native profile")
-        if flags["CARGO_BUILD_TARGET"]:
-            raise ValueError("quick preparation requires a native host target")
-        command = ["cargo", "+1.99.0", "build", "--release", "--locked", "--manifest-path",
+        flags = cargo_inputs()
+        compiler, cargo, tools = toolchain()
+        command = [tools["cargo"]["path"], "build", "--release", "--locked",
+                   "--message-format=json-render-diagnostics", "--manifest-path",
                    str(NATIVE / "Cargo.toml"), "-p", "bench-rust-server"]
         for name in ("bench-rust-server", "bench-native-client", "bench-core"):
             command += ["--bin", name]
         record.update(sources=before, harness=harness, compiler=compiler, cargo=cargo,
-                      flags=flags, host=host_identity(), build_command=command)
+                      flags=flags, tools=tools, host=host_identity(), build_command=command)
         with native_lock(core) as selected:
             record["lock"] = dict(selected)
-            build = task(dict(kind="build", command=command), timeout=900, limit=BUILD_LIMIT)
+            build = task(dict(kind="build", command=command, rustc=tools["rustc"]["path"]), timeout=900, limit=BUILD_LIMIT)
             (output / "build.log").write_bytes(build.stdout + build.stderr)
             lock_input = dict(selected)
-        if before != dict(core=identity(core), suite=identity(SUITE)) or harness != harness_identity():
+        if (before != dict(core=identity(core), suite=identity(SUITE))
+                or harness != harness_identity() or flags != cargo_inputs()):
             raise ValueError("source changed during preparation")
+        if any(digest(t["path"]) != t["sha256"] for t in tools.values()):
+            raise ValueError("compiler/Cargo changed during preparation")
+        artifacts = cargo_artifacts(build.stdout, target)
         bins, total = {}, 0
-        suffix = ".exe" if os.name == "nt" else ""
         for role, name in (("server", "bench-rust-server"), ("client", "bench-native-client"),
                            ("core", "bench-core")):
-            source = target / "release" / (name + suffix)
+            source = artifacts[name]
             size = source.stat().st_size
             if not 0 < size <= BINARY_LIMIT or total + size > PREPARED_LIMIT:
                 raise ValueError("prepared binary allowance")
@@ -287,6 +351,8 @@ def run_suite(prepared, output, client_from=None):
     client_bundle, client_bins = verify_prepared(client_from or prepared)
     if any(bundle[k] != client_bundle[k] for k in ("harness", "host", "compiler", "cargo", "flags")):
         raise ValueError("frozen client preparation differs")
+    if bundle.get("tools") != client_bundle.get("tools"):
+        raise ValueError("frozen client toolchain differs")
     if bundle["sources"]["suite"]["tree"] != client_bundle["sources"]["suite"]["tree"]:
         raise ValueError("frozen client native fixture tree differs")
     bins["client"] = client_bins["client"]
@@ -401,6 +467,8 @@ def compare(before, after):
     for key in ("harness", "compiler", "cargo", "flags", "native_manifest_sha256", "server_manifest_sha256"):
         if a["preparation"][key] != b["preparation"][key]:
             raise ValueError("build/harness mismatch: " + key)
+    if a["preparation"].get("tools") != b["preparation"].get("tools"):
+        raise ValueError("actual compiler/Cargo executable identity differs")
     if a["preparation"]["sources"]["suite"]["tree"] != b["preparation"]["sources"]["suite"]["tree"]:
         raise ValueError("native fixture companion tree differs")
     if a["client_preparation"]["binaries"]["client"] != b["client_preparation"]["binaries"]["client"]:
@@ -432,7 +500,7 @@ def compare(before, after):
 
 def worker(spec):
     if spec["kind"] == "build":
-        environment = dict(os.environ, CARGO_INCREMENTAL="0", CARGO_BUILD_JOBS="2")
+        environment = dict(os.environ, CARGO_INCREMENTAL="0", CARGO_BUILD_JOBS="2", RUSTC=spec["rustc"])
         return subprocess.call(spec["command"], cwd=SUITE, env=environment)
     if spec["kind"] == "core":
         args = [spec["core"], "16", spec["security"]]
