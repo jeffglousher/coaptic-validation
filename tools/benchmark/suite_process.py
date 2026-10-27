@@ -34,6 +34,7 @@ class WorkerResult:
     stdout: bytes
     stderr: bytes
     duration_seconds: float
+    descendants_settled: bool = False
 
 
 class WorkerError(RuntimeError):
@@ -430,7 +431,8 @@ class _Capture:
         return all(not thread.is_alive() for thread in self.threads)
 
 
-def run_worker(command, *, timeout, limit=MAX_OUTPUT, cwd=None, env=None):
+def run_worker(command, *, timeout, limit=MAX_OUTPUT, cwd=None, env=None,
+               settle_build_auxiliaries=False):
     """Run one handshake worker; return bytes or raise WorkerError with evidence.
 
     ``timeout`` is finite, positive and <=900 seconds; output allowance is one
@@ -438,6 +440,8 @@ def run_worker(command, *, timeout, limit=MAX_OUTPUT, cwd=None, env=None):
     Cleanup has separate finite five-second group/job observation and reap
     bounds, and readers share a one-second final join bound. Nonzero exit,
     surviving descendants, timeout, output overflow, and failed proof are fatal.
+    Build preparation alone may opt to terminate and prove exit of compiler
+    auxiliaries after successful worker exit, before accepting any artifacts.
     Caller owns trusted Python _task code and must serialize Linux child waits.
     """
     if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
@@ -447,9 +451,12 @@ def run_worker(command, *, timeout, limit=MAX_OUTPUT, cwd=None, env=None):
         raise ValueError("combined output limit must be in [1, 16 MiB]")
     if not isinstance(command, (list, tuple)) or not command:
         raise ValueError("command must be a nonempty argv sequence for an owned _task worker")
+    if type(settle_build_auxiliaries) is not bool:
+        raise ValueError("build auxiliary settlement policy must be boolean")
     started = time.monotonic()
     deadline = started + timeout
     owner, child, primary, cleanup, code = None, None, None, [], None
+    remaining = False
     capture = _Capture(limit)
     try:
         owner = _owner()
@@ -472,7 +479,8 @@ def run_worker(command, *, timeout, limit=MAX_OUTPUT, cwd=None, env=None):
             if code is not None:
                 if code:
                     raise subprocess.CalledProcessError(code, command)
-                if owner.descendants():
+                remaining = owner.descendants()
+                if remaining and not settle_build_auxiliaries:
                     raise RuntimeError("worker exited with remaining descendants")
                 break
             time.sleep(min(.01, max(0, deadline - time.monotonic())))
@@ -515,4 +523,4 @@ def run_worker(command, *, timeout, limit=MAX_OUTPUT, cwd=None, env=None):
     duration = time.monotonic() - started
     if primary is not None:
         raise WorkerError(command, primary, cleanup, stdout, stderr, duration, code) from primary
-    return WorkerResult(command, code, stdout, stderr, duration)
+    return WorkerResult(command, code, stdout, stderr, duration, remaining)

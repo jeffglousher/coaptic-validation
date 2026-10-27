@@ -76,7 +76,7 @@ process group. Timeout, output overflow, remaining descendants and unresolved
 cleanup fail the run. This custody assumes the supplied cooperative workers;
 Linux fixtures do not escape their inherited group/session.
 After worker exit, Windows allows at most100ms for Job accounting to observe
-natural exit; any member still active remains a fatal failure. Termination and
+natural exit; any benchmark/reliability member still active remains a fatal failure. Termination and
 bounded exit observation still run independently. Nested helper temporary files
 stay inside the owned task directory and are removed only after settlement;
 unresolved custody retains that path with the primary failure.
@@ -85,6 +85,10 @@ Job Object capped at16active processes, then resume. Two bounded pipe-reader
 threads belong to the harness, not the library. Unsupported custody is refused.
 
 Setup/build are outside the prepared-run duration and retained in preparation.
+After successful Cargo exit, preparation explicitly terminates any remaining
+owned compiler auxiliaries (such as MSVC telemetry) and proves their exit before
+validating or copying artifacts. The preparation receipt records this action;
+cleanup failure is fatal. This policy does not apply to benchmark workers.
 Socket receipts separate server startup, combined client startup/warmup, resource
 window and cleanup; core process startup/warmup/calibration are not separately
 instrumented. Core128warmups and4096calibrations remain visible; calibration is

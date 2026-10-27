@@ -249,6 +249,14 @@ class ComparisonTests(unittest.TestCase):
 
 
 class TaskTemporaryOwnership(unittest.TestCase):
+    def test_only_build_tasks_request_compiler_auxiliary_settlement(self):
+        from types import SimpleNamespace
+        for kind in ("build", "core", "socket", "reliability-profile", "reliability-common"):
+            with self.subTest(kind=kind), patch.object(suite, "run_worker", return_value=
+                    SimpleNamespace(returncode=0)) as worker:
+                suite.task({"kind": kind}, 1)
+                self.assertEqual(worker.call_args.kwargs["settle_build_auxiliaries"], kind == "build")
+
     def test_nested_helpers_use_owned_temp_and_cleanup_after_settlement(self):
         paths = []
         def failed(command, **kwargs):

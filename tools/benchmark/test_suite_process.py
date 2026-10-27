@@ -154,6 +154,27 @@ class ProcessTests(unittest.TestCase):
         self.assertFalse(error.cleanup_unresolved)
         self.assert_descendant_stopped(int(error.stdout))
 
+    def test_build_policy_settles_auxiliary_before_success(self):
+        result = helper.run_worker(command("descendant"), timeout=3,
+                                   settle_build_auxiliaries=True)
+        self.assertTrue(result.descendants_settled)
+        self.assertEqual(result.returncode, 0)
+        self.assert_descendant_stopped(int(result.stdout))
+
+    def test_build_policy_does_not_accept_failed_settlement(self):
+        owner = helper._owner()
+        settle = owner.settle
+        def settled_then_refused():
+            settle()
+            raise RuntimeError("auxiliary exit observation refused")
+        with patch.object(helper, "_owner", return_value=owner), patch.object(
+                owner, "settle", side_effect=settled_then_refused):
+            with self.assertRaises(helper.WorkerError) as caught:
+                helper.run_worker(command("descendant"), timeout=3,
+                                  settle_build_auxiliaries=True)
+        self.assertTrue(caught.exception.cleanup_unresolved)
+        self.assert_descendant_stopped(int(caught.exception.stdout))
+
     def test_unsupported_helper_refuses_before_spawn(self):
         with patch.object(helper.sys, "platform", "unsupported"), patch.object(helper.subprocess, "Popen") as spawn:
             with self.assertRaises(helper.WorkerError) as caught:
@@ -305,6 +326,10 @@ class ValidationTests(unittest.TestCase):
             for limit in (0, -1, helper.MAX_OUTPUT + 1, True, 1.5):
                 with self.subTest(limit=limit), self.assertRaises(ValueError):
                     helper.run_worker(command("result"), timeout=1, limit=limit)
+            for policy in (0, 1, "yes", None):
+                with self.subTest(policy=policy), self.assertRaises(ValueError):
+                    helper.run_worker(command("result"), timeout=1,
+                                      settle_build_auxiliaries=policy)
             owner.assert_not_called()
 
 

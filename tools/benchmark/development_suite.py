@@ -113,7 +113,8 @@ def task(spec, timeout, limit=JSON_LIMIT):
                            TMP=str(directory), TEMP=str(directory), TMPDIR=str(directory))
         result = run_worker([sys._base_executable, "-B", str(Path(__file__).resolve()),
                              "_task", str(path)], timeout=timeout, limit=limit,
-                            cwd=str(SUITE), env=environment)
+                            cwd=str(SUITE), env=environment,
+                            settle_build_auxiliaries=spec["kind"] == "build")
         if result.returncode:
             error = RuntimeError("suite worker refused: " + str(result.returncode))
             error.stdout, error.stderr = result.stdout, result.stderr
@@ -236,6 +237,7 @@ def prepare(output, expected_core):
         with native_lock(core) as selected:
             record["lock"] = dict(selected)
             build = task(dict(kind="build", command=command, rustc=tools["rustc"]["path"]), timeout=900, limit=BUILD_LIMIT)
+            record["build_auxiliaries_settled"] = build.descendants_settled
             (output / "build.log").write_bytes(build.stdout + build.stderr)
             lock_input = dict(selected)
         if (before != dict(core=identity(core), suite=identity(SUITE))
