@@ -254,5 +254,24 @@ OTA and paired device qualification remain separate from archive compilation.
 
 Hosted compilation and independent archive acceptance passed in run 40694497672
 (127-second job); see the [retained proof](../benchmark/evidence/xtensa-archive-20261028/README.md).
-Firmware assembly, final linking, preserving OTA and paired device validation
-remain unfinished under issue #217.
+Firmware assembly, final linking, preserving app-only OTA and the finite paired
+device check now pass; see the [refresh receipt](../benchmark/evidence/waveshare-refresh-20261028/README.md).
+This closes the functional refresh scope of #217, without CPU or whole-memory acceptance.
+
+For a preserving refresh, retain the exact archive/source receipt and commissioned
+configuration; change only run identity and expected source pins. Use the existing
+ESPHome `compile` path with bundled Rust runtime, one compile process and inherited
+`CMAKE_BUILD_PARALLEL_LEVEL=1` for its nested CMake build. Reuse the existing owned
+output and its lease; prevent a native full clean from deleting controller markers.
+If a required clean is requested, stop rather than skipping invalidation. Stage the
+verified archive then manifest, and restore the previous component bundle after
+settlement. Record preparation separately from the quick probes.
+
+Before network OTA, explicitly require ESP32-S3 app format/descriptor, checksum,
+appended digest, actual image hash, fresh run marker and OTA partition fit. An
+`image-info` exit code alone is insufficient. Use only the preserving transport
+configuration with `--ota-platform esphome --file VERIFIED_APP_IMAGE`; never use
+serial `--file`, factory images or partition changes. Confirm a bounded encrypted
+API run witness before and after the retained-grant `--probe-echo` and
+`--qualify-timing` commands. Bound the observation interval after connection;
+connecting alone does not verify identity. Keep failures and all original timings.
