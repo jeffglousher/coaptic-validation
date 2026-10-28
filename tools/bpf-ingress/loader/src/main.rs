@@ -9,7 +9,11 @@ mod linux {
         maps::PerCpuArray,
         programs::{Xdp, XdpMode},
     };
-    use std::{error::Error, process::Command, time::Duration};
+    use std::{
+        error::Error,
+        process::Command,
+        time::{Duration, Instant},
+    };
     type Result<T> = std::result::Result<T, Box<dyn Error>>;
     fn ip(args: &[&str]) -> Result<()> {
         if !Command::new("ip").args(args).status()?.success() {
@@ -22,6 +26,7 @@ mod linux {
         peer: String,
         indices: Option<(u32, u32)>,
         owned: bool,
+        retain: bool,
     }
     fn interface_value(name: &str, field: &str) -> Result<u32> {
         Ok(
@@ -41,6 +46,7 @@ mod linux {
                 peer,
                 indices: None,
                 owned: true,
+                retain: false,
             };
             owned.indices = Some((
                 interface_value(&owned.name, "ifindex")?,
@@ -77,9 +83,24 @@ mod linux {
             Ok(index)
         }
         fn cleanup(&mut self) -> Result<()> {
+            if self.retain {
+                return Err("cleanup uncertain; retain ownership record for reconciliation".into());
+            }
             if self.owned {
-                self.verify_identity()?;
-                ip(&["link", "delete", &self.name])?;
+                let cleanup = (|| -> Result<()> {
+                    self.verify_identity()?;
+                    ip(&["link", "delete", &self.name])?;
+                    for name in [&self.name, &self.peer] {
+                        if std::path::Path::new(&format!("/sys/class/net/{name}")).try_exists()? {
+                            return Err("owned veth remains after deletion".into());
+                        }
+                    }
+                    Ok(())
+                })();
+                if let Err(error) = cleanup {
+                    self.retain = true;
+                    return Err(error);
+                }
                 self.owned = false;
             }
             Ok(())
@@ -196,6 +217,7 @@ mod linux {
                     peer,
                     indices: Some((index, peer_index)),
                     owned: false,
+                    retain: false,
                 };
                 veth.verify_identity()?;
                 owned.record = Some(veth);
@@ -232,16 +254,115 @@ mod linux {
         );
         Ok(())
     }
+    fn quick(object: &str, veth: &mut Veth) -> Result<()> {
+        let started = Instant::now();
+        let result = (|| -> Result<()> {
+            let (ingress, peer) = veth.indices.ok_or("missing veth indices")?;
+            veth.verify_identity()?;
+            crate::probe::attached(&veth.name, None)?;
+            let phase = Instant::now();
+            crate::probe::live(ingress, peer, "quick-before")?;
+            println!(
+                "phase=live-before elapsed_ms={}",
+                phase.elapsed().as_millis()
+            );
+            let phase = Instant::now();
+            let mut bpf = Ebpf::load_file(object)?;
+            let program: &mut Xdp = bpf
+                .program_mut("coaptic_observe")
+                .ok_or("missing program")?
+                .try_into()?;
+            program.load()?;
+            println!(
+                "phase=load-verify elapsed_ms={}",
+                phase.elapsed().as_millis()
+            );
+            let phase = Instant::now();
+            let id = program.info()?.id();
+            let link = program.attach_to_if_index(veth.verify_identity()?, XdpMode::Skb)?;
+            crate::probe::attached(&veth.name, Some(id))?;
+            println!(
+                "phase=attach elapsed_ms={} program_id={id} mode=SKB",
+                phase.elapsed().as_millis()
+            );
+            let phase = Instant::now();
+            crate::probe::quick_attached(&bpf, ingress, peer)?;
+            println!(
+                "phase=live-attached elapsed_ms={}",
+                phase.elapsed().as_millis()
+            );
+            let phase = Instant::now();
+            let program: &mut Xdp = bpf
+                .program_mut("coaptic_observe")
+                .ok_or("missing program")?
+                .try_into()?;
+            program.detach(link)?;
+            veth.verify_identity()?;
+            crate::probe::attached(&veth.name, None)?;
+            println!(
+                "phase=detach-absence elapsed_ms={}",
+                phase.elapsed().as_millis()
+            );
+            let phase = Instant::now();
+            let before = crate::probe::counters(&bpf)?;
+            crate::probe::live(ingress, peer, "quick-detached-recovery")?;
+            let after = crate::probe::counters(&bpf)?;
+            if after != before {
+                return Err(format!(
+                    "detached recovery changed counters: before={before:?} after={after:?}"
+                )
+                .into());
+            }
+            println!(
+                "phase=live-recovery elapsed_ms={} unchanged_counters={after:?}",
+                phase.elapsed().as_millis()
+            );
+            Ok(())
+        })();
+        // The object has closed its links on every path. Refuse deletion if
+        // attachment absence or pair identity cannot be established afterward.
+        let phase = Instant::now();
+        if let Err(error) = veth
+            .verify_identity()
+            .and_then(|_| crate::probe::attached(&veth.name, None))
+            .and_then(|_| veth.cleanup())
+        {
+            veth.retain = true;
+            return Err(format!("quick result={result:?}; cleanup uncertain; retained ingress={} peer={} indices={:?}: {error}", veth.name, veth.peer, veth.indices).into());
+        }
+        println!(
+            "phase=delete-absence elapsed_ms={}",
+            phase.elapsed().as_millis()
+        );
+        result?;
+        println!(
+            "quick PASS elapsed_ms={}; observation only; authentication remains in App",
+            started.elapsed().as_millis()
+        );
+        Ok(())
+    }
     pub fn run() -> Result<()> {
         let args: Vec<_> = std::env::args().collect();
         if args.len() != 4 {
-            return Err("usage: coaptic-ingress-loader OBJECT SECONDS|qualify CYCLES or OBJECT cost 1; cost runs detached, other modes create an owned veth; requires Linux BPF privileges".into());
+            return Err("usage: coaptic-ingress-loader OBJECT quick 1 | OBJECT SECONDS|qualify CYCLES | OBJECT cost 1; cost runs detached, other modes create an owned veth; requires Linux BPF privileges".into());
         }
         if args[2] == "cost" {
             if args[3] != "1" {
                 return Err("cost mode runs exactly one finite sample; use OBJECT cost 1".into());
             }
             return crate::cost::run(&args[1]);
+        }
+        if args[2] == "quick" {
+            if args[3] != "1" {
+                return Err("quick mode runs exactly one finite batch; use OBJECT quick 1".into());
+            }
+            let phase = Instant::now();
+            let mut veth = Veth::create()?;
+            println!(
+                "phase=create-identity elapsed_ms={}",
+                phase.elapsed().as_millis()
+            );
+            return quick(&args[1], &mut veth);
         }
         let qualify = args[2] == "qualify";
         let seconds: u64 = if qualify { 1 } else { args[2].parse()? };

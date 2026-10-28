@@ -192,20 +192,31 @@ fn live_frame(payload: &[u8], ipv6: bool) -> Vec<u8> {
     let mut frame = vectors::packet(payload, ipv6);
     frame[..6].copy_from_slice(&[0xff; 6]);
     frame[6..12].copy_from_slice(&[2, 0, 0, 0, 0, 1]);
-    let udp = if ipv6 { 54 } else { 34 };
-    let length = (payload.len() + 8) as u16;
-    let mut pseudo = Vec::new();
     if ipv6 {
         frame[21] = 64;
         frame[22..38].copy_from_slice(&[0x20, 1, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
         frame[38..54].copy_from_slice(&[0x20, 1, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2]);
-        pseudo.extend_from_slice(&frame[22..54]);
-        pseudo.extend_from_slice(&u32::from(length).to_be_bytes());
-        pseudo.extend_from_slice(&[0, 0, 0, 17]);
     } else {
         frame[22] = 64;
         frame[26..30].copy_from_slice(&[192, 0, 2, 1]);
         frame[30..34].copy_from_slice(&[192, 0, 2, 2]);
+    }
+    recompute_checksums(&mut frame, ipv6);
+    frame
+}
+
+fn recompute_checksums(frame: &mut [u8], ipv6: bool) {
+    let udp = if ipv6 { 54 } else { 34 };
+    let length = (frame.len() - udp) as u16;
+    // Port/payload mutations must clear the old checksum before recomputation.
+    frame[udp + 6..udp + 8].fill(0);
+    let mut pseudo = Vec::new();
+    if ipv6 {
+        pseudo.extend_from_slice(&frame[22..54]);
+        pseudo.extend_from_slice(&u32::from(length).to_be_bytes());
+        pseudo.extend_from_slice(&[0, 0, 0, 17]);
+    } else {
+        frame[24..26].fill(0);
         let ip_sum = checksum(&frame[14..34]);
         frame[24..26].copy_from_slice(&ip_sum.to_be_bytes());
         pseudo.extend_from_slice(&frame[26..34]);
@@ -216,10 +227,9 @@ fn live_frame(payload: &[u8], ipv6: bool) -> Vec<u8> {
     let udp_sum = checksum(&pseudo);
     frame[udp + 6..udp + 8]
         .copy_from_slice(&if udp_sum == 0 { u16::MAX } else { udp_sum }.to_be_bytes());
-    frame
 }
 
-pub(super) fn live(ingress: u32, peer: u32, phase: &str) -> Result<()> {
+fn live_frames() -> Vec<Vec<u8>> {
     let mut plain = vec![0x40, 1, 0, 1, 0xff];
     plain.extend_from_slice(&[0x5a; 32]);
     // RFC 8613 Appendix C.4 protected request; bytes stay opaque to this hook.
@@ -228,12 +238,129 @@ pub(super) fn live(ingress: u32, peer: u32, phase: &str) -> Result<()> {
         0x6f, 0x73, 0x74, 0x62, 0x09, 0x14, 0xff, 0x61, 0x2f, 0x10, 0x92, 0xf1, 0x77, 0x6f, 0x1c,
         0x16, 0x68, 0xb3, 0x82, 0x5e,
     ];
+    let mut frames = Vec::with_capacity(4);
     for ipv6 in [false, true] {
         for payload in [plain.as_slice(), protected.as_slice()] {
-            live_one(ingress, peer, phase, &live_frame(payload, ipv6))?;
+            frames.push(live_frame(payload, ipv6));
         }
     }
+    frames
+}
+
+pub(super) fn live(ingress: u32, peer: u32, phase: &str) -> Result<()> {
+    for frame in live_frames() {
+        live_one(ingress, peer, phase, &frame)?;
+    }
     Ok(())
+}
+
+fn quick_frames() -> Vec<Vec<u8>> {
+    let mut frames = live_frames();
+    // TKL 9 is deliberately invalid (ordinary tokens are limited to eight).
+    frames.push(live_frame(&[0x49, 1, 0, 2], false));
+    let mut oversized = vec![0x5a; 257];
+    oversized[..5].copy_from_slice(&[0x40, 1, 0, 3, 0xff]);
+    frames.push(live_frame(&oversized, false));
+    let mut unrelated = live_frame(&[0x40, 1, 0, 4], true);
+    unrelated[54..56].copy_from_slice(&49152u16.to_be_bytes());
+    unrelated[56..58].copy_from_slice(&49153u16.to_be_bytes());
+    recompute_checksums(&mut unrelated, true);
+    frames.push(unrelated);
+    // A valid frame after all three refusal/uninspected cases proves recovery.
+    frames.push(live_frame(&[0x40, 1, 0, 5], false));
+    frames
+}
+
+pub(super) fn quick_attached(bpf: &Ebpf, ingress: u32, peer: u32) -> Result<()> {
+    use coaptic_ingress_classifier::Class;
+    let before = counters(bpf)?;
+    for (ordinal, frame) in quick_frames().iter().enumerate() {
+        live_one(ingress, peer, &format!("quick-attached-{ordinal}"), frame)?;
+    }
+    let after = counters(bpf)?;
+    let delta: [u64; COUNTERS as usize] =
+        std::array::from_fn(|i| after[i].saturating_sub(before[i]));
+    if delta[Class::CoapSyntax as usize] != 5
+        || delta[Class::MalformedCoap as usize] != 1
+        || delta[Class::Oversized as usize] != 1
+        || delta[Class::Uninspected as usize] < 1
+        || delta[TOTAL as usize] < 8
+    {
+        return Err(format!(
+            "quick classifier deltas differ: before={before:?} after={after:?} delta={delta:?}"
+        )
+        .into());
+    }
+    println!(
+        "quick attached PASS exact_frames=8 before={before:?} after={after:?} delta={delta:?}; ambient uninspected/total may exceed batch; opaque OSCORE syntax is not authentication"
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod quick_tests {
+    use super::*;
+    use coaptic_ingress_classifier::Class;
+
+    #[test]
+    fn finite_batch_classes_lengths_and_recovery() {
+        let frames = quick_frames();
+        assert_eq!(frames.len(), 8);
+        let expected = [
+            Class::CoapSyntax,
+            Class::CoapSyntax,
+            Class::CoapSyntax,
+            Class::CoapSyntax,
+            Class::MalformedCoap,
+            Class::Oversized,
+            Class::Uninspected,
+            Class::CoapSyntax,
+        ];
+        for (frame, class) in frames.iter().zip(expected) {
+            assert_eq!(classify(frame), class);
+        }
+        assert_eq!(frames[4][42] & 15, 9);
+        assert_eq!(frames[5].len() - 42, 257);
+        assert_ne!(&frames[6][54..56], &5683u16.to_be_bytes());
+        assert_ne!(&frames[6][56..58], &5683u16.to_be_bytes());
+        assert_eq!(live_frames().len(), 4);
+    }
+
+    #[test]
+    fn packet_lengths_checksums_and_mutation_repair() {
+        assert_eq!(checksum(&[0, 1, 0xf2, 3, 0xf4, 0xf5, 0xf6, 0xf7]), 0x220d);
+        for mut frame in quick_frames() {
+            let ipv6 = frame[14] >> 4 == 6;
+            let udp = if ipv6 { 54 } else { 34 };
+            let length = (frame.len() - udp) as u16;
+            assert_eq!(u16::from_be_bytes([frame[udp + 4], frame[udp + 5]]), length);
+            let mut pseudo = Vec::new();
+            if ipv6 {
+                assert_eq!(u16::from_be_bytes([frame[18], frame[19]]), length);
+                pseudo.extend_from_slice(&frame[22..54]);
+                pseudo.extend_from_slice(&u32::from(length).to_be_bytes());
+                pseudo.extend_from_slice(&[0, 0, 0, 17]);
+            } else {
+                assert_eq!(
+                    usize::from(u16::from_be_bytes([frame[16], frame[17]])),
+                    frame.len() - 14
+                );
+                assert_eq!(checksum(&frame[14..34]), 0);
+                pseudo.extend_from_slice(&frame[26..34]);
+                pseudo.extend_from_slice(&[0, 17]);
+                pseudo.extend_from_slice(&length.to_be_bytes());
+            }
+            let header = pseudo.len();
+            pseudo.extend_from_slice(&frame[udp..]);
+            assert_eq!(checksum(&pseudo), 0);
+            frame[udp] ^= 1;
+            pseudo[header..].copy_from_slice(&frame[udp..]);
+            assert_ne!(checksum(&pseudo), 0);
+            recompute_checksums(&mut frame, ipv6);
+            pseudo[header..].copy_from_slice(&frame[udp..]);
+            assert_eq!(checksum(&pseudo), 0);
+        }
+    }
 }
 
 fn live_one(ingress: u32, peer: u32, phase: &str, frame: &[u8]) -> Result<()> {

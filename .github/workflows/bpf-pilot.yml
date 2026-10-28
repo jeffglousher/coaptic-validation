@@ -6,6 +6,7 @@ on:
         description: Exact 40-character Coaptic commit
         required: true
         type: string
+        default: '15388140d24867285e89fbc2ecfecb1dc55aac48'
       full_qualification:
         description: Run the full corpus, verifier metrics, lifecycle and refusal checks
         type: boolean
@@ -71,6 +72,8 @@ jobs:
           COST_PROBE: ${{ inputs.cost_probe }}
         run: |
           set -euo pipefail
+          SECONDS=0
+          trap 'printf "phase=tool-setup elapsed_seconds=%s\n" "$SECONDS" >> "$RUNNER_TEMP/bpf-evidence/phase-timings.txt"' EXIT
           if test "$COST_PROBE" != true; then
             sudo apt-get update
             sudo apt-get install --no-install-recommends -y iproute2
@@ -121,8 +124,11 @@ jobs:
       - name: Build identical portable classifier, loader and BPF object
         run: |
           set -euo pipefail
+          SECONDS=0
+          trap 'printf "phase=build-check elapsed_seconds=%s\n" "$SECONDS" >> "$RUNNER_TEMP/bpf-evidence/phase-timings.txt"' EXIT
           export CARGO_TARGET_DIR="$RUNNER_TEMP/bpf-target"
           cargo test --locked --manifest-path tools/bpf-ingress/classifier/Cargo.toml 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/portable-tests.log"
+          cargo test --locked --bin coaptic-ingress-loader --manifest-path tools/bpf-ingress/loader/Cargo.toml 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/loader-tests.log"
           cargo build --locked --release --manifest-path tools/bpf-ingress/loader/Cargo.toml 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/loader-build.log"
           cargo build --locked --release -Z build-std=core --target bpfel-unknown-none --manifest-path tools/bpf-ingress/ebpf/Cargo.toml 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/object-build.log"
           cp "$CARGO_TARGET_DIR/bpfel-unknown-none/release/coaptic-ingress-ebpf" "$RUNNER_TEMP/bpf-evidence/ingress.elf"
@@ -130,13 +136,14 @@ jobs:
           LLVM="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin"
           "$LLVM/llvm-objdump" --section-headers --syms "$RUNNER_TEMP/bpf-evidence/ingress.elf" > "$RUNNER_TEMP/bpf-evidence/object-layout.txt"
           "$LLVM/llvm-objdump" -d "$RUNNER_TEMP/bpf-evidence/ingress.elf" > "$RUNNER_TEMP/bpf-evidence/object-disassembly.txt"
-      - name: Load and attach once with unmodified Aya
+      - name: Quick deployed packet batch with unmodified Aya
         if: ${{ !inputs.cost_probe }}
         run: |
           set -euo pipefail
+          SECONDS=0
           ip -j link show > "$RUNNER_TEMP/bpf-evidence/smoke-before.json"
-          trap 'ip -j link show > "$RUNNER_TEMP/bpf-evidence/smoke-after.json"' EXIT
-          sudo "$RUNNER_TEMP/bpf-target/release/coaptic-ingress-loader" "$RUNNER_TEMP/bpf-evidence/ingress.elf" 1 1 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/kernel-smoke.log"
+          trap 'ip -j link show > "$RUNNER_TEMP/bpf-evidence/smoke-after.json"; printf "phase=quick-deployed elapsed_seconds=%s\n" "$SECONDS" >> "$RUNNER_TEMP/bpf-evidence/phase-timings.txt"' EXIT
+          sudo "$RUNNER_TEMP/bpf-target/release/coaptic-ingress-loader" "$RUNNER_TEMP/bpf-evidence/ingress.elf" quick 1 2>&1 | tee "$RUNNER_TEMP/bpf-evidence/kernel-smoke.log"
           ip -j link show > "$RUNNER_TEMP/bpf-evidence/smoke-after.json"
           cmp "$RUNNER_TEMP/bpf-evidence/smoke-before.json" "$RUNNER_TEMP/bpf-evidence/smoke-after.json"
       - name: Measure detached kernel execution with unmodified Aya
