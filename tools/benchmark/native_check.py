@@ -57,6 +57,12 @@ def raw_representation(client, corrupt):
 
 
 def check(server, client):
+    """Common proof uses Mio's passive startup ledger with host-control capacities.
+
+    This replaces the reusable fixture: probing its live port by binding could
+    steal the port before the server binds. Representation/security checks stay
+    at 2000 bytes with 1472-byte RX datagrams.
+    """
     raw_representation(client, False)
     raw_representation(client, True)
     raw_representation(client, False)
@@ -68,22 +74,17 @@ def check(server, client):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as reserve:
             reserve.bind(("127.0.0.1", 0))
             port = reserve.getsockname()[1]
-        command = [str(Path(server).resolve()), "coaptic-reusable", "127.0.0.1",
-                   str(port), "2000", "1472", str(correct)]
-        with tempfile.TemporaryFile() as log:
+        command = [str(Path(server).resolve()), "coaptic-mio", "127.0.0.1",
+                   str(port), "2000", "1472", str(correct),
+                   "--resource-profile", "host-control"]
+        path = Path(directory) / "server.log"
+        with path.open("wb") as log:
             process = subprocess.Popen(command, stdout=log, stderr=log)
+            primary_error = None
             try:
-                for _ in range(100):
-                    if process.poll() is not None:
-                        raise RuntimeError("protected server startup failed")
-                    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
-                        try:
-                            probe.bind(("127.0.0.1", port))
-                        except OSError:
-                            break
-                    time.sleep(.01)
-                else:
-                    raise RuntimeError("protected server bind deadline")
+                server_resources(path, "coaptic-mio", deadline=time.monotonic() + 5,
+                                 server=process, resource_profile="host-control",
+                                 size=2000, security="oscore", rx_bytes=1472)
                 for security, credential in (("unprotected", None), ("oscore", wrong)):
                     result = run_client(client, port, 2000, security, credential)
                     if result.returncode == 0:
@@ -95,9 +96,34 @@ def check(server, client):
                 report = json.loads(result.stdout)
                 if report["completed"] != 2 or report["received_datagrams"] < 4:
                     raise RuntimeError("incomplete protected Block2 report")
+            except BaseException as error:
+                primary_error = error
+                try:
+                    log.flush()
+                    with path.open("rb") as reader:
+                        raw = reader.read(4096)
+                    print("RAW SERVER STARTUP/FAILURE: " + raw.decode("utf-8", errors="replace"),
+                          flush=True)
+                finally:
+                    raise error
             finally:
-                process.terminate()
-                process.wait(timeout=5)
+                cleanup_errors = []
+                try:
+                    if process.poll() is None:
+                        process.terminate()
+                except BaseException as error:
+                    cleanup_errors.append(error)
+                try:
+                    process.wait(timeout=5)
+                except BaseException as error:
+                    cleanup_errors.append(error)
+                if cleanup_errors:
+                    failure = primary_error if primary_error is not None else cleanup_errors.pop(0)
+                    for error in cleanup_errors:
+                        failure.add_note("native server cleanup: " + type(error).__name__
+                                         + ": " + str(error)[:512])
+                    if primary_error is None:
+                        raise failure
     print("native client: independent exact body, corrupt refusal/recovery, "
           "unprotected/wrong-key refusal and fresh protected Block2 PASS")
 
