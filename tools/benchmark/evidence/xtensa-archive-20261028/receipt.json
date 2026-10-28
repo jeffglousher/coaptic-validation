@@ -1,0 +1,180 @@
+{
+  "schema": "coaptic-hosted-xtensa-public-proof/1",
+  "status": "archive_accepted_firmware_pending",
+  "run": {
+    "id": 40694497672,
+    "html_url": "https://github.com/jeffglousher/coaptic-validation/actions/runs/40694497672",
+    "run_attempt": 1,
+    "head_sha": "a4c11efd73e4dcb72d4799f19ffe52600af05e1b",
+    "conclusion": "success"
+  },
+  "inputs": {
+    "suite": "a4c11efd73e4dcb72d4799f19ffe52600af05e1b",
+    "core": "28d9f1a61d15121d75d5dd426ad8d6b5cc891005",
+    "target": "xtensa-esp32s3-none-elf",
+    "features": [
+      "network",
+      "standalone",
+      "oscore",
+      "pairing",
+      "async-network"
+    ],
+    "compiler": {
+      "binary": "rustc",
+      "commit-hash": "8ea53bcd7257011cbf96f6398551bdc650b04334",
+      "commit-date": "2026-07-08",
+      "host": "x86_64-unknown-linux-gnu",
+      "release": "1.97.0-nightly",
+      "LLVM version": "21.1.3"
+    }
+  },
+  "archive": {
+    "bytes": 4738968,
+    "sha256": "c6b6bf185b65954feb9a0b3969905029070b4b7d26406060f42b3a08e60ae568",
+    "build_manifest_bytes": 19910,
+    "build_manifest_sha256": "e2174bc7acdc36b77aeeba4c3d7d157c1d9e14439ed9b5199b8bc181ce86f113",
+    "object_format": "ELF32 little-endian relocatable Xtensa (e_machine=94)",
+    "object_count": 46,
+    "required_unique_strong_global_functions": [
+      "coaptic_entropy_fill",
+      "coaptic_entropy_requirement",
+      "coaptic_network_run",
+      "coaptic_probe_oscore",
+      "coaptic_probe_run",
+      "coaptic_probe_version"
+    ]
+  },
+  "SDK_components": {
+    "rust": {
+      "url": "https://github.com/esp-rs/rust-build/releases/download/v1.97.0.0/rust-1.97.0.0-x86_64-unknown-linux-gnu.tar.xz",
+      "expected_size": 180366964,
+      "expected_sha256": "a99bfee69221e9ff6d86388f6811ee688cd405e6a0400a3cd1784e8d463e9d99",
+      "actual_size": 180366964,
+      "actual_sha256": "a99bfee69221e9ff6d86388f6811ee688cd405e6a0400a3cd1784e8d463e9d99",
+      "verified": true
+    },
+    "rust-src": {
+      "url": "https://github.com/esp-rs/rust-build/releases/download/v1.97.0.0/rust-src-1.97.0.0.tar.xz",
+      "expected_size": 6314780,
+      "expected_sha256": "568d688b9f8f332ec4d04657544fad23e99ce11e9e6cf5835979e68a28c68b73",
+      "actual_size": 6314780,
+      "actual_sha256": "568d688b9f8f332ec4d04657544fad23e99ce11e9e6cf5835979e68a28c68b73",
+      "verified": true
+    },
+    "llvm": {
+      "url": "https://github.com/espressif/llvm-project/releases/download/esp-21.1.3_20260408/libs-clang-esp-21.1.3_20260408-x86_64-linux-gnu.tar.xz",
+      "expected_size": 83267264,
+      "expected_sha256": "c75406f5f0a1fe9692cdf6e6628cbbdf3f25e5721bb58d5e5540ea756d1197f3",
+      "actual_size": 83267264,
+      "actual_sha256": "c75406f5f0a1fe9692cdf6e6628cbbdf3f25e5721bb58d5e5540ea756d1197f3",
+      "verified": true
+    },
+    "gcc": {
+      "url": "https://github.com/espressif/crosstool-NG/releases/download/esp-16.1.0_20260609/xtensa-esp-elf-16.1.0_20260609-x86_64-linux-gnu.tar.xz",
+      "expected_size": 89005792,
+      "expected_sha256": "f708752ebb35cab21f184b2574114ed1187619db0edb8a4ba913c06ca2fa675e",
+      "actual_size": 89005792,
+      "actual_sha256": "f708752ebb35cab21f184b2574114ed1187619db0edb8a4ba913c06ca2fa675e",
+      "verified": true
+    }
+  },
+  "artifact": {
+    "id": 12818397644,
+    "name": "public-xtensa-archive-40694497672",
+    "url": "https://github.com/jeffglousher/coaptic-validation/actions/runs/40694497672/artifacts/12818397644",
+    "created_at": "2026-10-28T13:16:18Z",
+    "expires_at": "2026-10-29T13:16:16Z",
+    "compressed_bytes": 1716394,
+    "uncompressed_bytes": 4769229,
+    "sha256": "ed3afe6f6e859a591a1f1c810da4c348ffd5ef4f561c5c766f5cd3023a9ef360",
+    "API_digest_match": true,
+    "members": 5,
+    "index": [
+      {
+        "path": "build.json",
+        "bytes": 19910,
+        "sha256": "e2174bc7acdc36b77aeeba4c3d7d157c1d9e14439ed9b5199b8bc181ce86f113",
+        "crc32": "2929d9b7"
+      },
+      {
+        "path": "compiler.txt",
+        "bytes": 223,
+        "sha256": "2eaacfb0531876ff8e19a7e950e22be80a3f09f99d4ab2e2c7ec93187dc97d78",
+        "crc32": "222bd4c4"
+      },
+      {
+        "path": "libcoaptic_esphome_probe.a",
+        "bytes": 4738968,
+        "sha256": "c6b6bf185b65954feb9a0b3969905029070b4b7d26406060f42b3a08e60ae568",
+        "crc32": "51fb44df"
+      },
+      {
+        "path": "phases.log",
+        "bytes": 5365,
+        "sha256": "b2c46b6b2cb018943d1256278009293833e624d0029390c4ae43501ec92bafa7",
+        "crc32": "95c1e528"
+      },
+      {
+        "path": "receipt.json",
+        "bytes": 4763,
+        "sha256": "1a961e83ef84afc7bfb859a53de4dba7f020d05e1198822713e8d71b4580a002",
+        "crc32": "03f80d6b"
+      }
+    ],
+    "safe_whitelisted_unique_paths": true,
+    "every_member_CRC_SHA256_checked": true,
+    "stream_timeouts_seconds": 120,
+    "compressed_uncompressed_max_bytes": 33554432,
+    "member_count_max": 16
+  },
+  "timing": {
+    "job_wall_seconds": 127.0,
+    "tool_setup_seconds": 57.297048614000005,
+    "archive_build_seconds": 54.839614271000016,
+    "processing_seconds": 113.988671601,
+    "relationship": "Setup and archive build are phases within processing; processing is within the job. Do not add these nested durations."
+  },
+  "sampled_storage": {
+    "peak_owned_bytes": 4252146576,
+    "scope": "Producer workspace plus owned runner.temp root; sum max(logical,allocated) per regular file. Sampled census, not continuous peak or growth delta; initial baseline unavailable.",
+    "owned_ceiling_bytes": 10737418240,
+    "free_floor_bytes": 1073741824,
+    "monitor_errors": []
+  },
+  "verification": {
+    "canonical_source_hashes": 166,
+    "canonical_lock_hashes": 7,
+    "SDK_component_producer_digest_gates": 4,
+    "all_required_exports_have_unique_strong_global_function_definition_and_archive_index_mapping": true,
+    "collector_gates_passed": 36,
+    "parent_acceptance": "passed",
+    "independent_R3": "no findings",
+    "method": "Collector ZIP/path/CRC/digest and remote run/SDK producer receipts reused. Parent and independent R3 rehashed retained archive/manifest, compared all 166 canonical Git source hashes and seven locks, parsed ELF and required symbols/index mappings. No object execution or independent SDK download replay.",
+    "collector_receipt_sha256": "d41ac5d16dd5d76c45d915d63f4d57288d14138e6fbdfb2fc988baa0385bfb52",
+    "parent_acceptance_sha256": "b8e71b16d59f1f99949adc621ad3ef4d866edab1b99754fd07b9f08a48eb9190"
+  },
+  "retained_failures": [
+    "Initial workflow review found missing SDK payload digest gates; executed workflow has exact checks for all four payloads before extraction.",
+    "First parent read-only wrapper stopped at Windows process settlement before archive writes. Corrected bounded wrapper passed; hosted build was not rerun."
+  ],
+  "limits": {
+    "job_minutes": 45,
+    "processing_minutes": 40,
+    "owned_bytes": 10737418240,
+    "free_bytes": 1073741824,
+    "log_bytes": 131072,
+    "archive_bytes": 16777216,
+    "artifact_bytes": 33554432
+  },
+  "unproven": [
+    "Equivalence to original Windows ancillary SDK",
+    "Final C++ callback resolution and firmware linking",
+    "Firmware image, app-only OTA and device behavior",
+    "Hardware performance, whole-memory acceptance and both 50% CPU targets"
+  ],
+  "issue": {
+    "url": "https://github.com/jeffglousher/coaptic-validation/issues/217",
+    "state": "open",
+    "remaining": "Bounded firmware assembly, preserving app-only OTA and paired device proof; existing device image unchanged."
+  }
+}
