@@ -220,3 +220,23 @@ out-of-order or partially verified data. Successful reports retain every hop and
 summarize observed means, medians and ranges; small samples are not tail
 qualification. Client phase totals, corresponding server service spans and
 transport/wait residuals are separate nested views of the same elapsed time.
+
+## Hosted public pairing archive
+
+Dispatch `Public Xtensa archive` with lowercase hex40 `suite_revision` selected
+after companion merge. Core is fixed at `28d9f1a61d15121d75d5dd426ad8d6b5cc891005`.
+The unchanged helper uses `--locked --pairing --async-network`.
+
+Ubuntu 24.04 uses checksum-pinned espup 0.19.0, Rust commit
+`8ea53bcd7257011cbf96f6398551bdc650b04334`, LLVM 21.1.3 and Linux x64.
+Ancillary equivalence to the local custom SDK remains unproven.
+
+Refusal limits: 45-minute job/40-minute processing, sampled 10 GiB owned output,
+1 GiB free floor, logs 128 KiB, archive 16 MiB, artifact 32 MiB. No sufficiency,
+retry, cap increase or cache is implied. One-day evidence retains phase durations,
+sampled storage, compiler and failures; archive/build.json require inspection.
+
+Verify clean source SHAs, seven locks, source hashes, compiler, target/features
+and archive SHA256 before use. The runner owns SDK/registry/target disposal.
+Private YAML/keys stay local. Preserve prior images/evidence; preserving app-only
+OTA and paired device qualification remain separate from archive compilation.
