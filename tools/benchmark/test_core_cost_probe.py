@@ -1595,6 +1595,7 @@ time.sleep(5)
             worker, native_fd = None, None
             try:
                 worker = subprocess.Popen([sys.executable, "-B", "-c", worker_code, str(directory)],
+                                          cwd=Path(probe.__file__).parent,
                                           start_new_session=True, stdout=subprocess.PIPE, text=True)
                 self.assertTrue(select.select([worker.stdout], [], [], 3)[0], "worker registration deadline")
                 native = int(worker.stdout.readline(64))

@@ -9,6 +9,19 @@ from unittest.mock import patch
 import development_suite as suite
 
 
+def cargo_environment(root, **overrides):
+    # Isolate build inputs in this module without mutating process os.environ.
+    # Keep unrelated launch settings such as PATH and SYSTEMROOT.
+    environment = {key: value for key, value in suite.os.environ.items()
+                   if not key.startswith("CARGO_") and key not in (
+                       "RUSTFLAGS", "RUSTC", "RUSTDOC", "RUSTC_WRAPPER",
+                       "RUSTC_WORKSPACE_WRAPPER", "RUSTC_BOOTSTRAP")}
+    environment.update(CARGO_HOME=str(Path(root) / "cargo-home"),
+                       CARGO_TARGET_DIR=str(Path(root) / "target"))
+    environment.update(overrides)
+    return patch.object(suite, "os", SimpleNamespace(**(vars(suite.os) | {"environ": environment})))
+
+
 def core_report(profile="small-device", security="unprotected"):
     row = dict(operations=16, warmup=128, verified=144, black_box=True, security=security,
                concurrency=1, message_type="CON", calibration_samples=4096,
@@ -215,7 +228,8 @@ class PreparedInputs(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "failed"
             source = dict(commit="a" * 40)
-            with patch.dict(suite.os.environ, {"CARGO_TARGET_DIR": d}), \
+            with cargo_environment(d), \
+                 patch.object(suite, "cargo_inputs", return_value={}), \
                  patch.object(suite, "identity", return_value=source), \
                  patch.object(suite, "resolved_core", return_value=Path(d)), \
                  patch.object(suite, "toolchain", return_value=("compiler", "cargo", dict(cargo=dict(path="cargo"), rustc=dict(path="rustc")))), \
@@ -398,7 +412,8 @@ class TaskTemporaryOwnership(unittest.TestCase):
 
 class CargoBuildInputs(unittest.TestCase):
     def test_target_specific_environment_flags_refuse(self):
-        with patch.dict(suite.os.environ, {"CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS": "-Copt-level=0"}):
+        with tempfile.TemporaryDirectory() as d, cargo_environment(
+                d, CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS="-Copt-level=0"):
             with self.assertRaisesRegex(ValueError, "ambient CARGO"):
                 suite.cargo_inputs()
 
@@ -406,9 +421,24 @@ class CargoBuildInputs(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d); (root / ".cargo").mkdir()
             (root / ".cargo/config.toml").write_text('[build]\ntarget="some-other-target"\n')
-            with patch.object(suite, "SUITE", root):
-                with self.assertRaisesRegex(ValueError, "Cargo build/target"):
+            stale = root / "target/release/bench-core"
+            stale.parent.mkdir(parents=True)
+            stale.write_bytes(b"old host output")
+            ambient = dict(suite.os.environ, CARGO_TERM_COLOR="always")
+            with patch.object(suite, "SUITE", root), patch.object(
+                    suite, "os", SimpleNamespace(**(vars(suite.os) | {"environ": ambient}))):
+                # Match workflow discovery: the real guard still refuses color.
+                with self.assertRaisesRegex(ValueError, "ambient CARGO"):
                     suite.cargo_inputs()
+                with cargo_environment(root):
+                    self.assertNotIn("CARGO_TERM_COLOR", suite.os.environ)
+                    for key in ("PATH", "SYSTEMROOT"):
+                        self.assertEqual(suite.os.environ.get(key), ambient.get(key))
+                    with self.assertRaisesRegex(ValueError, "Cargo build/target"):
+                        suite.cargo_inputs()
+                self.assertIs(suite.os.environ, ambient)
+                self.assertEqual(ambient["CARGO_TERM_COLOR"], "always")
+            self.assertEqual(stale.read_bytes(), b"old host output")
 
     def test_only_complete_cargo_reported_artifacts_are_used(self):
         with tempfile.TemporaryDirectory() as d:
