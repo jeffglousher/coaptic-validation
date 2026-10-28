@@ -206,3 +206,12 @@ events or stack samples, and makes no packet/admission decisions. The trace ELF
 has no reachable Coaptic code. Its explicitly recorded build core may therefore
 differ from the same-binary native OFF/ON core.
 See [the socket integration](../benchmark/linux_cpu.md#bounded-syscall-diagnostic).
+
+The [October 28 quick receipts](../benchmark/evidence/quick-targets-20261028/README.md)
+include an actual XDP attach/live-frame/detach/cleanup pass lasting 819 ms and a
+separate authenticated socket diagnostic lasting 19 seconds with four attached
+syscall captures.
+Both list exact source revisions and cold setup/build durations. The syscall
+sample has insufficient CPU resolution and failed pair latency guards; every
+overhead ratio remains withheld. These functional examples establish no
+acceleration, transport CPU share or whole-memory qualification.
