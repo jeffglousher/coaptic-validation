@@ -74,10 +74,17 @@ jobs:
             env.pop(key, None)
           log = (evidence / 'phases.log').open('w+b')
           peak = 0
-          downloads = {'espup': 12831320, 'rust.tar.xz': 180366964,
-                'rust-src.tar.xz': 6314780,
-                'idf_tool_xtensa_elf_clang.libs.tar.xz': 83267264,
-                'xtensa-esp-elf.tar.xz': 89005792}
+          payloads = {
+            'rust': ('https://github.com/esp-rs/rust-build/releases/download/v1.97.0.0/rust-1.97.0.0-x86_64-unknown-linux-gnu.tar.xz',
+                     180366964, 'a99bfee69221e9ff6d86388f6811ee688cd405e6a0400a3cd1784e8d463e9d99'),
+            'rust-src': ('https://github.com/esp-rs/rust-build/releases/download/v1.97.0.0/rust-src-1.97.0.0.tar.xz',
+                         6314780, '568d688b9f8f332ec4d04657544fad23e99ce11e9e6cf5835979e68a28c68b73'),
+            'llvm': ('https://github.com/espressif/llvm-project/releases/download/esp-21.1.3_20260408/libs-clang-esp-21.1.3_20260408-x86_64-linux-gnu.tar.xz',
+                     83267264, 'c75406f5f0a1fe9692cdf6e6628cbbdf3f25e5721bb58d5e5540ea756d1197f3'),
+            'gcc': ('https://github.com/espressif/crosstool-NG/releases/download/esp-16.1.0_20260609/xtensa-esp-elf-16.1.0_20260609-x86_64-linux-gnu.tar.xz',
+                    89005792, 'f708752ebb35cab21f184b2574114ed1187619db0edb8a4ba913c06ca2fa675e')}
+          downloads = {name+'.tar.xz': spec[1] for name, spec in payloads.items()}
+          receipt['components'] = {}
           def measure():
             global peak
             if time.time() >= float(os.environ['ARCHIVE217_DEADLINE']):
@@ -117,13 +124,11 @@ jobs:
                 return
               done.wait(.5)
           watcher = threading.Thread(target=monitor, daemon=True)
-          def run(phase, argv, timeout, exported=False):
+          def run(phase, argv, timeout):
             if cancel.is_set():
               raise RuntimeError('storage monitor refused execution')
             begin = time.monotonic()
             offset = log.tell()
-            if exported:
-              argv = ['bash', '-eu', '-c', '. "$ARCHIVE_ROOT/export-esp.sh"; exec "$@"', 'archive217', *argv]
             try:
               run_logged(argv, log, timeout=timeout, limit=120*1024, cancel=cancel,
                    cwd=workspace, env=env)
@@ -135,7 +140,52 @@ jobs:
             finally:
               receipt['phases'][phase] = time.monotonic()-begin
           def digest(path):
-            return hashlib.sha256(path.read_bytes()).hexdigest()
+            with path.open('rb') as stream:
+              return hashlib.file_digest(stream, 'sha256').hexdigest()
+          def verified_copy(response, output, size, expected, gate, record):
+            checksum, written = hashlib.sha256(), 0
+            try:
+              while True:
+                gate()
+                data = response.read1(min(65536, size-written+1))
+                gate()
+                if not data:
+                  break
+                if len(data) > size-written:
+                  record['rejected_chunk_bytes'] = len(data)
+                  raise ValueError('payload exceeds exact length')
+                output.write(data)
+                checksum.update(data)
+                written += len(data)
+              if written != size or checksum.hexdigest() != expected:
+                raise ValueError('payload exact length/SHA256 mismatch')
+            finally:
+              record.update(actual_size=written, actual_sha256=checksum.hexdigest())
+          def download_component(name, spec):
+            url, size, expected = spec
+            begin = time.monotonic()
+            record = {'url': url, 'expected_size': size, 'expected_sha256': expected,
+                      'actual_size': 0, 'actual_sha256': hashlib.sha256(b'').hexdigest(), 'verified': False}
+            receipt['components'][name] = record
+            def gate():
+              if (cancel.is_set() or time.monotonic()-begin >= 300 or
+                  time.time() >= float(os.environ['ARCHIVE217_DEADLINE'])):
+                raise TimeoutError('payload time/cancel/storage refusal: '+name)
+            try:
+              gate()
+              with urllib.request.urlopen(url, timeout=10) as response:
+                gate()
+                length = response.headers.get('Content-Length')
+                if length and int(length) != size:
+                  raise ValueError('payload content length mismatch: '+name)
+                with (root/(name+'.tar.xz')).open('xb') as output:
+                  verified_copy(response, output, size, expected, gate, record)
+              if (root/(name+'.tar.xz')).stat().st_size != size:
+                raise ValueError('stored payload length mismatch: '+name)
+              gate()
+              record['verified'] = True
+            finally:
+              receipt['phases']['download:'+name] = time.monotonic()-begin
           def compiler(text):
             fields = dict(line.split(': ', 1) for line in text.splitlines() if ': ' in line)
             expected = {'binary': 'rustc', 'commit-hash': '8ea53bcd7257011cbf96f6398551bdc650b04334',
@@ -164,35 +214,47 @@ jobs:
             if receipt['helpers']['tools/esphome/build_archive.py'] != '4e370ca6ef5eab372b10ead7576c1f3ecf7d52bcbc134d20fc185c5a5025a3ee':
               raise ValueError('archive helper differs from frozen source')
             receipt['phases']['source_validation'] = time.monotonic()-begin
-            begin = time.monotonic()
-            installer = root / 'espup'
-            url = 'https://github.com/esp-rs/espup/releases/download/v0.19.0/espup-x86_64-unknown-linux-gnu'
-            with urllib.request.urlopen(url, timeout=30) as response, installer.open('xb') as output:
-              length = response.headers.get('Content-Length')
-              if length and int(length) != downloads['espup']:
-                raise ValueError('installer content length mismatch')
-              size = 0
-              while data := response.read(65536):
-                size += len(data)
-                if size > downloads['espup'] or time.monotonic()-begin > 120 or cancel.is_set():
-                  raise RuntimeError('installer download size/time/storage refusal')
-                output.write(data)
-            if size != downloads['espup'] or digest(installer) != 'f31411c64dffff4da0f0e23c432b9a5fda48942ff8695b8b21009ceb7007bcc0':
-              raise ValueError('installer size/SHA256 mismatch')
-            installer.chmod(0o700)
-            receipt['installer_sha256'] = digest(installer)
-            receipt['phases']['installer_download'] = time.monotonic()-begin
-            run('tool_setup', [str(installer), 'install', '--name', 'coaptic-esp-1.97',
-              '--toolchain-version', '1.97.0.0', '--targets', 'esp32s3',
-              '--export-file', str(root/'export-esp.sh')], 900)
-            text = run('compiler', ['rustc', '+coaptic-esp-1.97', '-Vv'], 30, True)
+            setup_begin = time.monotonic()
+            try:
+              # Every fixed official payload must verify before any extraction or execution.
+              for name, spec in payloads.items():
+                download_component(name, spec)
+              unpack = root/'unpack'
+              unpack.mkdir()
+              for name in payloads:
+                destination = (unpack/name).resolve()
+                if not destination.is_relative_to(root):
+                  raise ValueError('unowned SDK extraction destination')
+                destination.mkdir()
+                # Fixed SHA-pinned inputs, fresh owned directories; no arbitrary archive paths.
+                run('extract:'+name, ['tar', '--extract', '--xz', '--file', str(root/(name+'.tar.xz')),
+                    '--directory', str(destination), '--no-same-owner', '--no-same-permissions'], 300)
+              toolchain = root/'rustup/toolchains/coaptic-esp-1.97'
+              toolchain.mkdir(parents=True)
+              # Exact compiler's rust-installer/install-template.sh: prefix is direct without destdir.
+              for name, package in [('rust', 'rust-nightly-x86_64-unknown-linux-gnu'), ('rust-src', 'rust-src-nightly')]:
+                installer = unpack/name/package/'install.sh'
+                if not installer.is_file() or not installer.resolve().is_relative_to(root):
+                  raise ValueError('missing/unowned official install.sh')
+                args = ['bash', str(installer), '--prefix='+str(toolchain), '--disable-ldconfig']
+                if name == 'rust':
+                  args.append('--without=rust-docs-json-preview,rust-docs')
+                run('install:'+name, args, 300)
+              clang = unpack/'llvm/esp-clang/lib'
+              gcc = unpack/'gcc/xtensa-esp-elf/bin'
+              if not list(clang.glob('libclang.so*')) or not gcc.is_dir():
+                raise ValueError('official LLVM/GCC layout mismatch')
+              env.update(LIBCLANG_PATH=str(clang), XTENSA_GCC=str(gcc), PATH=str(gcc)+os.pathsep+env['PATH'])
+            finally:
+              receipt['phases']['tool_setup'] = time.monotonic()-setup_begin
+            text = run('compiler', ['rustc', '+coaptic-esp-1.97', '-Vv'], 30)
             receipt['compiler'] = compiler(text)
             (evidence/'compiler.txt').write_text(text, encoding='utf-8')
             if not (root/'rustup/toolchains/coaptic-esp-1.97/lib/rustlib/src/rust/library/core/Cargo.toml').is_file():
-              raise ValueError('espup rust-src component missing')
+              raise ValueError('official rust-src component missing')
             run('build', ['python3', '-B', 'tools/esphome/build_archive.py', '--toolchain',
               'coaptic-esp-1.97', '--expected-library-revision', os.environ['CORE_SHA'],
-              '--pairing', '--async-network'], 1500, True)
+              '--pairing', '--async-network'], 1500)
             begin = time.monotonic()
             lib = workspace/'tools/esphome/components/coaptic_network/lib'
             archive, marker = lib/'libcoaptic_esphome_probe.a', lib/'build.json'
