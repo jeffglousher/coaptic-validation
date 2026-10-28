@@ -91,6 +91,41 @@ client binaries or configurations. It reports descriptive socket/core medians an
 App/requested-pool owners; no automatic baseline replacement or pass/fail speedup
 claim. Keep the original #650 baseline separately from rolling development results.
 
+## Separate quick Linux eBPF examples
+
+The manual **Advisory BPF kernel pilot** defaults to the finite deployed
+`coaptic-ingress-loader OBJECT quick 1` batch described in the
+[ingress guide](../bpf-ingress/README.md#quick-deployed-batch-and-full-qualification).
+It verifies actual SKB attachment/program identity, unchanged IPv4/IPv6 plain and
+opaque OSCORE frames, malformed/oversized/unrelated input, recovery counters,
+explicit detach and identity-checked deletion/absence. It observes syntax; only
+the App authenticates/decrypts protected traffic. Full qualification and detached
+cost sampling remain explicit opt-ins.
+
+The separate **Manual bounded eBPF syscall diagnostic** workflow defaults to
+`profile=quick`: two seconds, 1,000 operations/s, two repeats, SmallDevice,
+32-byte bodies, both unprotected/established OSCORE and same-binary OFF/ON arms.
+That plans eight windows, 16,000 measured operations and 160 warmups. Select
+`profile=full` explicitly for the previous 30-second/four-repeat diagnostic
+(16 windows, 480,000 operations, 320 warmups). The runner, admission/verification
+gates and evidence limits are unchanged. Both workflow core defaults pin
+`15388140d24867285e89fbc2ecfecb1dc55aac48`; every dispatch records actual sources.
+Setup/build and execution phase timings are retained separately. These are
+functional diagnostics with descriptive costs, not a CPU-gain claim, physical
+device timing, or a cold-build one-minute guarantee. No prepared-suite adapter or
+extra benchmark framework is involved. Current-source deployment still requires
+its own successful exact-source receipt.
+
+The [October 28 results](evidence/quick-targets-20261028/README.md) record the
+Windows run in 43.90 seconds, deployed XDP quick timer at 819 ms plus separately
+recorded 10 ms veth creation, and short authenticated syscall diagnostic in
+19 seconds, with preparation/build/job times separately.
+These are separate recipes on different targets, not one combined minute run.
+The syscall sample passes functionally but fails all CPU-resolution gates and
+three pair latency guards; overhead ratios remain withheld. The Waveshare's
+existing paired image passed its quick checks; current-source firmware refresh
+stopped at compiler-output limits before any OTA.
+
 ## Bounds and interpretation
 
 The prepared-run target remains about one minute for all eight configurations. A full result records actual total

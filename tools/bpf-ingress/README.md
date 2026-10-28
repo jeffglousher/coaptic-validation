@@ -72,18 +72,41 @@ The workflow retains exact source, object/toolchain hashes, observed kernel and
 CPU identity and the raw sample, and bounds the loader process to 120 seconds.
 This mode is optional and does not add qualification work to routine edits.
 
-## Routine smoke and full qualification
+## Quick deployed batch and full qualification
 
 The manual **Advisory BPF kernel pilot** workflow requires an exact core SHA and
 records the companion SHA, compiler/linker, object hash and observed kernel/image/
 BTF identity. It is not a PR gate. The hosted kernel is observed, not pinned.
 
 The default dispatch builds the portable classifier, native loader and BPF ELF,
-then uses unmodified Aya for one actual load/attach/detach cycle on an owned
-veth. It checks the before/after interface inventory and retains ordinary failure
-logs. This catches kernel acceptance failures early; it does not establish the
-full corpus, resource budgets, interruption or capability-refusal contract.
-No Aya source patch, bpftool or full feature probe is needed by that smoke.
+then runs `coaptic-ingress-loader OBJECT quick 1` with unmodified Aya. The default
+core pin is `15388140d24867285e89fbc2ecfecb1dc55aac48`; the existing checkout/
+preparation step verifies the requested source. This documents the intended run,
+not a completed current-source kernel receipt.
+
+Quick creates and identity-checks one owned veth pair, proves four unchanged live
+IPv4/IPv6 plain/opaque OSCORE frames before attachment, then loads and attaches
+the real program in SKB mode and verifies its actual program ID. Eight attached
+frames must arrive byte-for-byte: those four, malformed TKL9, a 257-byte CoAP
+message, unrelated IPv6 UDP with both ports different from 5683, and a valid
+recovery frame. IPv4 header and IPv4/IPv6 UDP checksums are computed after packet
+construction and recomputed after port mutation. Inline loader tests cover the
+finite classes, sizes, checksums and mutation repair.
+
+Attached counter deltas require exactly five syntax, one malformed and one
+oversized, with total at least eight and uninspected at least one; ambient traffic
+can increase the latter two. Quick explicitly detaches, checks attachment absence,
+delivers the four live recovery frames with unchanged counters, then verifies pair
+identity, deletes it and checks both names absent. Uncertain cleanup is fatal and
+retains the ownership record for reconciliation. The workflow also compares the
+before/after interface inventory and retains failures. Loader phase milliseconds
+and workflow setup/build/execution seconds are recorded separately. There is no
+cold-build one-minute promise or CPU-gain claim.
+
+No Aya source patch, bpftool or full feature probe is needed by quick. It does not
+establish the full corpus, resource budgets, interruption or capability refusal.
+Opaque OSCORE bytes establish syntax/byte preservation only; the App remains the
+sole cryptographic authentication/decryption boundary.
 
 Set `full_qualification=true` to additionally run the retained finite corpus,
 verifier metrics, multi-CPU counters, exact live bytes, process/lifecycle recovery
@@ -135,7 +158,8 @@ incremental disabled. Do not create a per-branch target or silently install tool
 2. Pinned nightly/rust-src and official bpf-linker:
    `cargo +nightly-2026-10-13 build --locked --release -Z build-std=core --target bpfel-unknown-none --manifest-path tools/bpf-ingress/ebpf/Cargo.toml`.
 3. Native Linux: `cargo build --locked --release --manifest-path tools/bpf-ingress/loader/Cargo.toml`.
-4. Kernel smoke: `coaptic-ingress-loader OBJECT 1 1`.
+4. Quick deployed batch: `coaptic-ingress-loader OBJECT quick 1`.
+   The existing timed attach command `OBJECT SECONDS CYCLES` remains available.
 5. Full finite proof: `coaptic-ingress-loader OBJECT qualify CYCLES` (1..3 cycles),
    plus the workflow's instrumentation and capability controls.
 6. Detached finite cost sample: `coaptic-ingress-loader OBJECT cost 1`.
@@ -182,3 +206,12 @@ events or stack samples, and makes no packet/admission decisions. The trace ELF
 has no reachable Coaptic code. Its explicitly recorded build core may therefore
 differ from the same-binary native OFF/ON core.
 See [the socket integration](../benchmark/linux_cpu.md#bounded-syscall-diagnostic).
+
+The [October 28 quick receipts](../benchmark/evidence/quick-targets-20261028/README.md)
+include an actual XDP attach/live-frame/detach/cleanup pass with an 819 ms quick
+timer and separately recorded 10 ms veth creation, plus an authenticated socket
+diagnostic lasting 19 seconds with four attached syscall captures.
+Both list exact source revisions and cold setup/build durations. The syscall
+sample has insufficient CPU resolution and failed pair latency guards; every
+overhead ratio remains withheld. These functional examples establish no
+acceleration, transport CPU share or whole-memory qualification.

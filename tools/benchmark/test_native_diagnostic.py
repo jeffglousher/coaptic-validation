@@ -211,6 +211,7 @@ class ReportTests(unittest.TestCase):
                 patch("native_diagnostic.psutil.Process"), \
                 patch("native_diagnostic.snapshot", side_effect=sample) as snapshots, \
                 patch("native_diagnostic.validate_report"), patch("native_diagnostic.cpu_cost", return_value={}), \
+                patch("native_diagnostic.platform.platform", return_value="fixture"), \
                 patch("native_diagnostic.digest", return_value="fixture"), \
                 patch("native_diagnostic.source_identity", return_value={}), \
                 patch("native_diagnostic.time.perf_counter_ns", side_effect=lambda: clock[0] * 10**9):

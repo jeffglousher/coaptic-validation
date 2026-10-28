@@ -1,0 +1,348 @@
+{
+  "schema": "coaptic-quick-targets-evidence/1",
+  "scope": "Functional/development checks at separately recorded sources; no cross-target performance equivalence or qualified CPU/overhead/memory claim.",
+  "library_delivery": {
+    "pull_request": 698,
+    "tested_core": "04b716607c9230d159056c7c0665b7794e4a04f8",
+    "merged_core": "28d9f1a61d15121d75d5dd426ad8d6b5cc891005",
+    "tree": "27d58e817eeb508347ddd8fe4df5cc7bb2d9b182",
+    "merge_tree_equal": true,
+    "test_executions": 52,
+    "strict_clippy": "PASS",
+    "MSRV": "1.89 PASS"
+  },
+  "windows": {
+    "core": "04b716607c9230d159056c7c0665b7794e4a04f8",
+    "suite": "670a7572ec96c81c63a0eacdbf3603f1a786e94d",
+    "configuration_sha256": "29f7edc1ee2b801c233bf9b57c272503ee8a8c47c17113d31f04b99363e5b530",
+    "profiles": [
+      "small-device",
+      "small-blockwise",
+      "small-observe",
+      "device-fixed",
+      "gateway-fixed",
+      "service-datagram",
+      "service-fixed",
+      "service-allocated"
+    ],
+    "socket_cells": 16,
+    "socket_measured": 512,
+    "socket_warmups": 64,
+    "core_cells": 6,
+    "unsupported_core_cells": 10,
+    "core_measured": 96,
+    "core_warmups": 768,
+    "separate_calibrations": 24576,
+    "reliability_phases": 9,
+    "observe_modes": 2,
+    "observe_representations_per_mode": 6,
+    "observe_verified_bytes_per_mode": 24576,
+    "passed": true,
+    "prepared_run_seconds": 43.90051669999957,
+    "within_minute": true,
+    "preparation_seconds": 143.94882499997038,
+    "prepared_binary_bytes": 9701376,
+    "binaries": {
+      "client": {
+        "bytes": 867840,
+        "file": "bench-native-client.exe",
+        "sha256": "dd50fd26a44516f64dee2081debbaf27f3ba4c29138ec9f2d77f93c36e7cf305"
+      },
+      "core": {
+        "bytes": 1254400,
+        "file": "bench-core.exe",
+        "sha256": "9dace38d67a2e88855d82225f89382e1a77a83166f2514f15f8aa6693cde727a"
+      },
+      "observe": {
+        "bytes": 887808,
+        "file": "bench-observe-proof.exe",
+        "sha256": "f80b19dcbcf5752e012df12b999e095f165e7b3ff13588dc789ef0dde7ff3b4d"
+      },
+      "server": {
+        "bytes": 6691328,
+        "file": "bench-rust-server.exe",
+        "sha256": "ddfa6d1b71a6a4b48769797d07e88d56df17345c9a97d0d60c68cbc03ffe08fa"
+      }
+    },
+    "raw_result_sha256": "97478c91052ed878740edd8848edeb79326a60b27d30cdb3575f8d974950ff4e"
+  },
+  "xdp": {
+    "run": 40680516988,
+    "url": "https://github.com/jeffglousher/coaptic-validation/actions/runs/40680516988",
+    "attempt": 1,
+    "suite": "d037e9026867fb31f77d41432f50866e0e86225c",
+    "core": "15388140d24867285e89fbc2ecfecb1dc55aac48",
+    "outcome": {
+      "compile": "PASS: portable classifier, release Aya loader and BPF object",
+      "unit": "PASS: 3 classifier vector tests and 2 loader quick tests; zero-test harnesses are not additional tests",
+      "runtime": "PASS",
+      "frames_attached": 8,
+      "counter_order": [
+        "uninspected",
+        "oversized",
+        "malformed_coap",
+        "coap_syntax",
+        "total"
+      ],
+      "counter_before": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "counter_after": [
+        1,
+        1,
+        1,
+        5,
+        8
+      ],
+      "counter_delta": [
+        1,
+        1,
+        1,
+        5,
+        8
+      ],
+      "program_id": 94,
+      "mode": "SKB",
+      "live_before_frames": 4,
+      "live_recovery_frames": 4,
+      "detach_absence": "PASS: interface state has no xdp after detach",
+      "counters_unchanged_after_detach": true,
+      "owned_pair": {
+        "pid": 4824,
+        "ingress": "cpb4824a",
+        "ingress_index": 6,
+        "peer": "cpb4824b",
+        "peer_index": 5
+      },
+      "cleanup": "PASS: owned names absent; full before/after interface snapshots byte-identical",
+      "timing": {
+        "tool_setup_seconds": 6,
+        "build_check_seconds": 54,
+        "deployed_step_seconds": 1,
+        "quick_elapsed_ms": 819,
+        "phase_elapsed_ms": {
+          "create-identity": "10",
+          "live-before": "86",
+          "load-verify": "447",
+          "attach": "6",
+          "live-attached": "174",
+          "detach-absence": "7",
+          "live-recovery": "83",
+          "delete-absence": "11"
+        }
+      },
+      "NOT_RUN": [
+        "full qualification inspection tools",
+        "detached kernel cost sample",
+        "qualification-only verifier logger",
+        "full verifier/differential lifecycle corpus",
+        "unsupported-capability refusal"
+      ],
+      "compile_warnings": "Core has 2 unreachable expression warnings; redundant homepage warning in portable tests."
+    },
+    "artifact_sha256": "d5a7eefa60c4d43c1a9557377e1b4d35bfc6cd1fa59e2a704e6a6383a805a0bc",
+    "artifact_members": 15,
+    "verification": "Collector checked archive API digest, all member CRC/SHA and paths in memory; remote runtime receipts, no local replay. Opaque OSCORE frames prove syntax/unchanged delivery, not authentication.",
+    "timer_scope": "The printed819ms quick routine excludes veth creation; create-identity separately reports10ms. No exact end-to-end sum is claimed."
+  },
+  "syscalls": {
+    "run": 40683333178,
+    "url": "https://github.com/jeffglousher/coaptic-validation/actions/runs/40683333178",
+    "attempt": 1,
+    "suite": "8a043591cf7147fa5c4a5d1359df0666ef1ecb3c",
+    "core": "28d9f1a61d15121d75d5dd426ad8d6b5cc891005",
+    "profile": "quick",
+    "functional_passed": true,
+    "windows": 8,
+    "measured": 16000,
+    "warmups": 160,
+    "ON_captures": 4,
+    "observed_counts_each_capture": {
+      "sendto_enter": 2000,
+      "sendto_exit_ok": 2000,
+      "recvfrom_enter": 4000,
+      "recvfrom_exit_ok": 2000,
+      "recvfrom_exit_eagain": 2000,
+      "epoll_wait_enter": 2000,
+      "epoll_wait_exit_ok": 2000,
+      "other_bins_and_errors": 0,
+      "anomalies": [
+        0,
+        0
+      ]
+    },
+    "CPU_gate_failed_windows": 8,
+    "CPU_threshold_seconds": 0.2,
+    "server_CPU_seconds": [
+      0.04,
+      0.04,
+      0.04,
+      0.06,
+      0.04,
+      0.05,
+      0.06,
+      0.04
+    ],
+    "comparisons": [
+      {
+        "security": "unprotected",
+        "repeat": 0,
+        "eligible": false,
+        "diagnostic_only": true,
+        "server_cpu_ratio": null,
+        "limits": "same-source instrumentation overhead; never optimization acceptance or transport/CPU shares",
+        "latency_delta_ns": {
+          "median": 2439.0,
+          "p99": -12724,
+          "passed": false
+        },
+        "achieved_rates_matched": true,
+        "native_cpu_load_trace_gates_passed": false
+      },
+      {
+        "security": "oscore",
+        "repeat": 0,
+        "eligible": false,
+        "diagnostic_only": true,
+        "server_cpu_ratio": null,
+        "limits": "same-source instrumentation overhead; never optimization acceptance or transport/CPU shares",
+        "latency_delta_ns": {
+          "median": 9062.5,
+          "p99": 9948,
+          "passed": false
+        },
+        "achieved_rates_matched": true,
+        "native_cpu_load_trace_gates_passed": false
+      },
+      {
+        "security": "unprotected",
+        "repeat": 1,
+        "eligible": false,
+        "diagnostic_only": true,
+        "server_cpu_ratio": null,
+        "limits": "same-source instrumentation overhead; never optimization acceptance or transport/CPU shares",
+        "latency_delta_ns": {
+          "median": -11191.0,
+          "p99": -9437,
+          "passed": true
+        },
+        "achieved_rates_matched": true,
+        "native_cpu_load_trace_gates_passed": false
+      },
+      {
+        "security": "oscore",
+        "repeat": 1,
+        "eligible": false,
+        "diagnostic_only": true,
+        "server_cpu_ratio": null,
+        "limits": "same-source instrumentation overhead; never optimization acceptance or transport/CPU shares",
+        "latency_delta_ns": {
+          "median": 3066.0,
+          "p99": -1283,
+          "passed": false
+        },
+        "achieved_rates_matched": true,
+        "native_cpu_load_trace_gates_passed": false
+      }
+    ],
+    "pooled": [
+      {
+        "security": "unprotected",
+        "eligible": false,
+        "server_cpu_ratio": null,
+        "diagnostic_only": true,
+        "latency_pooled_guard": {
+          "median": -1538.0,
+          "p99": -9437,
+          "passed": true
+        }
+      },
+      {
+        "security": "oscore",
+        "eligible": false,
+        "server_cpu_ratio": null,
+        "diagnostic_only": true,
+        "latency_pooled_guard": {
+          "median": 3867.0,
+          "p99": 3156,
+          "passed": false
+        }
+      }
+    ],
+    "overhead_ratios": "WITHHELD",
+    "timings": {
+      "job_seconds": 302.0,
+      "setup_check_seconds": 14,
+      "helper_BPF_tests_clippy_build_seconds": 70,
+      "native_build_seconds": 166,
+      "diagnostic_seconds": 19
+    },
+    "python_tests": 206,
+    "Rust_tests": 12,
+    "Clippy_build": "PASS",
+    "artifact_sha256": "f9344b85d61ce341bf7c441eee65c0184392e0eacf0d017cead1758cac7414d5",
+    "artifact_members": 78,
+    "verification": "Raw client/result equality; all completion/warmup/datagram counts; all latency rows; configured workload; scheduler/process-clock/ready PID/start/thread identity; ACK order; 82 count bins and all per-operation values; manifest/build hashes; exact sources; pair median/p99 guards independently recomputed.",
+    "limitations": [
+      "Remote runner receipts independently checked for consistency; no local runtime replay.",
+      "Raw client latencies and full per-operation/build/process logs remain remote; all members hashed/CRC checked in memory. Only selected raw counts, summary and four latency samples per window retained.",
+      "Binary/ELF bytes are absent from this artifact; remote loader/object/native binary hashes are reported build metadata and cross-record matched, not independently recomputed binary hashes.",
+      "Cleanup success is supported by passed-window propagation and disabled ACK receipts; no independent post-detach kernel inventory or terminal owned-process snapshot.",
+      "Boundary censoring allows unequal syscall entry/exit totals; no historical exact ratio imposed. vDSO absent, CPU0 filter cost unassigned. No CPU-share, optimization, whole-memory, or primary acceptance claim."
+    ]
+  },
+  "prior_failure": {
+    "run": 40680521078,
+    "attempt": 1,
+    "suite": "d037e9026867fb31f77d41432f50866e0e86225c",
+    "core": "15388140d24867285e89fbc2ecfecb1dc55aac48",
+    "status": "FAILED before build: 48 platform metadata/process-mock fixture errors; zero benchmark windows. Original preserved.",
+    "repair": "One test-only platform.platform mock; production and assertions unchanged."
+  },
+  "waveshare": {
+    "scope": "Existing commissioned image and retained frozen host; no current-source firmware or deployment claim.",
+    "existing_device_run": "31e69a1bce804eedb783c7ff9f218afb",
+    "historical_device_core": "d036647698dc38c7b351621cbcbcc61301376f91",
+    "historical_device_suite": "6f450f6d35418609a2f3eede66150156123e9b38",
+    "host_binary_sha256": "323d805a4d426cc41d107bdaa06bc53611514beefff2049a459cc0d9c3692da3",
+    "host_binary_source": "Retained binary; exact source not freshly established.",
+    "protected_echo": "PASS",
+    "timing": {
+      "passed": true,
+      "completed": 28,
+      "measured": 24,
+      "min_ns": 11219400,
+      "mean_ns": 14076316,
+      "p50_nearest_rank_ns": 13855700,
+      "p95_nearest_rank_ns": 16221000,
+      "max_ns": 16415000
+    },
+    "warmups": 4,
+    "measured": 24,
+    "response_bytes": 32,
+    "process_seconds": 9.083817000035197,
+    "session_setup_ns": 8590848900,
+    "fresh_image": "NOT COMPLETED: compiler output guards stopped host/archive attempts; no OTA. Existing device remains operating; identity, credentials, NVS and grants preserved."
+  },
+  "limits": [
+    "Windows samples are regression signals, not qualified CPU/extreme-tail/throughput acceptance.",
+    "XDP observation and syscall tracing are distinct examples; no acceleration or transport CPU share established.",
+    "All eight short syscall CPU-resolution gates and three of four pair latency guards fail; pooled passes do not rescue them.",
+    "No single combined Windows/Linux/Waveshare one-minute run or cold-build guarantee.",
+    "Fresh Waveshare firmware, remaining representative cells, both 50% CPU targets and whole-memory/peak-stack acceptance remain open."
+  ],
+  "sealed_input_sha256": {
+    "windows-quick.json.gz": "d1fbd0a65cd18cc6f252b43175a556a4727a9beb13002ce784e2727a3f285aa2",
+    "build-resources.json": "bdbb6a251ba1b57f2f10ed12448f8a07390fb6f2db4eb4d7538dc97c8fa01e32",
+    "build-windows.json": "7ea1f8f896b6009f616f3089e0e1a181b70ab8acefd15259957bcaac70b284d9",
+    "waveshare-access.json": "0141f312b4b3f9bd65dd4303aaac4b4d619e7bd816a1c77f17e1f424f57968d4",
+    "waveshare-access-timing.json": "454fc57a0792cb6a709fb4a3830d447ea80d15d0ff18e559cbdce3a88679736d",
+    "waveshare-live-identity.jsonl": "3bdc5626a9e69804d364a7d8f813d148fb7c31384546c1304a1ad54651803750",
+    "ebpf-linux-quick/collector-receipt-40680516988-40680521078-attempt1.json": "9773e1482621c61806a1686e64a9a5766a495ce1c19d16b35b38e1821b44dcb8",
+    "ebpf-linux-corrected/collector-receipt-40683333178-attempt1.json": "5b14e473b365ecd16728be3d26f05762318a07fae8e6a7498773e157019abcad"
+  }
+}

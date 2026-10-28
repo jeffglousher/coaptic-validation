@@ -6,10 +6,19 @@ on:
         description: Exact native SUT/client core SHA, same binaries for OFF and ON
         required: true
         type: string
+        default: '15388140d24867285e89fbc2ecfecb1dc55aac48'
       bpf_library_revision:
         description: Exact current syn3 core SHA for locked trace-object compilation
         required: true
         type: string
+        default: '15388140d24867285e89fbc2ecfecb1dc55aac48'
+      profile:
+        description: Quick functional sample or explicit longer diagnostic
+        type: choice
+        default: quick
+        options:
+          - quick
+          - full
 permissions:
   contents: read
 concurrency:
@@ -58,6 +67,8 @@ jobs:
       - name: Pinned linker and portable checks
         run: |
           set -euo pipefail
+          SECONDS=0
+          trap 'printf "phase=setup-check-build elapsed_seconds=%s\n" "$SECONDS" >> "$RUNNER_TEMP/syscall-setup/phase-timings.log"' EXIT
           python3 -m venv "$RUNNER_TEMP/syscall-venv"
           PYTHONPATH=tools/benchmark python3 -B - <<'PY'
           import os
@@ -134,6 +145,8 @@ jobs:
           NATIVE_CORE: ${{ inputs.library_revision }}
         run: |
           set -euo pipefail
+          SECONDS=0
+          trap 'printf "phase=native-build elapsed_seconds=%s\n" "$SECONDS" >> "$RUNNER_TEMP/syscall-setup/phase-timings.log"' EXIT
           PYTHONPATH=tools/benchmark "$RUNNER_TEMP/syscall-venv/bin/python" -B - <<'PY'
           import argparse, os
           from pathlib import Path
@@ -141,17 +154,25 @@ jobs:
           root=Path(os.environ['RUNNER_TEMP'])
           c.build(argparse.Namespace(build_lane=root/'syscall-lane'),'native',os.environ['NATIVE_CORE'],root/'syscall-setup')
           PY
-      - name: Sixteen finite ordinary Mio windows
+      - name: Finite ordinary Mio windows for selected profile
         env:
           NATIVE_CORE: ${{ inputs.library_revision }}
+          PROFILE: ${{ inputs.profile }}
         run: |
           set -euo pipefail
+          SECONDS=0
+          trap 'printf "phase=diagnostic elapsed_seconds=%s\n" "$SECONDS" >> "$RUNNER_TEMP/syscall-setup/phase-timings.log"' EXIT
+          case "$PROFILE" in
+            quick) seconds=2; repeats=2 ;;
+            full) seconds=30; repeats=4 ;;
+            *) echo 'Unknown diagnostic profile' >&2; exit 1 ;;
+          esac
           PYTHONPATH=tools/benchmark "$RUNNER_TEMP/syscall-venv/bin/python" -B tools/benchmark/syscall_probe.py \
             --core-sha "$NATIVE_CORE" --build-record "$RUNNER_TEMP/syscall-setup/build-native.json" \
             --bpf-build-record "$RUNNER_TEMP/syscall-setup/bpf-build.json" \
             --loader "$RUNNER_TEMP/syscall-setup/binaries/bpf/loader" \
             --object "$RUNNER_TEMP/syscall-setup/binaries/bpf/trace.elf" \
-            --output "$RUNNER_TEMP/syscall-results" --seconds 30 --rate 1000 --repeats 4 \
+            --output "$RUNNER_TEMP/syscall-results" --seconds "$seconds" --rate 1000 --repeats "$repeats" \
             --resource-profile small-device --bytes 32
       - name: Enforce retained output budgets
         if: always()
