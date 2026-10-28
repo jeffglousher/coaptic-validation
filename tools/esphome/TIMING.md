@@ -220,3 +220,34 @@ out-of-order or partially verified data. Successful reports retain every hop and
 summarize observed means, medians and ranges; small samples are not tail
 qualification. Client phase totals, corresponding server service spans and
 transport/wait residuals are separate nested views of the same elapsed time.
+
+## Hosted public pairing archive
+
+Dispatch `Public Xtensa archive` with lowercase hex40 `suite_revision` selected
+after companion merge. Core is fixed at `28d9f1a61d15121d75d5dd426ad8d6b5cc891005`.
+The unchanged helper uses `--locked --pairing --async-network`.
+
+Ubuntu 24.04 verifies exact lengths and SHA256 pins for four official Linux x64
+payloads before any extraction or execution: Rust/rust-src 1.97.0.0, LLVM libraries
+21.1.3 and Xtensa GCC 16.1.0. The receipt retains each URL, expected and actual
+size/hash, verification result and phase duration. Downloads are streamed with
+per-payload time/length limits and whole-job cancellation/deadline checks.
+Rust commit `8ea53bcd7257011cbf96f6398551bdc650b04334` and LLVM 21.1.3 remain gates;
+ancillary equivalence to the local custom SDK remains unproven.
+
+Both official Rust installers use the owned absolute named-toolchain `--prefix`
+with `--disable-ldconfig`; Rust excludes documentation. Without `--destdir`, the
+[exact compiler's installer template](https://github.com/esp-rs/rust/blob/8ea53bcd7257011cbf96f6398551bdc650b04334/src/tools/rust-installer/install-template.sh)
+uses that prefix directly. SDK extraction and installation use bounded owned
+process groups; LIBCLANG_PATH and the GCC PATH are set explicitly. No espup,
+home-directory reassignment or system installation is involved.
+
+Refusal limits: 45-minute job/40-minute processing, sampled 10 GiB owned output,
+1 GiB free floor, logs 128 KiB, archive 16 MiB, artifact 32 MiB. No sufficiency,
+retry, cap increase or cache is implied. One-day evidence retains phase durations,
+sampled storage, compiler and failures; archive/build.json require inspection.
+
+Verify clean source SHAs, seven locks, source hashes, compiler, target/features
+and archive SHA256 before use. The runner owns SDK/registry/target disposal.
+Private YAML/keys stay local. Preserve prior images/evidence; preserving app-only
+OTA and paired device qualification remain separate from archive compilation.

@@ -1,0 +1,324 @@
+name: Public Xtensa archive
+on:
+  workflow_dispatch:
+    inputs:
+      suite_revision:
+        description: Full companion commit SHA, selected after PR216 merge
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: coaptic-archive217
+  cancel-in-progress: false
+jobs:
+  archive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      SUITE_SHA: ${{ inputs.suite_revision }}
+      CORE_SHA: 28d9f1a61d15121d75d5dd426ad8d6b5cc891005
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Validate immutable input before checkout
+        run: |
+          python3 -B - <<'PY'
+          import os, re, time
+          if not re.fullmatch(r'[0-9a-f]{40}', os.environ['SUITE_SHA']):
+            raise SystemExit('suite_revision must be a full lowercase hex40 SHA')
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+            output.write('ARCHIVE217_DEADLINE='+str(time.time()+2400)+'\n')
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: jeffglousher/coaptic-validation
+          ref: ${{ inputs.suite_revision }}
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: jeffglousher/coaptic
+          ref: 28d9f1a61d15121d75d5dd426ad8d6b5cc891005
+          path: coaptic
+          persist-credentials: false
+      - name: Bounded tool setup, archive build and inspection
+        id: build
+        run: |
+          python3 -B - <<'PY'
+          import hashlib, json, os, re, shutil, stat, sys, threading, time, urllib.request
+          from pathlib import Path
+          workspace = Path(os.environ['GITHUB_WORKSPACE']).resolve()
+          root = Path(os.environ['RUNNER_TEMP']).resolve() / 'coaptic-archive217'
+          root.mkdir(exist_ok=False)
+          evidence = root / 'evidence'
+          evidence.mkdir()
+          sys.path.insert(0, str(workspace / 'tools/benchmark'))
+          from linux_cpu import run_logged
+          MIB = 1024**2
+          started = time.monotonic()
+          receipt = {'schema': 'coaptic-hosted-archive/1', 'status': 'failed', 'phases': {},
+               'qualification': 'Official Linux compiler match; custom ancillary SDK equivalence unproven.',
+               'limits': {'owned_bytes': 10*1024**3, 'free_bytes': 1024**3,
+                     'log_bytes': 128*1024, 'archive_bytes': 16*MIB, 'artifact_bytes': 32*MIB}}
+          cancel = threading.Event()
+          done = threading.Event()
+          monitor_errors = []
+          env = dict(os.environ)
+          for key, directory in [('CARGO_HOME', 'cargo'), ('RUSTUP_HOME', 'rustup'),
+                     ('CARGO_TARGET_DIR', 'target'), ('TMPDIR', 'tmp')]:
+            env[key] = str(root / directory)
+            Path(env[key]).mkdir()
+          env.update(TMP=env['TMPDIR'], TEMP=env['TMPDIR'], ARCHIVE_ROOT=str(root),
+               CARGO_INCREMENTAL='0', CARGO_BUILD_JOBS='2', CARGO_TERM_COLOR='never')
+          for key in ('RUSTC', 'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER', 'RUSTFLAGS',
+                'CARGO_ENCODED_RUSTFLAGS', 'RUSTUP_TOOLCHAIN'):
+            env.pop(key, None)
+          log = (evidence / 'phases.log').open('w+b')
+          peak = 0
+          payloads = {
+            'rust': ('https://github.com/esp-rs/rust-build/releases/download/v1.97.0.0/rust-1.97.0.0-x86_64-unknown-linux-gnu.tar.xz',
+                     180366964, 'a99bfee69221e9ff6d86388f6811ee688cd405e6a0400a3cd1784e8d463e9d99'),
+            'rust-src': ('https://github.com/esp-rs/rust-build/releases/download/v1.97.0.0/rust-src-1.97.0.0.tar.xz',
+                         6314780, '568d688b9f8f332ec4d04657544fad23e99ce11e9e6cf5835979e68a28c68b73'),
+            'llvm': ('https://github.com/espressif/llvm-project/releases/download/esp-21.1.3_20260408/libs-clang-esp-21.1.3_20260408-x86_64-linux-gnu.tar.xz',
+                     83267264, 'c75406f5f0a1fe9692cdf6e6628cbbdf3f25e5721bb58d5e5540ea756d1197f3'),
+            'gcc': ('https://github.com/espressif/crosstool-NG/releases/download/esp-16.1.0_20260609/xtensa-esp-elf-16.1.0_20260609-x86_64-linux-gnu.tar.xz',
+                    89005792, 'f708752ebb35cab21f184b2574114ed1187619db0edb8a4ba913c06ca2fa675e')}
+          downloads = {name+'.tar.xz': spec[1] for name, spec in payloads.items()}
+          receipt['components'] = {}
+          def measure():
+            global peak
+            if time.time() >= float(os.environ['ARCHIVE217_DEADLINE']):
+              raise TimeoutError('40-minute processing deadline; reserve job cleanup/upload time')
+            scan_start = time.monotonic()
+            total = count = 0
+            for base in (workspace, root):
+              for directory, dirs, files in os.walk(base, followlinks=False):
+                dirs[:] = [d for d in dirs if not Path(directory, d).is_symlink()]
+                for name in files:
+                  count += 1
+                  if count > 200000 or time.monotonic()-scan_start > 10:
+                    raise RuntimeError('owned census capacity/deadline')
+                  path = Path(directory, name)
+                  try:
+                    s = path.lstat()
+                  except FileNotFoundError:
+                    continue
+                  if not stat.S_ISREG(s.st_mode):
+                    continue
+                  total += max(s.st_size, s.st_blocks*512)
+                  key = name.removesuffix('.part')
+                  if key in downloads and s.st_size > downloads[key]:
+                    raise RuntimeError('tool download file limit: '+name)
+                  if name == 'libcoaptic_esphome_probe.a' and s.st_size > 16*MIB:
+                    raise RuntimeError('archive file limit')
+            peak = max(peak, total)
+            if total > 10*1024**3 or any(shutil.disk_usage(p).free < 1024**3 for p in (root, workspace)):
+              raise RuntimeError('owned 10GiB ceiling or free 1GiB floor')
+          def monitor():
+            while not done.is_set():
+              try:
+                measure()
+              except BaseException as error:
+                monitor_errors.append(str(error)[:512])
+                cancel.set()
+                return
+              done.wait(.5)
+          watcher = threading.Thread(target=monitor, daemon=True)
+          def run(phase, argv, timeout):
+            if cancel.is_set():
+              raise RuntimeError('storage monitor refused execution')
+            begin = time.monotonic()
+            offset = log.tell()
+            try:
+              run_logged(argv, log, timeout=timeout, limit=120*1024, cancel=cancel,
+                   cwd=workspace, env=env)
+              end = log.tell()
+              log.seek(offset)
+              result = log.read(end-offset)
+              log.seek(end)
+              return result.decode('utf-8', errors='strict')
+            finally:
+              receipt['phases'][phase] = time.monotonic()-begin
+          def digest(path):
+            with path.open('rb') as stream:
+              return hashlib.file_digest(stream, 'sha256').hexdigest()
+          def verified_copy(response, output, size, expected, gate, record):
+            checksum, written = hashlib.sha256(), 0
+            try:
+              while True:
+                gate()
+                data = response.read1(min(65536, size-written+1))
+                gate()
+                if not data:
+                  break
+                if len(data) > size-written:
+                  record['rejected_chunk_bytes'] = len(data)
+                  raise ValueError('payload exceeds exact length')
+                output.write(data)
+                checksum.update(data)
+                written += len(data)
+              if written != size or checksum.hexdigest() != expected:
+                raise ValueError('payload exact length/SHA256 mismatch')
+            finally:
+              record.update(actual_size=written, actual_sha256=checksum.hexdigest())
+          def download_component(name, spec):
+            url, size, expected = spec
+            begin = time.monotonic()
+            record = {'url': url, 'expected_size': size, 'expected_sha256': expected,
+                      'actual_size': 0, 'actual_sha256': hashlib.sha256(b'').hexdigest(), 'verified': False}
+            receipt['components'][name] = record
+            def gate():
+              if (cancel.is_set() or time.monotonic()-begin >= 300 or
+                  time.time() >= float(os.environ['ARCHIVE217_DEADLINE'])):
+                raise TimeoutError('payload time/cancel/storage refusal: '+name)
+            try:
+              gate()
+              with urllib.request.urlopen(url, timeout=10) as response:
+                gate()
+                length = response.headers.get('Content-Length')
+                if length and int(length) != size:
+                  raise ValueError('payload content length mismatch: '+name)
+                with (root/(name+'.tar.xz')).open('xb') as output:
+                  verified_copy(response, output, size, expected, gate, record)
+              if (root/(name+'.tar.xz')).stat().st_size != size:
+                raise ValueError('stored payload length mismatch: '+name)
+              gate()
+              record['verified'] = True
+            finally:
+              receipt['phases']['download:'+name] = time.monotonic()-begin
+          def compiler(text):
+            fields = dict(line.split(': ', 1) for line in text.splitlines() if ': ' in line)
+            expected = {'binary': 'rustc', 'commit-hash': '8ea53bcd7257011cbf96f6398551bdc650b04334',
+                  'commit-date': '2026-07-08', 'host': 'x86_64-unknown-linux-gnu',
+                  'release': '1.97.0-nightly', 'LLVM version': '21.1.3'}
+            if any(fields.get(k) != v for k, v in expected.items()) or '(1.97.0.0)' not in text.splitlines()[0]:
+              raise ValueError('compiler identity mismatch')
+            return fields
+          try:
+            measure()
+            watcher.start()
+            begin = time.monotonic()
+            required = ['tools/esphome/build_archive.py', 'tools/qualification/build_source.py',
+                  'tools/source_identity.py', 'tools/benchmark/linux_cpu.py',
+                  'tools/benchmark/native_lock.py', 'tools/benchmark/native_profiles.py']
+            for name in required:
+              if not (workspace/name).is_file():
+                raise ValueError('missing helper: '+name)
+            sys.path.insert(0, str(workspace / 'tools/qualification'))
+            from build_source import build_source
+            source = build_source(os.environ['CORE_SHA'])
+            if source['suite_source'] != os.environ['SUITE_SHA']:
+              raise ValueError('actual companion HEAD mismatch')
+            receipt['source'] = source
+            receipt['helpers'] = {name: digest(workspace/name) for name in required}
+            if receipt['helpers']['tools/esphome/build_archive.py'] != '4e370ca6ef5eab372b10ead7576c1f3ecf7d52bcbc134d20fc185c5a5025a3ee':
+              raise ValueError('archive helper differs from frozen source')
+            receipt['phases']['source_validation'] = time.monotonic()-begin
+            setup_begin = time.monotonic()
+            try:
+              # Every fixed official payload must verify before any extraction or execution.
+              for name, spec in payloads.items():
+                download_component(name, spec)
+              unpack = root/'unpack'
+              unpack.mkdir()
+              for name in payloads:
+                destination = (unpack/name).resolve()
+                if not destination.is_relative_to(root):
+                  raise ValueError('unowned SDK extraction destination')
+                destination.mkdir()
+                # Fixed SHA-pinned inputs, fresh owned directories; no arbitrary archive paths.
+                run('extract:'+name, ['tar', '--extract', '--xz', '--file', str(root/(name+'.tar.xz')),
+                    '--directory', str(destination), '--no-same-owner', '--no-same-permissions'], 300)
+              toolchain = root/'rustup/toolchains/coaptic-esp-1.97'
+              toolchain.mkdir(parents=True)
+              # Exact compiler's rust-installer/install-template.sh: prefix is direct without destdir.
+              for name, package in [('rust', 'rust-nightly-x86_64-unknown-linux-gnu'), ('rust-src', 'rust-src-nightly')]:
+                installer = unpack/name/package/'install.sh'
+                if not installer.is_file() or not installer.resolve().is_relative_to(root):
+                  raise ValueError('missing/unowned official install.sh')
+                args = ['bash', str(installer), '--prefix='+str(toolchain), '--disable-ldconfig']
+                if name == 'rust':
+                  args.append('--without=rust-docs-json-preview,rust-docs')
+                run('install:'+name, args, 300)
+              clang = unpack/'llvm/esp-clang/lib'
+              gcc = unpack/'gcc/xtensa-esp-elf/bin'
+              if not list(clang.glob('libclang.so*')) or not gcc.is_dir():
+                raise ValueError('official LLVM/GCC layout mismatch')
+              env.update(LIBCLANG_PATH=str(clang), XTENSA_GCC=str(gcc), PATH=str(gcc)+os.pathsep+env['PATH'])
+            finally:
+              receipt['phases']['tool_setup'] = time.monotonic()-setup_begin
+            text = run('compiler', ['rustc', '+coaptic-esp-1.97', '-Vv'], 30)
+            receipt['compiler'] = compiler(text)
+            (evidence/'compiler.txt').write_text(text, encoding='utf-8')
+            if not (root/'rustup/toolchains/coaptic-esp-1.97/lib/rustlib/src/rust/library/core/Cargo.toml').is_file():
+              raise ValueError('official rust-src component missing')
+            run('build', ['python3', '-B', 'tools/esphome/build_archive.py', '--toolchain',
+              'coaptic-esp-1.97', '--expected-library-revision', os.environ['CORE_SHA'],
+              '--pairing', '--async-network'], 1500)
+            begin = time.monotonic()
+            lib = workspace/'tools/esphome/components/coaptic_network/lib'
+            archive, marker = lib/'libcoaptic_esphome_probe.a', lib/'build.json'
+            if not 0 < archive.stat().st_size <= 16*MIB or marker.stat().st_size > MIB:
+              raise ValueError('archive/metadata file size refusal')
+            report = json.loads(marker.read_text())
+            if not report.get('sources'):
+              raise ValueError('missing source hashes')
+            if (report['schema'] != 'coaptic-esphome-archive/3' or
+              report['target'] != 'xtensa-esp32s3-none-elf' or
+              report['features'] != ['network', 'standalone', 'oscore', 'pairing', 'async-network'] or
+              any(report.get(k) != v for k, v in source.items()) or
+              build_source(os.environ['CORE_SHA']) != source or
+              report['archive_sha256'] != digest(archive) or compiler(report['compiler']) != receipt['compiler']):
+              raise ValueError('archive provenance mismatch')
+            for name, value in report['sources'].items():
+              path = (workspace/name).resolve()
+              if not path.is_relative_to(workspace) or digest(path) != value:
+                raise ValueError('archive source hash mismatch')
+            with archive.open('rb') as stream:
+              magic = stream.read(8)
+            if magic != b'!<arch>\n':
+              raise ValueError('not an ar static archive')
+            receipt['archive_sha256'] = digest(archive)
+            shutil.copyfile(archive, evidence/archive.name)
+            shutil.copyfile(marker, evidence/marker.name)
+            receipt['phases']['inspection'] = time.monotonic()-begin
+            measure()
+            if cancel.is_set():
+              raise RuntimeError('storage monitor failed')
+            receipt['status'] = 'passed'
+          except BaseException as error:
+            receipt['error'] = type(error).__name__+': '+str(error)[:1024]
+            receipt['error_notes'] = [str(n)[:512] for n in getattr(error, '__notes__', [])[:4]]
+            print(receipt['error'])
+          finally:
+            done.set()
+            if watcher.ident is not None:
+              watcher.join(12)
+            receipt['monitor_errors'] = monitor_errors
+            receipt['peak_sampled_owned_bytes'] = peak
+            receipt['phases']['total'] = time.monotonic()-started
+            receipt['job_elapsed_seconds'] = time.time()-float(os.environ['ARCHIVE217_DEADLINE'])+2400
+            if watcher.is_alive() or monitor_errors:
+              receipt['status'] = 'failed'
+            log.close()
+            (evidence/'receipt.json').write_text(json.dumps(receipt, indent=2)+'\n')
+            files = list(evidence.iterdir())
+            if (sum(p.stat().st_size for p in files) > 32*MIB or
+              sum(p.stat().st_size for p in files if p.suffix == '.log') > 128*1024):
+              raise SystemExit('artifact byte limit; upload refused')
+            if receipt['status'] != 'passed':
+              for name in ('libcoaptic_esphome_probe.a', 'build.json'):
+                (evidence/name).unlink(missing_ok=True)
+            with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('upload=true\n')
+          if receipt['status'] != 'passed':
+            raise SystemExit(1)
+          PY
+      - name: Retain bounded archive evidence
+        if: ${{ always() && steps.build.outputs.upload == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: public-xtensa-archive-${{ github.run_id }}
+          path: ${{ runner.temp }}/coaptic-archive217/evidence/
+          if-no-files-found: error
+          retention-days: 1
