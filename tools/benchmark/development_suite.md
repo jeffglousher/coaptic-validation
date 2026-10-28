@@ -117,8 +117,9 @@ extra benchmark framework is involved. Current-source deployment still requires
 its own successful exact-source receipt.
 
 The [October 28 results](evidence/quick-targets-20261028/README.md) record the
-Windows run in 43.90 seconds, deployed XDP cycle in 819 ms and short authenticated
-syscall diagnostic in 19 seconds, with preparation/build/job times separately.
+Windows run in 43.90 seconds, deployed XDP quick timer at 819 ms plus separately
+recorded 10 ms veth creation, and short authenticated syscall diagnostic in
+19 seconds, with preparation/build/job times separately.
 These are separate recipes on different targets, not one combined minute run.
 The syscall sample passes functionally but fails all CPU-resolution gates and
 three pair latency guards; overhead ratios remain withheld. The Waveshare's

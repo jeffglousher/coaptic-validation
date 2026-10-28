@@ -18,9 +18,10 @@ The eight numeric host configurations remain fixed across library iterations.
   four reference frames before attachment, eight while attached and four after
   detach. Attached deltas were five syntax, one malformed, one oversized and one
   uninspected frame; all eight passed unchanged. Program-ID/SKB checks, detach
-  absence, unchanged recovery counters and interface cleanup passed. The cycle
-  took **819 ms**; tool setup took 6 seconds, build/check 54 seconds and the
-  hosted job 81 seconds. Opaque OSCORE syntax does not prove authentication.
+  absence, unchanged recovery counters and interface cleanup passed. The
+  printed quick timer was **819 ms**, excluding separately recorded veth creation
+  of 10 ms; tool setup took 6 seconds, build/check 54 seconds and the hosted job
+  81 seconds. Opaque OSCORE syntax does not prove authentication.
 - **Authenticated socket syscall observation:** corrected
   [run 40683333178](https://github.com/jeffglousher/coaptic-validation/actions/runs/40683333178),
   companion `8a043591`, native/BPF core `28d9f1a`, functionally passed all eight

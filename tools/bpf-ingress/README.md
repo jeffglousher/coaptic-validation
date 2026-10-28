@@ -208,9 +208,9 @@ differ from the same-binary native OFF/ON core.
 See [the socket integration](../benchmark/linux_cpu.md#bounded-syscall-diagnostic).
 
 The [October 28 quick receipts](../benchmark/evidence/quick-targets-20261028/README.md)
-include an actual XDP attach/live-frame/detach/cleanup pass lasting 819 ms and a
-separate authenticated socket diagnostic lasting 19 seconds with four attached
-syscall captures.
+include an actual XDP attach/live-frame/detach/cleanup pass with an 819 ms quick
+timer and separately recorded 10 ms veth creation, plus an authenticated socket
+diagnostic lasting 19 seconds with four attached syscall captures.
 Both list exact source revisions and cold setup/build durations. The syscall
 sample has insufficient CPU resolution and failed pair latency guards; every
 overhead ratio remains withheld. These functional examples establish no
