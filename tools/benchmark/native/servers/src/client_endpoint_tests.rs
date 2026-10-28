@@ -570,6 +570,188 @@ fn actual_body_occupancy_refusal_preserves_owners_retained_ciphertext_and_recove
             .content_format(coaptic::ContentFormat::OCTET_STREAM)
             .etag(b"fixture")
     }
+    // Keep client construction in a separate frame borrowing the already-bound
+    // server; the assertion driver borrows both owners.
+    #[inline(never)]
+    fn with_client<P, S, const N: usize, const D: usize, const C: usize>(
+        server: &mut App<P, coaptic::storage::UdpSocketIo<[u8; 1473]>, N, true, S, D, C>,
+        protected: bool,
+        count: usize,
+        expected_slots: usize,
+    ) where
+        P: coaptic::storage::MemoryLayout<true, Token = coaptic::message::Token>
+            + coaptic::app::AppAssembled<true>,
+        S: coaptic::app::AppStorage<Token = P::Token>,
+    {
+        let SocketAddr::V4(remote) = server.transport().socket().local_addr().unwrap() else {
+            unreachable!()
+        };
+        let io = EndpointIo::new(remote, count).unwrap();
+        let peers = io.peers();
+        let locals = std::array::from_fn(|i| {
+            SocketAddr::V4(io.lanes[i.min(count - 1)].as_ref().unwrap().local)
+        });
+        let builder = App::builder()
+            .routes::<1>()
+            .block_wise::<true>()
+            .full_responses()
+            .deterministic_for_tests();
+        let builder = if protected {
+            builder.oscore(context(false))
+        } else {
+            builder.allow_unprotected()
+        };
+        let mut caps = client_capacities(2048, count);
+        caps.rx_datagram_slots = 5;
+        caps.tx_datagram_slots = 5;
+        let mut client = builder.bind_alloc(io, caps).unwrap();
+        drive(server, &mut client, &peers, &locals, count, expected_slots);
+    }
+
+    #[inline(never)]
+    fn drive<P, S, const N: usize, const D: usize, const C: usize>(
+        server: &mut App<P, coaptic::storage::UdpSocketIo<[u8; 1473]>, N, true, S, D, C>,
+        client: &mut Client<EndpointIo>,
+        peers: &[Endpoint; LANES],
+        locals: &[SocketAddr; LANES],
+        count: usize,
+        expected_slots: usize,
+    ) where
+        P: coaptic::storage::MemoryLayout<true, Token = coaptic::message::Token>
+            + coaptic::app::AppAssembled<true>,
+        S: coaptic::app::AppStorage<Token = P::Token>,
+    {
+        use coaptic::storage::{BlockKey, ExchangeKey};
+        let slots = server.storage_usage().tx_body.unwrap().capacity;
+        assert_eq!(slots, expected_slots);
+        let mut fixtures = Vec::new();
+        for i in 0..slots {
+            let key = BlockKey::new(
+                coaptic::message::Token::new(&[240 + i as u8]).unwrap(),
+                Endpoint::v4([127, 0, 0, 1], 20000 + i as u16),
+            );
+            fixtures.push(
+                server
+                    .engine_mut()
+                    .start_block2(key, &[9; 2048], 6)
+                    .unwrap(),
+            );
+        }
+        assert!(server.engine_mut().acquire_tx_body().is_none());
+        let calls: Vec<_> = peers[..count]
+            .iter()
+            .map(|p| client.get("bench").to(*p).send(0).unwrap())
+            .collect();
+        let exchange = client
+            .engine()
+            .lookup_exchange(ExchangeKey::new(calls[0].token(), peers[0]))
+            .unwrap();
+        let tx = client.engine().exchange_entry(exchange).unwrap().tx_slot();
+        let retained_request = client.engine_mut().access_tx(tx).unwrap().to_vec();
+        let mut wire = [0; 1473];
+        let (n, from) = server.transport().socket().peek_from(&mut wire).unwrap();
+        assert_eq!(from, locals[0]);
+        assert_eq!(&wire[..n], retained_request);
+        let mut refused = 0;
+        for _ in 0..32 {
+            match server.poll(1) {
+                Err(coaptic::Error::Block(coaptic::error::BlockTransferError::Saturated)) => {
+                    refused += 1
+                }
+                Ok(_) => {}
+                Err(e) => panic!("unexpected body-boundary outcome: {e:?}"),
+            }
+        }
+        assert_eq!(refused, count);
+        assert_eq!(server.storage_usage().tx_body.unwrap().occupied, slots);
+        for &id in &fixtures {
+            assert_eq!(server.engine().tx_body_payload(id), Some(&[9; 2048][..]));
+        }
+        assert_eq!(
+            &*client.engine_mut().access_tx(tx).unwrap(),
+            retained_request
+        );
+        let sequence = client.oscore().map(SecurityContext::sender_seq);
+        let replay = server.oscore().map(SecurityContext::replay_checkpoint);
+        client.poll(4000).unwrap();
+        let (n, from) = server.transport().socket().peek_from(&mut wire).unwrap();
+        assert_eq!(from, locals[0]);
+        assert_eq!(&wire[..n], retained_request);
+        for _ in 0..32 {
+            let _ = server.poll(4000);
+        }
+        assert_eq!(client.oscore().map(SecurityContext::sender_seq), sequence);
+        assert_eq!(
+            server.oscore().map(SecurityContext::replay_checkpoint),
+            replay
+        );
+        for &id in &fixtures {
+            assert_eq!(server.engine().tx_body_payload(id), Some(&[9; 2048][..]));
+        }
+        for call in calls {
+            assert!(client.cancel(call));
+            assert!(client.take_response(call).unwrap().is_err());
+        }
+        let released = fixtures.pop().unwrap();
+        server.engine_mut().release_tx_body(released).unwrap();
+        assert_eq!(server.storage_usage().tx_body.unwrap().occupied, slots - 1);
+        let fresh = client.get("bench").to(peers[0]).send(4001).unwrap();
+        for _ in 0..8 {
+            server.poll(4002).unwrap();
+        }
+        let (n, peer) = client
+            .transport_mut()
+            .recv(&mut wire[..1472])
+            .unwrap()
+            .unwrap();
+        assert_eq!(peer, peers[0]);
+        let cached_response = wire[..n].to_vec();
+        let fresh_sequence = client.oscore().map(SecurityContext::sender_seq);
+        let fresh_replay = server.oscore().map(SecurityContext::replay_checkpoint);
+        // Withhold the first accepted response. The real server replays
+        // its cached protected bytes exactly, without nonce/replay reset.
+        client.poll(8001).unwrap();
+        for _ in 0..8 {
+            server.poll(8001).unwrap();
+        }
+        let (n, peer) = client
+            .transport_mut()
+            .recv(&mut wire[..1472])
+            .unwrap()
+            .unwrap();
+        assert_eq!(peer, peers[0]);
+        assert_eq!(&wire[..n], cached_response);
+        assert_eq!(
+            client.oscore().map(SecurityContext::sender_seq),
+            fresh_sequence
+        );
+        assert_eq!(
+            server.oscore().map(SecurityContext::replay_checkpoint),
+            fresh_replay
+        );
+        server
+            .transport()
+            .socket()
+            .send_to(&cached_response, locals[0])
+            .unwrap();
+        for now in 8002..8060 {
+            client.poll(now).unwrap();
+            server.poll(now).unwrap();
+        }
+        let mut output = [0; 2048];
+        let reply = client
+            .take_response_into(fresh, &mut output)
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(reply.payload(), &[6; 2048]);
+        assert_eq!(client.resource_usage().client_requests.occupied, 0);
+        assert_eq!(client.storage_usage().rx_body.unwrap().occupied, 0);
+        for id in fixtures {
+            assert_eq!(server.engine().tx_body_payload(id), Some(&[9; 2048][..]));
+            server.engine_mut().release_tx_body(id).unwrap();
+        }
+    }
     // All initial body owners are explicitly public-storage fixtures. Real
     // App/socket requests exercise ordinary borrowed-path admission refusal.
     // This is not a claim of five real clients or retained ordinary GET bodies.
@@ -577,15 +759,11 @@ fn actual_body_occupancy_refusal_preserves_owners_retained_ciphertext_and_recove
         ($resources:expr, $expected_slots:expr, $count:expr) => {{
             #[inline(never)]
             fn run(protected: bool, count: usize) {
-                use coaptic::storage::{BlockKey, ExchangeKey};
-                let Fixture {
-                    server,
-                    mut client,
-                    peers,
-                    locals,
-                    ..
-                } = Fixture::new(count, protected, 2048);
-                server.set_nonblocking(true).unwrap();
+                let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(1)))
+                    .unwrap();
+                socket.set_nonblocking(true).unwrap();
                 let builder = App::with_resources($resources)
                     .deterministic_for_tests()
                     .route("bench", coaptic::get(representation));
@@ -595,137 +773,9 @@ fn actual_body_occupancy_refusal_preserves_owners_retained_ciphertext_and_recove
                     builder.allow_unprotected()
                 };
                 let mut server = builder
-                    .bind(coaptic::storage::UdpSocketIo::new(server, [0; 1473]).unwrap())
+                    .bind(coaptic::storage::UdpSocketIo::new(socket, [0; 1473]).unwrap())
                     .unwrap();
-                let slots = server.storage_usage().tx_body.unwrap().capacity;
-                assert_eq!(slots, $expected_slots);
-                let mut fixtures = Vec::new();
-                for i in 0..slots {
-                    let key = BlockKey::new(
-                        coaptic::message::Token::new(&[240 + i as u8]).unwrap(),
-                        Endpoint::v4([127, 0, 0, 1], 20000 + i as u16),
-                    );
-                    fixtures.push(
-                        server
-                            .engine_mut()
-                            .start_block2(key, &[9; 2048], 6)
-                            .unwrap(),
-                    );
-                }
-                assert!(server.engine_mut().acquire_tx_body().is_none());
-                let calls: Vec<_> = peers[..count]
-                    .iter()
-                    .map(|p| client.get("bench").to(*p).send(0).unwrap())
-                    .collect();
-                let exchange = client
-                    .engine()
-                    .lookup_exchange(ExchangeKey::new(calls[0].token(), peers[0]))
-                    .unwrap();
-                let tx = client.engine().exchange_entry(exchange).unwrap().tx_slot();
-                let retained_request = client.engine_mut().access_tx(tx).unwrap().to_vec();
-                let mut wire = [0; 1473];
-                let (n, from) = server.transport().socket().peek_from(&mut wire).unwrap();
-                assert_eq!(from, locals[0]);
-                assert_eq!(&wire[..n], retained_request);
-                let mut refused = 0;
-                for _ in 0..32 {
-                    match server.poll(1) {
-                        Err(coaptic::Error::Block(
-                            coaptic::error::BlockTransferError::Saturated,
-                        )) => refused += 1,
-                        Ok(_) => {}
-                        Err(e) => panic!("unexpected body-boundary outcome: {e:?}"),
-                    }
-                }
-                assert_eq!(refused, count);
-                assert_eq!(server.storage_usage().tx_body.unwrap().occupied, slots);
-                for &id in &fixtures {
-                    assert_eq!(server.engine().tx_body_payload(id), Some(&[9; 2048][..]));
-                }
-                assert_eq!(
-                    &*client.engine_mut().access_tx(tx).unwrap(),
-                    retained_request
-                );
-                let sequence = client.oscore().map(SecurityContext::sender_seq);
-                let replay = server.oscore().map(SecurityContext::replay_checkpoint);
-                client.poll(4000).unwrap();
-                let (n, from) = server.transport().socket().peek_from(&mut wire).unwrap();
-                assert_eq!(from, locals[0]);
-                assert_eq!(&wire[..n], retained_request);
-                for _ in 0..32 {
-                    let _ = server.poll(4000);
-                }
-                assert_eq!(client.oscore().map(SecurityContext::sender_seq), sequence);
-                assert_eq!(
-                    server.oscore().map(SecurityContext::replay_checkpoint),
-                    replay
-                );
-                for &id in &fixtures {
-                    assert_eq!(server.engine().tx_body_payload(id), Some(&[9; 2048][..]));
-                }
-                for call in calls {
-                    assert!(client.cancel(call));
-                    assert!(client.take_response(call).unwrap().is_err());
-                }
-                let released = fixtures.pop().unwrap();
-                server.engine_mut().release_tx_body(released).unwrap();
-                assert_eq!(server.storage_usage().tx_body.unwrap().occupied, slots - 1);
-                let fresh = client.get("bench").to(peers[0]).send(4001).unwrap();
-                for _ in 0..8 {
-                    server.poll(4002).unwrap();
-                }
-                let (n, peer) = client
-                    .transport_mut()
-                    .recv(&mut wire[..1472])
-                    .unwrap()
-                    .unwrap();
-                assert_eq!(peer, peers[0]);
-                let cached_response = wire[..n].to_vec();
-                let fresh_sequence = client.oscore().map(SecurityContext::sender_seq);
-                let fresh_replay = server.oscore().map(SecurityContext::replay_checkpoint);
-                // Withhold the first accepted response. The real server replays
-                // its cached protected bytes exactly, without nonce/replay reset.
-                client.poll(8001).unwrap();
-                for _ in 0..8 {
-                    server.poll(8001).unwrap();
-                }
-                let (n, peer) = client
-                    .transport_mut()
-                    .recv(&mut wire[..1472])
-                    .unwrap()
-                    .unwrap();
-                assert_eq!(peer, peers[0]);
-                assert_eq!(&wire[..n], cached_response);
-                assert_eq!(
-                    client.oscore().map(SecurityContext::sender_seq),
-                    fresh_sequence
-                );
-                assert_eq!(
-                    server.oscore().map(SecurityContext::replay_checkpoint),
-                    fresh_replay
-                );
-                server
-                    .transport()
-                    .socket()
-                    .send_to(&cached_response, locals[0])
-                    .unwrap();
-                for now in 8002..8060 {
-                    client.poll(now).unwrap();
-                    server.poll(now).unwrap();
-                }
-                let mut output = [0; 2048];
-                let reply = client
-                    .take_response_into(fresh, &mut output)
-                    .unwrap()
-                    .unwrap()
-                    .unwrap();
-                assert_eq!(reply.payload(), &[6; 2048]);
-                assert_eq!(client.resource_usage().client_requests.occupied, 0);
-                assert_eq!(client.storage_usage().rx_body.unwrap().occupied, 0);
-                for id in fixtures {
-                    assert_eq!(server.engine().tx_body_payload(id), Some(&[9; 2048][..]));
-                    server.engine_mut().release_tx_body(id).unwrap();
-                }
+                with_client(&mut server, protected, count, $expected_slots);
             }
             for protected in [false, true] {
                 run(protected, $count);
