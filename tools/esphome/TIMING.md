@@ -251,3 +251,8 @@ Verify clean source SHAs, seven locks, source hashes, compiler, target/features
 and archive SHA256 before use. The runner owns SDK/registry/target disposal.
 Private YAML/keys stay local. Preserve prior images/evidence; preserving app-only
 OTA and paired device qualification remain separate from archive compilation.
+
+Hosted compilation and independent archive acceptance passed in run 40694497672
+(127-second job); see the [retained proof](../benchmark/evidence/xtensa-archive-20261028/README.md).
+Firmware assembly, final linking, preserving OTA and paired device validation
+remain unfinished under issue #217.
