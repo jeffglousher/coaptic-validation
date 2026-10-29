@@ -1,0 +1,21 @@
+{
+  "schema": "coaptic-binding-publication/1",
+  "files": {
+    "data.json.gz": {
+      "bytes": 26052,
+      "sha256": "066bf9f8b0cd7212e87366e73d8ca0ffe3ffea6682ef65453524abd0e3edd2a2"
+    },
+    "receipt.json.gz": {
+      "bytes": 3353,
+      "sha256": "f4d03b11ec352881a19e1bee8f5131216c4cc9ed1a9a43f146bf35ae1fc4f735"
+    },
+    "README.md": {
+      "bytes": 2650,
+      "sha256": "5483e634fdc4c9c1cc6c4ebb38c677edd9fa4c9f61562d447daa8797060cc9b2"
+    }
+  },
+  "receipt_uncompressed_sha256": "33d32923148993ced6970dfdb01aef7e04a4cb0228de97e1042c0050481a4d5f",
+  "remote_artifact_id": 12927572183,
+  "remote_artifact_sha256": "a406e711164fa03ac8c608e9ed04f550816cf3876194155600499da7d4ca2ee0",
+  "retained_criterion_members": 72
+}
