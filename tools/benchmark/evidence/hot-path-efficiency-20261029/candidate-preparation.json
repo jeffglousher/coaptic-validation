@@ -1,0 +1,9 @@
+{
+  "schema": "coaptic-hotpath-preparation/1",
+  "source": "f4fb8e85dfc5c78f9031aa3360c9888b9f4aa093",
+  "passed": true,
+  "started": 1793272735.6434045,
+  "ended": 1793272871.65519,
+  "observed_positive_growth_bytes": 24259536,
+  "scans": 72
+}

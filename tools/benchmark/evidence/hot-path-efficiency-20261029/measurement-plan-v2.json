@@ -1,0 +1,12 @@
+{
+  "schema": "coaptic-hotpath-screen-plan/1",
+  "baseline": "28d9f1a61d15121d75d5dd426ad8d6b5cc891005",
+  "candidate": "c39b100c8eecae3a630b669df15aac912eaf4f90",
+  "refinement": "Cache the existing TX body capacity once. Only pools with more than one slot use the empty-count shortcut; zero/single-slot pools retain the original scan. All other five mechanisms and all fixtures remain unchanged from f4fb8e8.",
+  "reason": "The original all-size shortcut adds a live-count query before a one-slot occupied scan. This is a source-work counterexample, not a proven cause of the observed magnitude. Preserve f4fb8e8's +6850/+4450 ns SmallObserve unprotected GET medians.",
+  "order": ["v2-A1", "v2-B1", "v2-B2", "v2-A2"],
+  "profiles": "Unchanged full eight-profile suite, frozen baseline loopback client, 16 socket cells + 6 core + 10 unsupported + two Observe proofs each run",
+  "reused_checks": "1212 all-feature and 715 no-default library executions at f4fb8e8; no new library test execution for this conservative fallback-to-original refinement. Current strict Clippy/MSRV and actual new native full suite will be checked.",
+  "bounds": "Same cumulative 256 MiB added lane output and 256 KiB metadata, no allowance reset. One variant only, no replacement runs. Stop on functional, cleanup or storage refusal; retain both cohorts.",
+  "claims": "No qualified CPU/latency gain, causal attribution, peak stack or whole-memory claim"
+}

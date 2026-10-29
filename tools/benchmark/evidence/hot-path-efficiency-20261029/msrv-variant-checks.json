@@ -1,0 +1,43 @@
+{
+  "passed": true,
+  "prior_positive_growth_bytes": 240649556,
+  "checks": [
+    {
+      "name": "msrv-fixed",
+      "command": [
+        "C:/Users/jeffg/.rustup/toolchains/1.89.0-x86_64-pc-windows-msvc/bin/cargo.exe",
+        "check",
+        "--manifest-path",
+        "C:\\Users\\jeffg\\.t3\\worktrees\\coaptic\\t3-07660ed8\\Cargo.toml",
+        "--offline",
+        "--release",
+        "--locked",
+        "--no-default-features",
+        "--lib"
+      ],
+      "passed": true,
+      "seconds": 3.3652908001095057,
+      "output_bytes": 142,
+      "output_sha256": "0f9250e0ab8e23e8c521d6ced13b2bb6ac8b633fcf431a3ad589194922964f9a"
+    },
+    {
+      "name": "msrv-all",
+      "command": [
+        "C:/Users/jeffg/.rustup/toolchains/1.89.0-x86_64-pc-windows-msvc/bin/cargo.exe",
+        "check",
+        "--manifest-path",
+        "C:\\Users\\jeffg\\.t3\\worktrees\\coaptic\\t3-07660ed8\\Cargo.toml",
+        "--offline",
+        "--release",
+        "--locked",
+        "--all-features",
+        "--lib"
+      ],
+      "passed": true,
+      "seconds": 7.529998000012711,
+      "output_bytes": 142,
+      "output_sha256": "4393842c5be91e75e5f9cc5b4e6693265d75492ef6e0ddbd0ed2d0d6c2384be4"
+    }
+  ],
+  "observed_positive_growth_bytes": 42
+}

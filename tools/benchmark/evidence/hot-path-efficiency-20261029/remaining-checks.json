@@ -1,0 +1,25 @@
+{
+  "passed": false,
+  "prior_positive_growth_bytes": 157982241,
+  "checks": [
+    {
+      "name": "fixed-unprotected-lib",
+      "command": [
+        "C:\\Users\\jeffg\\.rustup\\toolchains\\1.99.0-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+        "test",
+        "--manifest-path",
+        "C:\\Users\\jeffg\\.t3\\worktrees\\coaptic\\t3-07660ed8\\Cargo.toml",
+        "--offline",
+        "--release",
+        "--locked",
+        "--no-default-features",
+        "--lib"
+      ],
+      "passed": false,
+      "error": "worker failed: CalledProcessError: Command '['C:\\\\Users\\\\jeffg\\\\AppData\\\\Local\\\\Python\\\\pythoncore-3.14-64\\\\python.exe', '-B', 'D:\\\\codex-work\\\\coaptic-validation\\\\tools\\\\benchmark\\\\development_suite.py', '_task', 'D:\\\\CoapticCurrent\\\\hot-path-efficiency-20261029\\\\coaptic-suite-task-q862csj7\\\\task.json']' returned non-zero exit status 101.",
+      "output_bytes": 717,
+      "output_sha256": "7276133e8cd939174194c76cb44c95dc519dd1cfd00cac3d41a375066abfb143"
+    }
+  ],
+  "observed_positive_growth_bytes": 3214
+}

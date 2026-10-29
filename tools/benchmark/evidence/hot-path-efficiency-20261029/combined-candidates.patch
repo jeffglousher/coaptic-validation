@@ -1,0 +1,1068 @@
+diff --git a/src/app/hot_path_tests.rs b/src/app/hot_path_tests.rs
+new file mode 100644
+index 0000000..55cda2b
+--- /dev/null
++++ b/src/app/hot_path_tests.rs
+@@ -0,0 +1,386 @@
++//! Equivalence boundaries for the empty-body shortcut and notification scratch.
++
++use core::convert::Infallible;
++
++use super::*;
++use crate::message::Token;
++use crate::storage::{BlockTransfer, Memory, WithBodies, profiles};
++
++type Bodies = profiles::WithTxBody<profiles::WithRxBody<profiles::Constrained, 1, 1024>, 4, 1024>;
++
++fn fixed_bodies() -> Engine<Memory<Bodies, WithBodies<Bodies>>> {
++    Engine::from_storage(Memory::<Bodies>::with_block_wise())
++}
++
++fn legacy_response_body_for<S: Storage + BodySlots>(
++    engine: &Engine<S>,
++    key: BlockKey<S::Token>,
++) -> Option<SlotId> {
++    (0..engine.capacities().tx_body_slots.unwrap_or(0)).find_map(|index| {
++        let id = SlotId::from_index(index);
++        let transfer = engine.tx_body_transfer(id)?;
++        (transfer.token() == key.token()
++            && transfer.endpoint() == key.endpoint()
++            && matches!(
++                transfer.role(),
++                BlockRole::OutgoingBlock2 | BlockRole::OutgoingQBlock2
++            ))
++        .then_some(id)
++    })
++}
++
++fn assert_lookup<S: Storage + BodySlots>(engine: &mut Engine<S>, key: BlockKey<S::Token>) {
++    let expected = legacy_response_body_for(engine, key);
++    assert_eq!(response_body_for(engine, key), expected);
++}
++
++fn body_transitions<S: Storage<Token = Token> + BodySlots>(mut engine: Engine<S>, q: bool) {
++    let peer = Endpoint::v4([192, 0, 2, 1], 5683);
++    let key = BlockKey::new(Token::new(&[1]).unwrap(), peer);
++    assert_lookup(&mut engine, key);
++    assert_eq!(engine.storage_mut().tx_body().unwrap().occupied_count(), 0);
++
++    // Acquiring a zero-length slot changes occupancy before any transfer exists.
++    let id = engine.acquire_tx_body().unwrap();
++    assert_eq!(engine.storage_mut().tx_body().unwrap().occupied_count(), 1);
++    assert_eq!(engine.tx_body_payload(id), Some(&[][..]));
++    assert_lookup(&mut engine, key);
++    engine.release_tx_body(id).unwrap();
++    assert_eq!(engine.storage_mut().tx_body().unwrap().occupied_count(), 0);
++    assert_lookup(&mut engine, key);
++
++    let id = engine.acquire_tx_body().unwrap();
++    let mut snapshot = if q {
++        BlockTransfer::outgoing_q_block2(key, 0, 0, 64).unwrap()
++    } else {
++        BlockTransfer::outgoing_block2(key, 0, 0, 64).unwrap()
++    };
++    snapshot.remember_notification(Code::CONTENT, Some(ContentFormat::TEXT_PLAIN), Some(0));
++    engine
++        .storage_mut()
++        .set_tx_body_transfer(id, snapshot)
++        .unwrap();
++    assert_eq!(response_body_for(&mut engine, key), Some(id));
++    assert_eq!(engine.tx_body_transfer(id), Some(snapshot));
++    assert_eq!(engine.tx_body_payload(id), Some(&[][..]));
++
++    // Keep the pin after ending the Rust borrow, as the pool's pin tests do.
++    // Dropping this engine at the end releases its bounded test storage.
++    core::mem::forget(engine.access_tx_body_mut(id).unwrap());
++    assert!(engine.tx_body_is_pinned(id));
++    assert_eq!(engine.release_tx_body(id), Err(SlotError::Pinned));
++    assert_eq!(engine.storage_mut().tx_body().unwrap().occupied_count(), 1);
++    assert_lookup(&mut engine, key);
++    assert_eq!(response_body_for(&mut engine, key), Some(id));
++    assert_eq!(engine.tx_body_transfer(id), Some(snapshot));
++}
++
++fn body_selection<S: Storage<Token = Token> + BodySlots>(mut engine: Engine<S>) {
++    let peer = Endpoint::v4([192, 0, 2, 1], 5683);
++    let token = Token::new(&[1]).unwrap();
++    let key = BlockKey::new(token, peer);
++    let other_token = BlockKey::new(Token::new(&[2]).unwrap(), peer);
++    #[cfg(feature = "oscore")]
++    let other_identity = BlockKey::new(token, peer.with_association(1));
++    #[cfg(not(feature = "oscore"))]
++    let other_identity = BlockKey::new(token, Endpoint::v4([192, 0, 2, 1], 5684));
++    let other_endpoint = BlockKey::new(token, Endpoint::v4([192, 0, 2, 2], 5683));
++    let ids = core::array::from_fn::<_, 4, _>(|_| engine.acquire_tx_body().unwrap());
++    let transfers = [
++        BlockTransfer::outgoing_block1(key, 0, 0, 64).unwrap(),
++        BlockTransfer::outgoing_block2(other_token, 0, 0, 64).unwrap(),
++        BlockTransfer::outgoing_q_block2(other_identity, 0, 0, 64).unwrap(),
++        BlockTransfer::outgoing_block2(key, 0, 0, 64).unwrap(),
++    ];
++    for (id, transfer) in ids.into_iter().zip(transfers) {
++        engine
++            .storage_mut()
++            .set_tx_body_transfer(id, transfer)
++            .unwrap();
++    }
++    for candidate in [key, other_token, other_identity, other_endpoint] {
++        assert_lookup(&mut engine, candidate);
++    }
++    assert_eq!(response_body_for(&mut engine, key), Some(ids[3]));
++    // Both response roles match, with ascending slot priority rather than role priority.
++    let q = BlockTransfer::outgoing_q_block2(key, 0, 0, 64).unwrap();
++    engine
++        .storage_mut()
++        .set_tx_body_transfer(ids[1], q)
++        .unwrap();
++    assert_eq!(response_body_for(&mut engine, key), Some(ids[1]));
++    assert_lookup(&mut engine, key);
++    let classic = BlockTransfer::outgoing_block2(key, 0, 0, 64).unwrap();
++    engine
++        .storage_mut()
++        .set_tx_body_transfer(ids[0], classic)
++        .unwrap();
++    assert_eq!(response_body_for(&mut engine, key), Some(ids[0]));
++    for id in ids {
++        engine.release_tx_body(id).unwrap();
++        assert_lookup(&mut engine, key);
++    }
++    assert_eq!(response_body_for(&mut engine, key), None);
++}
++
++#[test]
++fn fixed_body_lookup_preserves_live_counts_snapshots_and_selection() {
++    body_transitions(fixed_bodies(), false);
++    body_transitions(fixed_bodies(), true);
++    body_selection(fixed_bodies());
++    let mut disabled = Engine::from_storage(Memory::<Bodies>::new());
++    assert_lookup(
++        &mut disabled,
++        BlockKey::new(Token::EMPTY, Endpoint::v4([192, 0, 2, 1], 5683)),
++    );
++}
++
++#[cfg(feature = "alloc")]
++#[test]
++fn allocated_body_lookup_preserves_live_counts_snapshots_and_selection() {
++    let capacities =
++        crate::storage::Capacities::from_profile::<Bodies>().with_block_wise::<Bodies>();
++    let make = || {
++        Engine::from_storage(crate::storage::AllocMemory::try_new(capacities, usize::MAX).unwrap())
++    };
++    body_transitions(make(), false);
++    body_transitions(make(), true);
++    body_selection(make());
++    let mut disabled = Engine::from_storage(
++        crate::storage::AllocMemory::<Token>::try_new(
++            crate::storage::Capacities::from_profile::<Bodies>(),
++            usize::MAX,
++        )
++        .unwrap(),
++    );
++    assert_lookup(
++        &mut disabled,
++        BlockKey::new(Token::EMPTY, Endpoint::v4([192, 0, 2, 1], 5683)),
++    );
++}
++
++// Frozen notification construction from 28d9f1a6. The original 24-entry scratch
++// is independent of the candidate's four-entry scratch; security encoding is shared.
++#[allow(clippy::too_many_arguments)]
++fn legacy_notification<S: Storage + DatagramSlots>(
++    engine: &mut Engine<S>,
++    peer: Endpoint,
++    tx: SlotId,
++    ty: Type,
++    mid: MessageId,
++    token: S::Token,
++    response: &Response<'_, S::Token>,
++    payload: &[u8],
++    context: &mut oscore::Field<4, S::Token>,
++    request: oscore::Request,
++) -> Result<(), Error<Infallible>> {
++    response.validate().map_err(Error::Response)?;
++    let cf = response.format().map(ContentFormat::encode);
++    let max_age = response.max_age_secs().map(EncodedUint::new);
++    let observe = response
++        .observe_seq()
++        .map(|seq| encode_uint(seq & 0x00ff_ffff));
++    let mut opts = OptionsBuilder::<{ 8 + 2 * LOCATION_MAX }>::new();
++    if let Some(etag) = response.etag_bytes() {
++        push_opt(&mut opts, Opt::etag(etag)).unwrap();
++    }
++    if let Some(ref encoded) = observe {
++        push_opt(&mut opts, Opt::observe(encoded)).unwrap();
++    }
++    if let Some(ref encoded) = cf {
++        push_opt(&mut opts, Opt::content_format(encoded)).unwrap();
++    }
++    if let Some(ref encoded) = max_age {
++        push_opt(&mut opts, Opt::max_age(encoded)).unwrap();
++    }
++    let msg = Message::new(ty, response.code(), mid)
++        .with_token(token)
++        .with_options(opts.as_slice())
++        .with_payload(payload);
++    oscore::encode_notification(context, peer, request, engine, tx, &msg)
++}
++
++fn notification_cases<const BYTES: usize>(
++    mut contexts: impl FnMut() -> (oscore::Store<4, 1>, oscore::Request),
++) {
++    type Base = profiles::Constrained;
++    let peer = Endpoint::v4([192, 0, 2, 1], 5683);
++    let token = Token::new(&[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
++    for mask in 0..16 {
++        for boundary in [0, 1, 255, 256, 65535, 65536, 0x00ff_ffff, u32::MAX] {
++            let mut response = Response::content(b"body");
++            if mask & 1 != 0 {
++                response = response.etag(if boundary == 0 { b"a" } else { b"12345678" });
++            }
++            if mask & 2 != 0 {
++                response = response.observe(boundary);
++            }
++            if mask & 4 != 0 {
++                response = response.content_format(ContentFormat::new(boundary as u16));
++            }
++            if mask & 8 != 0 {
++                response = response.max_age(boundary);
++            }
++            let mut candidate =
++                Engine::from_storage(Memory::<profiles::WithTxDatagram<Base, 1, BYTES>>::new());
++            let mut legacy =
++                Engine::from_storage(Memory::<profiles::WithTxDatagram<Base, 1, BYTES>>::new());
++            let tx = candidate.acquire_tx().unwrap();
++            let old_tx = legacy.acquire_tx().unwrap();
++            let (mut context, request) = contexts();
++            let (mut old_context, old_request) = contexts();
++            let peer = oscore::resolve::<Infallible, 4, Token>(&context, peer).unwrap();
++            let result = encode_notification::<_, Infallible, 4>(
++                &mut candidate,
++                peer,
++                tx,
++                Type::NonConfirmable,
++                MessageId::new(17),
++                token,
++                &response,
++                response.payload(),
++                &mut context,
++                request,
++            );
++            let old_result = legacy_notification(
++                &mut legacy,
++                peer,
++                old_tx,
++                Type::NonConfirmable,
++                MessageId::new(17),
++                token,
++                &response,
++                response.payload(),
++                &mut old_context,
++                old_request,
++            );
++            assert_eq!(
++                result, old_result,
++                "mask={mask}, boundary={boundary}, bytes={BYTES}"
++            );
++            assert_eq!(
++                candidate.storage().tx_payload(tx),
++                legacy.storage().tx_payload(old_tx)
++            );
++            if BYTES >= 128 {
++                assert!(result.is_ok());
++                assert_eq!(
++                    candidate.decode_tx(tx).unwrap().oscore().is_some(),
++                    oscore::is_active(&context)
++                );
++            }
++            if BYTES == 1 {
++                assert_eq!(
++                    result,
++                    Err(Error::Message(SlotMessageError::Encode(
++                        EncodeError::BufferTooSmall
++                    )))
++                );
++            }
++            // Compare the next notification too: prior refusals must preserve
++            // the same sequence ownership and subsequent recovery behavior.
++            if result.is_err() {
++                let response = Response::content(b"");
++                let result = encode_notification::<_, Infallible, 4>(
++                    &mut candidate,
++                    peer,
++                    tx,
++                    Type::NonConfirmable,
++                    MessageId::new(18),
++                    token,
++                    &response,
++                    b"",
++                    &mut context,
++                    request,
++                );
++                let old_result = legacy_notification(
++                    &mut legacy,
++                    peer,
++                    old_tx,
++                    Type::NonConfirmable,
++                    MessageId::new(18),
++                    token,
++                    &response,
++                    b"",
++                    &mut old_context,
++                    old_request,
++                );
++                assert_eq!(result, old_result);
++                assert_eq!(
++                    candidate.storage().tx_payload(tx),
++                    legacy.storage().tx_payload(old_tx)
++                );
++            }
++        }
++    }
++}
++
++#[test]
++fn notification_four_metadata_options_match_legacy_unprotected() {
++    let contexts = || (oscore::Store::<4, 1>::new(), oscore::no_request());
++    notification_cases::<128>(contexts);
++    notification_cases::<32>(contexts);
++    notification_cases::<16>(contexts);
++    notification_cases::<1>(contexts);
++}
++
++#[cfg(feature = "oscore")]
++#[test]
++fn notification_four_metadata_options_match_legacy_protected() {
++    let contexts = || {
++        let mut store = oscore::Store::<4, 1>::new();
++        let mut context = Some(
++            crate::oscore::BoundedSecurityContext::derive(crate::oscore::DeriveParams {
++                master_secret: &[0x11; 16],
++                master_salt: &[],
++                sender_id: &[1],
++                recipient_id: &[2],
++                id_context: &[],
++            })
++            .unwrap(),
++        );
++        store
++            .install(
++                Endpoint::v4([192, 0, 2, 1], 5683),
++                [0x22; 32],
++                1,
++                &mut context,
++            )
++            .unwrap();
++        let request = crate::oscore::RequestRef::from_kid(
++            &[2],
++            crate::oscore::PartialIv::from_seq(0).unwrap(),
++        )
++        .unwrap();
++        (store, Some(request))
++    };
++    notification_cases::<128>(contexts);
++    notification_cases::<32>(contexts);
++    notification_cases::<16>(contexts);
++    notification_cases::<1>(contexts);
++}
++
++#[test]
++fn notification_response_validation_precedes_slot_or_encoding_failure() {
++    let mut engine = Engine::from_storage(Memory::<
++        profiles::WithTxDatagram<profiles::Constrained, 1, 1>,
++    >::new());
++    let mut context = oscore::Store::<4, 1>::new();
++    // Even an unoccupied, out-of-range slot must not mask the first response error.
++    let response = Response::content(b"body").etag(&[]).location_path(".");
++    assert_eq!(
++        encode_notification::<_, Infallible, 4>(
++            &mut engine,
++            Endpoint::v4([192, 0, 2, 1], 5683),
++            SlotId::from_index(7),
++            Type::NonConfirmable,
++            MessageId::new(1),
++            Token::EMPTY,
++            &response,
++            b"body",
++            &mut context,
++            oscore::no_request(),
++        ),
++        Err(Error::Response(ResponseError::EtagLength)),
++    );
++}
+diff --git a/src/app/mod.rs b/src/app/mod.rs
+index 16fdd28..e0c2d46 100644
+--- a/src/app/mod.rs
++++ b/src/app/mod.rs
+@@ -178,6 +178,9 @@ mod lifecycle_soak;
+ #[cfg(test)]
+ mod tests;
+ 
++#[cfg(test)]
++mod hot_path_tests;
++
+ #[cfg(test)]
+ mod option_validation_tests;
+ 
+@@ -5912,10 +5915,22 @@ fn release_observe_response_body<S: Storage + BodySlots>(
+ }
+ 
+ fn response_body_for<S: Storage + BodySlots>(
+-    engine: &Engine<S>,
++    engine: &mut Engine<S>,
+     key: BlockKey<S::Token>,
+ ) -> Option<SlotId> {
+-    (0..engine.capacities().tx_body_slots.unwrap_or(0)).find_map(|index| {
++    let slots = engine.capacities().tx_body_slots.unwrap_or(0);
++    // SlotPool's live occupancy contract also applies to custom backends.
++    // Read it afresh: acquired empty slots and pinned snapshots remain occupied.
++    // A single transfer probe is already bounded; avoid a preliminary query there.
++    if slots > 1
++        && engine
++            .storage_mut()
++            .tx_body()
++            .is_some_and(|pool| pool.occupied_count() == 0)
++    {
++        return None;
++    }
++    (0..slots).find_map(|index| {
+         let id = SlotId::from_index(index);
+         let transfer = engine.tx_body_transfer(id)?;
+         (transfer.token() == key.token()
+@@ -7300,7 +7315,8 @@ fn encode_notification<S: Storage + DatagramSlots, E, const REQUESTS: usize>(
+     let observe = response
+         .observe_seq()
+         .map(|seq| encode_uint(seq & 0x00ff_ffff));
+-    let mut opts = OptionsBuilder::<{ 8 + 2 * LOCATION_MAX }>::new();
++    // Only ETag, Observe, Content-Format and Max-Age are reachable here.
++    let mut opts = OptionsBuilder::<4>::new();
+     let filled = (|| -> Result<(), EncodeError> {
+         if let Some(etag) = response.etag_bytes() {
+             push_opt(&mut opts, Opt::etag(etag))?;
+diff --git a/src/app/oscore.rs b/src/app/oscore.rs
+index ff1d6f8..7e18c70 100644
+--- a/src/app/oscore.rs
++++ b/src/app/oscore.rs
+@@ -293,8 +293,9 @@ pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken, Scratch: Default
+         // only after context selection and the OSCORE-option check.
+         let scratch = scratch.get_or_insert_with(Scratch::default).as_mut();
+         let mut response_state = ResponseState::None;
+-        let (wire, request) = if parsed.code().is_request() {
+-            ctx.unprotect_request_wire(parsed, scratch)?
++        let (wire, request, response_piv) = if parsed.code().is_request() {
++            let (wire, request) = ctx.unprotect_request_wire(parsed, scratch)?;
++            (wire, request, None)
+         } else {
+             ctx.unprotect_bound_response_wire(parsed, scratch)?
+         };
+@@ -304,8 +305,6 @@ pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken, Scratch: Default
+                 crate::message::TokenDecodeError::Capacity(_) => OscoreError::MessageLength,
+             })?;
+         if !parsed.code().is_request() {
+-            let header =
+-                crate::oscore::OscoreHeader::parse(parsed.oscore().ok_or(OscoreError::Header)?)?;
+             let observe = inner.observe().is_some();
+             if observe && ctx.observe_request(parsed.token()) != Some(request) {
+                 // Response to a non-Observe request must not carry Inner Observe.
+@@ -316,10 +315,10 @@ pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken, Scratch: Default
+                 // IV) is bound to the request. Do not spend the RFC 8613
+                 // §7.4.1 no-PIV notification budget on it.
+                 let register_ack =
+-                    parsed.ty() == crate::message::Type::Acknowledgement && header.piv.is_none();
++                    parsed.ty() == crate::message::Type::Acknowledgement && response_piv.is_none();
+                 if !register_ack {
+-                    ctx.notification_fresh(parsed.token(), header.piv)?;
+-                    response_state = ResponseState::Notification(parsed.token(), header.piv);
++                    ctx.notification_fresh(parsed.token(), response_piv)?;
++                    response_state = ResponseState::Notification(parsed.token(), response_piv);
+                 }
+             } else if inner.q_block2().next().is_some()
+                 || (inner.code() == crate::message::Code::REQUEST_ENTITY_INCOMPLETE
+@@ -330,7 +329,7 @@ pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken, Scratch: Default
+                 // active. Authenticate
+                 // before updating replay state; keep the binding until Call
+                 // completion/cancellation, including an out-of-order final block.
+-                if let Some(piv) = header.piv {
++                if let Some(piv) = response_piv {
+                     if !ctx.replay_fresh(piv.seq()) {
+                         return Err(OscoreError::Replay);
+                     }
+diff --git a/src/app/site.rs b/src/app/site.rs
+index 2ede20a..682b529 100644
+--- a/src/app/site.rs
++++ b/src/app/site.rs
+@@ -388,12 +388,11 @@ impl<const N: usize, T: OwnedToken> Site<N, T> {
+ 
+     /// Snapshot fn for an opaque App route identity.
+     pub(crate) fn observe_source(&self, resource: ObserveResource) -> Option<SnapshotSource<T>> {
+-        self.entries.iter().enumerate().find_map(|(index, entry)| {
+-            entry
+-                .as_ref()
+-                .filter(|_| ObserveResource::app_route(index) == resource)
+-                .and_then(|entry| entry.methods.observe_source())
+-        })
++        self.entries
++            .get(resource.app_route_index()?)?
++            .as_ref()?
++            .methods
++            .observe_source()
+     }
+ }
+ 
+@@ -547,3 +546,78 @@ fn write_link(buf: &mut [u8], n: &mut usize, segments: &[&str]) -> bool {
+     *n += 1;
+     true
+ }
++
++#[cfg(test)]
++mod observe_lookup_tests {
++    use super::super::routing::get;
++    use super::*;
++
++    fn handler(_: Request<'_>) -> Response<'static> {
++        Response::content(b"handler")
++    }
++
++    fn first() -> Response<'static> {
++        Response::content(b"first")
++    }
++
++    fn last() -> Response<'static> {
++        Response::content(b"last")
++    }
++
++    fn first_byte(site: &Site<4>, resource: ObserveResource) -> Option<u8> {
++        match site.observe_source(resource)? {
++            SnapshotSource::Plain(source) => source().payload().first().copied(),
++            SnapshotSource::Selected(_) => panic!("unexpected selected source"),
++        }
++    }
++
++    #[test]
++    fn observe_source_uses_stable_slots_through_holes_replacement_and_reuse() {
++        let mut site = Site::<4>::new();
++        site.route("a", get(handler).observe(first));
++        site.route("b", get(handler));
++        site.route("c", get(handler).observe_selected(handler));
++        site.route("d", get(handler).observe(last));
++        let a = site.observe_resource(&["a"]);
++        let b = site.observe_resource(&["b"]);
++        let c = site.observe_resource(&["c"]);
++        let d = site.observe_resource(&["d"]);
++        assert_eq!(first_byte(&site, a), Some(b'f'));
++        assert_eq!(first_byte(&site, b), None);
++        assert_eq!(first_byte(&site, d), Some(b'l'));
++        assert!(matches!(
++            site.observe_source(c),
++            Some(SnapshotSource::Selected(_))
++        ));
++        assert!(site.remove_route("c").unwrap());
++        assert_eq!(first_byte(&site, c), None);
++        assert_eq!(site.observe_resource(&["d"]), d);
++        assert_eq!(first_byte(&site, d), Some(b'l'));
++        site.route("a", get(handler).observe(last));
++        assert_eq!(site.observe_resource(&["a"]), a);
++        assert_eq!(first_byte(&site, a), Some(b'l'));
++        site.route("e", get(handler).observe(first));
++        assert_eq!(site.observe_resource(&["e"]), c);
++        assert_eq!(first_byte(&site, site.observe_resource(&["e"])), Some(b'f'));
++    }
++
++    #[test]
++    fn observe_source_refuses_none_out_of_range_and_engine_path_hashes() {
++        let site = Site::<4>::new();
++        assert!(site.observe_source(ObserveResource::NONE).is_none());
++        assert!(site.observe_source(ObserveResource::app_route(4)).is_none());
++        assert!(
++            site.observe_source(ObserveResource::app_route(usize::MAX - 1))
++                .is_none()
++        );
++        assert!(
++            site.observe_source(ObserveResource::from_path(&["outside"]))
++                .is_none()
++        );
++        assert!(
++            Site::<0>::new()
++                .observe_source(ObserveResource::app_route(0))
++                .is_none()
++        );
++    }
++}
+diff --git a/src/app/tests.rs b/src/app/tests.rs
+index 9b12173..59efcbc 100644
+--- a/src/app/tests.rs
++++ b/src/app/tests.rs
+@@ -12643,7 +12643,7 @@ fn notification_snapshot_lifecycle_reclaims_only_server_response_body() {
+         let note = last_wide(&app);
+         let mid = note.message_id();
+         assert_eq!(note.ty() == Type::Confirmable, mode == 1 || mode == 4);
+-        let body = super::response_body_for(&app.engine, key).unwrap();
++        let body = super::response_body_for(&mut app.engine, key).unwrap();
+         let mut unrelated = [0; WIRE];
+         let n = encode(
+             &Message::empty_rst(MessageId::new(mid.get().wrapping_add(1))),
+@@ -12755,7 +12755,7 @@ fn classic_block2_replays_exact_fragment_without_reexecuting_handler() {
+                 assert_eq!(app.engine.rx_occupied(), 0);
+                 assert!(
+                     super::response_body_for(
+-                        &app.engine,
++                        &mut app.engine,
+                         BlockKey::new(Token::new(&[0xa1]).unwrap(), peer)
+                     )
+                     .is_none()
+@@ -14588,7 +14588,8 @@ fn supersession_mid_exhaustion_refuses_and_retained_block2_can_shrink() {
+             assert_ne!(last_wide(&app).message_id(), mid);
+             assert_eq!(last_wide(&app).payload(), b"obs-snap");
+             assert!(
+-                super::response_body_for(&app.engine, BlockKey::new(key.token(), peer)).is_none()
++                super::response_body_for(&mut app.engine, BlockKey::new(key.token(), peer))
++                    .is_none()
+             );
+             assert_eq!(
+                 app.engine.pending_con(slot).unwrap().rto(),
+@@ -15783,7 +15784,7 @@ fn deleted_observe_supersedes_pending_con_and_releases_retained_body() {
+     let slot = app.engine.lookup_pending_con(mid, peer).unwrap();
+     let original = app.engine.pending_con(slot).unwrap();
+     let block_key = BlockKey::new(key.token(), peer);
+-    assert!(super::response_body_for(&app.engine, block_key).is_some());
++    assert!(super::response_body_for(&mut app.engine, block_key).is_some());
+     let row = app
+         .engine
+         .observe_interest(app.engine.lookup_observe(key).unwrap())
+@@ -15796,7 +15797,7 @@ fn deleted_observe_supersedes_pending_con_and_releases_retained_body() {
+     assert_ne!(reply.message_id(), mid);
+     assert_eq!(reply.observe(), None);
+     assert!(app.engine.lookup_observe(key).is_none());
+-    assert!(super::response_body_for(&app.engine, block_key).is_none());
++    assert!(super::response_body_for(&mut app.engine, block_key).is_none());
+     let terminal = app.engine.pending_con(slot).unwrap();
+     assert_eq!(terminal.rto(), original.rto().next_attempt(due).unwrap());
+ }
+diff --git a/src/oscore/context.rs b/src/oscore/context.rs
+index 968900d..6d1aafd 100644
+--- a/src/oscore/context.rs
++++ b/src/oscore/context.rs
+@@ -549,11 +549,16 @@ impl<const REQUESTS: usize, T: OwnedToken> BoundedSecurityContext<REQUESTS, T> {
+     }
+ 
+     pub(crate) fn observe_request(&self, token: T) -> Option<RequestRef> {
+-        self.live
+-            .iter()
+-            .flatten()
+-            .find(|row| row.token == token)
+-            .and_then(|row| row.observe_request)
++        self.lookup_live(token).and_then(|row| row.observe_request)
++    }
++
++    fn lookup_live(&self, token: T) -> Option<&LiveRequest<T>> {
++        self.live.iter().flatten().find(|row| row.token == token)
++    }
++
++    pub(crate) fn response_bindings(&self, token: T) -> Option<(RequestRef, Option<RequestRef>)> {
++        self.lookup_live(token)
++            .map(|row| (row.request, row.observe_request))
+     }
+ 
+     pub(crate) fn response_without_piv_fresh(&self, token: T) -> Result<(), Error> {
+@@ -585,9 +590,7 @@ impl<const REQUESTS: usize, T: OwnedToken> BoundedSecurityContext<REQUESTS, T> {
+     /// Observe download follow-ups retain the original registration separately.
+     #[must_use]
+     pub fn lookup(&self, token: T) -> Option<RequestRef> {
+-        self.live
+-            .iter()
+-            .find_map(|row| row.and_then(|r| (r.token == token).then_some(r.request)))
++        self.lookup_live(token).map(|row| row.request)
+     }
+ 
+     /// Whether this Token retains an Observe registration, including during body downloads.
+diff --git a/src/oscore/protect.rs b/src/oscore/protect.rs
+index 79ada29..3222476 100644
+--- a/src/oscore/protect.rs
++++ b/src/oscore/protect.rs
+@@ -328,7 +328,7 @@ pub fn unprotect_response<'a, const REQUESTS: usize, T: OwnedToken>(
+     request: RequestRef,
+     out: &'a mut [u8],
+ ) -> Result<ParsedMessage<'a, T>, Error> {
+-    let (wire, _) = unprotect_response_candidates(ctx, protected, request, None, out)?;
++    let (wire, _, _) = unprotect_response_candidates(ctx, protected, request, None, out)?;
+     decode_owned::<T>(wire)
+ }
+ 
+@@ -347,7 +347,7 @@ impl<const REQUESTS: usize, T: OwnedToken> BoundedSecurityContext<REQUESTS, T> {
+         protected: &ParsedMessage<'_, T>,
+         out: &'a mut [u8],
+     ) -> Result<(ParsedMessage<'a, T>, RequestRef), Error> {
+-        let (wire, request) = self.unprotect_bound_response_wire(protected, out)?;
++        let (wire, request, _) = self.unprotect_bound_response_wire(protected, out)?;
+         Ok((decode_owned::<T>(wire)?, request))
+     }
+ 
+@@ -355,11 +355,13 @@ impl<const REQUESTS: usize, T: OwnedToken> BoundedSecurityContext<REQUESTS, T> {
+         &self,
+         protected: &ParsedMessage<'_, T>,
+         out: &'a mut [u8],
+-    ) -> Result<(&'a [u8], RequestRef), Error> {
+-        let request = self.lookup(protected.token()).ok_or(Error::Context)?;
+-        let observation = self
+-            .observe_request(protected.token())
+-            .filter(|old| *old != request);
++    ) -> Result<(&'a [u8], RequestRef, Option<PartialIv>), Error> {
++        // Resolve the row before parsing so an unknown Token remains Context,
++        // even when the response also has a malformed OSCORE header.
++        let (request, observation) = self
++            .response_bindings(protected.token())
++            .ok_or(Error::Context)?;
++        let observation = observation.filter(|old| *old != request);
+         unprotect_response_candidates(self, protected, request, observation, out)
+     }
+ }
+@@ -370,7 +372,7 @@ fn unprotect_response_candidates<'a, const REQUESTS: usize, T: OwnedToken>(
+     request: RequestRef,
+     fallback: Option<RequestRef>,
+     out: &'a mut [u8],
+-) -> Result<(&'a [u8], RequestRef), Error> {
++) -> Result<(&'a [u8], RequestRef, Option<PartialIv>), Error> {
+     let header = parse_protected(protected)?;
+     if protected.payload().len() < TAG_LEN {
+         return Err(Error::MessageLength);
+@@ -413,7 +415,7 @@ fn unprotect_response_candidates<'a, const REQUESTS: usize, T: OwnedToken>(
+         &plaintext[..len],
+         out,
+     )?;
+-    Ok((&out[..n], request))
++    Ok((&out[..n], request, header.piv))
+ }
+ 
+ fn parse_protected<'a, T: OwnedToken>(
+diff --git a/src/oscore/tests.rs b/src/oscore/tests.rs
+index c5c1246..1b58ad9 100644
+--- a/src/oscore/tests.rs
++++ b/src/oscore/tests.rs
+@@ -5014,7 +5014,9 @@ fn protected_observe_and_q_response_admission_commits_replay_after_ack() {
+                     .allow_unprotected()
+                     .bind(QWire::default())
+                     .unwrap();
+-                client.set_oscore(&mut Some(client_c1())).unwrap();
++                let mut context = client_c1();
++                context.set_sender_seq(4).unwrap();
++                client.set_oscore(&mut Some(context)).unwrap();
+                 let request = client.get("value").to(peer);
+                 let call = if observe {
+                     request.observe()
+@@ -5026,8 +5028,10 @@ fn protected_observe_and_q_response_admission_commits_replay_after_ack() {
+                 let sent = client.transport_mut().sent.remove(0);
+                 let request = decode(&sent).unwrap();
+                 let mut server = server_c1();
++                server.set_sender_seq(1000).unwrap();
+                 let mut scratch = [0; WIRE];
+                 let (_, reference) = server.unprotect_request(&request, &mut scratch).unwrap();
++                assert_eq!(reference.piv().seq(), 4);
+                 let number = encode_uint(0);
+                 let block = BlockValue::from_size(0, false, 16).unwrap().encode();
+                 let size = encode_uint(3);
+@@ -5092,6 +5096,21 @@ fn protected_observe_and_q_response_admission_commits_replay_after_ack() {
+                 assert_eq!(client.transport().sent.len(), 1);
+                 assert!(decode(&client.transport().sent[0]).unwrap().is_empty_ack());
+                 assert!(client.take_response(call).is_none());
++                if piv || reject {
++                    let response_piv =
++                        PartialIv::from_seq(if piv && reject { 1001 } else { 1000 }).unwrap();
++                    if observe {
++                        assert_eq!(
++                            client
++                                .oscore()
++                                .unwrap()
++                                .notification_fresh(call.token(), Some(response_piv)),
++                            Err(Error::Replay)
++                        );
++                    } else {
++                        assert!(!client.oscore().unwrap().replay_fresh(response_piv.seq()));
++                    }
++                }
+                 if observe {
+                     assert!(client.cancel(call));
+                 }
+@@ -6474,6 +6493,92 @@ fn older_concurrent_request_binding_is_not_authenticated() {
+     );
+ }
+ 
++#[test]
++fn unknown_response_token_precedes_malformed_oscore_header() {
++    let token = Token::from_checked(&[7]);
++    let reference = RequestRef::from_kid(&[], PartialIv::from_seq(4).unwrap()).unwrap();
++    let malformed = [0xe0];
++    let options = [Opt::oscore(&malformed)];
++    let response = Message::new(Type::Acknowledgement, Code::CHANGED, MessageId::new(9))
++        .with_token(token)
++        .with_options(&options)
++        .with_payload(&[0; 8]);
++    let mut wire = [0; WIRE];
++    let n = encode(&response, &mut wire).unwrap();
++    let protected = decode(&wire[..n]).unwrap();
++    let mut out = [0; WIRE];
++    let mut client = client_c1();
++    assert_eq!(
++        client.unprotect_bound_response(&protected, &mut out),
++        Err(Error::Context)
++    );
++    client.remember(token, reference).unwrap();
++    assert_eq!(
++        client.unprotect_bound_response(&protected, &mut out),
++        Err(Error::Header)
++    );
++}
++
++#[test]
++fn bound_response_lookup_matches_complete_extended_tokens() {
++    use super::BoundedSecurityContext;
++    use crate::message::{decode_with_token, extended};
++
++    type WideToken = extended::Token<16>;
++    let mut client = BoundedSecurityContext::<2, WideToken>::derive(DeriveParams {
++        master_secret: &MASTER_SECRET,
++        master_salt: &MASTER_SALT,
++        sender_id: &[],
++        recipient_id: &[1],
++        id_context: &[],
++    })
++    .unwrap();
++    let server = BoundedSecurityContext::<2, WideToken>::derive(DeriveParams {
++        master_secret: &MASTER_SECRET,
++        master_salt: &MASTER_SALT,
++        sender_id: &[1],
++        recipient_id: &[],
++        id_context: &[],
++    })
++    .unwrap();
++    let first = WideToken::new(&[7; 16]).unwrap();
++    let mut last_differs = [7; 16];
++    last_differs[15] = 8;
++    let second = WideToken::new(&last_differs).unwrap();
++    let original = RequestRef::from_kid(&[], PartialIv::from_seq(1).unwrap()).unwrap();
++    let latest = RequestRef::from_kid(&[], PartialIv::from_seq(4).unwrap()).unwrap();
++    client.remember_live(first, original, true).unwrap();
++    client.remember_download(first, latest).unwrap();
++    client.remember(second, original).unwrap();
++    assert_eq!(
++        client.response_bindings(first),
++        Some((latest, Some(original)))
++    );
++    assert_eq!(client.response_bindings(second), Some((original, None)));
++    assert_eq!(
++        client.response_bindings(WideToken::new(&[7; 15]).unwrap()),
++        None
++    );
++
++    let mut wire = [0; WIRE];
++    let mut out = [0; WIRE];
++    for (token, reference) in [(first, latest), (first, original), (second, original)] {
++        let response = Message::new(Type::Acknowledgement, Code::CONTENT, MessageId::new(9))
++            .with_token(token)
++            .with_payload(b"bound");
++        let n = server
++            .protect_response(&response, reference, &mut wire)
++            .unwrap();
++        let protected = decode_with_token::<WideToken>(&wire[..n]).unwrap();
++        let (inner, used) = client
++            .unprotect_bound_response(&protected, &mut out)
++            .unwrap();
++        assert_eq!(used, reference);
++        assert_eq!(inner.token(), token);
++        assert_eq!(inner.payload(), b"bound");
++    }
++}
++
+ #[path = "replay_tests.rs"]
+ mod replay_barrier;
+ 
+diff --git a/src/storage/alloc_memory.rs b/src/storage/alloc_memory.rs
+index e613780..5669bdf 100644
+--- a/src/storage/alloc_memory.rs
++++ b/src/storage/alloc_memory.rs
+@@ -402,13 +402,15 @@ impl AllocDatagramPool {
+ 
+ impl SlotPool for AllocDatagramPool {
+     fn acquire(&mut self) -> Option<SlotId> {
+-        let id = self.occ.acquire()?;
+-        self.reset(id);
+-        Some(id)
++        // Free slots have empty metadata from construction or successful release.
++        // Every metadata writer requires occupancy; byte contents are retained.
++        self.occ.acquire()
+     }
+ 
+     fn release(&mut self, id: SlotId) -> Result<(), SlotError> {
+         self.occ.release(id)?;
++        // Reset only after release succeeds, preserving pinned/refused slot state
++        // and establishing the empty metadata invariant for the next acquire.
+         self.reset(id);
+         Ok(())
+     }
+@@ -1908,6 +1910,18 @@ impl<T: OwnedToken> SlotPool for AllocObserveTable<T> {
+ mod tests {
+     use super::*;
+ 
++    #[test]
++    fn allocated_datagram_metadata_lifecycle() {
++        for n in [0, 1, 3] {
++            for bytes in [0, 7] {
++                super::super::pool::datagram_tests::check_pool!(
++                    AllocDatagramPool::new(n, bytes).unwrap(),
++                    bytes
++                );
++            }
++        }
++    }
++
+     #[test]
+     fn allocated_tables_saturate_rotate_and_reset_without_pins() {
+         let ep = Endpoint::v4([192, 0, 2, 1], 5683);
+diff --git a/src/storage/pool.rs b/src/storage/pool.rs
+index d829bf4..b688d98 100644
+--- a/src/storage/pool.rs
++++ b/src/storage/pool.rs
+@@ -298,13 +298,15 @@ impl<const SLOTS: usize, const BYTES: usize> Default for DatagramPool<SLOTS, BYT
+ 
+ impl<const SLOTS: usize, const BYTES: usize> SlotPool for DatagramPool<SLOTS, BYTES> {
+     fn acquire(&mut self) -> Option<SlotId> {
+-        let id = self.occ.acquire()?;
+-        self.reset(id);
+-        Some(id)
++        // Free slots have empty metadata from construction or successful release.
++        // Every metadata writer requires occupancy; byte contents are retained.
++        self.occ.acquire()
+     }
+ 
+     fn release(&mut self, id: SlotId) -> Result<(), SlotError> {
+         self.occ.release(id)?;
++        // Reset only after release succeeds, preserving pinned/refused slot state
++        // and establishing the empty metadata invariant for the next acquire.
+         self.reset(id);
+         Ok(())
+     }
+@@ -1022,3 +1024,110 @@ impl<const SLOTS: usize, const BYTES: usize, T: OwnedToken> SlotPool for BodyPoo
+         self.occ.cursor()
+     }
+ }
++
++#[cfg(test)]
++pub(crate) mod datagram_tests {
++    use super::*;
++
++    // Exercise the same lifecycle against both concrete datagram owners without
++    // widening the production pool traits or applying this invariant to bodies.
++    macro_rules! check_pool {
++        ($pool:expr, $bytes:expr) => {{
++            let mut pool = $pool;
++            let n = pool.slot_count();
++            let ep = Endpoint::v4([192, 0, 2, 1], 5683);
++            let mid = MessageId::new(0x1234);
++            let rto = PendingRto::new(123, 456);
++            for round in 0..3 {
++                pool.advance(2);
++                let start = pool.cursor();
++                // All metadata writers, including guards, must reject free ids.
++                // An excessive length must not override the occupancy error.
++                for i in 0..=n {
++                    let id = SlotId::from_index(i);
++                    let error = if i == n {
++                        SlotError::InvalidSlot
++                    } else {
++                        SlotError::NotOccupied
++                    };
++                    assert_eq!(pool.set_len(id, usize::MAX), Err(error));
++                    assert_eq!(pool.set_endpoint(id, ep), Err(error));
++                    assert_eq!(pool.set_pending_mid(id, mid), Err(error));
++                    assert_eq!(pool.set_pending(id, mid, rto), Err(error));
++                    assert_eq!(pool.clear_pending_mid(id), Err(error));
++                    assert!(pool.payload_mut(id).is_none());
++                    assert!(matches!(pool.access(id), Err(e) if e == error));
++                    assert!(matches!(pool.access_mut(id), Err(e) if e == error));
++                    assert_eq!(pool.release(id), Err(error));
++                }
++                assert_eq!(pool.occupied_count(), 0);
++                assert_eq!(pool.cursor(), start);
++                for i in 0..n {
++                    let id = SlotId::from_index((start + i) % n);
++                    assert_eq!(pool.acquire(), Some(id));
++                    assert_eq!(pool.occupied_count(), i + 1);
++                    assert_eq!(pool.payload(id), Some(&[][..]));
++                    assert_eq!(pool.endpoint(id), None);
++                    assert_eq!(pool.pending_mid(id), None);
++                    assert_eq!(pool.pending_rto(id), None);
++                    assert!(!pool.is_pinned(id));
++                    let marker = id.index() as u8 + 1;
++                    let mut access = pool.access_mut(id).unwrap();
++                    assert_eq!(access.capacity(), $bytes);
++                    assert!(access.bytes_mut().iter().all(|&b| {
++                        b == if round == 0 { 0 } else { marker }
++                    }));
++                    // Release/acquire clears metadata, never the backing bytes.
++                    access.bytes_mut().fill(marker);
++                    access.set_len($bytes).unwrap();
++                    drop(access);
++                    pool.set_endpoint(id, ep).unwrap();
++                    pool.set_pending(id, mid, rto).unwrap();
++                }
++                assert_eq!(pool.acquire(), None);
++                assert_eq!(pool.occupied_count(), n);
++                assert_eq!(pool.cursor(), start);
++                assert_eq!(
++                    pool.release(SlotId::from_index(n)),
++                    Err(SlotError::InvalidSlot)
++                );
++                for i in 0..n {
++                    let id = SlotId::from_index(i);
++                    core::mem::forget(pool.access(id).unwrap());
++                    assert_eq!(pool.release(id), Err(SlotError::Pinned));
++                    assert_eq!(pool.occupied_count(), n - i);
++                    assert_eq!(pool.cursor(), start);
++                    assert!(pool.is_occupied(id));
++                    assert!(pool.is_pinned(id));
++                    assert!(pool.payload(id).unwrap().iter().all(|&b| b == i as u8 + 1));
++                    assert_eq!(pool.payload(id).unwrap().len(), $bytes);
++                    assert_eq!(pool.endpoint(id), Some(ep));
++                    assert_eq!(pool.pending_mid(id), Some(mid));
++                    assert_eq!(pool.pending_rto(id), Some(rto));
++                    // Test-only recovery of the deliberately forgotten guard.
++                    *pool.occ.pin_flag_mut(id).unwrap() = false;
++                    pool.release(id).unwrap();
++                    assert_eq!(pool.release(id), Err(SlotError::NotOccupied));
++                    assert_eq!(pool.occupied_count(), n - i - 1);
++                    assert_eq!(pool.cursor(), start);
++                    assert_eq!(pool.payload(id), None);
++                    assert_eq!(pool.endpoint(id), None);
++                    assert_eq!(pool.pending_mid(id), None);
++                    assert_eq!(pool.pending_rto(id), None);
++                }
++            }
++        }};
++    }
++
++    pub(crate) use check_pool;
++
++    #[test]
++    fn fixed_datagram_metadata_lifecycle() {
++        self::check_pool!(DatagramPool::<0, 0>::new(), 0);
++        self::check_pool!(DatagramPool::<0, 7>::new(), 7);
++        self::check_pool!(DatagramPool::<1, 0>::new(), 0);
++        self::check_pool!(DatagramPool::<1, 7>::new(), 7);
++        self::check_pool!(DatagramPool::<3, 0>::new(), 0);
++        self::check_pool!(DatagramPool::<3, 7>::new(), 7);
++    }
++}
+diff --git a/src/storage/table.rs b/src/storage/table.rs
+index 681b938..5a22d2c 100644
+--- a/src/storage/table.rs
++++ b/src/storage/table.rs
+@@ -260,6 +260,10 @@ impl ObserveResource {
+         }
+     }
+ 
++    pub(crate) fn app_route_index(self) -> Option<usize> {
++        usize::try_from(self.hash.checked_sub(1)?).ok()
++    }
++
+     const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+     const FNV_PRIME: u64 = 0x0100_0000_01b3;
+ 

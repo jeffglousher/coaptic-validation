@@ -1,0 +1,49 @@
+{
+  "passed": true,
+  "prior_positive_growth_bytes": 267498277,
+  "checks": [
+    {
+      "name": "clippy-all",
+      "command": [
+        "C:\\Users\\jeffg\\.rustup\\toolchains\\1.99.0-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+        "clippy",
+        "--manifest-path",
+        "C:\\Users\\jeffg\\.t3\\worktrees\\coaptic\\t3-07660ed8\\Cargo.toml",
+        "--offline",
+        "--release",
+        "--locked",
+        "--all-targets",
+        "--all-features",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "passed": true,
+      "seconds": 15.711015899898484,
+      "output_bytes": 143,
+      "output_sha256": "7a182b01711222187f875757759513c911e29e2868017226c30a84c56d284bc4"
+    },
+    {
+      "name": "clippy-fixed",
+      "command": [
+        "C:\\Users\\jeffg\\.rustup\\toolchains\\1.99.0-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+        "clippy",
+        "--manifest-path",
+        "C:\\Users\\jeffg\\.t3\\worktrees\\coaptic\\t3-07660ed8\\Cargo.toml",
+        "--offline",
+        "--release",
+        "--locked",
+        "--all-targets",
+        "--no-default-features",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "passed": true,
+      "seconds": 9.63183690002188,
+      "output_bytes": 142,
+      "output_sha256": "0ba1192b16892af3988b3850bde11b7769cc8a80b374b27b297e3d51f88baff3"
+    }
+  ],
+  "observed_positive_growth_bytes": 10229
+}

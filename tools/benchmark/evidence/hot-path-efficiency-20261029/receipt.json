@@ -1,0 +1,774 @@
+{
+  "schema": "coaptic-hotpath-efficiency/1",
+  "cohorts": {
+    "original": {
+      "sources": {
+        "before": {
+          "commit": "28d9f1a61d15121d75d5dd426ad8d6b5cc891005",
+          "path": "C:\\Users\\jeffg\\dev\\coaptic",
+          "tree": "27d58e817eeb508347ddd8fe4df5cc7bb2d9b182"
+        },
+        "after": {
+          "commit": "f4fb8e85dfc5c78f9031aa3360c9888b9f4aa093",
+          "path": "C:\\Users\\jeffg\\dev\\coaptic",
+          "tree": "17bcc1b2765b949d23b79bdf01374068d6c50824"
+        }
+      },
+      "run_seconds": [
+        14.693774600047618,
+        14.558445199858397,
+        14.12497100001201,
+        13.99615029990673
+      ],
+      "all_passed": true,
+      "rows": [
+        {
+          "profile": "small-device",
+          "security": "unprotected",
+          "socket_pair_delta_ns": [
+            -4500.0,
+            -1550.0
+          ],
+          "socket_pair_delta_percent": [
+            -21.634615384615387,
+            -8.115183246073299
+          ],
+          "core_pair_delta_percent": [
+            -14.28571428571429,
+            0.0
+          ]
+        },
+        {
+          "profile": "small-device",
+          "security": "oscore",
+          "socket_pair_delta_ns": [
+            3000.0,
+            200.0
+          ],
+          "socket_pair_delta_percent": [
+            15.384615384615374,
+            0.9302325581395321
+          ],
+          "core_pair_delta_percent": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "profile": "small-blockwise",
+          "security": "unprotected",
+          "socket_pair_delta_ns": [
+            -17650.0,
+            7150.0
+          ],
+          "socket_pair_delta_percent": [
+            -20.679554774458108,
+            10.476190476190483
+          ]
+        },
+        {
+          "profile": "small-blockwise",
+          "security": "oscore",
+          "socket_pair_delta_ns": [
+            9350.0,
+            -550.0
+          ],
+          "socket_pair_delta_percent": [
+            10.505617977528093,
+            -0.5681818181818232
+          ]
+        },
+        {
+          "profile": "small-observe",
+          "security": "unprotected",
+          "socket_pair_delta_ns": [
+            6850.0,
+            4450.0
+          ],
+          "socket_pair_delta_percent": [
+            10.125646711012571,
+            6.2808750882145326
+          ]
+        },
+        {
+          "profile": "small-observe",
+          "security": "oscore",
+          "socket_pair_delta_ns": [
+            -9350.0,
+            1050.0
+          ],
+          "socket_pair_delta_percent": [
+            -8.866761498340448,
+            1.1844331641285955
+          ]
+        },
+        {
+          "profile": "device-fixed",
+          "security": "unprotected",
+          "socket_pair_delta_ns": [
+            -5200.0,
+            10800.0
+          ],
+          "socket_pair_delta_percent": [
+            -7.926829268292678,
+            18.060200668896332
+          ]
+        },
+        {
+          "profile": "device-fixed",
+          "security": "oscore",
+          "socket_pair_delta_ns": [
+            -12200.0,
+            100.0
+          ],
+          "socket_pair_delta_percent": [
+            -13.443526170798902,
+            0.11441647597254523
+          ]
+        },
+        {
+          "profile": "gateway-fixed",
+          "security": "unprotected",
+          "socket_pair_delta_ns": [
+            -18500.0,
+            -3400.0
+          ],
+          "socket_pair_delta_percent": [
+            -13.683431952662717,
+            -2.791461412151064
+          ]
+        },
+        {
+          "profile": "gateway-fixed",
+          "security": "oscore",
+          "socket_pair_delta_ns": [
+            -800.0,
+            -1250.0
+          ],
+          "socket_pair_delta_percent": [
+            -0.5221932114882533,
+            -0.7926442612555484
+          ]
+        },
+        {
+          "profile": "service-datagram",
+          "security": "unprotected",
+          "socket_pair_delta_ns": [
+            4950.0,
+            -3550.0
+          ],
+          "socket_pair_delta_percent": [
+            15.916398713826375,
+            -9.504685408299862
+          ]
+        },
+        {
+          "profile": "service-datagram",
+          "security": "oscore",
+          "socket_pair_delta_ns": [
+            -150.0,
+            -50.0
+          ],
+          "socket_pair_delta_percent": [
+            -0.3289473684210509,
+            -0.11441647597254523
+          ]
+        },
+        {
+          "profile": "service-fixed",
+          "security": "unprotected",
+          "socket_pair_delta_ns": [
+            -32800.0,
+            -38250.0
+          ],
+          "socket_pair_delta_percent": [
+            -6.207418622255867,
+            -7.270480897167841
+          ],
+          "core_pair_delta_percent": [
+            2.1008403361344463,
+            -1.8292682926829285
+          ]
+        },
+        {
+          "profile": "service-fixed",
+          "security": "oscore",
+          "socket_pair_delta_ns": [
+            -23150.0,
+            16000.0
+          ],
+          "socket_pair_delta_percent": [
+            -3.477281261734888,
+            2.5682182985553803
+          ],
+          "core_pair_delta_percent": [
+            -0.3518029903254227,
+            -1.9147084421235805
+          ]
+        },
+        {
+          "profile": "service-allocated",
+          "security": "unprotected",
+          "socket_pair_delta_ns": [
+            -81250.0,
+            6700.0
+          ],
+          "socket_pair_delta_percent": [
+            -13.83803116750405,
+            1.2482533768048532
+          ],
+          "core_pair_delta_percent": [
+            -1.5473887814313358,
+            -0.5802707930367523
+          ]
+        },
+        {
+          "profile": "service-allocated",
+          "security": "oscore",
+          "socket_pair_delta_ns": [
+            -3650.0,
+            17300.0
+          ],
+          "socket_pair_delta_percent": [
+            -0.541221826809013,
+            2.6305785752299915
+          ],
+          "core_pair_delta_percent": [
+            -1.347935973041281,
+            -1.0101010101010055
+          ]
+        }
+      ]
+    },
+    "v2-": {
+      "sources": {
+        "before": {
+          "commit": "28d9f1a61d15121d75d5dd426ad8d6b5cc891005",
+          "path": "C:\\Users\\jeffg\\dev\\coaptic",
+          "tree": "27d58e817eeb508347ddd8fe4df5cc7bb2d9b182"
+        },
+        "after": {
+          "commit": "c39b100c8eecae3a630b669df15aac912eaf4f90",
+          "path": "C:\\Users\\jeffg\\dev\\coaptic",
+          "tree": "3af03291aecfd18b755c1013e8e80329a49347fe"
+        }
+      },
+      "run_seconds": [
+        13.922874699812382,
+        14.176923000020906,
+        14.088593699969351,
+        14.200259299948812
+      ],
+      "all_passed": true,
+      "rows": [
+        {
+          "profile": "small-device",
+          "security": "unprotected",
+          "socket_pair_delta_ns": [
+            -3650.0,
+            -200.0
+          ],
+          "socket_pair_delta_percent": [
+            -17.548076923076927,
+            -1.1627906976744207
+          ],
+          "core_pair_delta_percent": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "profile": "small-device",
+          "security": "oscore",
+          "socket_pair_delta_ns": [
+            1450.0,
+            -300.0
+          ],
+          "socket_pair_delta_percent": [
+            7.552083333333326,
+            -1.4354066985645897
+          ],
+          "core_pair_delta_percent": [
+            6.666666666666665,
+            0.0
+          ]
+        },
+        {
+          "profile": "small-blockwise",
+          "security": "unprotected",
+          "socket_pair_delta_ns": [
+            -6050.0,
+            800.0
+          ],
+          "socket_pair_delta_percent": [
+            -7.862248213125412,
+            1.0484927916120546
+          ]
+        },
+        {
+          "profile": "small-blockwise",
+          "security": "oscore",
+          "socket_pair_delta_ns": [
+            -1200.0,
+            1850.0
+          ],
+          "socket_pair_delta_percent": [
+            -1.21765601217656,
+            1.8208661417322913
+          ]
+        },
+        {
+          "profile": "small-observe",
+          "security": "unprotected",
+          "socket_pair_delta_ns": [
+            4200.0,
+            -1550.0
+          ],
+          "socket_pair_delta_percent": [
+            5.573988055739876,
+            -1.914762198888198
+          ]
+        },
+        {
+          "profile": "small-observe",
+          "security": "oscore",
+          "socket_pair_delta_ns": [
+            6500.0,
+            -3850.0
+          ],
+          "socket_pair_delta_percent": [
+            7.323943661971821,
+            -4.168922577152134
+          ]
+        },
+        {
+          "profile": "device-fixed",
+          "security": "unprotected",
+          "socket_pair_delta_ns": [
+            -1300.0,
+            -3400.0
+          ],
+          "socket_pair_delta_percent": [
+            -1.9607843137254943,
+            -5.573770491803276
+          ]
+        },
+        {
+          "profile": "device-fixed",
+          "security": "oscore",
+          "socket_pair_delta_ns": [
+            -11300.0,
+            -4650.0
+          ],
+          "socket_pair_delta_percent": [
+            -12.929061784897023,
+            -5.740740740740746
+          ]
+        },
+        {
+          "profile": "gateway-fixed",
+          "security": "unprotected",
+          "socket_pair_delta_ns": [
+            11800.0,
+            14450.0
+          ],
+          "socket_pair_delta_percent": [
+            9.58959772450223,
+            12.46764452113891
+          ]
+        },
+        {
+          "profile": "gateway-fixed",
+          "security": "oscore",
+          "socket_pair_delta_ns": [
+            23350.0,
+            13500.0
+          ],
+          "socket_pair_delta_percent": [
+            15.132858068697352,
+            8.664955070603341
+          ]
+        },
+        {
+          "profile": "service-datagram",
+          "security": "unprotected",
+          "socket_pair_delta_ns": [
+            500.0,
+            -3350.0
+          ],
+          "socket_pair_delta_percent": [
+            1.4705882352941124,
+            -9.710144927536234
+          ]
+        },
+        {
+          "profile": "service-datagram",
+          "security": "oscore",
+          "socket_pair_delta_ns": [
+            -2250.0,
+            3500.0
+          ],
+          "socket_pair_delta_percent": [
+            -4.807692307692313,
+            8.515815085158152
+          ]
+        },
+        {
+          "profile": "service-fixed",
+          "security": "unprotected",
+          "socket_pair_delta_ns": [
+            1350.0,
+            -31250.0
+          ],
+          "socket_pair_delta_percent": [
+            0.27157513578757175,
+            -6.042734216378232
+          ],
+          "core_pair_delta_percent": [
+            0.6072874493927127,
+            2.5104602510460206
+          ]
+        },
+        {
+          "profile": "service-fixed",
+          "security": "oscore",
+          "socket_pair_delta_ns": [
+            -13900.0,
+            -33600.0
+          ],
+          "socket_pair_delta_percent": [
+            -2.1543707377557397,
+            -4.959409594095943
+          ],
+          "core_pair_delta_percent": [
+            -5.56464811783961,
+            -1.903114186851207
+          ]
+        },
+        {
+          "profile": "service-allocated",
+          "security": "unprotected",
+          "socket_pair_delta_ns": [
+            -13350.0,
+            14400.0
+          ],
+          "socket_pair_delta_percent": [
+            -2.6464466250371688,
+            2.8918566121096445
+          ],
+          "core_pair_delta_percent": [
+            3.4155597722960174,
+            -1.5151515151515138
+          ]
+        },
+        {
+          "profile": "service-allocated",
+          "security": "oscore",
+          "socket_pair_delta_ns": [
+            -10300.0,
+            -37100.0
+          ],
+          "socket_pair_delta_percent": [
+            -1.6175893207695302,
+            -5.555971546237359
+          ],
+          "core_pair_delta_percent": [
+            -1.170568561872909,
+            -3.679476696647588
+          ]
+        }
+      ]
+    }
+  },
+  "inputs": {
+    "before-prepared.json": {
+      "bytes": 4116,
+      "sha256": "6ec0f1d1bc61d381d52fdf75dd147732b5fda0f2a64e75499e8ca0c2fefbe3e1"
+    },
+    "after-prepared.json": {
+      "bytes": 4115,
+      "sha256": "24a8edccb4b3a86cd5695b8063b6bea5141e5d1841b749218b95866d2aec1f10"
+    },
+    "after-v2-prepared.json": {
+      "bytes": 4116,
+      "sha256": "fcb91539c2badacb1dc91a193222d3d41a4090427afd1bed31c0c32aadc0fe32"
+    },
+    "A1.json.gz": {
+      "bytes": 15953,
+      "sha256": "fdd49b378e5f84d705cf3f92c9ab8d7b5640ea1eafa59ed9c922ad0782df363b"
+    },
+    "B1.json.gz": {
+      "bytes": 16006,
+      "sha256": "669f829fbb60695267d6419991073fbe80b04d72df70f573a254904de0513b9b"
+    },
+    "B2.json.gz": {
+      "bytes": 16045,
+      "sha256": "e1ceb05a6dd8cb775b31cf08d2ae0353394c2629c8d9f33bec81717bf20d0a00"
+    },
+    "A2.json.gz": {
+      "bytes": 15762,
+      "sha256": "a833bc45effe1756eb9fe818c2e2c7f0621c330bb47d07ed01e79864748c005c"
+    },
+    "compare-AB.json": {
+      "bytes": 5921,
+      "sha256": "66a325d5e2e9846e1f5f51ebf77728977ba949ebf4809e6a67c29bc822c108a1"
+    },
+    "compare-BA.json": {
+      "bytes": 5910,
+      "sha256": "f0fee254f002cc5703dc00d87206eae913d2cfdbec64f7c4b1a06f5683da4e7b"
+    },
+    "v2-A1.json.gz": {
+      "bytes": 15760,
+      "sha256": "4b332cdbc2572a1a39ac6e09928adb7326e4d8839bc02a42fc6437fe1e938be4"
+    },
+    "v2-B1.json.gz": {
+      "bytes": 16004,
+      "sha256": "53096fcd072d5d4788c6ec4457260e37846ff61bbf41ab1be8c45fb197607507"
+    },
+    "v2-B2.json.gz": {
+      "bytes": 15971,
+      "sha256": "8549ce078065b7f2615bb6615f695a307f10f9a66060513195c47df468a83fb6"
+    },
+    "v2-A2.json.gz": {
+      "bytes": 15869,
+      "sha256": "82122817af1f9166b41513d44e91d635aae1ab1295debb2169f753719c83c769"
+    },
+    "v2-compare-AB.json": {
+      "bytes": 5918,
+      "sha256": "a7b5986a576a25c76373bc02b7457e9739702917f84acebb141922d06c67ecf0"
+    },
+    "v2-compare-BA.json": {
+      "bytes": 5919,
+      "sha256": "88f80a6f8d9752ad7176e2c9028ebef957b6183a17ae28d8ca94138c1021ea48"
+    },
+    "baseline-preparation.json": {
+      "bytes": 255,
+      "sha256": "6004cf1638435e8ac79c8e7d6a3fa8ce86cd08cb51b923bae02535d473511a49"
+    },
+    "candidate-preparation.json": {
+      "bytes": 254,
+      "sha256": "2656d04abf31e149e253372aef70f1d730427f4d3810bb7691524e65df374135"
+    },
+    "candidate-v2-preparation.json": {
+      "bytes": 256,
+      "sha256": "1bf79984a264e9962a395c45cae41d40706e0d3312a8160268b84977d86a3975"
+    },
+    "candidate-source-restoration.json": {
+      "bytes": 317,
+      "sha256": "32a219ec0c270e47eba3b7b920f0b424a6c41264f3287259c64ae1f50c0eb3e6"
+    },
+    "variant-source-restoration.json": {
+      "bytes": 317,
+      "sha256": "32a219ec0c270e47eba3b7b920f0b424a6c41264f3287259c64ae1f50c0eb3e6"
+    },
+    "quick-receipt.json": {
+      "bytes": 1410,
+      "sha256": "987337bf40f02b7efe3f5e96d7d96797a2d3c2c87dac889fe6f4c73434f7d4d4"
+    },
+    "quick-v2-receipt.json": {
+      "bytes": 1412,
+      "sha256": "099cff43218e562410720ef446b420d6864f2cf346fff50ee05353deed635bb3"
+    },
+    "measurement-plan.json": {
+      "bytes": 1209,
+      "sha256": "b80c94f17db85a07aa0a1fa7de1ac36fc80c66bc02315470de1e0e20cbeb3af9"
+    },
+    "measurement-plan-v2.json": {
+      "bytes": 1437,
+      "sha256": "18ddec981795ba6061a9755e81e5555440b3f2d5930158649975f925b73d9187"
+    },
+    "batch-checks.json": {
+      "bytes": 1079,
+      "sha256": "02e30532de0f7d785dd62c5449d9f362264b1153d2f859a11505fabad5129c39"
+    },
+    "batch-r2-checks.json": {
+      "bytes": 1085,
+      "sha256": "0adf239c178b9d5c23eeaab6b2d5d5c86c2aed817b6883af3e6c0a4561a8fbcc"
+    },
+    "batch-r3-checks.json": {
+      "bytes": 2629,
+      "sha256": "a6340b64cc3556d58884b18e44df161b8674676e0b6d3f63954faf9ce2e2c1ba"
+    },
+    "clippy-all-only-checks.json": {
+      "bytes": 776,
+      "sha256": "468c264ed1663ac91b751e3ae74f1487af11d9e7f82ce403d588f6859b49835f"
+    },
+    "layout-checks.json": {
+      "bytes": 1581,
+      "sha256": "b496b35ed2dcb7e4faa9b2f282dc890169b1cc27e4fea0e58b0c1250eed1bed9"
+    },
+    "lookup-checks.json": {
+      "bytes": 683,
+      "sha256": "b97e1a1d1eed126c27f1e522857f8c315d2eec03645c14d540c117039beb15e4"
+    },
+    "msrv-checks.json": {
+      "bytes": 1297,
+      "sha256": "afefbbc34a497957a0142475e2dbb4ca7f1f71a960caa416203ce3cc67edcaa4"
+    },
+    "msrv-variant-checks.json": {
+      "bytes": 1290,
+      "sha256": "fccb07111a29fdd325cc329db134967380912d30c74d8c44e25ccf6edf754cad"
+    },
+    "remaining-checks.json": {
+      "bytes": 1091,
+      "sha256": "f7443bd9f069e72f4fefbd1084d0792dae00e754f5d3d66ccf116d685256ff73"
+    },
+    "variant-lint-checks.json": {
+      "bytes": 1428,
+      "sha256": "7406ddf9844addbc79145333e187d99e7ca658338be6f89d56443959e7310e6c"
+    },
+    "all-feature-lib-alignment-failure.log.gz": {
+      "bytes": 22501,
+      "sha256": "7f3057a07d5cd05713ae316ff439f3e8578ab52a5ab7538edfa4f448aca021ce"
+    },
+    "all-feature-lib-initial-failure.log.gz": {
+      "bytes": 523,
+      "sha256": "c9dc5bfbaf1cc71c264966f817c0b1dfacb6c17a56f5f94f029f80e0a14a19fb"
+    },
+    "all-feature-lib.log.gz": {
+      "bytes": 22162,
+      "sha256": "38619ff5d1adcb94989899637eea1f3a6128cec6a6bc5a96d99644154f5bf75e"
+    },
+    "clippy-all-cbf-pass.log.gz": {
+      "bytes": 145,
+      "sha256": "93fbb8f1628fcd7abbaf8c8d2ea3933e2077a2d0ffb28feb02a774bc011c7cf3"
+    },
+    "fixed-unprotected-lib-feature-failure.log.gz": {
+      "bytes": 398,
+      "sha256": "d0dbb180a9abe29d1252cf8209fb9ef51ffe3593779c68e27f5add947c441dc7"
+    },
+    "fixed-unprotected-lib.log.gz": {
+      "bytes": 12004,
+      "sha256": "cd6bd2deed3859ae625e60ef8ff2a0be3fb2bc48280063611656dc48f436a294"
+    },
+    "lookup-tests.log.gz": {
+      "bytes": 393,
+      "sha256": "3112430d0ee689bf4e10cfa8b274f5650da75ca7e78256171030e574869655f9"
+    },
+    "msrv-all-4bf-pass.log.gz": {
+      "bytes": 517,
+      "sha256": "a616a3800ebf36f82a62a85f52ae088849e87e0b8efb01fe6cd2c846274cf34c"
+    },
+    "msrv-all.log.gz": {
+      "bytes": 144,
+      "sha256": "b98d9a839089a85974b74bda6a43101cbbc7e4affcfe4582c21a3d6bd8f06b6d"
+    },
+    "msrv-fixed-4bf-pass.log.gz": {
+      "bytes": 144,
+      "sha256": "e7518c4e7e246726b93c830dc5ea092a9c3e484bcc174e7bf091b4bcd97c1f60"
+    },
+    "msrv-fixed.log.gz": {
+      "bytes": 145,
+      "sha256": "f6d9fd983cda4f06165b187c447e1a1afcbe9956ca923fc255dd365e5093ee33"
+    },
+    "notification-lint-checks.json": {
+      "bytes": 1430,
+      "sha256": "1d6e8530204161e2aa5b4177001b0def59fb5c67a9cf7a637c897b20755d2450"
+    },
+    "msrv-notification-checks.json": {
+      "bytes": 1292,
+      "sha256": "b23d9084430d942a7766c76f2fe3674db7bf10e78eb8924e9e3649b48191dbe4"
+    },
+    "notification-reuse.json": {
+      "bytes": 1643,
+      "sha256": "6666274f6ceab3bb5b8ad21f8e974807cfce7c576b422ab42bb3bb22bff03362"
+    },
+    "notification-clippy-all.log.gz": {
+      "bytes": 145,
+      "sha256": "0d56c738476629970a5784e08b1fbdbb01dfacc4c0b2b465d52b8209435ae614"
+    },
+    "notification-clippy-fixed.log.gz": {
+      "bytes": 144,
+      "sha256": "a2d64c4779036c5456962085d4d6947bdd4d20dd105f07315d5ca5080366238d"
+    },
+    "notification-msrv-all.log.gz": {
+      "bytes": 144,
+      "sha256": "bed8accbf2f82b023d8109595470791795afd4b13dba6162a9a6be9a24d80a25"
+    },
+    "notification-msrv-fixed.log.gz": {
+      "bytes": 144,
+      "sha256": "f2f63006c8c59bd830708b180c44ac880eb9e64d798e5965cab1aa7d344b2687"
+    },
+    "notification-layout.rs": {
+      "bytes": 303,
+      "sha256": "a2848486d7f568bcfcddce206c1165cb5e53a44c07cad8518fc6519d71404be7"
+    },
+    "combined-candidates.patch": {
+      "bytes": 44981,
+      "sha256": "3f61f04f0b24e27cf9734721ec8ceb5925d24f9665525dcef4c0085a3fa9f39d"
+    },
+    "README.md": {
+      "bytes": 7064,
+      "sha256": "9490e36537a8cb494562295036620b418fb5f1af6478935cc3dae50f0db0eb2f"
+    },
+    ".gitattributes": {
+      "bytes": 8,
+      "sha256": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da"
+    },
+    "variant-clippy-all.log.gz": {
+      "bytes": 145,
+      "sha256": "ecf8cd330a114d031f2b22263868dc6f687ae4a63dc469297e2f81659f93dbcf"
+    },
+    "variant-clippy-fixed.log.gz": {
+      "bytes": 144,
+      "sha256": "7022ccab56830fad419fa6624190492d87a19f18f75e0c4332eba3d450edb9b9"
+    }
+  },
+  "checks": {
+    "library_all_features": {
+      "core": "f4fb8e85dfc5c78f9031aa3360c9888b9f4aa093",
+      "passed": 1212
+    },
+    "library_no_default": {
+      "core": "f4fb8e85dfc5c78f9031aa3360c9888b9f4aa093",
+      "passed": 715
+    },
+    "refinement_library_execution": "No new library test execution; precursor results are explicitly reused. Slots 0/1 restore the original scan and slots>1 preserve the tested shortcut. Current strict lint/MSRV and the actual refined native suite are separate receipts.",
+    "original_clippy_raw_logs": {
+      "source": "f4fb8e85dfc5c78f9031aa3360c9888b9f4aa093",
+      "availability": "summary-only; original raw logs not retained",
+      "summary_receipt": "batch-r3-checks.json",
+      "missing_output_sha256": {
+        "clippy-all": "d667d1b6cf5b63f3dfe51d62ed3545182c00cc7241755e5f8228d6dfe968d08e",
+        "clippy-fixed": "7efdfefcbbd86d48de511d67639d46f0d87e7a65eedce24f75d3d200627b1c3d"
+      }
+    },
+    "refinement_clippy_raw_logs": {
+      "source": "c39b100c8eecae3a630b669df15aac912eaf4f90",
+      "receipt": "variant-lint-checks.json",
+      "logs": [
+        "variant-clippy-all.log.gz",
+        "variant-clippy-fixed.log.gz"
+      ]
+    }
+  },
+  "storage": {
+    "owner": "Coaptic hot-path batch",
+    "cumulative_monitored_positive_lane_bytes": 267519239,
+    "lane_ceiling_bytes": 268435456,
+    "private_metadata_bytes": 130801,
+    "private_ceiling_bytes": 262144,
+    "publication_ceiling_bytes": 524288
+  },
+  "limits": [
+    "No qualified CPU, throughput, tail-latency, stack or whole-memory conclusion.",
+    "No causal attribution of the original slowdown. All four original runs remain.",
+    "Single populated route does not measure route-scaling benefit; server-poll timing excludes client crypto cost.",
+    "Local source/binary receipts establish consistency, not independent build attestation.",
+    "No new Linux or physical-device qualification."
+  ],
+  "disposition": "Do not promote either combined candidate. Preserve five staged mechanisms and the exact patch; deliver only the independently reviewed notification local-object change, without CPU/stack/whole-memory claims.",
+  "notification_only": {
+    "source": "e3acff4651d280c0ee0ed20d2cba8f8586067803",
+    "local_layout_bytes_before": 584,
+    "local_layout_bytes_after": 104,
+    "removed_object_bytes": 480,
+    "scope": "Windows x64 type layout, not emitted stack or CPU",
+    "reused_test_execution_source": "f4fb8e85dfc5c78f9031aa3360c9888b9f4aa093",
+    "fresh_checks": [
+      "notification-lint-checks.json",
+      "msrv-notification-checks.json"
+    ],
+    "new_library_or_quick_binary": false
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "passed": true,
+  "rlib_sha256": "54b93b1bd78f43d4b81bec600d69e4bef1c2d3eb06e1e0a3af832c41c3dc98e0",
+  "rlib": "\\\\?\\D:\\coaptic-batch-interop-target\\release\\deps\\libcoaptic-336f543957fef4c8.rlib",
+  "source_sha256": "a2848486d7f568bcfcddce206c1165cb5e53a44c07cad8518fc6519d71404be7",
+  "command": [
+    "C:\\Users\\jeffg\\.rustup\\toolchains\\1.99.0-x86_64-pc-windows-msvc\\bin\\rustc.exe",
+    "--edition=2024",
+    "\\\\?\\D:\\coaptic-batch-interop-target\\hotpath-20261029\\notification-layout.rs",
+    "--extern",
+    "coaptic=\\\\?\\D:\\coaptic-batch-interop-target\\release\\deps\\libcoaptic-336f543957fef4c8.rlib",
+    "-L",
+    "dependency=\\\\?\\D:\\coaptic-batch-interop-target\\release\\deps",
+    "-C",
+    "opt-level=2",
+    "-C",
+    "debuginfo=0",
+    "-o",
+    "\\\\?\\D:\\coaptic-batch-interop-target\\hotpath-20261029\\notification-layout.exe"
+  ],
+  "compiler": {
+    "path": "C:\\Users\\jeffg\\.rustup\\toolchains\\1.99.0-x86_64-pc-windows-msvc\\bin\\rustc.exe",
+    "sha256": "fc40f1c8b65095a22a48c111aadc279c26a049b7e4161e8b99ffe3eb23873e86"
+  },
+  "prior_positive_growth_bytes": 264088019,
+  "compile_seconds": 0.6269308999180794,
+  "result": {
+    "old_bytes": 584,
+    "new_bytes": 104,
+    "opt_bytes": 24,
+    "usize_bytes": 8
+  },
+  "removed_object_bytes": 480,
+  "executable_sha256": "96bef00141478875a17ea07a39a31742b4baaae48482caa149649531fb3bdf8f",
+  "limit": "Windows x64 Rust object layout only; no emitted frame, peak stack, CPU or whole-memory claim",
+  "observed_positive_growth_bytes": 3410258
+}
