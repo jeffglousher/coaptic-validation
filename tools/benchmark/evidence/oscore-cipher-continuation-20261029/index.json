@@ -2,8 +2,8 @@
   "schema": "coaptic-cipher-publication/1",
   "files": {
     "README.md": {
-      "bytes": 5264,
-      "sha256": "27802477957747a9582450b5e4ff38e3a666891eddd80cc8242588aee4e2d009"
+      "bytes": 5237,
+      "sha256": "b30668e86738f7c63e728ab17e961601fbaf67a684062243dd4892a30d8e30e4"
     },
     "data.json.gz": {
       "bytes": 36736,
