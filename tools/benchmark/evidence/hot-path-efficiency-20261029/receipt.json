@@ -633,14 +633,6 @@
       "bytes": 145,
       "sha256": "93fbb8f1628fcd7abbaf8c8d2ea3933e2077a2d0ffb28feb02a774bc011c7cf3"
     },
-    "clippy-all-f4-pass.log.gz": {
-      "bytes": 145,
-      "sha256": "ecf8cd330a114d031f2b22263868dc6f687ae4a63dc469297e2f81659f93dbcf"
-    },
-    "clippy-fixed-f4-pass.log.gz": {
-      "bytes": 144,
-      "sha256": "7022ccab56830fad419fa6624190492d87a19f18f75e0c4332eba3d450edb9b9"
-    },
     "fixed-unprotected-lib-feature-failure.log.gz": {
       "bytes": 398,
       "sha256": "d0dbb180a9abe29d1252cf8209fb9ef51ffe3593779c68e27f5add947c441dc7"
@@ -706,12 +698,20 @@
       "sha256": "3f61f04f0b24e27cf9734721ec8ceb5925d24f9665525dcef4c0085a3fa9f39d"
     },
     "README.md": {
-      "bytes": 6518,
-      "sha256": "eaebdaab2f8c7f67e27c719d4242640c30fed06f7cc78816098b740ab6a43b87"
+      "bytes": 7064,
+      "sha256": "9490e36537a8cb494562295036620b418fb5f1af6478935cc3dae50f0db0eb2f"
     },
     ".gitattributes": {
       "bytes": 8,
       "sha256": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da"
+    },
+    "variant-clippy-all.log.gz": {
+      "bytes": 145,
+      "sha256": "ecf8cd330a114d031f2b22263868dc6f687ae4a63dc469297e2f81659f93dbcf"
+    },
+    "variant-clippy-fixed.log.gz": {
+      "bytes": 144,
+      "sha256": "7022ccab56830fad419fa6624190492d87a19f18f75e0c4332eba3d450edb9b9"
     }
   },
   "checks": {
@@ -723,7 +723,24 @@
       "core": "f4fb8e85dfc5c78f9031aa3360c9888b9f4aa093",
       "passed": 715
     },
-    "refinement_library_execution": "No new library test execution; precursor results are explicitly reused. Slots 0/1 restore the original scan and slots>1 preserve the tested shortcut. Current strict lint/MSRV and the actual refined native suite are separate receipts."
+    "refinement_library_execution": "No new library test execution; precursor results are explicitly reused. Slots 0/1 restore the original scan and slots>1 preserve the tested shortcut. Current strict lint/MSRV and the actual refined native suite are separate receipts.",
+    "original_clippy_raw_logs": {
+      "source": "f4fb8e85dfc5c78f9031aa3360c9888b9f4aa093",
+      "availability": "summary-only; original raw logs not retained",
+      "summary_receipt": "batch-r3-checks.json",
+      "missing_output_sha256": {
+        "clippy-all": "d667d1b6cf5b63f3dfe51d62ed3545182c00cc7241755e5f8228d6dfe968d08e",
+        "clippy-fixed": "7efdfefcbbd86d48de511d67639d46f0d87e7a65eedce24f75d3d200627b1c3d"
+      }
+    },
+    "refinement_clippy_raw_logs": {
+      "source": "c39b100c8eecae3a630b669df15aac912eaf4f90",
+      "receipt": "variant-lint-checks.json",
+      "logs": [
+        "variant-clippy-all.log.gz",
+        "variant-clippy-fixed.log.gz"
+      ]
+    }
   },
   "storage": {
     "owner": "Coaptic hot-path batch",

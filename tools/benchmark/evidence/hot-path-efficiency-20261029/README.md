@@ -92,6 +92,14 @@ new library-test or quick-suite executable was built for that subset.** The earl
 whole-batch suites are not relabeled as its measurements. This limits delivery to
 the independently reviewed local-object change and reused wire-equivalence proof.
 
+The original combined candidate's two Clippy raw logs were not retained. Its
+`batch-r3-checks.json` preserves the pass summaries and expected output hashes,
+so that lint evidence is **summary-only**. `variant-clippy-all.log.gz` and
+`variant-clippy-fixed.log.gz` instead contain the refinement's output and match
+`variant-lint-checks.json`; their earlier `f4-pass` filenames were incorrect.
+The notification-only raw lint logs are separately prefixed `notification-`.
+Library-test logs, failed checks and all eight raw benchmark receipts remain.
+
 ## Bounds and retained failures
 
 Initial new-test aliases, allocated body alignment and association feature-gating
