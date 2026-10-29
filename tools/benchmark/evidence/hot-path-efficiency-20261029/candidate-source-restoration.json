@@ -1,0 +1,9 @@
+{
+  "core_head": "28d9f1a61d15121d75d5dd426ad8d6b5cc891005",
+  "core_ref": "main",
+  "core_status": "",
+  "companion_head": "dd74a00ba3550326945fb058ab3213b7b5ad720e",
+  "companion_status": "",
+  "canonical_lock_sha256": "3ed89aedce4b2fd5e70cbaf1cdfdd63feca358aad43bf4d893e81fc609c09c92",
+  "passed": true
+}

@@ -1,0 +1,1 @@
+fn main() { println!("{{\"old_bytes\":{},\"new_bytes\":{},\"opt_bytes\":{},\"usize_bytes\":{}}}", core::mem::size_of::<coaptic::message::OptionsBuilder<24>>(), core::mem::size_of::<coaptic::message::OptionsBuilder<4>>(), core::mem::size_of::<coaptic::message::Opt>(), core::mem::size_of::<usize>()); }

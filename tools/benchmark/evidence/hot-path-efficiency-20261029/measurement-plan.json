@@ -1,0 +1,14 @@
+{
+  "schema": "coaptic-hotpath-screen-plan/1",
+  "frozen_before_core": "28d9f1a61d15121d75d5dd426ad8d6b5cc891005",
+  "candidate_core": "f4fb8e8 (resolve full during preparation; prior three test-fixture failures retained)",
+  "companion": "dd74a00ba3550326945fb058ab3213b7b5ad720e",
+  "prepared_run_order": ["A1", "B1", "B2", "A2"],
+  "workload": "unchanged development-suite/2: eight profiles, both security modes, nine reliability phases, two Observe proofs, sixteen socket cells, six C1 core cells, ten unsupported core cells",
+  "client": "same before binary for all socket comparisons",
+  "refusal": "stop at a failed run; retain every attempted raw result; no replacement or selected reruns",
+  "claims": "development wall signals and owner sizes only; no CPU, throughput, extreme-tail or whole-memory acceptance",
+  "sensitivity_limits": "server-only core timing misses client response crypto changes; single populated route does not establish route-scaling benefit; notification has functional Observe proof",
+  "raw_results": "D:/coaptic-batch-interop-target/hotpath-20261029, included in cumulative 256 MiB existing-lane output ceiling",
+  "followup": "no longer campaign or extra configurations"
+}

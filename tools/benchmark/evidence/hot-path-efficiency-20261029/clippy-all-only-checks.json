@@ -1,0 +1,28 @@
+{
+  "passed": true,
+  "prior_positive_growth_bytes": 157985455,
+  "checks": [
+    {
+      "name": "clippy-all",
+      "command": [
+        "C:\\Users\\jeffg\\.rustup\\toolchains\\1.99.0-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+        "clippy",
+        "--manifest-path",
+        "C:\\Users\\jeffg\\.t3\\worktrees\\coaptic\\t3-07660ed8\\Cargo.toml",
+        "--offline",
+        "--release",
+        "--locked",
+        "--all-targets",
+        "--all-features",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "passed": true,
+      "seconds": 15.804078799905255,
+      "output_bytes": 143,
+      "output_sha256": "2901098ac0013d9882f073ead19bd2dc41e0671231f957dbbdfa1881c821bb80"
+    }
+  ],
+  "observed_positive_growth_bytes": 110
+}

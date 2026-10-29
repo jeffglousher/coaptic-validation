@@ -1,0 +1,53 @@
+{
+  "passed": true,
+  "order": [
+    "A1",
+    "B1",
+    "B2",
+    "A2"
+  ],
+  "interpretation": "two predeclared development pairs, no replacement runs or qualified CPU claim",
+  "runs": [
+    {
+      "label": "A1",
+      "passed": true,
+      "seconds": 13.922874699812382,
+      "within_minute": true,
+      "socket_cells": 16,
+      "observe_cells": 2,
+      "bytes": 239148,
+      "sha256": "41785b01a7fc2b12f26c82c100f49839021e3759c3c2872f30fbb687b1e12de8"
+    },
+    {
+      "label": "B1",
+      "passed": true,
+      "seconds": 14.176923000020906,
+      "within_minute": true,
+      "socket_cells": 16,
+      "observe_cells": 2,
+      "bytes": 239392,
+      "sha256": "d2defe48b7a09d3932da12ab6456b97781cb1b594e7d95d9d2214c4c9f3fb20f"
+    },
+    {
+      "label": "B2",
+      "passed": true,
+      "seconds": 14.088593699969351,
+      "within_minute": true,
+      "socket_cells": 16,
+      "observe_cells": 2,
+      "bytes": 239217,
+      "sha256": "c3ca1407b305aacd6c512478214a07148351cd8c406a82dd9cf91a9a17584787"
+    },
+    {
+      "label": "A2",
+      "passed": true,
+      "seconds": 14.200259299948812,
+      "within_minute": true,
+      "socket_cells": 16,
+      "observe_cells": 2,
+      "bytes": 239137,
+      "sha256": "171b1c658b4e76fb290b95c7bc8223028aa26a29ad799380a8dad9e486f22b1a"
+    }
+  ],
+  "observed_positive_growth_bytes": 968731
+}

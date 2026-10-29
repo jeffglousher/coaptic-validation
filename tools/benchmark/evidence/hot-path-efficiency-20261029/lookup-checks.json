@@ -1,0 +1,24 @@
+{
+  "passed": true,
+  "command": [
+    "C:\\Users\\jeffg\\.rustup\\toolchains\\1.99.0-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+    "test",
+    "--manifest-path",
+    "C:\\Users\\jeffg\\.t3\\worktrees\\coaptic\\t3-07660ed8\\Cargo.toml",
+    "--offline",
+    "--release",
+    "--locked",
+    "--no-default-features",
+    "--features",
+    "std,alloc,oscore",
+    "--lib",
+    "observe_source_",
+    "--",
+    "--nocapture"
+  ],
+  "prior_positive_growth_bytes": 37742331,
+  "seconds": 171.44352549989708,
+  "output_bytes": 655,
+  "output_sha256": "32e19ea2080d9965e6e88b8d38f0e51c7df2aab7f1dbb02726ae9229bc085b0f",
+  "observed_positive_growth_bytes": 26495030
+}

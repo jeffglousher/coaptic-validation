@@ -1,0 +1,33 @@
+{
+  "passed": true,
+  "executed_library_source": "f4fb8e85dfc5c78f9031aa3360c9888b9f4aa093",
+  "notification_only_source": "e3acff4651d280c0ee0ed20d2cba8f8586067803",
+  "checks": {
+    "notification_encoder": {
+      "bytes": 1847,
+      "sha256": "6187b4b9ce104baf5224e72cb080a7976d80dfcf8c004535f49d629bbe0cc1c0"
+    },
+    "outbound_adapters": {
+      "bytes": 25826,
+      "sha256": "2d18dab7a08b72d76e4c7988ae6c4d5aad006050dbb204e9fedbc7e5ab623b2e"
+    },
+    "outbound_protection": {
+      "bytes": 10451,
+      "sha256": "a977221e82fd32f5d509f61fbc1f5021ab2860acb07f7421d06c43573d06c957"
+    },
+    "oracle_and_three_test_functions": {
+      "bytes": 8122,
+      "sha256": "0d65341eaca182f6df8ccf313acf3112cb2700cbe7cb4eaa365967a6151830d9"
+    },
+    "src/message/builder.rs": {
+      "bytes": 6102,
+      "sha256": "e4d4d7980fb432bcd57989f6a7f9b33e06827a8237ba1f2ce7ee20b89048efdc"
+    },
+    "src/message/option.rs": {
+      "bytes": 7278,
+      "sha256": "691370a08eacf38f190b5deb07bc11b7169b1f23626ff7f90004bf6e85ec071b"
+    }
+  },
+  "execution_reuse": "The three unchanged notification tests passed in the 1212-test all-feature precursor run. No new library test executable or quick-suite binary was built for the notification-only source. Current Clippy type-checks all tests and MSRV checks production.",
+  "fresh_tx_invariant": "Each notification fixture starts with new fixed Memory and fresh metadata. Restoring the baseline acquire reset repeats zero initialization; it does not alter test inputs. Body lookups, route snapshots and response unprotection are not used by this encoder test."
+}
