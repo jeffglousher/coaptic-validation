@@ -1,0 +1,17 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 1925,
+      "sha256": "42a50027ce5e2e888cb6553ba76c861e7f21dac132a2c786c94b10177ab85701"
+    },
+    "data.json.gz": {
+      "bytes": 65225,
+      "sha256": "ef7491efa417e8e4bb65d64feef5925b32493260604421a2ccd5d9dcb4c52bd9"
+    },
+    "receipt.json.gz": {
+      "bytes": 8107,
+      "sha256": "389ce4deca62ab0baedebd1bc3ade02aabf787b2f0ee11ee242cee38924a4827"
+    }
+  },
+  "schema": "coaptic-evidence-index/1"
+}
