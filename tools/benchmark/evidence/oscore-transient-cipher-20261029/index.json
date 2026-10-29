@@ -1,0 +1,21 @@
+{
+  "schema": "coaptic-cipher-publication/1",
+  "files": {
+    "README.md": {
+      "bytes": 4147,
+      "sha256": "5d767ccc725fb0af3f8927cd09c601f69c2b566e6b4970de534e2895cf3d7a16"
+    },
+    "data.json.gz": {
+      "bytes": 36079,
+      "sha256": "0b77a9aedb07c11ab395793317ac02a3043f9fcce8ffa8f232d37e667689e578"
+    },
+    "receipt.json.gz": {
+      "bytes": 5402,
+      "sha256": "9f08eccc240f028d2e05dbc64ab282dec0d29c8470c776bcd842e99b69b55814"
+    }
+  },
+  "receipt_uncompressed_sha256": "3214a24cc9cbeca71b874671d1ced27c75e56b97ade14033f2fba939baead62e",
+  "remote_artifact_id": 12930903531,
+  "remote_artifact_sha256": "dcfb06f3212db56bb1fef660920f2fea9ef13845300a5b41bd001c006bdbd7ef",
+  "retained_criterion_members": 126
+}
