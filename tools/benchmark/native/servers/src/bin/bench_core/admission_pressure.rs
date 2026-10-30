@@ -1340,11 +1340,11 @@ fn block2_notification_under_rx_pressure_preserves_body_and_completes(protected:
             assert_eq!(transfer.token(), token);
             assert_eq!(transfer.endpoint(), PEER);
             assert_eq!(transfer.szx(), 0);
-            // Explicit requested_block2 ranges do not advance the retained
-            // sequential cursor. The notification issued block0; followups
-            // select ranges independently. Wire NUM/payloads are checked above.
+            // Notification block0 and followups all select explicit ranges;
+            // requested_block2 never advances the sequential cursor. Wire NUM
+            // and exact payload checks above validate actual response progress.
             assert_eq!(transfer.num(), 0);
-            assert_eq!(transfer.next_num(), 1);
+            assert_eq!(transfer.next_num(), 0);
             assert_eq!(transfer.filled(), NOTIFICATION_BODY.len());
             assert!(transfer.more());
             assert!(!transfer.is_complete());

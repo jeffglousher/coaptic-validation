@@ -44,7 +44,7 @@ WALL_TESTS = tuple('batch_tests::' + name for name in (
     'wall_full_metadata_and_complete_payload_are_required',
     'wall_missing_bad_response_and_authentication_refuse_then_recover'))
 PRESSURE_SOURCE = 'tools/benchmark/native/servers/src/bin/bench_core/admission_pressure.rs'
-PRESSURE_LF_SHA256 = 'cd3c265d6eb019131be844759e58d0a0d6190f4ec9a9e09aa5bffa1812f46ce3'
+PRESSURE_LF_SHA256 = 'ff787adae299f9abfde275652b9248b4bbd67b5ecf600f919fcc4ca0cf3e611a'
 PRESSURE_TESTS = (
     'admission_pressure::block2_notification_under_rx_pressure_preserves_body_and_completes_oscore',
     'admission_pressure::block2_notification_under_rx_pressure_preserves_body_and_completes_unprotected',

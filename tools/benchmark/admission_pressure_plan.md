@@ -198,7 +198,7 @@ passed in run 41123960432; no timing process was dispatched from the failed comm
 ## Retained requested-range assertion failure
 
 Run 41138605625/1 at cd8fdcd compiled and passed arm A's four wall tests, then
-failed the protected notification Block2 case at transfer.num: observed 0 versus
+failed the protected notification Block2 case at transfer.next_num: observed 0 versus
 expected 1. The other seven pressure tests hit the poisoned fixture mutex;
 those errors are not independent protocol outcomes. Arm B was not executed.
 No measurements ran. The original collector and input pins are retained unchanged.
@@ -206,12 +206,23 @@ No measurements ran. The original collector and input pins are retained unchange
 The fixture had confused sequential issuance with explicit requested-range
 selection. On all three pinned core revisions, requested_block2 takes &self and
 computes the requested range without advancing the stored sequential cursor.
-The initial notification issued block zero; the retained cursor stays NUM 0,
-next NUM 1 while explicit followups select blocks 1 and 2. The corrected fixture
-asserts that unchanged cursor and retains the exact wire NUM, payload, M flag,
+The initial notification also explicitly selects block zero; the retained cursor
+stays NUM 0, next NUM 0 while explicit followups select blocks 1 and 2. The fixture
+must assert that unchanged cursor and retains the exact wire NUM, payload, M flag,
 body/Call ownership, authentication, final release and recovery assertions.
 A fixture-only mutex helper preserves serialization but recovers poisoning:
 each case resets the only shared counter and constructs its own fresh App, so a
 prior panic remains a failed test without replacing all later results with
 PoisonError. No protocol state, core source, count, capacity or timing gate changes.
 The corrected cohort is UNRUN pending a separately frozen software proof.
+
+Run 41139860286/1 at 969d208 passed arm A's four wall tests and six RX/TX/Observe
+pressure cases. Both Block2 cases failed at next_num: observed 0 versus expected
+1; arm B was not run. The prior correction misidentified the first failure line
+and incorrectly treated notification block zero as sequential issuance. Source
+inspection now follows issue_observe_preferred through its explicit BlockValue
+NUM=0 into issue_classic and requested_block2: the entire path leaves next_num
+at zero. That path is identical on all three pinned revisions. The current
+fixture expects NUM 0 and next NUM 0, while all exact wire-block, authentication,
+payload, ownership and final-release checks remain unchanged. Both failed runs
+remain retained. This corrected cohort is UNRUN; no timing or promotion follows.
