@@ -1,6 +1,7 @@
 """Bounded hosted-only Windows stack profiling, with a gated native workload."""
 import argparse
 import ctypes
+from datetime import datetime
 import json
 import os
 import re
@@ -612,6 +613,33 @@ def verified_build(args, root):
     return record
 
 
+def workload_thread_id(fixture):
+    """The synchronous native batch reports its own OS TID, never an ordinal."""
+    tid = fixture.get('workload_thread_id')
+    if type(tid) is not int or not 1 <= tid <= 0xffffffff:
+        raise ValueError('positive u32 native workload_thread_id required')
+    return tid
+
+
+def target_start_utc(detail, pid, exe, tid):
+    """Bind the reported workload TID to this exact process inventory."""
+    if not isinstance(detail, dict) or type(detail.get('pid')) is not int or detail['pid'] != pid:
+        raise ValueError('target inventory PID mismatch')
+    image = detail.get('exe')
+    if not isinstance(image, str) or not Path(image).is_absolute() or Path(image).resolve() != Path(exe).resolve():
+        raise ValueError('target inventory EXE mismatch')
+    ids = detail.get('thread_ids')
+    if (not isinstance(ids, list) or not 1 <= len(ids) <= 128
+            or any(type(value) is not int or not 1 <= value <= 0xffffffff for value in ids)
+            or len(set(ids)) != len(ids) or tid not in ids):
+        raise ValueError('invalid target thread inventory or workload TID absent')
+    start = detail.get('process_start_utc')
+    if not isinstance(start, str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{7}Z', start):
+        raise ValueError('exact target process_start_utc required')
+    datetime.strptime(start[:19], '%Y-%m-%dT%H:%M:%S')  # Validate only; retain all seven fractional digits.
+    return start
+
+
 def capture_phase(args, root, budget):
     budget.check(force=True)  # Retained EXE/PDB/receipts count before any process.
     record = verified_build(args, root)
@@ -633,16 +661,19 @@ def capture_phase(args, root, budget):
         work_seconds = None
         config_path = directory / 'config.json'
         try:
+            protocol = BatchProtocol(mode)
+            native.send('start')
+            fixture = native.line(45)
+            events.append(fixture)
+            protocol.receive(fixture)
+            tid = workload_thread_id(fixture)
             # Target identity is acquired by the tool at native precision, never
             # round-tripped through Python's lower precision datetime objects.
             raw_target = command(tool + ['target', '--pid', str(native.p.pid)], budget,
                                  directory / 'target.log')
             target = parse_event(raw_target)
             detail = target.get('detail', target)
-            start_utc = detail['process_start_utc']
-            tid = detail['main_thread_id']
-            if type(tid) is not int or tid <= 0:
-                raise ValueError('one native thread must be identified before capture')
+            start_utc = target_start_utc(detail, native.p.pid, record['native']['path'], tid)
             identity = dict(source=json.dumps(record['sources'], sort_keys=True),
                             tool='TraceEvent3.1.21; exporter SHA256 ' + record['tool']['sha256'],
                             workload='64B Default allocated; server App; socket-free; batch50000; ' + mode,
@@ -656,8 +687,6 @@ def capture_phase(args, root, budget):
             if kind == 'capture':
                 command(tool + ['preflight', '--config', config_path], budget, directory / 'preflight.log')
                 command(tool + ['symbols', '--config', config_path], budget, directory / 'symbols.log')
-            protocol = BatchProtocol(mode)
-            native.send('start')
             while protocol.stage != 'done':
                 row = native.line(45)
                 events.append(row)
@@ -718,6 +747,7 @@ def capture_phase(args, root, budget):
                 except BaseException as cleanup:
                     error.add_note('ETW cleanup unresolved; dedicated VM must be disposed: ' + str(cleanup))
             save(directory / 'runner-failure.json', dict(error=type(error).__name__, detail=str(error)[:2048],
+                                                       events=events,
                                                        notes=getattr(error, '__notes__', []),
                                                        etw_cleanup_settled=settled))
             raise
@@ -904,6 +934,8 @@ class BatchProtocol:
                     raise ValueError("invalid fixture accounting")
             if row["requested_bytes"] > row["limit_bytes"]:
                 raise ValueError("fixture exceeds limit")
+            if 'workload_thread_id' in row:
+                workload_thread_id(row)
             self.stage = "ready"
             return None
         if self.stage == "complete":

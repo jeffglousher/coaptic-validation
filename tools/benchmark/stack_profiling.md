@@ -68,6 +68,15 @@ fresh key material. Sixteen empty gates and 128 warmups remain unchanged.
 There are eight serial captured workers and one unprofiled control per security
 mode. Only one fixture is live at once; its existing declared ceiling is 32 MiB.
 
+On Windows, the fixture includes `workload_thread_id`, obtained once with
+`GetCurrentThreadId` on the synchronous batch thread before the measured gates.
+The runner sends `start` and validates this fixture before requesting the target
+inventory. It requires a positive u32 TID present exactly once in the exact PID's
+bounded thread inventory, checks the EXE, and retains the tool's seven-digit UTC
+process start time verbatim. `main_thread_id` is nullable inventory information;
+it does not select the workload thread. Capture rechecks that selected TID against
+the pinned process lifetime. Linux fixture JSON and all gate events are unchanged.
+
 Capture retains source/tool identities, EXE/PDB identities, process lifetime and
 window, complete ordered frames, unresolved frames and observed totals. Local
 matching PDBs are used; symbol-server resolution is excluded. Preparation,

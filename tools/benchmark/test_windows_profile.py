@@ -215,6 +215,148 @@ class Tests(unittest.TestCase):
         for d in (dict(event='measured',kind='empty',block=0,verified=128),dict(event='ready',kind='empty',block=1,verified=128),dict(event='ready',kind='empty',block=0,verified=True)):
             with self.assertRaises(ValueError): p.receive(d)
 
+    def mock_capture(self, *, fixture_row=None, target_updates=None, raw_target=None,
+                     kind='capture', error=None):
+        """Exercise the real runner/protocol with no processes or filesystem output."""
+        from contextlib import ExitStack
+        root = Path('mock-owned-profile').resolve()
+        record = dict(sources={}, native=dict(path=str(root / 'bench-core.exe'), sha256='a'*64,
+                                             pdb=str(root / 'bench-core.pdb'), pdb_sha256='b'*64),
+                      tool=dict(dotnet='dotnet', path='tool.dll', sha256='c'*64), platform='mock')
+        first = dict(fixture('unprotected'), workload_thread_id=91) if fixture_row is None else fixture_row
+        rows = [first]
+        for gate, count in (('empty', 16), ('work', 1)):
+            for block in range(count):
+                for event in ('ready', 'measured', 'verified'):
+                    rows.append(dict(event=event, kind=gate, block=block,
+                                     verified=50128 if gate == 'work' and event == 'verified' else 128))
+        rows.append(dict(event='complete', mode='server-app-batch-cpu', security='unprotected',
+                         operations=50000, warmup=128, verified=50128, work_batches=1,
+                         batch_operations=50000, empty_gates=16, internal_datagrams=100256,
+                         udp_datagrams=0, black_box=True))
+        detail = dict(pid=42, exe=record['native']['path'], thread_ids=[7, 91, 101, 203],
+                      main_thread_id=None, process_start_utc='2026-10-30T05:55:22.1234567Z')
+        detail.update(target_updates or {})
+        timeline, saved = [], {}
+        native, collector = Mock(), Mock()
+        native.p.pid = 42
+        def line(timeout):
+            row = rows.pop(0)
+            timeline.append(('native-event', row.get('event'), row.get('kind')))
+            return row
+        native.line.side_effect = line
+        native.send.side_effect = lambda action: timeline.append(('native-send', action))
+        collector.line.side_effect = [dict(status=status, capture_id='owned', detail={})
+                                      for status in ('armed', 'ready')]
+        collector.send.side_effect = lambda action: timeline.append(('collector-send', action))
+        def process(argv, budget):
+            timeline.append(('spawn', argv[0]))
+            return native if argv[0] == record['native']['path'] else collector
+        def command(argv, budget, log):
+            verb = argv[2]; timeline.append(('tool', verb))
+            if verb == 'target':
+                self.assertEqual(argv[3:], ['--pid', '42'])
+                return raw_target if raw_target is not None else (json.dumps(dict(status='target', detail=detail))+'\n').encode()
+            return b''
+        def save(path, value): saved[path.name] = copy.deepcopy(value)
+        def exported(_):
+            value = profile(); config = saved['config.json']
+            value['scope'].update(pid=config['pid'], tid=config['tid'])
+            value['identity'] = config['identity']
+            return value
+        budget = Mock(peak=0, observed_child_working_set_peak=0, rss_limit=1024)
+        with ExitStack() as patches:
+            for name, value in (('verified_build', Mock(return_value=record)),
+                                ('plan', Mock(return_value=[('unprotected', kind, 0)])),
+                                ('Process', Mock(side_effect=process)), ('command', Mock(side_effect=command)),
+                                ('save', Mock(side_effect=save)), ('source_identity', Mock(return_value={})),
+                                ('stop_collector', Mock(side_effect=lambda *a, **k: timeline.append(('stop',)))),
+                                ('read_json', Mock(return_value={})), ('digest', Mock(return_value='d'*64))):
+                patches.enter_context(patch.object(w, name, value))
+            patches.enter_context(patch.object(w.uuid, 'uuid4', return_value='owned'))
+            patches.enter_context(patch.object(Path, 'mkdir'))
+            patches.enter_context(patch.object(w.stack_profile, 'read_text', return_value='{}'))
+            patches.enter_context(patch.object(w.stack_profile, 'load_json', side_effect=exported))
+            patches.enter_context(patch.object(w.stack_profile, 'write_new'))
+            args = argparse.Namespace(core='core', expected_core='a'*40, expected_suite='b'*40)
+            if error:
+                with self.assertRaises(error): w.capture_phase(args, root, budget)
+            else:
+                w.capture_phase(args, root, budget)
+        return timeline, saved, native, collector
+
+    def test_capture_selects_fixture_thread_after_start_before_inventory(self):
+        timeline, saved, native, collector = self.mock_capture()
+        self.assertEqual(timeline[:6], [('tool', 'metadata'), ('tool', 'selftest'),
+                         ('spawn', str(Path('mock-owned-profile/bench-core.exe').resolve())),
+                         ('native-send', 'start'), ('native-event', 'fixture', None), ('tool', 'target')])
+        self.assertEqual(saved['config.json']['tid'], 91)  # Neither first inventory TID nor nullable main_thread_id.
+        self.assertEqual(saved['config.json']['process_start_utc'], '2026-10-30T05:55:22.1234567Z')
+        events = saved['native.json']['events']
+        self.assertEqual(events[0]['workload_thread_id'], 91)
+        self.assertEqual(sum(row['event'] == 'fixture' for row in events), 1)
+        work_ready = timeline.index(('native-event', 'ready', 'work'))
+        work_run = timeline.index(('native-send', 'run'), work_ready)
+        work_measured = timeline.index(('native-event', 'measured', 'work'))
+        self.assertLess(work_ready, timeline.index(('collector-send', 'start')))
+        self.assertLess(timeline.index(('collector-send', 'start')), work_run)
+        self.assertLess(work_measured, timeline.index(('stop',)))
+        self.assertLess(timeline.index(('stop',)), timeline.index(('native-send', 'verify'), work_measured))
+        self.assertEqual(native.send.call_count, 36)  # Start, 17 run/verify pairs, exit.
+        native.finish.assert_called_once_with(10)
+        native.close.assert_called_once(); collector.close.assert_called_once()
+        self.assertNotIn('runner-failure.json', saved)
+
+    def test_control_uses_same_fixture_identity_without_collector(self):
+        timeline, saved, native, collector = self.mock_capture(kind='control', target_updates=dict(main_thread_id=7))
+        self.assertEqual(saved['config.json']['tid'], 91)
+        self.assertEqual([step[1] for step in timeline if step[0] == 'tool'], ['metadata', 'selftest', 'target'])
+        collector.line.assert_not_called(); collector.close.assert_not_called()
+        native.close.assert_called_once()
+
+    def test_missing_or_invalid_fixture_thread_refuses_before_inventory(self):
+        for tid in (None, True, False, 0, -1, 2**32, 1.5, '91'):
+            row = fixture('unprotected')
+            if tid is not None: row['workload_thread_id'] = tid
+            with self.subTest(tid=tid):
+                timeline, saved, native, collector = self.mock_capture(fixture_row=row, error=ValueError)
+                self.assertNotIn(('tool', 'target'), timeline)
+                self.assertNotIn('config.json', saved)
+                self.assertEqual(saved['runner-failure.json']['events'], [row])
+                self.assertTrue(saved['runner-failure.json']['etw_cleanup_settled'])
+                native.close.assert_called_once(); collector.line.assert_not_called()
+        for tid in (1, 2**32-1):
+            protocol = w.BatchProtocol('unprotected')
+            protocol.receive(dict(fixture('unprotected'), workload_thread_id=tid))
+            self.assertEqual(protocol.stage, 'ready')
+
+    def test_invalid_inventory_or_lifetime_refuses_before_preflight(self):
+        changes = [dict(thread_ids=ids) for ids in (None, [], [7, 101], [91, 91], [91, True],
+                    [91, 0], [91, -1], [91, 2**32], [91, '7'], [91, 1.5], '91', {'91': 1}, list(range(1, 130)))]
+        changes += [dict(pid=value) for value in (None, True, '42', 43)]
+        changes += [dict(exe=value) for value in (None, 'relative.exe', str(Path('foreign.exe').resolve()))]
+        changes += [dict(process_start_utc=value) for value in (None, '', '2026-10-30T05:55:22.123456Z',
+                    '2026-10-30T05:55:22.1234567+00:00', '2026-02-30T05:55:22.1234567Z')]
+        for change in changes:
+            with self.subTest(change=change):
+                timeline, saved, native, collector = self.mock_capture(target_updates=change, error=ValueError)
+                self.assertIn(('tool', 'target'), timeline)
+                self.assertNotIn(('tool', 'preflight'), timeline)
+                self.assertNotIn('config.json', saved)
+                self.assertEqual(saved['runner-failure.json']['events'][0]['workload_thread_id'], 91)
+                native.close.assert_called_once(); collector.line.assert_not_called()
+
+    def test_duplicate_fixture_or_inventory_json_keys_refuse_before_etw(self):
+        duplicate = b'{"event":"fixture","workload_thread_id":91,"workload_thread_id":92}\n'
+        with self.assertRaisesRegex(ValueError, 'duplicate'): w.parse_event(duplicate)
+        for raw in (b'{"detail":{"pid":42,"thread_ids":[91],"thread_ids":[7]}}\n',
+                    b'{"detail":{},"detail":{}}\n', b'{"detail":null}\n'):
+            with self.subTest(raw=raw):
+                timeline, saved, native, collector = self.mock_capture(raw_target=raw, error=ValueError)
+                self.assertNotIn(('tool', 'preflight'), timeline)
+                self.assertEqual(saved['runner-failure.json']['events'][0]['workload_thread_id'], 91)
+                native.close.assert_called_once(); collector.line.assert_not_called()
+
     def test_quality(self):
         p=profile(); self.assertTrue(w.qualification(p,app_rooted=200,pdb_match=True,truncated=False)['qualified'])
         for key in ('lost','unresolved','refused'):
