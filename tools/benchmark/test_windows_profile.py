@@ -63,6 +63,48 @@ class Tests(unittest.TestCase):
                 w.owned_size(root)
             self.assertLess(len(str(caught.exception)), 640)
 
+    @unittest.skipUnless(w.os.name == 'nt', 'Windows compatibility junction paths')
+    def test_owned_cache_alias_is_pruned_and_backing_counted_once(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            alias = root / 'user/AppData/Local/Microsoft/Windows/INetCache/Content.IE5'
+            backing = alias.parent / 'IE'
+            alias.mkdir(parents=True); backing.mkdir()
+            (alias / 'do-not-traverse').write_bytes(b'not backing')
+            (backing / 'cache.dat').write_bytes(b'abc')
+            original = Path.lstat
+            info = SimpleNamespace(st_file_attributes=0x2416, st_reparse_tag=0xA0000003)
+            def state(path, *args, **kwargs):
+                return info if path == alias else original(path, *args, **kwargs)
+            with patch.object(Path, 'lstat', state), \
+                 patch.object(w.os, 'readlink', return_value='\\\\?\\' + str(backing)) as readlink:
+                self.assertEqual(w.owned_size(root), 3)
+                readlink.assert_called_once_with(alias)
+
+    @unittest.skipUnless(w.os.name == 'nt', 'Windows compatibility junction paths')
+    def test_owned_cache_alias_refuses_foreign_ambiguous_and_chained_targets(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            alias = root / 'user/AppData/Local/Microsoft/Windows/INetCache/Content.IE5'
+            backing = alias.parent / 'IE'
+            alias.parent.mkdir(parents=True)
+            info = SimpleNamespace(st_file_attributes=0x2416, st_reparse_tag=0xA0000003)
+            for target in (str(root.parent / 'foreign'), str(root / 'other'), str(alias),
+                           str(backing / '..'), '//server/share/IE', '//?/UNC/server/share/IE'):
+                with self.subTest(target=target), patch.object(w.os, 'readlink', return_value=target):
+                    with self.assertRaises(ValueError): w.owned_cache_alias(root, alias, info)
+            with patch.object(w.os, 'readlink', return_value=str(backing)):
+                self.assertTrue(w.owned_cache_alias(root, alias, info))  # Missing owned backing is bounded.
+                with patch.object(Path, 'lstat', return_value=info):
+                    with self.assertRaisesRegex(ValueError, 'target contains a reparse'):
+                        w.owned_cache_alias(root, alias, info)
+            with patch.object(w.os, 'readlink') as readlink:
+                self.assertFalse(w.owned_cache_alias(root, root / 'unrelated', info))
+                self.assertFalse(w.owned_cache_alias(root, alias, SimpleNamespace(st_reparse_tag=0xA000000C)))
+                readlink.assert_not_called()
+
     def receipt(self, capture_id='owned'):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

@@ -86,7 +86,11 @@ ephemeral job, with an aggregate 8 GiB sampled refusal bound. Evidence has a
 separate 256 MiB sampled refusal bound. Direct capture children, including ETL
 conversion, have a sampled 1 GiB working-set refusal bound each (2 GiB combined).
 These monitors do not establish a hard quota, whole-job peak or build completion
-estimate. The nominal 64 MiB ETW ring is not a hard ETL/merge/export storage cap.
+estimate. The Windows INetCache compatibility junction is pruned only when it
+points to its expected ordinary `IE` backing directory inside the owned root,
+without a reparse chain. Backing files are counted through their ordinary path;
+other reparse entries are refused. The nominal 64 MiB ETW ring is not a hard
+ETL/merge/export storage cap.
 Each process and phase has a finite deadline, and failures retain bounded
 receipts. Existing local build lanes, caches, firmware and credentials are
 preserved.

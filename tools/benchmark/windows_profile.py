@@ -52,8 +52,42 @@ def source_identity(core, expected_core, expected_suite):
     return result
 
 
+def owned_cache_alias(root, path, info):
+    """Prune only the Windows INetCache compatibility junction, never traverse it.
+
+    Its backing directory must have an ordinary lexical path under this owned
+    root. Inspect every existing component without accepting a reparse chain;
+    the regular tree walk counts backing files once at their ordinary path.
+    """
+    root, path = Path(root).absolute(), Path(path).absolute()
+    expected = root / 'user/AppData/Local/Microsoft/Windows/INetCache/Content.IE5'
+    if (path != expected or getattr(info, 'st_reparse_tag', 0) != 0xA0000003
+            or not getattr(info, 'st_file_attributes', 0) & 0x10):
+        return False
+    raw = os.readlink(path).replace('\\', '/')
+    if raw.startswith('//?/'):
+        raw = raw[4:]
+    if not re.match(r'^[A-Za-z]:/', raw):
+        raise ValueError('INetCache alias target is not an ordinary local drive path')
+    target = Path(raw)
+    if target != expected.parent / 'IE':
+        raise ValueError('INetCache alias target is not its owned IE backing directory')
+    component = root
+    for part in target.relative_to(root).parts:
+        component = component / part
+        try:
+            state = component.lstat()
+        except FileNotFoundError:
+            break  # A not-yet-created owned backing directory has no bytes yet.
+        if getattr(state, 'st_file_attributes', 0) & 0x400 or component.is_symlink():
+            raise ValueError('INetCache alias target contains a reparse entry')
+        if not component.is_dir():
+            raise ValueError('INetCache alias target contains a non-directory')
+    return True
+
+
 def owned_size(root):
-    """Only job-owned output; links/reparse points refuse rather than escape."""
+    """Count job-owned backing files; refuse links except the pruned cache alias."""
     total = 0
     def walk_error(error):
         if not isinstance(error, FileNotFoundError):
@@ -66,6 +100,9 @@ def owned_size(root):
             except FileNotFoundError:
                 continue  # Normal compiler/SDK temporary-file churn.
             if path.is_symlink() or getattr(stat, 'st_file_attributes', 0) & 0x400:
+                if name in dirs and owned_cache_alias(root, path, stat):
+                    dirs.remove(name)  # os.walk must never enter the junction.
+                    continue
                 # Preserve the refusing entry without following its target. A
                 # generic error cannot distinguish SDK output from an escape.
                 entry = path.relative_to(root).as_posix()[:512]
