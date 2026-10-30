@@ -679,8 +679,8 @@ class BindingTests(TempTests):
         args = argparse.Namespace(core='core', expected_suite='a' * 40)
         tools = {name: {'path': name, 'sha256': name} for name in ('rustc', 'cargo')}
         records = []
-        def transaction(core, sha, commit, operation, record):
-            record.update(source={}, restoration='verified clean initial source')
+        def transaction(core, sha, commit, operation, record, selected=w.ADMISSION):
+            record.update(source={}, suite={}, restoration='verified clean initial source')
             return operation({})
         with patch.object(w.time, 'monotonic', side_effect=[0, 1, 445, 800]), \
              patch.object(w.ds, 'cargo_inputs', return_value={'config_files': {}}), \
@@ -911,8 +911,10 @@ class ProofTests(TempTests):
                 expr = expr.replace('github.event_name', repr(event))
                 for name, val in [('admission_wall_screen', screen), ('stack_profile', profile),
                                   ('admission_pressure_proof', proof)]:
-                    expr = expr.replace('inputs.' + name, str(val))
-                return bool(eval(expr.replace('&&', ' and ').replace('||', ' or ').replace('!', ' not '),
+                    expr = re.sub(r'inputs\.' + name + r'\b', str(val), expr)
+                expr = expr.replace('inputs.wall_screen_contract', repr('admission'))
+                expr = re.sub(r'inputs\.stack_profile_\w+', 'False', expr)
+                return bool(eval(re.sub(r'!(?!=)', ' not ', expr.replace('&&', ' and ').replace('||', ' or ')),
                                  {'__builtins__': {}}))
             routed = [evaluate(e) for e in expressions]
             manual = event == 'workflow_dispatch'
@@ -928,6 +930,322 @@ class ProofTests(TempTests):
         self.assertIn("$env:PROOF_ONLY -cnotin @('true', 'false')", workflow)
         self.assertIn("if ($env:PROOF_ONLY -ceq 'true') { 'proof' } else { 'all' }", workflow)
         self.assertNotRegex(workflow, r'run:.*\$\{\{ inputs\.')
+
+
+class StartingHeadGoldenTests(unittest.TestCase):
+    def test_admission_plan_starting_head_golden(self):
+        self.assertEqual(hashlib.sha256(w.ds.encoded(w.plan())).hexdigest(), '3af1f730d1f9e580cf7c4cf7beebfe19c58f323fcab642e10600850519f73e33')
+
+    def test_admission_owner_starting_head_golden(self):
+        args = argparse.Namespace(command='build', expected_suite='1'*40, core='C:/core')
+        with patch.dict(w.os.environ, {'GITHUB_RUN_ID': 'gold-run', 'GITHUB_RUN_ATTEMPT': '2'}):
+            self.assertEqual(hashlib.sha256(w.ds.encoded(w.owner(args, Path('C:/gold-root')))).hexdigest(),
+                             '0044677b30a9b6aefefe6b1b8b3d61f329bc6cdcd7f673d91dfdc8e4ff5d2a6c')
+
+class ContractSelectionTests(TempTests):
+    def args(self, contract='dedup-classified', command='all'):
+        return dict(contract=contract, command=command, output=str(self.root),
+                    core='core', expected_suite='a'*40)
+
+    def test_dedup_frozen_identity_and_scope(self):
+        selected = w.resolve_contract('dedup-classified')
+        self.assertEqual(selected, w.DEDUP)
+        self.assertEqual(w.plan(selected)['cores'], {
+            'A': '623c82db1a6606ec86cd56bb52009988b9f0d87e',
+            'B': '8f1f138c825f431149ed8a0a7eefbb6be6cb1b6a'})
+        self.assertEqual(w.plan(selected)['core_trees'], {
+            'A': '4f349c19039de513487dff283289658402593991',
+            'B': '598db5cb5bd3851381d783f1bc02ecf664e778a5'})
+        self.assertEqual(selected.artifact_prefix, 'dedup-classified-wall-screen')
+        self.assertEqual(selected.root, 'coaptic-dedup-classified-wall')
+        self.assertEqual(w.plan(selected)['schema'], 'coaptic-dedup-classified-wall/1')
+        self.assertEqual(selected.owner_schema, 'coaptic-dedup-classified-owner/1')
+        self.assertEqual(w.purpose(argparse.Namespace(**self.args())), 'rejection-screen')
+        with self.assertRaises(AttributeError):
+            selected.id = 'foreign'
+        for phrase in ('Existing', '247s', 'MID 0..60127', 'pinned replies', 'all 16',
+                       'replacement', 'spare capacity', 'whole memory', 'No gain established'):
+            self.assertIn(phrase, w.plan(selected)['scope'])
+        self.assertEqual(w.schedule(selected), w.schedule())
+
+    def test_digest_covers_whole_descriptor_and_scope(self):
+        expected = hashlib.sha256(w.ds.encoded(dict(
+            descriptor=w.DEDUP._asdict(), plan=w.plan(w.DEDUP)))).hexdigest()
+        self.assertEqual(w.binding(w.DEDUP)['contract_sha256'], expected)
+        self.assertNotEqual(w.binding(w.DEDUP), w.binding())
+        changed = w.DEDUP._replace(preregistration=w.DEDUP.preregistration + ('foreign',))
+        self.assertNotEqual(w.binding(changed), w.binding(w.DEDUP))
+        with patch.object(w.ds, 'digest', side_effect=AssertionError('admission document read')):
+            owner = w.owner(argparse.Namespace(**self.args()), self.root)
+        self.assertEqual(owner['plan_sha256'], expected)
+
+    def test_unknown_and_proof_mix_refuse_before_tools(self):
+        for identifier, command in [('unknown', 'all'), ('dedup-classified', 'proof')]:
+            with patch.object(w, 'source_gate') as source, patch.object(w, 'preflight') as preflight:
+                with self.assertRaises(ValueError):
+                    w.execute(argparse.Namespace(**self.args(identifier, command)))
+                source.assert_not_called()
+                preflight.assert_not_called()
+
+    def test_cross_contract_receipts_refuse_even_rehashed(self):
+        for name in ('owner', 'build-complete', 'build', 'cargo', 'spec', 'source', 'artifact', 'sample'):
+            for selected, foreign in ((w.DEDUP, w.ADMISSION), (w.ADMISSION, w.DEDUP)):
+                value = w.bound({'name': name}, foreign)
+                value['sha256'] = hashlib.sha256(w.ds.encoded(value)).hexdigest()
+                with self.subTest(name=name, selected=selected.id), self.assertRaises(ValueError):
+                    w.check_binding(value, selected)
+
+    def test_workers_cannot_select_contract_from_spec(self):
+        spec = w.bound(dict(kind='cargo', args=self.args()), w.DEDUP)
+        with patch.object(w, 'child_command') as native:
+            with self.assertRaises(ValueError):
+                w.cargo_worker(spec)
+            with self.assertRaises(ValueError):
+                w.measure_worker(spec)
+            native.assert_not_called()
+
+    def test_tree_predicates_reject_same_commit_wrong_tree(self):
+        for arm, commit in w.DEDUP.cores:
+            tree = dict(w.DEDUP.trees)[arm]
+            w.tree_check(dict(commit=commit, tree=tree), commit, tree)
+            with self.assertRaises(ValueError):
+                w.tree_check(dict(commit=commit, tree='0'*40), commit, tree)
+            with self.assertRaises(ValueError):
+                w.tree_check(dict(commit='0'*40, tree=tree), commit, tree)
+
+    def measure(self, failed_process=None, uncertain=False):
+        args = self.args()
+        prepared = dict(artifacts={a: {'exe': {'path': a+'.exe'}} for a in 'AB'})
+        budget = Mock(root=self.root, observed_child_working_set_peak=5)
+        context = Mock(__enter__=Mock(), __exit__=Mock(return_value=False))
+        commands, compared = [], []
+        def command(argv, *a, **kw):
+            commands.append(argv)
+            self.assertEqual(compared, [])
+            if len(commands) == failed_process:
+                raise RuntimeError('native failed')
+            profile = 'small-device' if '--small-device' in argv else 'default'
+            return w.ds.encoded(wall(profile, argv[2], 100 if argv[0] == 'A.exe' else 98))
+        def compare(arms, security, selected):
+            self.assertEqual(len(commands), 16)
+            self.assertEqual(selected, w.DEDUP)
+            self.assertEqual(arms['A'][0], 100)
+            self.assertEqual(arms['B'][0], 98)
+            compared.append(security)
+            if uncertain:
+                raise ValueError('uncertain bootstrap denominator')
+            return {'passed': False}
+        with patch.object(w, 'owner', return_value={}), patch.object(w, 'verify_build', return_value=prepared),              patch.object(w, 'check_files'), patch.object(w, 'Budget', return_value=budget),              patch.object(w, 'affinity', return_value=context), patch.object(w, 'child_command', side_effect=command),              patch.object(w, 'compare', side_effect=compare):
+            with self.assertRaises((ValueError, RuntimeError)):
+                w.measure_worker(w.bound(dict(args=args, prepared_hashes={}), w.DEDUP), w.DEDUP)
+        return commands, compared, w.load(self.root / 'evidence/result.json')
+
+    def test_all_sixteen_before_eight_failed_gates_and_ba_orientation(self):
+        commands, compared, result = self.measure()
+        self.assertEqual(len(compared), 8)
+        self.assertEqual(result['not_run'], [])
+        self.assertEqual(len(result['completed']), 16)
+        self.assertFalse(result['passed'])
+        w.check_binding(result, w.DEDUP)
+        for command, row in zip(commands, w.schedule(w.DEDUP)):
+            expected = [row['arm']+'.exe', '60000', row['security']]
+            if row['profile'] == 'small-device':
+                expected.append('--small-device')
+            self.assertEqual(command, expected)
+
+    def test_uncertain_comparison_still_evaluates_all_eight(self):
+        commands, compared, result = self.measure(uncertain=True)
+        self.assertEqual(len(commands), 16)
+        self.assertEqual(len(compared), 8)
+        self.assertTrue(all(c['uncertain'] and not c['passed'] for c in result['comparisons']))
+        self.assertFalse(result['passed'])
+
+    def test_runtime_failure_retains_attempt_incomplete_notrun(self):
+        commands, compared, result = self.measure(failed_process=3)
+        self.assertEqual(len(commands), 3)
+        self.assertEqual(compared, [])
+        self.assertEqual(len(result['completed']), 2)
+        self.assertEqual(len(result['failed_or_incomplete']), 1)
+        self.assertEqual(len(result['not_run']), 13)
+        self.assertFalse(result['passed'])
+
+    def test_literal_workflow_negative_routing(self):
+        import itertools
+        ci = (w.SUITE / '.github/workflows/ci.yml').read_text()
+        expressions = w.re.findall(r'^    if: \$\{\{ (.+) \}\}$', ci.split('jobs:\n', 1)[1], w.re.M)
+        for contract, screen, proof, stack, replay in itertools.product(
+                ('admission', 'dedup-classified', 'unknown'), (False, True), (False, True),
+                (False, True), (False, True)):
+            inputs = dict(wall_screen_contract=contract, admission_wall_screen=screen,
+                          admission_pressure_proof=proof, stack_profile=stack,
+                          stack_profile_replay=replay, stack_profile_live=False,
+                          stack_profile_live_replay=False)
+            def evaluate(expression):
+                expression = expression.replace('github.event_name', repr('workflow_dispatch'))
+                expression = w.re.sub(r'inputs\.(\w+)', lambda m: repr(inputs[m[1]]), expression)
+                expression = w.re.sub(r'!(?!=)', ' not ', expression)
+                return bool(eval(expression.replace('&&', ' and ').replace('||', ' or '),
+                                 {'__builtins__': {}}))
+            routes = list(map(evaluate, expressions))
+            invalid = (contract == 'unknown' or
+                       contract == 'dedup-classified' and (not screen or proof) or
+                       screen and (stack or replay) or proof and (not screen or stack))
+            self.assertEqual(routes[0], bool(invalid), inputs)
+            if invalid:
+                self.assertFalse(any(routes[1:]), inputs)
+        workflow = (w.SUITE / '.github/workflows/admission-wall-screen.yml').read_text()
+        self.assertIn("$env:WALL_CONTRACT -cnotin @('admission', 'dedup-classified')", workflow)
+        self.assertIn('--contract $env:WALL_CONTRACT', workflow)
+        self.assertIn('dedup-classified-wall-screen', workflow)
+        self.assertIn('group: admission-wall-screen', workflow)
+        self.assertIn('cancel-in-progress: false', workflow)
+
+class DedupPreparedEvidenceTests(TempTests):
+    def prepared(self):
+        args, _, source, value = BindingTests.prepared(self)
+        args.command, args.contract, args.output = 'all', 'dedup-classified', str(self.root)
+        contract = w.owner(args, self.root)
+        source = dict(identity=dict(commit=w.BASELINE, tree=dict(w.DEDUP.trees)['A']), files={})
+        suite = dict(identity=dict(commit=args.expected_suite, tree='b'*40), files={})
+        value.update(w.binding(w.DEDUP), owner=contract, purpose='rejection-screen',
+                     plan=w.plan(w.DEDUP), suite=suite)
+        for arm, commit in w.DEDUP.cores:
+            value['records'][arm] = w.bound(dict(
+                source=w.bound(dict(identity=dict(commit=commit, tree=dict(w.DEDUP.trees)[arm]),
+                                    files={}), w.DEDUP),
+                suite=w.bound(suite, w.DEDUP), restoration='verified clean initial source'), w.DEDUP)
+            for kind in ('exe', 'pdb'):
+                value['artifacts'][arm][kind].update(w.binding(w.DEDUP))
+            self.write(arm+'-cargo.json', w.bound(dict(
+                purpose='rejection-screen', pressure_tests=[], pressure_proof=None,
+                native_tests=list(w.WALL_TESTS)), w.DEDUP))
+        self.write('owner.json', contract)
+        self.write('build.json', value)
+        return args, contract, source, suite, value
+
+    def test_prepared_cross_plan_swaps_and_tree_edits_refuse(self):
+        args, contract, source, suite, original = self.prepared()
+        def snapshot(path):
+            return source if str(path) == args.core else suite
+        with patch.object(w, 'source_gate'), patch.object(w, 'snapshot', side_effect=snapshot):
+            self.assertEqual(w.verify_build(args, self.root, contract), original)
+            mutations = [
+                lambda v: v.update(plan=w.plan()),
+                lambda v: v.update(owner=dict(contract, schema='coaptic-admission-owner/1')),
+                lambda v: v.pop('contract_id'),
+                lambda v: v['records']['A'].pop('contract_id'),
+                lambda v: v['records']['A']['source'].pop('contract_id'),
+                lambda v: v['records']['B']['source']['identity'].update(tree='0'*40),
+                lambda v: v['records']['B']['suite'].pop('contract_sha256'),
+                lambda v: v['artifacts']['A']['exe'].pop('contract_sha256'),
+            ]
+            for mutate in mutations:
+                value = copy.deepcopy(original)
+                mutate(value)
+                self.write('build.json', value)
+                # Rewritten receipt hashes do not authorize this prepared content.
+                self.write('build-complete.json', dict(
+                    **w.binding(w.DEDUP), prepared_hashes={'build.json': w.ds.digest(
+                        self.root / 'evidence/build.json')}))
+                with self.assertRaises(ValueError):
+                    w.verify_build(args, self.root, contract)
+            self.write('build.json', original)
+            receipt = w.load(self.root / 'evidence/A-cargo.json')
+            receipt.pop('contract_sha256')
+            self.write('A-cargo.json', receipt)
+            with self.assertRaises(ValueError):
+                w.verify_build(args, self.root, contract)
+
+    def test_launch_refuses_foreign_spec_before_worker(self):
+        for selected, foreign in ((w.ADMISSION, w.DEDUP), (w.DEDUP, w.ADMISSION)):
+            with patch.object(w, 'run_worker') as run:
+                with self.assertRaises(ValueError):
+                    w.launch(self.root, 'foreign', w.bound({'kind': 'cargo'}, foreign), {},
+                             timeout=450, selected=selected)
+                run.assert_not_called()
+
+    def test_cargo_tree_mismatch_refuses_before_tools(self):
+        args, contract, source, suite, value = self.prepared()
+        spec = w.bound(dict(root=str(self.root), arm='B', args=vars(args),
+                            source=value['records']['B']['source'],
+                            suite=value['records']['B']['suite']), w.DEDUP)
+        bad = dict(commit=dict(w.DEDUP.cores)['B'], tree='0'*40)
+        with patch.object(w.ds, 'identity', return_value=bad), patch.object(w, 'child_command') as child:
+            with self.assertRaises(ValueError):
+                w.cargo_worker(spec, w.DEDUP)
+            child.assert_not_called()
+
+class StagedSuiteTests(TempTests):
+    def fixture(self, requirement='3'):
+        self.suite = self.root / 'suite'
+        self.native = self.suite / 'tools/benchmark/native'
+        self.native.mkdir(parents=True)
+        self.core = self.root / 'core'
+        manifest = self.core / 'crates/coaptic-io/Cargo.toml'
+        manifest.parent.mkdir(parents=True)
+        manifest.write_bytes(MANIFEST.replace(b'version = "2"',
+                                              ('version = "' + requirement + '"').encode()))
+        (self.native / 'Cargo.lock').write_bytes(BASE)
+        (self.native / 'Cargo.syn3.lock').write_bytes(SYN3)
+        self.held = dict(identity=dict(commit='a'*40, tree='b'*40), files={
+            'tools/benchmark/native/Cargo.lock': hashlib.sha256(BASE).hexdigest(),
+            'tools/benchmark/native/Cargo.syn3.lock': hashlib.sha256(SYN3).hexdigest()})
+        self.stage = w.NativeStage(self.core, self.native)
+        self.lock = self.stage.stage()
+
+    def git(self, root, *args):
+        self.assertEqual(Path(root), self.suite)
+        self.assertEqual(args[0], 'rev-parse')
+        return 'a'*40 if args[1] == 'HEAD' else 'b'*40
+
+    def verify(self, status):
+        with patch.object(w, 'SUITE', self.suite), patch.object(w, 'NATIVE', self.native), \
+                patch.object(w.ds, 'git', side_effect=self.git), \
+                patch.object(w.subprocess, 'check_output', return_value=status), \
+                patch.object(w.ds, 'identity', side_effect=AssertionError('staged suite is intentionally dirty')):
+            w.verify_staged_suite(self.core, 'a'*40, self.held, self.lock)
+
+    def test_owned_syn3_substitution_is_accepted_and_restores(self):
+        self.fixture()
+        self.assertEqual((self.native / 'Cargo.lock').read_bytes(), SYN3)
+        self.verify(b' M tools/benchmark/native/Cargo.lock\0')
+        self.stage.restore()
+        self.assertEqual((self.native / 'Cargo.lock').read_bytes(), BASE)
+
+    def test_syn2_requires_clean_suite(self):
+        self.fixture('2')
+        self.verify(b'')
+        with self.assertRaises(ValueError):
+            self.verify(b' M tools/benchmark/native/Cargo.lock\0')
+
+    def test_staged_index_untracked_and_other_edits_are_refused(self):
+        self.fixture()
+        for status in (b'', b'M  tools/benchmark/native/Cargo.lock\0', b'?? new-file\0',
+                       b' M other.py\0', b' M tools/benchmark/native/Cargo.lock\0?? new-file\0'):
+            with self.subTest(status=status), self.assertRaises(ValueError):
+                self.verify(status)
+
+    def test_self_described_selection_cannot_authorize_wrong_lock(self):
+        self.fixture()
+        status = b' M tools/benchmark/native/Cargo.lock\0'
+        self.lock['selected_sha256'] = '0'*64
+        with self.assertRaises(ValueError):
+            self.verify(status)
+        (self.native / 'Cargo.lock').write_bytes(b'foreign')
+        self.lock['selected_sha256'] = w.ds.digest(self.native / 'Cargo.lock')
+        with self.assertRaises(ValueError):
+            self.verify(status)
+
+    def test_git_tree_and_base_hash_remain_mandatory(self):
+        self.fixture()
+        status = b' M tools/benchmark/native/Cargo.lock\0'
+        self.held['identity']['tree'] = '0'*40
+        with self.assertRaises(ValueError):
+            self.verify(status)
+        self.held['identity']['tree'] = 'b'*40
+        self.lock['canonical_base_sha256'] = '0'*64
+        with self.assertRaises(ValueError):
+            self.verify(status)
 
 
 if __name__ == '__main__':
