@@ -749,12 +749,13 @@ class ReportingTests(TempTests):
 def pressure_census(listing=False):
     # Literal source namespace and census, independent of the runner constant.
     names = (
+        'admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_oscore',
         'admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected',
         'admission_pressure::tx_credit_survives_refusal_and_release_recovers_oscore',
         'admission_pressure::tx_credit_survives_refusal_and_release_recovers_unprotected')
-    return ((''.join(name + ': test\n' for name in names) + '\n3 tests, 0 benchmarks\n') if listing else
-            ('running 3 tests\n' + ''.join('test ' + name + ' ... ok\n' for name in names) +
-             '\ntest result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; '
+    return ((''.join(name + ': test\n' for name in names) + '\n4 tests, 0 benchmarks\n') if listing else
+            ('running 4 tests\n' + ''.join('test ' + name + ' ... ok\n' for name in names) +
+             '\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; '
              '9 filtered out; finished in 0.01s\n')).encode()
 
 
@@ -769,7 +770,7 @@ class ProofTests(TempTests):
         for listing in (True, False):
             raw = pressure_census(listing)
             for bad in (b'', raw.replace(b'admission_pressure::', b'wrong::'),
-                        raw + raw, raw[:-30], raw.replace(b'3 test', b'2 test'),
+                        raw + raw, raw[:-30], raw.replace(b'4 test', b'3 test'),
                         raw.replace(b' ... ok', b' ... FAILED'), raw.replace(b' ... ok', b' ... ignored'),
                         raw + b'other::test: test\ntest other::test ... ok\n'):
                 if bad == raw:
@@ -788,7 +789,20 @@ class ProofTests(TempTests):
                  '0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.01s\n')):
             with self.subTest(listing=listing), self.assertRaises(ValueError):
                 w.validate_census(raw.encode(), listing=listing, expected=w.PRESSURE_TESTS)
-        self.assertEqual(len(w.PRESSURE_TESTS), 3)
+        self.assertEqual(len(w.PRESSURE_TESTS), 4)
+
+    def test_prior_three_case_proof_cannot_satisfy_protected_rx_census(self):
+        names = (
+            'admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected',
+            'admission_pressure::tx_credit_survives_refusal_and_release_recovers_oscore',
+            'admission_pressure::tx_credit_survives_refusal_and_release_recovers_unprotected')
+        old_listing = ''.join(name + ': test\n' for name in names) + '\n3 tests, 0 benchmarks\n'
+        old_execution = ('running 3 tests\n' + ''.join('test ' + name + ' ... ok\n' for name in names) +
+                         '\ntest result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; '
+                         '28 filtered out; finished in 0.00s\n')
+        for listing, raw in ((True, old_listing), (False, old_execution)):
+            with self.subTest(listing=listing), self.assertRaises(ValueError):
+                w.validate_census(raw.encode(), listing=listing, expected=w.PRESSURE_TESTS)
 
     def test_pressure_source_hash_and_declared_census_guards(self):
         source = (w.SUITE / w.PRESSURE_SOURCE).read_bytes().replace(b'\r\n', b'\n')
