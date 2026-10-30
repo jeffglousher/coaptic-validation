@@ -128,6 +128,18 @@ class Tests(unittest.TestCase):
                 w.selected_dotnet_sdk('dotnet', Path(directory), None, {})
             command.assert_called_once()
 
+    def test_source_identity_refusal_retains_bounded_dirty_path_census(self):
+        import development_suite as suite
+        for status in ('?? tools/benchmark/windows-stack/obj/', 'M ' + 'x' * 8192):
+            with self.subTest(status_bytes=len(status)), \
+                 patch.object(suite, 'git', return_value=status):
+                with self.assertRaisesRegex(ValueError, 'requires clean committed sources') as caught:
+                    suite.identity(Path('.'))
+                note, = caught.exception.__notes__
+                self.assertIn(status[:4096], note)
+                self.assertLess(len(note), 4200)
+                self.assertEqual('[truncated]' in note, len(status) > 4096)
+
     def receipt(self, capture_id='owned'):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

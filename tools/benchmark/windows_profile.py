@@ -459,6 +459,8 @@ def build_phase(args, root, budget):
     tool = tool_dlls[0].with_name(tool_dlls[0].name.removesuffix('.runtimeconfig.json') + '.dll')
     if not tool.is_file():
         raise ValueError('tool DLL missing')
+    if sources != source_identity(args.core, args.expected_core, args.expected_suite):
+        raise ValueError('source changed during tooling build')
     # Fail the smaller tooling build before spending time on the Rust workload.
     with native_lock(args.core) as lock:
         raw = command([tools['cargo']['path'], 'build', '--release', '--locked',

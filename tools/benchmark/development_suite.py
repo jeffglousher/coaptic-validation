@@ -75,8 +75,12 @@ def git(root, *args):
 
 def identity(root):
     root = Path(root).resolve()
-    if git(root, "status", "--porcelain", "--untracked-files=normal"):
-        raise ValueError("preparation requires clean committed sources: " + str(root))
+    status = git(root, "status", "--porcelain", "--untracked-files=normal")
+    if status:
+        error = ValueError("preparation requires clean committed sources: " + str(root))
+        error.add_note("git status --porcelain --untracked-files=normal: " +
+                       status[:4096] + (" [truncated]" if len(status) > 4096 else ""))
+        raise error
     return dict(path=str(root), commit=git(root, "rev-parse", "HEAD"),
                 tree=git(root, "rev-parse", "HEAD^{tree}"))
 
