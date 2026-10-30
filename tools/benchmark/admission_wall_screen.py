@@ -44,11 +44,16 @@ WALL_TESTS = tuple('batch_tests::' + name for name in (
     'wall_full_metadata_and_complete_payload_are_required',
     'wall_missing_bad_response_and_authentication_refuse_then_recover'))
 PRESSURE_SOURCE = 'tools/benchmark/native/servers/src/bin/bench_core/admission_pressure.rs'
-PRESSURE_LF_SHA256 = '67cd4f19969f7aa47eef9ae2a8e1101438cc0b94f163d6f3a2c966b7585b890a'
-PRESSURE_TESTS = ('admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected',)
+PRESSURE_LF_SHA256 = 'f8b4f921d222b82a8e3060f46ce1a7e24c6eccd0e3d4a1e288f3774d399715ed'
+PRESSURE_TESTS = (
+    'admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected',
+    'admission_pressure::tx_credit_survives_refusal_and_release_recovers_oscore',
+    'admission_pressure::tx_credit_survives_refusal_and_release_recovers_unprotected')
 PROOF_SCOPE = ('public-App SmallDevice full_responses unprotected retained outbound response RX credit; '
-               'incoming fresh GET refusal preserves slot/pin/occupancy; exact collection and fresh GET recovery')
-UNIMPLEMENTED = ['protected', 'TX pressure', 'cancellation', 'Block2 continuation']
+               'incoming fresh GET refusal preserves slot/pin/occupancy; exact collection and fresh GET recovery; '
+               'fixture-owned TX credit survives refusal and release permits fresh recovery in unprotected '
+               'and OSCORE traffic; protected responses authenticated under continuous context')
+UNIMPLEMENTED = ['protected RX pressure', 'Observe cancellation', 'Block2 continuation']
 
 
 def purpose(args):

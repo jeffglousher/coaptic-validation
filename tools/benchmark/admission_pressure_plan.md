@@ -1,8 +1,12 @@
-# Single RX ownership proof before pressure timing
+# RX and TX ownership proofs before pressure timing
 
-This plan covers one public-App correctness proof, with SmallDevice resources,
-full_responses and unprotected traffic. Native source is newly written and UNRUN
-at this integration handoff. Portable Python mocks are not native execution.
+This plan covers three public-App correctness tests with SmallDevice resources:
+unprotected retained-response RX pressure, and fixture-owned TX pressure in
+unprotected and OSCORE traffic. The expanded native cohort is UNRUN at this
+integration handoff. Portable Python mocks are not native execution. Historical
+run [41094806564](https://github.com/jeffglousher/coaptic-validation/actions/runs/41094806564)
+passed the original single unprotected RX proof on both arms; it does not
+establish the new TX assertions or the expanded three-test census.
 
 The immutable core arms are A 623c82db1a6606ec86cd56bb52009988b9f0d87e and
 B 8782a6a0b0aef2facf51bec884cfe37f2a80f28d. The parent checkout's unrelated
@@ -15,11 +19,14 @@ removing that exact include yields the historical normalized production fixture
 SHA256 fe144de7598da4b753e668a17a8cbd91033896691a0ee045c5be711e784c0272.
 No old fixture pin is claimed to match the new test source.
 
-The sole pressure test's exact qualified namespace is:
+The exact pressure test census is:
 
     admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected
+    admission_pressure::tx_credit_survives_refusal_and_release_recovers_oscore
+    admission_pressure::tx_credit_survives_refusal_and_release_recovers_unprotected
 
-Its declared census is exactly one test. Both arms must also list and pass exactly
+Both arms must list and pass all three tests. An old successful RX-only listing
+or completion cannot satisfy the expanded proof. Both arms must also pass exactly
 these four original wall tests, with their observed module namespace:
 
     batch_tests::wall_cli_bounds_and_mixed_flag_refusal
@@ -40,6 +47,19 @@ zero handler calls, one RX refusal metric increment, and the same held slot,
 pin state and occupancy after poll. It collects the exact held response, verifies
 credit release and one-time collection, then uses another fresh GET to verify
 content recovery and one handler call. This is ownership evidence, not timing.
+
+Each TX test reserves one genuine public TX slot, leaving exactly one free
+control slot. It encodes a sentinel without queuing a transmission and records
+the slot's bytes, endpoint, occupancy and pin state. An incoming fresh request
+must receive a matching 5.03, increment the TX refusal metric once, leave the
+handler uncalled, and preserve the reservation and sentinel. The dedup table is
+empty before pressure; the refusal's inline replay must not own a TX pin or hide
+an eviction. Only the fixture releases its reservation, once, then a distinct
+MID/token request must recover the complete expected response and one handler
+call. OSCORE protection and response authentication use one continuous context;
+no sequence, key, replay or binding state is reset for recovery. All three tests
+serialize the shared handler counter through a module mutex, including ordinary
+parallel native-test invocations. No timer or performance sample is added.
 
 Run admission_wall_screen.py proof with the same required --core,
 --expected-suite and --output arguments as build/all. The existing outer
@@ -65,11 +85,12 @@ outer worker, 8 GiB build and 64 MiB evidence, including the existing reserve.
 Existing source restoration, unresolved cleanup and reporting-error contracts
 apply. No new job cap or profiling dependency is introduced.
 
-Protected RX, TX pressure, cancellation and Block2 continuation proofs are
-UNIMPLEMENTED. This single proof is not Stage B completion or promotion. Establish
+Protected RX, Observe cancellation and Block2 continuation proofs remain
+UNIMPLEMENTED. The two TX tests are implemented but UNRUN. This cohort is not
+Stage B completion or promotion. Establish
 correctness proofs before quantitative timing. A future four-case by two-mode by
 ABBA timing design would total 32 processes; its matrix and gates are not frozen.
-Do not infer those cases from this single unprotected test.
+Do not infer those missing cases from the implemented RX/TX tests.
 
 Stage A run 41086130074 at c58e47e36ebc5d90d3301fb62fa244d5e4803aae
 already completed 16 processes and eight passing gates with independent review;
@@ -85,5 +106,12 @@ PR check run 41093144320 at 2a550c1 passed 668 benchmark Python tests with
 full_responses method, and SlotId::from_index is private. No RX proof executed.
 The correction removes the redundant builder call, uses genuine public pool IDs,
 and binds the revised native source hash. Profile capacities, the test census,
-workload pins and all process/resource limits remain fixed. Compilation and
-execution of the corrected native proof remain pending.
+workload pins and all process/resource limits remained fixed. The corrected
+single RX proof subsequently passed on both arms in run 41094806564. That
+historical outcome remains separate from the current expanded cohort.
+
+The expanded cohort changes only the cfg(test) pressure module, its source pin,
+declared census, portable refusal coverage and this plan. Production fixture
+behavior, core arms, Stage A plan/statistics and all process/resource limits stay
+unchanged. The original dedup screen at immutable suite b0d4662 remains rejected;
+no new dedup screen, timing process or replacement sample is authorized here.
