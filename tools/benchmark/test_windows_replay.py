@@ -32,7 +32,7 @@ def fixture():
     exe, pdb, etl = b'exe', b'pdb', b'etl'
     sources = dict(core=dict(commit=r.ORIGINAL_CORE), suite=dict(commit=r.ORIGINAL_SUITE))
     config = dict(capture_id=r.CAPTURE_ID, directory=str(evidence / r.COHORT), pid=r.PID, tid=r.TID,
-                  process_start_utc=r.PROCESS_START, dedicated_hosted_vm=True,
+                  process_start_utc='2026-10-30T06:28:42.3648387+00:00', dedicated_hosted_vm=True,
                   exe=str(evidence / r.SELECTED[0]), pdb=str(evidence / r.SELECTED[1]),
                   exe_sha256=r.sha(exe), pdb_sha256=r.sha(pdb),
                   identity=dict(source=json.dumps(sources), capture=r.CAPTURE_ID, cohort=r.COHORT,
@@ -77,6 +77,7 @@ class Tests(unittest.TestCase):
             'unprotected-capture-00/capture.json': (2923, 'c07891467e66dfd553e4d0001565efb623c07656af2199125d7ed02916d5db8c'),
             'unprotected-capture-00/capture.etl': (3145728, 'fb936cd1054f7995e3891457018e01fcb6218e59cc3b14e4b197580ccc270c3e')})
         self.assertEqual(str(r.ORIGINAL_ROOT), 'D:\\a\\_temp\\coaptic-stack-profile')
+        self.assertEqual(r.PROCESS_START, '2026-10-30T06:28:42.3648387+00:00')
 
     def test_metadata_refuses_other_artifact_run_revision_digest_size(self):
         r.validate_metadata(metadata())
@@ -208,6 +209,7 @@ class Tests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'relocation refused'):
                 r.receipt_inputs(selected, build, PureWindowsPath('C:/different/coaptic-stack-profile'))
         for target, key, value in [('config', 'pid', 1), ('config', 'tid', 1), ('config', 'process_start_utc', 'other'),
+                                   ('config', 'process_start_utc', '2026-10-30T06:28:42.3648387Z'),
                                    ('config', 'directory', 'C:\\elsewhere'), ('image', 'image_id', 1),
                                    ('image', 'pdb_guid', 'other'), ('root', 'stopped', False),
                                    ('root', 'etl', 'C:\\relocated.etl')]:

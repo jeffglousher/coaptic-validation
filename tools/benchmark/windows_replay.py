@@ -33,7 +33,7 @@ ORIGINAL_CORE = '8af71fe4aa73b3bb76a921a836a1a9647d75f361'
 CAPTURE_ID = 'b9ca443c-4f73-4316-8219-8d9f4e346a48'
 COHORT = 'unprotected-capture-00'
 PID, TID = 4936, 7436
-PROCESS_START = '2026-10-30T06:28:42.3648387Z'
+PROCESS_START = '2026-10-30T06:28:42.3648387+00:00'
 ORIGINAL_ROOT = PureWindowsPath('D:/a/_temp/coaptic-stack-profile')
 SELECTED = ('binaries/bench-core.exe', 'binaries/bench_core.pdb',
             COHORT + '/capture.json', COHORT + '/capture.etl')
