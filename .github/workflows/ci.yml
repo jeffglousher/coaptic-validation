@@ -15,7 +15,7 @@ on:
         default: false
         type: boolean
       admission_pressure_proof:
-        description: With admission_wall_screen, run RX/TX ownership proofs without measurements
+        description: With admission_wall_screen, run RX/TX and continuation ownership proofs without measurements
         default: false
         type: boolean
       stack_profile:

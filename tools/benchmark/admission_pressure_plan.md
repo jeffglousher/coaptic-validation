@@ -1,16 +1,21 @@
-# RX and TX ownership proofs before pressure timing
+# Admission ownership proofs before pressure timing
 
-This plan covers four public-App correctness tests with SmallDevice resources:
-retained-response RX pressure and fixture-owned TX pressure, each in unprotected
-and OSCORE traffic. The new protected-RX case and expanded four-test cohort are
-UNRUN at this integration handoff. Portable Python mocks are not native execution. Historical
-run [41094806564](https://github.com/jeffglousher/coaptic-validation/actions/runs/41094806564)
-passed the original single unprotected RX proof on both arms; it does not
-establish later assertions. Run
+This plan selects eight public-App correctness tests: retained-response RX,
+fixture-owned TX, Observe cancellation under TX pressure, and explicitly
+notification-backed Block2 under RX pressure, each in unprotected and OSCORE
+traffic. The original four RX/TX bodies passed on both core arms in run
+[41129635329](https://github.com/jeffglousher/coaptic-validation/actions/runs/41129635329)
+at source c5eb333: 81 portable tests and 16 native executions (eight wall plus
+eight pressure). The four new Observe and Block2 cases and this expanded cohort
+are UNRUN at this integration handoff. Portable mocks are not native execution.
+
+Historical run
+[41094806564](https://github.com/jeffglousher/coaptic-validation/actions/runs/41094806564)
+passed the original single unprotected RX proof on both arms. Run
 [41123960432](https://github.com/jeffglousher/coaptic-validation/actions/runs/41123960432)
-at source 54ce45a subsequently passed the original three pressure cases plus
-four wall tests on both arms: 14 native executions and 80 portable tests.
-That source-specific result does not establish the new protected-RX case.
+at source 54ce45a passed the original three pressure cases plus four wall tests
+on both arms: 14 native executions and 80 portable tests. Neither historical
+cohort establishes later assertions. Existing sealed receipts remain unchanged.
 
 The immutable core arms are A 623c82db1a6606ec86cd56bb52009988b9f0d87e and
 B 8782a6a0b0aef2facf51bec884cfe37f2a80f28d. The parent checkout's unrelated
@@ -25,13 +30,17 @@ No old fixture pin is claimed to match the new test source.
 
 The exact pressure test census is:
 
+    admission_pressure::block2_notification_under_rx_pressure_preserves_body_and_completes_oscore
+    admission_pressure::block2_notification_under_rx_pressure_preserves_body_and_completes_unprotected
+    admission_pressure::observe_cancel_under_tx_pressure_releases_relation_and_recovers_oscore
+    admission_pressure::observe_cancel_under_tx_pressure_releases_relation_and_recovers_unprotected
     admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_oscore
     admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected
     admission_pressure::tx_credit_survives_refusal_and_release_recovers_oscore
     admission_pressure::tx_credit_survives_refusal_and_release_recovers_unprotected
 
-Both arms must list and pass all four tests. Historical successful RX-only or
-three-case listings/completions cannot satisfy the expanded proof. Both arms must also pass exactly
+Both arms must list and pass all eight tests. Historical one-, three- or four-case
+results, or a partial six-case result, cannot satisfy the expanded proof. Both arms must also pass exactly
 these four original wall tests, with their observed module namespace:
 
     batch_tests::wall_cli_bounds_and_mixed_flag_refusal
@@ -73,9 +82,52 @@ empty before pressure; the refusal's inline replay must not own a TX pin or hide
 an eviction. Only the fixture releases its reservation, once, then a distinct
 MID/token request must recover the complete expected response and one handler
 call. OSCORE protection and response authentication use one continuous context;
-no sequence, key, replay or binding state is reset for recovery. All four tests
+no sequence, key, replay or binding state is reset for recovery. All eight tests
 serialize the shared handler counter through a module mutex, including ordinary
 parallel native-test invocations. No timer or performance sample is added.
+
+The Observe cases use unchanged SmallDevice capacities and five registration,
+cancellation and recovery cycles: 15 request/response exchanges, 30 internal
+datagrams, no UDP. Real Observe=0 registration precedes holding one genuine TX
+slot. Observe=1 uses the same peer/token and a fresh MID under pressure; the
+relation must disappear even when the response is 5.03. Sentinel bytes, endpoint,
+pin and occupancy must survive. Only the fixture releases that slot; a fresh
+ordinary request then authenticates and succeeds. Handler counts and exact
+refusal metrics are checked. OSCORE uses one continuous context pair.
+
+The Block2 cases intentionally exercise an Observe-notification-backed snapshot,
+not an ordinary stateless response. They use the unchanged Default allocated
+capacities: route 1; Calls 4; deferred 0; association 1/security bindings 4;
+RX/TX 4x1472; dedup 8; Observe 4; RX body 1x1024; TX body 2x1024. The raw public
+builder explicitly enables full-response client retention. A test-only nonuniform
+64-byte representation has stable format and ETag; production BODY and factories
+are unchanged. Two real completed outbound Calls stay uncollected. A third setup
+Call is explicitly NON and its real NON response is postponed, avoiding a pending
+CON's NSTART block on notification. Incoming registration and continuation GETs
+remain CON. Real Observe=0 plus Block2 NUM=0/SZX=0 registration is followed by
+public App.notify and a NON notification. Its block zero starts a new assembly;
+the registration fragment is checked but never mixed into that assembly.
+
+After receiving the third completed Call response, three actual RX owners leave
+one ingress slot. Followups NUM 1, 2 and 3 with fresh MIDs/PIVs and no Observe
+option must authenticate and complete all 64 bytes with exact block numbers,
+SZX, M flags, content format and ETag. The handler remains uncalled during those
+continuations. Genuine public IDs are inventoried and released before setup,
+then rebound to actual retained response bytes and App-owned body/transfer
+metadata. The same body survives incomplete fragments and is released by App at
+the final fragment. Only public Call collection releases each retained RX owner,
+once; an ordinary fresh request proves recovery. The Observe relation legitimately
+remains. The original observing request binding authenticates notification;
+each followup has its own normal binding. No security reset or fallback trial is
+used. Fixed authentication, snapshot, assembly and collection scratch is explicit
+in source; object, stack and whole-memory effects are not measured.
+
+Ordinary classic Block2 on these pins selects from the handler borrow and releases
+its temporary body reservation; only encoded TX replay survives. Thus an ordinary
+retained-body/handler-free assertion would test an incorrect contract. No private
+fresh-PIV API, manually injected body or new core API is used to force that path.
+This named notification cell does not establish every Block2 mode or ordinary
+stateless traffic performance.
 
 Run admission_wall_screen.py proof with the same required --core,
 --expected-suite and --output arguments as build/all. The existing outer
@@ -101,13 +153,12 @@ outer worker, 8 GiB build and 64 MiB evidence, including the existing reserve.
 Existing source restoration, unresolved cleanup and reporting-error contracts
 apply. No new job cap or profiling dependency is introduced.
 
-Observe cancellation and Block2 continuation proofs remain UNIMPLEMENTED.
-The new protected-RX test is implemented but UNRUN. The other three cases passed
-at source 54ce45a; they remain selected in the new cohort. This cohort is not
-Stage B completion or promotion. Establish
-correctness proofs before quantitative timing. A future four-case by two-mode by
-ABBA timing design would total 32 processes; its matrix and gates are not frozen.
-Do not infer those missing cases from the implemented RX/TX tests.
+All eight specified software cases are implemented, but the four new Observe
+and Block2 cases are UNRUN. This cohort is not Stage B completion or promotion.
+Native compilation and exact two-arm execution must pass before timing design.
+The required pressure/continuation performance comparisons remain NOT RUN;
+their supported matrix, counts and gates must be frozen separately. Do not infer
+quantitative regression safety from these correctness assertions.
 
 Stage A run 41086130074 at c58e47e36ebc5d90d3301fb62fa244d5e4803aae
 already completed 16 processes and eight passing gates with independent review;
@@ -141,5 +192,5 @@ new `dedup_entry_ref` call. That accessor exists on the two admission pins but
 is absent from the core checked by ordinary CI. The correction uses the
 existing by-value `dedup_entry` accessor for the same test-only TX-pin assertion.
 It does not change core code or weaken the ownership check. The normalized
-pressure source hash is rebound. New TX execution remains unrun; no two-arm
-proof or timing process was dispatched from the failed commit.
+pressure source hash was rebound. The corrected three-case proof subsequently
+passed in run 41123960432; no timing process was dispatched from the failed commit.
