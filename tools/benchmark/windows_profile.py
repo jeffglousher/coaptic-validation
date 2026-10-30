@@ -410,6 +410,43 @@ def retain_build_evidence(root, binary, pdb, tool):
                  files_manifest=dict(path=str(manifest), sha256=digest(manifest))))
 
 
+def stage_tool_sources(root, source=None):
+    """Build frozen tooling in owned output, including project-relative SDK files."""
+    source = Path(source) if source is not None else HERE / 'windows-stack'
+    files = []
+    for path in source.iterdir():
+        if len(files) >= 32 or path.suffix not in ('.cs', '.csproj'):
+            raise ValueError('unexpected or excessive tool source entries')
+        info = path.lstat()
+        if (not path.is_file() or path.is_symlink()
+                or getattr(info, 'st_file_attributes', 0) & 0x400):
+            raise ValueError('tool source must be an ordinary file')
+        files.append(path)
+    projects = [path for path in files if path.suffix == '.csproj']
+    if len(projects) != 1:
+        raise ValueError('exactly one owned C# project required')
+    staged = root / 'tool-source'
+    staged.mkdir()  # Fresh only, including failed preparations.
+    manifest, total = [], 0
+    for original in sorted(files):
+        with original.open('rb') as stream:
+            data = stream.read(1024 * 1024 + 1)
+        total += len(data)
+        if total > 1024 * 1024:
+            raise ValueError('tool source copy exceeds 1 MiB')
+        expected = hashlib.sha256(data).hexdigest()
+        destination = staged / original.name
+        with destination.open('xb') as stream:
+            stream.write(data)
+        if digest(destination) != expected or digest(original) != expected:
+            raise ValueError('tool source changed during staging')
+        manifest.append(dict(file=original.name, bytes=len(data), sha256=expected))
+    receipt = root / 'evidence/build-inputs/tool-source.json'
+    receipt.parent.mkdir(parents=True, exist_ok=True)
+    save(receipt, dict(schema='coaptic-windows-tool-source/1', source=str(source), files=manifest))
+    return staged / projects[0].name, dict(path=str(receipt), sha256=digest(receipt))
+
+
 def selected_dotnet_sdk(dotnet, root, budget, env):
     """Select the exact provisioned SDK from an owned, retained global.json."""
     directory = root / 'evidence/build-inputs'
@@ -441,14 +478,12 @@ def build_phase(args, root, budget):
                CARGO_PROFILE_RELEASE_CODEGEN_UNITS='1',
                DOTNET_CLI_TELEMETRY_OPTOUT='1', MSBUILDDISABLENODEREUSE='1')
     before = time.monotonic()
-    projects = list((HERE / 'windows-stack').glob('*.csproj'))
-    if len(projects) != 1:
-        raise ValueError('exactly one owned C# project required')
+    project, staged_sources = stage_tool_sources(root)
     dotnet = shutil.which('dotnet')
     if not dotnet:
         raise ValueError('.NET SDK unavailable')
     sdk_directory, sdk, sdk_selection = selected_dotnet_sdk(dotnet, root, budget, env)
-    command([dotnet, 'build', projects[0], '--configuration', 'Release', '--output', root / 'tool',
+    command([dotnet, 'build', project, '--configuration', 'Release', '--output', root / 'tool',
              '-p:BaseIntermediateOutputPath=' + str(root / 'dotnet-obj') + os.sep,
              '-p:NuGetLockFilePath=' + str(root / 'tool-packages.lock.json'),
              '-p:RestorePackagesWithLockFile=true', '-p:UseSharedCompilation=false', '-nodeReuse:false'], budget,
@@ -478,6 +513,7 @@ def build_phase(args, root, budget):
         raise ValueError('compiler changed during build')
     native, tool_evidence = retain_build_evidence(root, binary, pdb, tool)
     tool_evidence['sdk_selection'] = sdk_selection
+    tool_evidence['staged_sources'] = staged_sources
     record = dict(schema='coaptic-windows-build/1', sources=sources, inputs=inputs,
                   compiler=compiler, cargo=cargo, tools=tools, lock=lock, dotnet=sdk,
                   native=native,

@@ -82,7 +82,10 @@ App-rooted samples per cohort. A completed workflow alone is not qualification.
 Unprofiled controls describe capture context; their time is not subtracted.
 
 Build targets, package caches and temporary conversion files belong to the
-ephemeral job, with an aggregate 8 GiB sampled refusal bound. Evidence has a
+ephemeral job, with an aggregate 8 GiB sampled refusal bound. The C# tool is built
+from a hash-verified copy of its source files inside that owned output; SDK files
+generated beside the project are counted there, while the original checkouts
+must remain clean. Evidence has a
 separate 256 MiB sampled refusal bound. Direct capture children, including ETL
 conversion, have a sampled 1 GiB working-set refusal bound each (2 GiB combined).
 These monitors do not establish a hard quota, whole-job peak or build completion

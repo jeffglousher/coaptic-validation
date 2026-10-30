@@ -140,6 +140,51 @@ class Tests(unittest.TestCase):
                 self.assertLess(len(note), 4200)
                 self.assertEqual('[truncated]' in note, len(status) > 4096)
 
+    def test_tool_sources_are_copied_exactly_into_owned_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            source = root / 'original'; source.mkdir()
+            inputs = {'Tool.csproj': b'<Project/>', 'Program.cs': b'class Program {}'}
+            for name, data in inputs.items(): (source / name).write_bytes(data)
+            project, receipt = w.stage_tool_sources(root, source)
+            self.assertEqual(project, root / 'tool-source/Tool.csproj')
+            for name, data in inputs.items():
+                self.assertEqual((project.parent / name).read_bytes(), data)
+                self.assertEqual((source / name).read_bytes(), data)
+            manifest = w.read_json(receipt['path'])
+            self.assertEqual(manifest['source'], str(source))
+            self.assertEqual({row['file'] for row in manifest['files']}, set(inputs))
+            self.assertEqual(receipt['sha256'], w.digest(receipt['path']))
+            # Project-relative generated files belong to the monitored build root.
+            (project.parent / 'NuGet').mkdir()
+            (project.parent / 'NuGet/generated').write_bytes(b'owned')
+            self.assertEqual(set(path.name for path in source.iterdir()), set(inputs))
+            with self.assertRaises(FileExistsError): w.stage_tool_sources(root, source)
+
+    def test_tool_source_staging_refuses_unknown_oversize_or_changed_inputs(self):
+        for case in ('unknown', 'oversize', 'changed'):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory).resolve(); source = root / 'original'; source.mkdir()
+                (source / 'Tool.csproj').write_bytes(b'<Project/>')
+                if case == 'unknown': (source / 'NuGet').mkdir()
+                if case == 'oversize':
+                    import io
+                    (source / 'Large.cs').touch()
+                    original_open = Path.open
+                    def oversized(path, *args, **kwargs):
+                        return (io.BytesIO(b'x' * (1024 * 1024 + 1)) if path.name == 'Large.cs'
+                                else original_open(path, *args, **kwargs))
+                    with patch.object(Path, 'open', oversized):
+                        with self.assertRaisesRegex(ValueError, 'exceeds 1 MiB'):
+                            w.stage_tool_sources(root, source)
+                    continue
+                if case == 'changed':
+                    with patch.object(w, 'digest', return_value='wrong'):
+                        with self.assertRaisesRegex(ValueError, 'changed during staging'):
+                            w.stage_tool_sources(root, source)
+                else:
+                    with self.assertRaises(ValueError): w.stage_tool_sources(root, source)
+
     def receipt(self, capture_id='owned'):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
