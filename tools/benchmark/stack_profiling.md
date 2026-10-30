@@ -203,9 +203,15 @@ refusal and bounded field diagnostic remain retained. No profile was emitted.
 
 A successful export renders the canonical interactive profile
 with a diagnostic-only banner and records separate ancestry/quality counts.
-The roughly 45 ms original window may miss the unchanged 200 App-rooted sample
-floor. That floor does not prevent testing exporter capability, and export
-success never establishes qualified CPU shares, a hotspot ranking or a CPU gain.
+[The first exported profile](evidence/windows-stack-capability-20261030/README.md)
+contains 41 samples, including 33 with App ancestry, below the unchanged
+200-sample nomination floor. Offline run 41023864069 passes the SDK build,
+113 pure C# model assertions and all 88 portable checks. Rust callers resolve;
+91 system-frame occurrences remain unresolved. This proves the single
+capture-to-viewer path, with no qualified hotspot ranking or CPU gain.
+The profile identity names the original capture tool; the replay build receipt
+identifies the current exporter. Browser checks cover zoom, filtering and reset.
+The other original 15 captures and two controls remain not run.
 
 ## Linux and the Waveshare device
 

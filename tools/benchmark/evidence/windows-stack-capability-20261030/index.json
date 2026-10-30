@@ -1,0 +1,41 @@
+{
+  "schema": "coaptic-evidence-index/1",
+  "files": {
+    "checks.json": {
+      "bytes": 2360,
+      "sha256": "2988624e33f32e3670ca7d1f5556cb06eb22e31b4f3b8c3b75ca327041b7a396"
+    },
+    "export-receipt.json.gz": {
+      "bytes": 957,
+      "sha256": "3036f5ed789707829b57545226a15321e67aebf75c9de21bc16dace7ffec6b35",
+      "decompressed_bytes": 1774,
+      "decompressed_sha256": "5d4e9612f6b398e40295a8d5daaa463091d9d2b512e3d733835de16af880eded"
+    },
+    "profile.html.gz": {
+      "bytes": 7224,
+      "sha256": "f6330676c4ced1108641637b675c4d6b1ad22ecad2e3bcde3252238a2eff2fc0",
+      "decompressed_bytes": 155367,
+      "decompressed_sha256": "1c1cd22c8a646a9ea8d4b9178a6f27727b8c0c2cf39e7fbcacf04aa08c923117"
+    },
+    "profile.json.gz": {
+      "bytes": 4115,
+      "sha256": "b7c75f0bf18546f7525a09acba1ed594e3fc08fc284595083aaa2c7f25ddc656",
+      "decompressed_bytes": 123902,
+      "decompressed_sha256": "319e19538fe1e29b2137359d61e49ebd8ff8fd5ee9da76ffd7f1365beab74ae1"
+    },
+    "README.md": {
+      "bytes": 5347,
+      "sha256": "59b55da155a74b3178318fdb3e03c7592a56f57201a0c98033bd396edfece49f"
+    },
+    "receipt.json.gz": {
+      "bytes": 8844,
+      "sha256": "a03fb44448d29dc70d1e6db7766cf5cefab58d17c74484c0d7552f9255d69827",
+      "decompressed_bytes": 30264,
+      "decompressed_sha256": "01ed100ebc3b074b67cfa021a4662dd3133a171105b374a835298fba800922bf"
+    },
+    "retained-failures.json": {
+      "bytes": 2914,
+      "sha256": "2f46417b9ddfe12b6e675f549e6483caeda725ede4c8d78c8eede20bd5f5e67e"
+    }
+  }
+}

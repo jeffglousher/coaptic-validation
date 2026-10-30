@@ -1,0 +1,87 @@
+{
+  "schema": "coaptic-profiler-attempt-dispositions/1",
+  "attempt": 1,
+  "notes": "Setup failures and offline passes are not additional capture cohorts. Earlier compact receipts remain retained privately; GitHub run histories retain producer logs subject to service retention. No original observation is replaced.",
+  "attempts": [
+    {
+      "run": 41002368889,
+      "result": "pre-build Python containment fixture failure",
+      "python_passes": 49,
+      "one_native_workload_and_capture": false,
+      "offline_only": false
+    },
+    {
+      "run": 41003811785,
+      "result": "ambient CARGO setting refused before compilation",
+      "python_passes": 51,
+      "one_native_workload_and_capture": false,
+      "offline_only": false
+    },
+    {
+      "run": 41004907896,
+      "result": "reparse entry refused during partial Rust build",
+      "python_passes": 51,
+      "one_native_workload_and_capture": false,
+      "offline_only": false
+    },
+    {
+      "run": 41005688179,
+      "result": "owned INetCache alias identified and refused during partial Rust build",
+      "python_passes": 52,
+      "one_native_workload_and_capture": false,
+      "offline_only": false
+    },
+    {
+      "run": 41007232668,
+      "result": "Rust built; C# CS9124 compilation failure",
+      "python_passes": 54,
+      "one_native_workload_and_capture": false,
+      "offline_only": false
+    },
+    {
+      "run": 41008673352,
+      "result": "both builds passed; strict source cleanliness guard refused",
+      "python_passes": 55,
+      "one_native_workload_and_capture": false,
+      "offline_only": false
+    },
+    {
+      "run": 41009721012,
+      "result": "C# built; strict guard identified untracked NuGet directory; Rust skipped",
+      "python_passes": 56,
+      "one_native_workload_and_capture": false,
+      "offline_only": false
+    },
+    {
+      "run": 41010983983,
+      "result": "both builds and models passed; target thread selection refused before capture",
+      "python_passes": 58,
+      "one_native_workload_and_capture": false,
+      "offline_only": false
+    },
+    {
+      "run": 41013864895,
+      "result": "one native workload and explicitly stopped ETW capture; module identity export refusal",
+      "python_passes": 63,
+      "one_native_workload_and_capture": true,
+      "offline_only": false
+    },
+    {
+      "run": 41017363109,
+      "result": "offline original-receipt scope/lifetime gate refused before tool setup",
+      "python_passes": 88,
+      "one_native_workload_and_capture": false,
+      "offline_only": true
+    },
+    {
+      "run": 41018752790,
+      "result": "offline module identity export refusal; bounded raw diagnostic retained",
+      "python_passes": 88,
+      "one_native_workload_and_capture": false,
+      "offline_only": true
+    }
+  ],
+  "original_capture_count": 1,
+  "remaining_original_captures_not_run": 15,
+  "original_controls_not_run": 2
+}
