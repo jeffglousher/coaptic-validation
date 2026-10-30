@@ -31,6 +31,28 @@ Windows: MSVC (`-G "Visual Studio 17 2022" -A x64`, `--config Release`) and `.ex
 
 `--libcoap-udp-only` and `--libcoap-oscore-unavailable` mark the matching C cases build-excluded. An empty run fails. Wrong-key and blackhole cases need the peer's error exit. A timeout is not a DTLS alert.
 
+When the wire step fails, CI runs one additional IPv4 `coaptic -> libcoap`
+`GET /test` transaction and retains `dtls-diagnostic.json`. It does not retry
+the campaign or replace its failure. The six-second request deadline, fixture
+credentials, CCM8 offer and OpenSSL policy remain unchanged. Only that C-peer
+process enables diagnostic logging. A fixed allowlist retains warning reasons,
+alert direction/description and available native-session security levels;
+other backend text is suppressed. At most 32 records plus an overflow marker
+are retained, with an 8 KiB input and 32 KiB report limit. No keys, packet dumps
+or raw stderr are published. Missing policy values remain null; absence of a
+reason is not evidence of policy compatibility. The security level is observed
+on the reported session event, not inferred from the OpenSSL version.
+
+For the same isolated check with already built peers:
+
+```sh
+python3 tools/interop/dtls_diagnostic.py --coaptic target/release/peer-coaptic --libcoap target/libcoap-peer/peer-libcoap --output target/dtls-diagnostic.json
+```
+
+The output must be new. A failed exchange, unsettled cleanup or incomplete
+diagnostic stream exits nonzero. This diagnostic is not a transport fix or
+interoperability qualification; the original complete-case gate remains active.
+
 Upload readback is `accepted:calls`. `sesame` selects the public RFC 8613 C.1 secret. Any other key label mismatches on purpose.
 
 The Coaptic OSCORE client retries one authenticated 4.01 that carries Echo, once, with the same request. The libcoap direction uses its B.1.2 challenge.

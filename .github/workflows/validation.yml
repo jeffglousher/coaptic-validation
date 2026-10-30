@@ -487,7 +487,12 @@ jobs:
       - name: Protected IPv6 Observe explicit cancellation and fresh registration
         run: python3 tools/interop/oscore_observe_cancel.py --coaptic target/release/peer-coaptic --libcoap target/libcoap-peer/peer-libcoap --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json --family ipv6 --output target/oscore-observe-cancellation-ipv6.json
       - name: Wire interoperability, reliability and timing
+        id: process-wire
         run: python3 tools/interop/run.py --coaptic target/release/peer-coaptic --coap-rs target/release/peer-coap-rs --libcoap target/libcoap-peer/peer-libcoap --iterations 100 --build-note "all peers Release; Ubuntu hosted runner" --output target/process-interop.json --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json
+      - name: One policy-preserving DTLS failure diagnostic
+        if: ${{ failure() && steps.process-wire.outcome == 'failure' }}
+        timeout-minutes: 1
+        run: python3 tools/interop/dtls_diagnostic.py --coaptic target/release/peer-coaptic --libcoap target/libcoap-peer/peer-libcoap --output target/dtls-diagnostic.json
       - name: Observe protected Q-Block2 baseline (not complete qualification)
         run: python3 tools/interop/oscore_qblock2.py --coaptic target/release/peer-coaptic --libcoap target/libcoap-peer/peer-libcoap --output target/oscore-qblock2-baseline.json --libcoap-patch-manifest tools/interop/libcoap/patches/oscore-qblock2-continuation.json
       - name: Protected Q-Block2 finite loss, refusal and recovery
@@ -511,6 +516,7 @@ jobs:
           name: process-interop
           path: |
             target/process-interop.json
+            target/dtls-diagnostic.json
             target/oscore-qblock2-baseline.json
             target/oscore-qblock2-campaign.json
             target/oscore-qblock2-ipv6-campaign.json
