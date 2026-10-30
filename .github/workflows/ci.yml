@@ -17,6 +17,10 @@ on:
         description: With stack_profile, run the separate live C1 server-thread screen
         default: false
         type: boolean
+      stack_profile_live_replay:
+        description: With stack_profile, project only the preserved live Windows ETL pair
+        default: false
+        type: boolean
       library_revision:
         description: Full Coaptic commit SHA
         default: "739c277642219ae235b0ab0926b5c95d81f51b59"
@@ -44,3 +48,4 @@ jobs:
       core_sha: ${{ inputs.library_revision }}
       replay: ${{ inputs.stack_profile_replay }}
       live: ${{ inputs.stack_profile_live }}
+      live_replay: ${{ inputs.stack_profile_live_replay }}

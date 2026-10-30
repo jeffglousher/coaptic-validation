@@ -237,7 +237,8 @@ The live fixture uses virtual `index * 8 ms` protocol time to permit safe MID
 reuse across wraps. The existing batch uses real monotonic elapsed time. The
 live workload is socket-free protocol progress, not a socket traffic rate or a
 device measurement. It is neither a comparison with the old batch nor a CPU
-improvement claim. Runtime and sample sufficiency remain unproven.
+improvement claim. The first two captures completed in the partial attempt
+described below; replicated sampling and stack qualification remain unproven.
 
 The work deadline is 90 seconds, the collector deadline 120 seconds, the live
 capture worker deadline 830 seconds and outer containment 900 seconds. Only
@@ -252,6 +253,33 @@ before tooling or native capture launch. Live preparation records the focused
 native-test census and log hash; a zero-test filter is refused.
 The plan retains attempt 41035344492's pre-capture timeout refusal and the narrow
 setup correction. The shared process-owner ceiling remains unchanged.
+
+## Offline projection of the retained live pair
+
+The live recording campaign stopped after attempt 41038109816 exported the first
+unprotected profile and refused the protected export's frame-text budget. The
+last two captures did not run. The [plan](windows_live_c1_plan.md) preserves the
+actual census and diagnostic limitations. No replacement recording is selected.
+
+```
+gh workflow run ci.yml --repo jeffglousher/coaptic-validation --ref REVIEWED_BRANCH -f stack_profile=true -f stack_profile_live_replay=true -f library_revision=FULL_CORE_SHA
+```
+
+This separate route skips Rust provisioning, native builds, workload execution
+and ETW recording. It rebuilds the pinned .NET exporter, verifies the exact
+retained ZIP and original inputs, then explicitly projects each of the same two
+ETLs by exact full-symbol path. It does not pool scopes. The unprotected output
+must conserve all original paths, symbol self/inclusive counts, flame prefixes
+and quality counters. The canonical JSON omits event metadata; the original ETL
+and hashes are retained for independent replay. Exporter source/build identity is
+recorded separately from the historical capture identity.
+
+Default per-event export remains unchanged. The opt-in representation reuses the
+existing canonical schema with counted rows and no optional `event` object. Raw
+limits are checked before grouping; the 16 MiB JSON/HTML and retained-text caps
+are unchanged. Host conversion is bounded separately. Refusal remains a failure,
+with no cap increase, automatic fallback or replacement samples. Both replay
+routes and live recording are mutually exclusive.
 
 ## Linux and the Waveshare device
 

@@ -108,7 +108,7 @@ internal static class Export
             throw;
         }
         var accumulator = new Samples(capture.Config.Pid, capture.Config.Tid, capture.StartQpc, capture.StopQpc,
-            capture.QpcFrequency);
+            capture.QpcFrequency, config.AggregateExactPaths);
         var wrongLifetime = 0;
         long nativeCountSum = 0;
         foreach (var sample in log.Events.ByEventType<SampledProfileTraceData>())
@@ -117,7 +117,7 @@ internal static class Export
             if (!accumulator.InScope(sample.ProcessID, sample.ThreadID, qpc)) continue;
             var sampleProcess = sample.Process();
             if (sampleProcess is null || sampleProcess.ProcessIndex != process.ProcessIndex) { wrongLifetime++; continue; }
-            nativeCountSum += sample.Count;
+            nativeCountSum = checked(nativeCountSum + sample.Count);
             var frames = new List<Frame>(128);
             var stack = sample.CallStack();
             while (stack is not null && frames.Count < 128)
@@ -156,7 +156,7 @@ internal static class Export
         symbols.VerifyUnchanged(); Wire.EqualHash(capture.EtlSha256, Wire.Hash(etl));
         Wire.WriteNew(config.Output, profile);
         var receiptPath = config.Output + ".receipt.json";
-        Wire.WriteNew(receiptPath, new
+        var receipt = new
         {
             schema = "coaptic-windows-stack-export/1", tool = Wire.Tool,
             capture_receipt_sha256 = Wire.HashFile(config.CaptureReceipt), capture.Config.CaptureId,
@@ -182,7 +182,29 @@ internal static class Export
             native_sampled_profile_payload_count_sum = nativeCountSum,
             lost = loss, capture.LogBuffersLost, capture.RealTimeBuffersLost,
             qualification = "unqualified sampled-event attribution only; no CPU-share or hardware claim"
-        }, 65536);
+        };
+        if (config.AggregateExactPaths)
+        {
+            // Preserve the existing receipt verbatim in default mode. Projection
+            // provenance extends it without changing the original capture identity.
+            var projectedReceipt = System.Text.Json.JsonSerializer.SerializeToNode(receipt, Wire.Json)!.AsObject();
+            projectedReceipt["projection"] = System.Text.Json.JsonSerializer.SerializeToNode(new
+            {
+                aggregate_exact_paths = true, kind = "exact-full-symbol-paths",
+                notes = Samples.ProjectionNotes,
+                identity = profile.Identity, pid = profile.Scope.Pid, tid = profile.Scope.Tid,
+                capture.QpcFrequency,
+                raw_samples = accumulator.RawSamples, output_distinct_rows = profile.Stacks.Count,
+                raw_frame_occurrences = accumulator.RawFrameOccurrences,
+                weighted_output_frame_occurrences = accumulator.WeightedOutputFrameOccurrences,
+                app_ancestry_samples = accumulator.AppAncestrySamples,
+                unresolved_frame_occurrences = accumulator.Unresolved, depth_truncated_samples = accumulator.Truncated,
+                total_samples = profile.Totals.Samples, total_weight = profile.Totals.Weight,
+                totals_conserved = true
+            }, Wire.Json);
+            Wire.WriteNew(receiptPath, projectedReceipt, 65536);
+        }
+        else Wire.WriteNew(receiptPath, receipt, 65536);
         Wire.Emit("exported", capture.Config.CaptureId, new { output = config.Output, receipt = receiptPath });
         return 0;
     }
@@ -321,14 +343,27 @@ internal static class Export
 }
 
 // Pure bounded model: one PID/lifetime window and exactly one selected/observed TID.
-// Every row is one sample, so aligned addresses/modules are retained without pooling.
-internal sealed class Samples(int pid, int? tid, long start, long stop, long frequency)
+// Default rows retain aligned event metadata. Explicit projection retains only
+// distinct full symbol paths; raw limits and quality counts still precede grouping.
+internal sealed class Samples(int pid, int? tid, long start, long stop, long frequency,
+    bool aggregateExactPaths = false)
 {
+    public const string ProjectionNotes = "Explicit exact-full-symbol-path flame projection: canonical JSON omits " +
+        "per-event timestamps, addresses, modules, comm and event order; it is not a trace timeline. " +
+        "The retained original hash-bound ETL is authoritative for event metadata and independent replay; " +
+        "aggregate JSON alone does not validate event timestamps.";
     private readonly List<StackRow> rows = new();
+    private readonly bool aggregatePaths = aggregateExactPaths;
+    private readonly SortedDictionary<string[], int>? pathRows = aggregateExactPaths
+        ? new(new PathComparer()) : null;
     private readonly int? selectedTid = tid;
     private int? observedTid = tid;
     private int frameCount;
     private long textBytes;
+    public int RawSamples { get; private set; }
+    public long RawFrameOccurrences => frameCount;
+    public long WeightedOutputFrameOccurrences { get; private set; }
+    public long AppAncestrySamples { get; private set; }
     public long Unresolved { get; private set; }
     public int Truncated { get; private set; }
     public bool InScope(int samplePid, int sampleTid, long qpc) =>
@@ -339,32 +374,95 @@ internal sealed class Samples(int pid, int? tid, long start, long stop, long fre
             throw new InvalidDataException("Invalid sample/thread/window/depth.");
         if (observedTid.HasValue && sampleTid != observedTid.Value)
             throw new InvalidDataException("Mixed thread scope refused; select exactly one TID.");
-        observedTid = sampleTid;
-        if (rows.Count >= 100_000 || frameCount + leafToRoot.Count > 200_000)
+        if (RawSamples >= 100_000 || checked(frameCount + leafToRoot.Count) > 200_000)
             throw new InvalidDataException("Stack/frame count budget exceeded.");
         Wire.Text(comm);
+        long sampleTextBytes = 0;
+        var unresolved = 0;
+        var appAncestry = false;
         foreach (var frame in leafToRoot)
         {
-            Wire.Text(frame.Symbol); Wire.Text(frame.Module);
-            textBytes += System.Text.Encoding.UTF8.GetByteCount(frame.Symbol) +
-                System.Text.Encoding.UTF8.GetByteCount(frame.Address) + System.Text.Encoding.UTF8.GetByteCount(frame.Module);
-            if (textBytes > Wire.ExportLimit) throw new InvalidDataException("Frame text budget exceeded.");
-            if (frame.Unresolved) Unresolved++;
+            Wire.Text(frame.Symbol); Wire.Text(frame.Module); Wire.Text(frame.Address);
+            // Projection cannot rely on Python's per-event metadata validation:
+            // even a duplicate path must validate every discarded address/module.
+            if (!frame.Address.All(char.IsAsciiHexDigit)) throw new InvalidDataException("Invalid frame address.");
+            sampleTextBytes = checked(sampleTextBytes + System.Text.Encoding.UTF8.GetByteCount(frame.Symbol));
+            if (!aggregatePaths)
+                sampleTextBytes = checked(sampleTextBytes + System.Text.Encoding.UTF8.GetByteCount(frame.Address) +
+                    System.Text.Encoding.UTF8.GetByteCount(frame.Module));
+            if (frame.Unresolved) unresolved = checked(unresolved + 1);
+            appAncestry |= frame.Symbol.Contains("coaptic::app::", StringComparison.Ordinal);
         }
-        frameCount += leafToRoot.Count;
-        if (truncated) Truncated++;
-        var rootToLeaf = leafToRoot.AsEnumerable().Reverse().ToArray();
-        rows.Add(new(rootToLeaf.Select(f => f.Symbol).ToArray(), 1, 1,
-            new(comm, Wire.Stamp(qpc, frequency), 1, "SampledProfile",
-                rootToLeaf.Select(f => f.Address).ToArray(), rootToLeaf.Select(f => f.Module).ToArray())));
+        var symbols = new string[leafToRoot.Count];
+        for (var i = 0; i < symbols.Length; i++) symbols[i] = leafToRoot[^(i + 1)].Symbol;
+        if (pathRows is not null && pathRows.TryGetValue(symbols, out var index))
+        {
+            var row = rows[index];
+            rows[index] = row with { Samples = checked(row.Samples + 1), Weight = checked(row.Weight + 1) };
+        }
+        else
+        {
+            var retainedBytes = checked(textBytes + sampleTextBytes);
+            if (retainedBytes > Wire.ExportLimit) throw new InvalidDataException("Frame text budget exceeded.");
+            SampleEvent? sampleEvent = null;
+            if (!aggregatePaths)
+            {
+                var rootToLeaf = leafToRoot.AsEnumerable().Reverse().ToArray();
+                sampleEvent = new(comm, Wire.Stamp(qpc, frequency), 1, "SampledProfile",
+                    rootToLeaf.Select(f => f.Address).ToArray(), rootToLeaf.Select(f => f.Module).ToArray());
+            }
+            // The tree provides collision-independent structural lookup. The list
+            // preserves deterministic first-seen ETL order without retaining events.
+            pathRows?.Add(symbols, rows.Count);
+            rows.Add(new(symbols, 1, 1, sampleEvent));
+            textBytes = retainedBytes;
+        }
+        observedTid = sampleTid;
+        RawSamples = checked(RawSamples + 1);
+        frameCount = checked(frameCount + leafToRoot.Count);
+        Unresolved = checked(Unresolved + unresolved);
+        if (truncated) Truncated = checked(Truncated + 1);
+        if (appAncestry) AppAncestrySamples = checked(AppAncestrySamples + 1);
     }
     public Profile Finish(Identity identity, string label, long loss, string notes)
     {
-        if (rows.Count == 0) throw new InvalidDataException("No selected PID/TID/window samples; no profile emitted.");
+        if (RawSamples == 0) throw new InvalidDataException("No selected PID/TID/window samples; no profile emitted.");
+        if (aggregatePaths) notes += " " + ProjectionNotes;
         identity.Validate(); Wire.Text(label); Wire.Text(notes);
         if (loss < 0) throw new InvalidDataException("Negative loss count.");
+        long outputSamples = 0, outputWeight = 0, weightedFrames = 0, outputAppSamples = 0;
+        foreach (var row in rows)
+        {
+            outputSamples = checked(outputSamples + row.Samples);
+            outputWeight = checked(outputWeight + row.Weight);
+            weightedFrames = checked(weightedFrames + checked((long)row.Weight * row.Frames.Length));
+            if (row.Frames.Any(f => f.Contains("coaptic::app::", StringComparison.Ordinal)))
+                outputAppSamples = checked(outputAppSamples + row.Samples);
+        }
+        if (outputSamples != RawSamples || outputWeight != RawSamples || weightedFrames != frameCount ||
+            outputAppSamples != AppAncestrySamples)
+            throw new InvalidDataException("Projected sample/frame/App totals do not conserve raw input.");
+        WeightedOutputFrameOccurrences = weightedFrames;
         return new("coaptic-stack-profile/1", identity, new("sampled_cpu", "samples"),
             new(loss, Unresolved, 0, notes), new(pid, observedTid, label, "unknown"),
-            new(rows.Count, rows.Count), rows);
+            new(RawSamples, RawSamples), rows);
+    }
+
+    private sealed class PathComparer : IComparer<string[]>
+    {
+        public int Compare(string[]? x, string[]? y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (x is null) return -1;
+            if (y is null) return 1;
+            var length = x.Length.CompareTo(y.Length);
+            if (length != 0) return length;
+            for (var i = 0; i < x.Length; i++)
+            {
+                var symbol = StringComparer.Ordinal.Compare(x[i], y[i]);
+                if (symbol != 0) return symbol;
+            }
+            return 0;
+        }
     }
 }

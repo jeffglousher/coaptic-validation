@@ -14,6 +14,10 @@ on:
         description: Run the separately frozen live C1 server-thread screen
         default: false
         type: boolean
+      live_replay:
+        description: Project only the two pinned live ETLs; no recording or native build
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       core_sha:
@@ -27,6 +31,10 @@ on:
         type: boolean
       live:
         description: Run the separately frozen live C1 server-thread screen
+        default: false
+        type: boolean
+      live_replay:
+        description: Project only the two pinned live ETLs; no recording or native build
         default: false
         type: boolean
 
@@ -51,6 +59,7 @@ jobs:
       DOTNET_NOLOGO: '1'
       LIVE_PROFILE: ${{ inputs.live }}
       REPLAY_PROFILE: ${{ inputs.replay }}
+      LIVE_REPLAY_PROFILE: ${{ inputs.live_replay }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,7 +69,8 @@ jobs:
         run: |
           if ($env:CORE_SHA -cnotmatch '^[0-9a-f]{40}$') { throw 'Expected immutable core SHA' }
           if ($env:SUITE_SHA -cnotmatch '^[0-9a-f]{40}$') { throw 'Expected immutable suite SHA' }
-          if ($env:LIVE_PROFILE -eq 'true' -and $env:REPLAY_PROFILE -eq 'true') { throw 'Live workload and pinned offline replay are separate modes' }
+          $selectedModes = @($env:LIVE_PROFILE, $env:REPLAY_PROFILE, $env:LIVE_REPLAY_PROFILE) | Where-Object { $_ -eq 'true' }
+          if (@($selectedModes).Count -gt 1) { throw 'Live recording and the two pinned replay routes are separate modes' }
           if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'Dedicated hosted VM required' }
           $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
           if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Elevated hosted token required' }
@@ -74,7 +84,7 @@ jobs:
         with:
           python-version: '3.14.4'
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
-        if: ${{ !inputs.replay }}
+        if: ${{ !inputs.replay && !inputs.live_replay }}
         with:
           toolchain: 1.99.0
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -84,11 +94,11 @@ jobs:
         shell: pwsh
         run: |
           Push-Location tools/benchmark
-          python -B -m unittest -v test_stack_profile test_perf_prerequisite test_windows_profile test_windows_live_profile test_windows_replay
+          python -B -m unittest -v test_stack_profile test_perf_prerequisite test_windows_profile test_windows_live_profile test_windows_replay test_windows_live_replay
           if ($LASTEXITCODE) { throw 'Portable checks failed' }
           Pop-Location
       - name: Build and collect fixed serial cohorts
-        if: ${{ !inputs.replay }}
+        if: ${{ !inputs.replay && !inputs.live_replay }}
         shell: pwsh
         run: |
           # The pinned toolchain action sets these presentation/registry transport
@@ -118,6 +128,14 @@ jobs:
         run: |
           python -B tools/benchmark/windows_replay.py --core coaptic --expected-core $env:CORE_SHA --expected-suite $env:SUITE_SHA --output "$env:RUNNER_TEMP/coaptic-stack-profile"
           if ($LASTEXITCODE) { throw 'Offline replay refused or failed; preserve receipt' }
+      - name: Project only the preserved live ETL pair offline
+        if: ${{ inputs.live_replay }}
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python -B tools/benchmark/windows_live_replay.py --core coaptic --expected-core $env:CORE_SHA --expected-suite $env:SUITE_SHA --output "$env:RUNNER_TEMP/coaptic-stack-profile"
+          if ($LASTEXITCODE) { throw 'Live-pair offline replay refused or failed; preserve receipt' }
       - name: Retain bounded evidence, including failure receipts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

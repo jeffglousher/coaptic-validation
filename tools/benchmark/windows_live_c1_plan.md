@@ -42,7 +42,8 @@ No pooling across processes, threads, modes or runs. Keep every selected-server
 sample, including handoff, driver, wait and unresolved paths. App ancestry is a
 separate count. The existing 200 App-sample floor and all quality gates remain
 unchanged; unknown unwind/inline completeness and unknown CPU mode prevent a
-qualified CPU-share claim. Runtime and sample sufficiency are unproven.
+qualified CPU-share claim. The partial recorded attempt is described below;
+replicated sampling and stack qualification remain unproven.
 
 ## Native JSONL protocol
 
@@ -132,3 +133,35 @@ seconds for capture setup/export and other work inside the inner deadline. This
 is a refusal budget, not a guarantee of completion. One corrected fixed attempt
 is permitted after source review; operations, cohort order, capacities, protocol,
 per-cohort deadlines, sample selection and all quality gates remain unchanged.
+
+## Recorded attempt and offline projection
+
+[Corrected attempt 41038109816](https://github.com/jeffglousher/coaptic-validation/actions/runs/41038109816)
+passed 99 portable checks, all 12 focused native tests, 113 C# model assertions
+and both builds. The first four native cohorts completed all one million work
+exchanges plus 128 warmups. Both selected ETW sessions explicitly stopped.
+Unprotected capture 0 exported 3,164 samples, including 1,633 with App ancestry.
+It remains diagnostic: unresolved system frames, unwind/inline completeness,
+CPU mode and circular overwrite prevent a qualified CPU-share claim.
+
+OSCORE capture 0 then refused export with `Frame text budget exceeded.` No
+protected profile or failed partial count is inferred. The final OSCORE and
+unprotected capture 1 cohorts did not run. The recording campaign is stopped;
+there are no replacement cohorts, new recordings or relaxed qualification gates.
+
+A separate offline projection uses only those same two hash-bound ETLs, original
+capture receipts and owned EXE/PDB bytes. `aggregate_exact_paths` is explicit and
+default off. It groups identical full root-to-leaf symbol sequences within one
+original scope/window, preserving counts, self/inclusive weights and flame
+prefixes. Raw event/frame/depth limits and all output byte caps remain unchanged.
+The projection omits per-event timestamps, addresses, modules, comm and order;
+the retained original ETL remains authoritative for those metadata. Aggregate
+JSON alone cannot independently establish timestamp membership or timeline queries.
+
+The unprotected projection must reproduce every exact path multiplicity, symbol
+self/inclusive count, flame prefix, App count and quality counter from its
+original per-event profile. The protected projection has no prior profile to
+compare. Each scope remains separate; no pooling or new sampling follows. One
+reviewed offline attempt may export both traces in that order. Any JSON, HTML,
+conversion, identity or resource refusal is retained without a larger cap or
+fallback recording. Successful projection alone does not qualify the stacks.
