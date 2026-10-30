@@ -28,6 +28,13 @@ these four original wall tests, with their observed module namespace:
     batch_tests::wall_missing_bad_response_and_authentication_refuse_then_recover
 
 The proof retains RX credit through a real outbound client's completed response.
+The public resource-based builder already enables full-response retention. Before
+protocol setup, the proof inventories genuine RX IDs with acquire/release and
+checks that the pool is empty again with its original cursor. Released IDs are
+only read-only pool locators; they do not grant ownership across reuse. The
+single occupied locator is rebound to the retained response by decoding and
+checking its MID, token, code and payload both before and after the incoming poll.
+Only response collection releases that live reservation.
 It injects an incoming GET with a different MID/token and checks matching 5.03,
 zero handler calls, one RX refusal metric increment, and the same held slot,
 pin state and occupancy after poll. It collects the exact held response, verifies
@@ -70,3 +77,13 @@ no retiming is requested. Original failed run 41084281643 remains historical
 evidence of the wrong module-prefix refusal. admission_wall_plan.md and its
 schedule, statistics and gates remain unchanged. This proof adds no CPU, device,
 whole-memory, protocol certification or general performance claim.
+
+## Retained compile failure
+
+PR check run 41093144320 at 2a550c1 passed 668 benchmark Python tests with
+17 skips, then native test compilation failed: the ConfiguredBuilder has no
+full_responses method, and SlotId::from_index is private. No RX proof executed.
+The correction removes the redundant builder call, uses genuine public pool IDs,
+and binds the revised native source hash. Profile capacities, the test census,
+workload pins and all process/resource limits remain fixed. Compilation and
+execution of the corrected native proof remain pending.

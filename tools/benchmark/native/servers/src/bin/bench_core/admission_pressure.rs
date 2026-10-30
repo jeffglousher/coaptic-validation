@@ -3,7 +3,7 @@
 //! These tests do not measure performance. Protected traffic, TX pressure,
 //! cancellation and complete body continuations still need separate proofs.
 use super::*;
-use coaptic::storage::{SlotId, Storage};
+use coaptic::storage::Storage;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static HANDLER_CALLS: AtomicUsize = AtomicUsize::new(0);
@@ -18,15 +18,33 @@ fn counted_representation(_: Request<'_>) -> Response<'static> {
 #[test]
 fn rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected() {
     HANDLER_CALLS.store(0, Ordering::SeqCst);
+    // The resource-based builder already retains complete client responses.
     let mut app = App::with_resources(coaptic::resources::SmallDevice::new())
         .randomness(|bytes| getrandom::fill(bytes).is_ok())
-        .full_responses()
         .route("bench", get(counted_representation))
         .allow_unprotected()
         .bind(core_io())
         .unwrap();
     assert_eq!(app.engine_mut().capacities().rx_datagram_slots, 2);
     assert_eq!(app.engine_mut().capacities().tx_datagram_slots, 2);
+
+    // Inventory genuine public pool addresses, returning every reservation
+    // before protocol work. Released IDs confer no ownership across reuse:
+    // below they are read-only locators, rebound to the actual retained reply.
+    let rx_ids = {
+        let pool = app.engine_mut().storage_mut().rx_datagram();
+        assert_eq!(pool.occupied_count(), 0);
+        let cursor = pool.cursor();
+        let a = pool.acquire().unwrap();
+        let b = pool.acquire().unwrap();
+        assert_ne!(a, b);
+        assert_eq!(pool.occupied_count(), 2);
+        pool.release(a).unwrap();
+        pool.release(b).unwrap();
+        assert_eq!(pool.occupied_count(), 0);
+        assert_eq!(pool.cursor(), cursor);
+        [a, b]
+    };
 
     // A real outbound call receives a complete response. Collection, rather
     // than a bare pool acquisition, is what owns the retained RX reservation.
@@ -50,12 +68,18 @@ fn rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected() {
     let (held, held_pin) = {
         let pool = app.engine_mut().storage_mut().rx_datagram();
         assert_eq!(pool.occupied_count(), 1);
-        let a = SlotId::from_index(0);
-        let b = SlotId::from_index(1);
+        let [a, b] = rx_ids;
         assert_ne!(pool.is_occupied(a), pool.is_occupied(b));
         let id = if pool.is_occupied(a) { a } else { b };
         (id, pool.is_pinned(id))
     };
+    {
+        let reply = app.engine_mut().decode_rx(held).unwrap();
+        assert_eq!(reply.message_id(), call_mid);
+        assert_eq!(reply.token(), call_token);
+        assert_eq!(reply.code(), Code::CONTENT);
+        assert_eq!(reply.payload(), b"retained-response");
+    }
     let before = app.metrics();
 
     let mid = MessageId::new(40_000);
@@ -88,6 +112,13 @@ fn rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected() {
         assert_eq!(pool.occupied_count(), 1);
         assert!(pool.is_occupied(held));
         assert_eq!(pool.is_pinned(held), held_pin);
+    }
+    {
+        let reply = app.engine_mut().decode_rx(held).unwrap();
+        assert_eq!(reply.message_id(), call_mid);
+        assert_eq!(reply.token(), call_token);
+        assert_eq!(reply.code(), Code::CONTENT);
+        assert_eq!(reply.payload(), b"retained-response");
     }
 
     let mut collected = [0; 32];

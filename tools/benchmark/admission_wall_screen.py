@@ -43,7 +43,7 @@ WALL_TESTS = tuple('batch_tests::' + name for name in (
     'wall_full_metadata_and_complete_payload_are_required',
     'wall_missing_bad_response_and_authentication_refuse_then_recover'))
 PRESSURE_SOURCE = 'tools/benchmark/native/servers/src/bin/bench_core/admission_pressure.rs'
-PRESSURE_LF_SHA256 = 'a0a42eef55770d169f5bd533bd4aa0cbd3b8b4f6f57567beea50e1845fbb9db5'
+PRESSURE_LF_SHA256 = '67cd4f19969f7aa47eef9ae2a8e1101438cc0b94f163d6f3a2c966b7585b890a'
 PRESSURE_TESTS = ('admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected',)
 PROOF_SCOPE = ('public-App SmallDevice full_responses unprotected retained outbound response RX credit; '
                'incoming fresh GET refusal preserves slot/pin/occupancy; exact collection and fresh GET recovery')
