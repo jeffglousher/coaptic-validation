@@ -5,6 +5,10 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      stack_profile:
+        description: Run only the bounded Windows profiling recipe
+        default: false
+        type: boolean
       library_revision:
         description: Full Coaptic commit SHA
         default: "739c277642219ae235b0ab0926b5c95d81f51b59"
@@ -12,12 +16,18 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: suite-ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: suite-ci-${{ inputs.stack_profile && 'stack-profile' || 'validation' }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !inputs.stack_profile }}
 jobs:
   validation:
+    if: ${{ !inputs.stack_profile }}
     uses: ./.github/workflows/validation.yml
     with:
       suite_revision: ${{ github.sha }}
       library_repository: jeffglousher/coaptic
       library_revision: ${{ inputs.library_revision || '739c277642219ae235b0ab0926b5c95d81f51b59' }}
+  windows-stack-profile:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.stack_profile }}
+    uses: ./.github/workflows/windows-stack-profile.yml
+    with:
+      core_sha: ${{ inputs.library_revision }}
