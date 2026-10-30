@@ -674,5 +674,52 @@ class BindingTests(TempTests):
         self.assertEqual(records[1][1]['timeout'], 365)
 
 
+class ReportingTests(TempTests):
+    def test_build_final_receipt_failure_preserves_unresolved_worker(self):
+        original = worker_error(True)
+        args = argparse.Namespace(core='core', expected_suite='a' * 40)
+        tools = {n: {'path': n, 'sha256': n} for n in ('rustc', 'cargo')}
+        with patch.object(w.ds, 'cargo_inputs', return_value={}), \
+             patch.object(w.ds, 'toolchain', return_value=('rustc 1.99.0 (x)\nhost: ' + w.TARGET, 'cargo 1.99.0 (x)', tools)), \
+             patch.object(w.ds, 'digest', return_value='hash'), patch.object(w, 'environment', return_value={}), \
+             patch.object(w, 'snapshot', return_value={}), patch.object(w, 'transaction', side_effect=original), \
+             patch.object(w, 'save', side_effect=OSError('disk full')), \
+             patch.object(w, 'source_gate') as final_source, \
+             patch.object(w, 'tool_check') as final_tool:
+            with self.assertRaises(WorkerError) as caught:
+                w.build(args, self.root, {})
+        self.assertIs(caught.exception, original)
+        self.assertTrue(original.cleanup_unresolved)
+        self.assertTrue(any('build-finally receipt: disk full' in n for n in original.__notes__))
+        final_source.assert_not_called()
+        final_tool.assert_not_called()
+
+    def test_outer_failure_write_cannot_enable_settled_source_checks(self):
+        original = worker_error(True)
+        args = argparse.Namespace(command='all', core='core', expected_suite='a' * 40,
+                                  output=str(self.root / 'coaptic-admission-wall'))
+        def save(root, name, value):
+            if name == 'failure.json':
+                raise OSError('receipt refused')
+        with patch.object(w.sys, 'platform', 'win32'), \
+             patch.dict(w.os.environ, RUNNER_ENVIRONMENT='github-hosted', RUNNER_TEMP=str(self.root)), \
+             patch.object(w.shutil, 'which', return_value=None), patch.object(w, 'owner', return_value={}), \
+             patch.object(w, 'source_gate') as source, patch.object(w, 'preflight', return_value={}), \
+             patch.object(w, 'save', side_effect=save), patch.object(w, 'build', side_effect=original):
+            with self.assertRaises(WorkerError) as caught:
+                w.execute(args)
+        self.assertIs(caught.exception, original)
+        self.assertTrue(original.cleanup_unresolved)
+        self.assertEqual(source.call_count, 1)  # Initial source gate only.
+        self.assertTrue(any('outer failure receipt: receipt refused' in n for n in original.__notes__))
+
+    def test_secondary_reporting_errors_remain_notes_and_success_errors_raise(self):
+        for original in (worker_error(True), ValueError('first'), KeyboardInterrupt('cancel')):
+            w.report_preserving(original, 'receipt', lambda: (_ for _ in ()).throw(OSError('second')))
+            self.assertTrue(any('receipt: second' in n for n in original.__notes__))
+        with self.assertRaisesRegex(OSError, 'second'):
+            w.report_preserving(None, 'receipt', lambda: (_ for _ in ()).throw(OSError('second')))
+
+
 if __name__ == '__main__':
     unittest.main()

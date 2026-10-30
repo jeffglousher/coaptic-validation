@@ -339,14 +339,18 @@ def child_command(command, budget, stem, *, env, seconds):
             if primary is not None:
                 primary.add_note('child cleanup: ' + str(error)[:1024])
         finally:
-            flush()
-            for stream in streams:
-                stream.close()
-            save(budget.root, stem + '-process.json', dict(
+            for finish in (flush, *(stream.close for stream in streams)):
+                try:
+                    finish()
+                except BaseException as error:
+                    cleanup.append(error)
+                    if primary is not None:
+                        primary.add_note('child log finalization: ' + str(error)[:1024])
+            report_preserving(primary or (cleanup[0] if cleanup else None), 'child-process receipt', lambda: save(budget.root, stem + '-process.json', dict(
                  command=list(map(str, command)), passed=primary is None and not cleanup,
                  returncode=child.p.returncode if child else None,
                  primary=failure(primary) if primary else None,
-                 cleanup=[failure(error) for error in cleanup]))
+                 cleanup=[failure(error) for error in cleanup])))
         if cleanup and primary is None:
             raise cleanup[0]
 
@@ -355,6 +359,16 @@ def failure(error):
     result = wp.outer_failure(error)
     result.pop('etw_stop_proof')
     return result
+
+
+def report_preserving(primary, label, action):
+    """Reporting must not replace the exception that owns cleanup custody."""
+    try:
+        action()
+    except BaseException as reporting:
+        if primary is None:
+            raise
+        primary.add_note(label + ': ' + str(reporting)[:1024])
 
 
 def launch(root, name, spec, env, *, timeout, build=False):
@@ -618,13 +632,14 @@ def build(args, root, contract):
                     check()
                 except BaseException as error:
                     checks.append(str(error)[:1024])
-        save(root, 'build-finally.json', dict(records=records, immutable_check_errors=checks,
-             cleanup_unresolved=getattr(primary, 'cleanup_unresolved', False),
-             abrupt_outer_death='Missing receipt means restoration UNKNOWN'))
-        if checks:
-            if primary is None:
-                raise ValueError('; '.join(checks))
+        check_error = ValueError('; '.join(checks)) if checks and primary is None else None
+        if checks and primary is not None:
             primary.add_note('build finally: ' + '; '.join(checks))
+        report_preserving(primary or check_error, 'build-finally receipt', lambda: save(root, 'build-finally.json', dict(records=records, immutable_check_errors=checks,
+             cleanup_unresolved=getattr(primary, 'cleanup_unresolved', False),
+             abrupt_outer_death='Missing receipt means restoration UNKNOWN')))
+        if check_error is not None:
+            raise check_error
 
 
 def verify_build(args, root, contract):
@@ -662,15 +677,25 @@ def affinity(root):
     receipt = dict(allowed_cpus=allowed, selected_cpus=selected,
                    allowed_mask=sum(1 << c for c in allowed), selected_mask=1 << selected[0],
                    policy='launcher pinned before native creation; inherited by each child')
+    primary = None
     try:
         process.cpu_affinity(selected)
         exact(process.cpu_affinity(), selected, 'launcher CPU pin failed')
         save(root, 'affinity.json', receipt)
         yield
+    except BaseException as error:
+        primary = error
+        raise
     finally:
-        process.cpu_affinity(allowed)
-        exact(process.cpu_affinity(), allowed, 'launcher CPU restoration failed')
-        save(root, 'affinity-finally.json', dict(restored_cpus=allowed))
+        restored = False
+        def restore():
+            nonlocal restored
+            process.cpu_affinity(allowed)
+            exact(process.cpu_affinity(), allowed, 'launcher CPU restoration failed')
+            restored = True
+        report_preserving(primary, 'affinity restoration', restore)
+        report_preserving(primary, 'affinity-finally receipt', lambda:
+                          save(root, 'affinity-finally.json', dict(restored_cpus=allowed if restored else None)))
 
 
 def measure_worker(spec):
@@ -726,12 +751,12 @@ def measure_worker(spec):
                 primary = error
             else:
                 primary.add_note('measurement source finally: ' + str(error)[:1024])
-        save(root, 'result.json', dict(passed=primary is None, completed=completed,
+        report_preserving(primary, 'measurement-result receipt', lambda: save(root, 'result.json', dict(passed=primary is None, completed=completed,
              attempted=attempted, failed_or_incomplete=[r for r in attempted if r not in completed],
              not_run=schedule()[len(attempted):], comparisons=comparisons,
              failure=failure(primary) if primary else None, stage_b='unimplemented; no merge promotion',
              sampled_direct_child_working_set_peak_bytes=budget.observed_child_working_set_peak,
-             scope=plan()['scope']))
+             scope=plan()['scope'])))
         if primary is not None and sys.exc_info()[0] is None:
             raise primary
 
@@ -776,7 +801,7 @@ def execute(args):
             exact(load(root / 'evidence/result.json')['passed'], True, 'Stage A did not pass')
     except BaseException as error:
         primary = error
-        save(root, 'failure.json', failure(error))
+        report_preserving(primary, 'outer failure receipt', lambda: save(root, 'failure.json', failure(error)))
         raise
     finally:
         if not getattr(primary, 'cleanup_unresolved', False):
@@ -786,7 +811,8 @@ def execute(args):
                     verify_build(args, root, contract)
                 save(root, args.command + '-final-source-check.json', dict(passed=True))
             except BaseException as error:
-                save(root, args.command + '-final-source-check.json', failure(error))
+                report_preserving(primary or error, 'outer final-source receipt', lambda:
+                                  save(root, args.command + '-final-source-check.json', failure(error)))
                 if primary is None:
                     raise
                 primary.add_note('outer source finally: ' + str(error)[:1024])
