@@ -41,7 +41,10 @@ internal static class Export
                 conversionLoss = Math.Max(conversionLoss, lost);
             }
         };
-        TraceLog.CreateFromEventTraceLogFile(capture.Etl, etlx, options);
+        // FileOnly prevents TraceEvent's default MergeAll discovery from adding
+        // unbound sibling .kernel/.clr/.user ETLs to the hashed input.
+        using (var input = new ETWTraceEventSource(capture.Etl, TraceEventSourceType.FileOnly))
+            TraceLog.CreateFromEventTraceLogFile(input, etlx, options);
         if (Directory.EnumerateFiles(config.ScratchDirectory, "*", SearchOption.AllDirectories)
             .Sum(p => new FileInfo(p).Length) > config.MaxConversionBytes)
             throw new InvalidDataException("Conversion byte budget exceeded; retained for parent cleanup.");
@@ -171,7 +174,7 @@ internal static class Export
         var eventCount = 0;
         // ETLX can collapse or replace image metadata. Read raw ETL events without
         // opening any module path; retain earlier contradictory observations too.
-        using (var source = new ETWTraceEventSource(capture.Etl))
+        using (var source = new ETWTraceEventSource(capture.Etl, TraceEventSourceType.FileOnly))
         {
             source.AllEvents += _ =>
             {
