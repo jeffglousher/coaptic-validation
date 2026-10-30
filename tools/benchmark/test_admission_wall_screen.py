@@ -521,7 +521,9 @@ class ExecutionTests(TempTests):
                                executable=str(exe), filenames=[str(exe), str(pdb)])) + '\n' +
                json.dumps(dict(reason='build-finished', success=True))).encode()
         (self.root / 'evidence/A-build.stdout').write_bytes(raw)
-        self.write('A-cargo.json', dict(native_tests=list(w.WALL_TESTS), artifacts=[str(exe), str(pdb)]))
+        self.write('A-cargo.json', dict(purpose='stage-a-screen', pressure_tests=[], pressure_proof=None, native_tests=list(w.WALL_TESTS), artifacts=[str(exe), str(pdb)]))
+        (self.root / 'evidence/A-tests-list.stdout').write_bytes(census(True))
+        (self.root / 'evidence/A-tests.stdout').write_bytes(census())
         result = w.retain_pair(self.root, 'A')
         self.assertEqual(Path(result['pdb']['path']).name, 'bench_core.pdb')
         self.assertEqual(Path(result['exe']['path']).read_bytes(), b'executable')
@@ -547,10 +549,10 @@ class BindingTests(TempTests):
                 path = directory / ('bench-core.' + suffix)
                 path.write_bytes(suffix.encode())
                 artifacts[arm][suffix] = dict(path=str(path), bytes=len(suffix), sha256=w.ds.digest(path))
-            self.write(arm + '-cargo.json', dict(native_tests=list(w.WALL_TESTS)))
+            self.write(arm + '-cargo.json', dict(purpose='stage-a-screen', pressure_tests=[], pressure_proof=None, native_tests=list(w.WALL_TESTS)))
             (self.root / 'evidence' / (arm + '-tests-list.stdout')).write_bytes(census(True))
             (self.root / 'evidence' / (arm + '-tests.stdout')).write_bytes(census())
-        value = dict(owner=contract, plan=w.plan(), flags=w.FLAGS, suite=source, records=records,
+        value = dict(owner=contract, purpose='stage-a-screen', plan=w.plan(), flags=w.FLAGS, suite=source, records=records,
                      tools={}, artifacts=artifacts, inputs={'config_files': {}})
         self.write('owner.json', contract)
         self.write('build.json', value)
@@ -742,6 +744,190 @@ class ReportingTests(TempTests):
             self.assertTrue(any('receipt: second' in n for n in original.__notes__))
         with self.assertRaisesRegex(OSError, 'second'):
             w.report_preserving(None, 'receipt', lambda: (_ for _ in ()).throw(OSError('second')))
+
+
+def pressure_census(listing=False):
+    # Literal observed source namespace: independent of the runner constant.
+    name = 'admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected'
+    return ((name + ': test\n\n1 test, 0 benchmarks\n') if listing else
+            ('running 1 test\ntest ' + name + ' ... ok\n\ntest result: ok. 1 passed; '
+             '0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.01s\n')).encode()
+
+
+class ProofTests(TempTests):
+    def test_pressure_literal_lf_crlf(self):
+        for listing in (True, False):
+            for ending in (b'\n', b'\r\n'):
+                self.assertEqual(w.validate_census(pressure_census(listing).replace(b'\n', ending),
+                                 listing=listing, expected=w.PRESSURE_TESTS), list(w.PRESSURE_TESTS))
+
+    def test_pressure_refuses_missing_wrong_extra_duplicate_failed_ignored_truncated(self):
+        for listing in (True, False):
+            raw = pressure_census(listing)
+            for bad in (b'', raw.replace(b'admission_pressure::', b'wrong::'),
+                        raw + raw, raw[:-30], raw.replace(b'1 test', b'2 test'),
+                        raw.replace(b' ... ok', b' ... FAILED'), raw.replace(b' ... ok', b' ... ignored'),
+                        raw + b'other::test: test\ntest other::test ... ok\n'):
+                if bad == raw:
+                    continue
+                with self.subTest(listing=listing, bad=bad), self.assertRaises(ValueError):
+                    w.validate_census(bad, listing=listing, expected=w.PRESSURE_TESTS)
+        for expected in ((), ('x',), ('x::y', 'x::y')):
+            with self.assertRaises(ValueError):
+                w.validate_census(b'', expected=expected)
+
+    def test_pressure_source_hash_and_declared_census_guards(self):
+        source = (w.SUITE / w.PRESSURE_SOURCE).read_bytes().replace(b'\r\n', b'\n')
+        self.assertEqual(hashlib.sha256(source).hexdigest(), w.PRESSURE_LF_SHA256)
+        with patch.object(w.wp, 'source_identity', return_value={}):
+            w.source_gate('core', 'a' * 40, w.BASELINE)
+            for field, value in (('PRESSURE_LF_SHA256', 'bad'),
+                                 ('PRESSURE_TESTS', ('wrong::test',)),
+                                 ('FIXTURE_LF_SHA256', 'bad')):
+                with patch.object(w, field, value), self.assertRaises(ValueError):
+                    w.source_gate('core', 'a' * 40, w.BASELINE)
+
+    def test_proof_worker_requires_both_censuses_before_binary_build(self):
+        for bad_index in (None, 2, 3):
+            calls = []
+            def command(argv, budget, stem, **kwargs):
+                index = len(calls)
+                calls.append(argv)
+                if index == bad_index:
+                    return b'0 tests'
+                return [census(True), census(), pressure_census(True), pressure_census(), b'artifacts'][index]
+            budget = Mock(root=self.root, observed_child_working_set_peak=20, peak=100)
+            with patch.object(w, 'Budget', return_value=budget), patch.object(w, 'child_command', side_effect=command), \
+                 patch.object(w.wp, 'native_artifact_pair', return_value=(Path('x.exe'), Path('x.pdb'))):
+                spec = dict(root=str(self.root), arm='A', seconds=400, cargo='cargo', purpose='ownership-proof')
+                if bad_index is None:
+                    w.cargo_worker(spec)
+                    receipt = w.load(self.root / 'evidence/A-cargo.json')
+                    self.assertEqual(receipt['purpose'], 'ownership-proof')
+                    self.assertEqual(receipt['pressure_tests'], list(w.PRESSURE_TESTS))
+                    self.assertTrue(receipt['pressure_proof']['passed'])
+                    self.assertEqual(receipt['pressure_proof']['execution_log'], 'A-pressure.stdout')
+                    self.assertEqual([c[1] for c in calls], ['test'] * 4 + ['build'])
+                    self.assertEqual(calls[2][-3:], ['admission_pressure::', '--', '--list'])
+                else:
+                    with self.assertRaises(ValueError):
+                        w.cargo_worker(spec)
+                    self.assertEqual(len(calls), bad_index + 1)
+                    self.assertTrue(all(c[1] == 'test' for c in calls))
+
+    def test_prepared_proof_requires_both_arms_and_cannot_be_stage_a(self):
+        args, contract, source, value = BindingTests.prepared(self)
+        args.command = 'proof'
+        value['purpose'] = 'ownership-proof'
+        for arm in w.CORES:
+            self.write(arm + '-cargo.json', dict(purpose='ownership-proof',
+                                               pressure_proof=w.pressure_result(arm, 'ownership-proof'),
+                                               native_tests=list(w.WALL_TESTS),
+                                               pressure_tests=list(w.PRESSURE_TESTS)))
+            for suffix, listing in (('-pressure-list.stdout', True), ('-pressure.stdout', False)):
+                (self.root / 'evidence' / (arm + suffix)).write_bytes(pressure_census(listing))
+        self.write('build.json', value)
+        with patch.object(w, 'source_gate'), patch.object(w, 'snapshot', return_value=source):
+            self.assertEqual(w.verify_build(args, self.root, contract), value)
+            args.command = 'measure'
+            with self.assertRaisesRegex(ValueError, 'purpose'):
+                w.verify_build(args, self.root, contract)
+            args.command = 'proof'
+            for arm in w.CORES:
+                path = self.root / 'evidence' / (arm + '-pressure.stdout')
+                path.write_bytes(b'failed')
+                with self.assertRaises(ValueError):
+                    w.verify_build(args, self.root, contract)
+                path.write_bytes(pressure_census())
+
+    def test_stage_a_prepared_cannot_be_proof(self):
+        args, contract, source, value = BindingTests.prepared(self)
+        args.command = 'proof'
+        with patch.object(w, 'source_gate'), patch.object(w, 'snapshot', return_value=source):
+            with self.assertRaisesRegex(ValueError, 'purpose'):
+                w.verify_build(args, self.root, contract)
+
+    def test_proof_command_builds_only_and_completion_waits_for_verified_both_arms(self):
+        for valid in (True, False):
+            root = self.root / 'coaptic-admission-wall'
+            args = argparse.Namespace(command='proof', output=str(root), core='core', expected_suite='a' * 40)
+            def build(args, root, contract):
+                w.save(root, 'build.json', {'purpose': contract['purpose']})
+            def verify(args, root, contract):
+                if not valid:
+                    raise ValueError('B proof incomplete')
+                return {}
+            with patch.object(w.sys, 'platform', 'win32'), \
+                 patch.dict(w.os.environ, {'RUNNER_ENVIRONMENT': 'github-hosted', 'RUNNER_TEMP': str(self.root)}), \
+                 patch.object(w.shutil, 'which', return_value=None), patch.object(w, 'source_gate'), \
+                 patch.object(w, 'preflight', return_value={}), patch.object(w, 'build', side_effect=build) as build_call, \
+                 patch.object(w, 'verify_build', side_effect=verify) as verified, patch.object(w, 'launch') as launch:
+                if valid:
+                    w.execute(args)
+                    receipt = w.load(root / 'evidence/proof-complete.json')
+                    self.assertTrue(receipt['passed'])
+                    self.assertEqual(receipt['measurements'], 'NOT RUN')
+                    self.assertEqual(sorted(receipt['arms']), ['A', 'B'])
+                    self.assertEqual(receipt['unimplemented'], w.UNIMPLEMENTED)
+                    self.assertEqual(verified.call_count, 2)
+                else:
+                    with self.assertRaisesRegex(ValueError, 'B proof incomplete'):
+                        w.execute(args)
+                    self.assertFalse((root / 'evidence/proof-complete.json').exists())
+                launch.assert_not_called()
+                build_call.assert_called_once()
+                self.assertFalse((root / 'evidence/build-complete.json').exists())
+            # Tiny exclusively owned temporary mock output only.
+            import shutil
+            shutil.rmtree(root)
+
+    def test_measure_worker_refuses_proof_before_any_process(self):
+        with patch.object(w, 'Budget') as budget, patch.object(w, 'launch') as launch:
+            with self.assertRaisesRegex(ValueError, 'cannot launch'):
+                w.measure_worker({'args': {'command': 'proof'}})
+            budget.assert_not_called()
+            launch.assert_not_called()
+
+    def test_owner_purpose_allows_build_measure_handoff(self):
+        args = argparse.Namespace(core='core', expected_suite='a' * 40, command='build')
+        build = w.owner(args, self.root)
+        for command in ('measure', 'all'):
+            args.command = command
+            self.assertEqual(w.owner(args, self.root), build)
+        args.command = 'proof'
+        self.assertEqual(w.owner(args, self.root)['purpose'], 'ownership-proof')
+        self.assertNotEqual(w.owner(args, self.root), build)
+
+    def test_workflow_all_boolean_routes_and_typed_direct_input(self):
+        import itertools
+        import re
+        ci = (w.SUITE / '.github/workflows/ci.yml').read_text()
+        jobs = ci.split('jobs:\n', 1)[1]
+        expressions = re.findall(r'^    if: \$\{\{ (.+) \}\}$', jobs, re.M)
+        self.assertEqual(len(expressions), 4)
+        for event, screen, profile, proof in itertools.product(
+                ('push', 'pull_request', 'workflow_dispatch'), (False, True), (False, True), (False, True)):
+            def evaluate(expr):
+                expr = expr.replace('github.event_name', repr(event))
+                for name, val in [('admission_wall_screen', screen), ('stack_profile', profile),
+                                  ('admission_pressure_proof', proof)]:
+                    expr = expr.replace('inputs.' + name, str(val))
+                return bool(eval(expr.replace('&&', ' and ').replace('||', ' or ').replace('!', ' not '),
+                                 {'__builtins__': {}}))
+            routed = [evaluate(e) for e in expressions]
+            manual = event == 'workflow_dispatch'
+            self.assertEqual(routed, [manual and ((profile and screen) or (proof and (not screen or profile))),
+                                      not profile and not screen and not proof,
+                                      manual and profile and not screen and not proof,
+                                      manual and screen and not profile])
+        self.assertIn('proof_only: ${{ inputs.admission_pressure_proof }}', ci)
+        workflow = (w.SUITE / '.github/workflows/admission-wall-screen.yml').read_text()
+        self.assertEqual(workflow.count('      proof_only:'), 2)
+        self.assertEqual(workflow.count('        type: boolean\n        default: false'), 2)
+        self.assertIn("PROOF_ONLY: ${{ inputs.proof_only }}", workflow)
+        self.assertIn("$env:PROOF_ONLY -cnotin @('true', 'false')", workflow)
+        self.assertIn("if ($env:PROOF_ONLY -ceq 'true') { 'proof' } else { 'all' }", workflow)
+        self.assertNotRegex(workflow, r'run:.*\$\{\{ inputs\.')
 
 
 if __name__ == '__main__':

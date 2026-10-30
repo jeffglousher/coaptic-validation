@@ -2,7 +2,17 @@ name: Manual bounded admission wall screen
 
 on:
   workflow_call:
+    inputs:
+      proof_only:
+        description: Run ownership proof with measurements NOT RUN
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      proof_only:
+        description: Run ownership proof with measurements NOT RUN
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -15,6 +25,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 35
     env:
+      PROOF_ONLY: ${{ inputs.proof_only }}
       SUITE_SHA: ${{ github.sha }}
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
@@ -24,6 +35,7 @@ jobs:
       - name: Validate the fixed hosted source plan
         shell: pwsh
         run: |
+          if ($env:PROOF_ONLY -cnotin @('true', 'false')) { throw 'Strict proof_only boolean required' }
           if ($env:SUITE_SHA -cnotmatch '^[0-9a-f]{40}$') { throw 'Immutable suite SHA required' }
           if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'Dedicated hosted runner required' }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -74,7 +86,8 @@ jobs:
               Remove-Item -LiteralPath "Env:$name"
             }
           }
-          python -B tools/benchmark/admission_wall_screen.py all --core coaptic --expected-suite $env:SUITE_SHA --output "$env:RUNNER_TEMP/coaptic-admission-wall"
+          $command = if ($env:PROOF_ONLY -ceq 'true') { 'proof' } else { 'all' }
+          python -B tools/benchmark/admission_wall_screen.py $command --core coaptic --expected-suite $env:SUITE_SHA --output "$env:RUNNER_TEMP/coaptic-admission-wall"
           if ($LASTEXITCODE) { throw 'Screen refused, failed, or did not satisfy its frozen gates; retain evidence' }
       - name: Retain bounded raw observations and failures
         if: always()

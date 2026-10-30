@@ -1,4 +1,4 @@
-"""Finite hosted Stage A admission screen. No CPU claim or Stage B promotion.
+"""Finite hosted Stage A screen or separate ownership proof. No Stage B promotion.
 
 Only the outer process changes core checkout/native lock inputs. Cargo workers
 own processes and monitored output, never source restoration. Unresolved cleanup
@@ -36,12 +36,24 @@ BUILD_LIMIT, EVIDENCE_LIMIT, LOG_LIMIT = 8 * 1024**3, 64 * 1024**2, 2 * 1024**2
 RESERVE = 4 * 1024**2  # Keep room for failure and final source/settlement receipts.
 TARGET = 'x86_64-pc-windows-msvc'
 FIXTURE = 'tools/benchmark/native/servers/src/bin/bench-core.rs'
-FIXTURE_LF_SHA256 = 'fe144de7598da4b753e668a17a8cbd91033896691a0ee045c5be711e784c0272'
+FIXTURE_LF_SHA256 = 'a645fdc88dee2aba922013c7af6553d25461d2122a0884cd75c70afa2d472398'
 WALL_TESTS = tuple('batch_tests::' + name for name in (
     'wall_cli_bounds_and_mixed_flag_refusal',
     'wall_exact_presets_both_payloads_verify_without_growth',
     'wall_full_metadata_and_complete_payload_are_required',
     'wall_missing_bad_response_and_authentication_refuse_then_recover'))
+PRESSURE_SOURCE = 'tools/benchmark/native/servers/src/bin/bench_core/admission_pressure.rs'
+PRESSURE_LF_SHA256 = 'a0a42eef55770d169f5bd533bd4aa0cbd3b8b4f6f57567beea50e1845fbb9db5'
+PRESSURE_TESTS = ('admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected',)
+PROOF_SCOPE = ('public-App SmallDevice full_responses unprotected retained outbound response RX credit; '
+               'incoming fresh GET refusal preserves slot/pin/occupancy; exact collection and fresh GET recovery')
+UNIMPLEMENTED = ['protected', 'TX pressure', 'cancellation', 'Block2 continuation']
+
+
+def purpose(args):
+    return 'ownership-proof' if getattr(args, 'command', None) == 'proof' else 'stage-a-screen'
+
+
 MEASUREMENT = ('server App::poll with optimizer barriers; request preparation and complete '
                'response verification outside clock; OSCORE responses authenticated; '
                'timer calibration separate and never subtracted')
@@ -215,21 +227,31 @@ def compare(arms, security):
                 scope=plan()['scope'])
 
 
-def validate_census(raw, listing=False):
+def validate_census(raw, listing=False, expected=WALL_TESTS):
+    if (not expected or len(set(expected)) != len(expected)
+            or any(not re.fullmatch(r'(?:[A-Za-z_]\w*::)+[A-Za-z_]\w*', n) for n in expected)):
+        raise ValueError('invalid declared exact census')
     text = '\n'.join(raw.decode('utf-8', errors='strict').splitlines())
-    pattern = r'^(batch_tests::wall_\w+): test$' if listing else r'^test (batch_tests::wall_\w+) \.\.\. ok$'
-    names = re.findall(pattern, text, re.M)
-    if sorted(names) != sorted(WALL_TESTS):
-        raise ValueError('native wall test census mismatch/empty/duplicate')
+    # Inspect every test, including unknown prefixes and non-ok completions.
+    pattern = r'^([^\s]+): test$' if listing else r'^test ([^\s]+) \.\.\. (.+)$'
+    observed = re.findall(pattern, text, re.M)
+    names = observed if listing else [n for n, status in observed if status == 'ok']
+    if sorted(names) != sorted(expected) or len(observed) != len(expected):
+        raise ValueError('native test census mismatch/empty/duplicate')
     if listing:
-        if not re.search(r'^4 tests, 0 benchmarks$', text, re.M):
+        counts = re.findall(r'^(\d+) tests?, (\d+) benchmarks?$', text, re.M)
+        if counts != [(str(len(expected)), '0')]:
             raise ValueError('native test listing count mismatch')
     else:
+        running = re.findall(r'^running (\d+) tests?$', text, re.M)
+        if running and running != [str(len(expected))]:
+            raise ValueError('native running count mismatch')
         summaries = re.findall(r'^test result: (.+)$', text, re.M)
         if len(summaries) != 1 or not re.fullmatch(
-                r'ok\. 4 passed; 0 failed; 0 ignored; 0 measured; \d+ filtered out; finished in .+', summaries[0]):
+                r'ok\. ' + str(len(expected)) +
+                r' passed; 0 failed; 0 ignored; 0 measured; \d+ filtered out; finished in .+', summaries[0]):
             raise ValueError('native test completion mismatch')
-    return list(WALL_TESTS)
+    return list(expected)
 
 
 def snapshot(root):
@@ -255,9 +277,14 @@ def source_gate(core, suite_sha, core_sha):
     value = wp.source_identity(core, core_sha, suite_sha)
     normalized = (SUITE / FIXTURE).read_bytes().replace(b'\r\n', b'\n')
     if hashlib.sha256(normalized).hexdigest() != FIXTURE_LF_SHA256:
-        raise ValueError('unchanged native fixture pin differs')
+        raise ValueError('native fixture pin differs')
     names = re.findall(rb'#\[test\]\s+fn (wall_\w+)\(', normalized)
     exact(sorted('batch_tests::' + n.decode() for n in names), sorted(WALL_TESTS), 'source census differs')
+    pressure = (SUITE / PRESSURE_SOURCE).read_bytes().replace(b'\r\n', b'\n')
+    exact(hashlib.sha256(pressure).hexdigest(), PRESSURE_LF_SHA256, 'pressure source pin differs')
+    declared = re.findall(rb'#\[test\]\s+fn (\w+)\(', pressure)
+    exact(sorted('admission_pressure::' + n.decode() for n in declared),
+          sorted(PRESSURE_TESTS), 'pressure source census differs')
     return value
 
 
@@ -514,6 +541,14 @@ def transaction(core, suite_sha, selected, operation, record):
                 primary.add_note('source finally: ' + str(error)[:1024])
 
 
+def pressure_result(arm, selected_purpose):
+    if selected_purpose != 'ownership-proof':
+        return None
+    return dict(passed=True, census=list(PRESSURE_TESTS),
+                listing_log=arm + '-pressure-list.stdout', execution_log=arm + '-pressure.stdout',
+                source_lf_sha256=PRESSURE_LF_SHA256, scope=PROOF_SCOPE)
+
+
 def cargo_worker(spec):
     root, arm = Path(spec['root']), spec['arm']
     budget = Budget(root, spec['seconds'], rss_limit=2 * 1024**3)
@@ -525,20 +560,33 @@ def cargo_worker(spec):
     tests = child_command(prefix + ['wall_', '--', '--test-threads=1'], budget, arm + '-tests',
                           env=os.environ, seconds=spec['seconds'])
     validate_census(tests)
+    selected_purpose = spec.get('purpose', 'stage-a-screen')
+    if selected_purpose not in ('stage-a-screen', 'ownership-proof'):
+        raise ValueError('unknown build purpose')
+    if selected_purpose == 'ownership-proof':
+        listing = child_command(prefix + ['admission_pressure::', '--', '--list'], budget,
+                                arm + '-pressure-list', env=os.environ, seconds=spec['seconds'])
+        validate_census(listing, listing=True, expected=PRESSURE_TESTS)
+        tests = child_command(prefix + ['admission_pressure::', '--', '--test-threads=1'], budget,
+                              arm + '-pressure', env=os.environ, seconds=spec['seconds'])
+        validate_census(tests, expected=PRESSURE_TESTS)
     prefix[1] = 'build'
     raw = child_command(prefix + ['--message-format=json-render-diagnostics'], budget, arm + '-build',
                         env=os.environ, seconds=spec['seconds'])
     pair = wp.native_artifact_pair(raw, root / 'target')
-    save(root, arm + '-cargo.json', dict(native_tests=list(WALL_TESTS), artifacts=list(map(str, pair)),
+    save(root, arm + '-cargo.json', dict(native_tests=list(WALL_TESTS), purpose=selected_purpose,
+         pressure_tests=list(PRESSURE_TESTS) if selected_purpose == 'ownership-proof' else [],
+         pressure_proof=pressure_result(arm, selected_purpose),
+         artifacts=list(map(str, pair)),
          sampled_direct_child_working_set_peak_bytes=budget.observed_child_working_set_peak,
          sampled_owned_build_peak_bytes=budget.peak))
     budget.check(force=True)
 
 
-def retain_pair(root, arm):
+def retain_pair(root, arm, selected_purpose='stage-a-screen'):
     result = load(root / 'evidence' / (arm + '-cargo.json'))
     pair = wp.native_artifact_pair((root / 'evidence' / (arm + '-build.stdout')).read_bytes(), root / 'target')
-    exact(result['native_tests'], list(WALL_TESTS), 'test receipt mismatch')
+    verify_tests(root, arm, result, selected_purpose)
     exact(result['artifacts'], list(map(str, pair)), 'artifact receipt mismatch')
     retained = {}
     for kind, source in zip(('exe', 'pdb'), pair):
@@ -575,7 +623,7 @@ def artifact_check(root, artifacts):
 
 def owner(args, root):
     return dict(schema='coaptic-admission-owner/1', project='Coaptic', root=str(root),
-                owner=os.environ.get('GITHUB_RUN_ID'), attempt=os.environ.get('GITHUB_RUN_ATTEMPT'),
+                purpose=purpose(args), owner=os.environ.get('GITHUB_RUN_ID'), attempt=os.environ.get('GITHUB_RUN_ATTEMPT'),
                 expected_suite=args.expected_suite, core=str(Path(args.core).resolve()), plan=plan(),
                 plan_sha256=ds.digest(HERE / 'admission_wall_plan.md'),
                 release='Retain through reviewed delivery; retire ephemeral VM after unresolved cleanup',
@@ -605,15 +653,16 @@ def build(args, root, contract):
             record = records[arm] = {}
             transaction(args.core, args.expected_suite, commit,
                         lambda lock: launch(root, arm, dict(kind='cargo', root=str(root), arm=arm,
-                                                           cargo=tools['cargo']['path'], seconds=inner),
+                                                           cargo=tools['cargo']['path'], seconds=inner,
+                                                           purpose=purpose(args)),
                                             env, timeout=outer, build=True), record)
-            artifacts[arm] = retain_pair(root, arm)
+            artifacts[arm] = retain_pair(root, arm, purpose(args))
             tool_check(tools)
             config_check(inputs)
             exact(snapshot(SUITE), suite, 'suite changed after build')
         if time.monotonic() >= deadline:
             raise TimeoutError('830-second outer build owner deadline')
-        result = dict(owner=contract, plan=plan(), suite=suite, records=records, artifacts=artifacts,
+        result = dict(owner=contract, purpose=purpose(args), plan=plan(), suite=suite, records=records, artifacts=artifacts,
                       compiler=compiler, cargo=cargo, tools=tools, inputs=inputs, flags=FLAGS,
                       host=ds.host_identity())
         save(root, 'build.json', result)
@@ -642,10 +691,26 @@ def build(args, root, contract):
             raise check_error
 
 
+def verify_tests(root, arm, receipt, selected_purpose):
+    exact(receipt['purpose'], selected_purpose, 'prepared test purpose differs')
+    exact(receipt['native_tests'], list(WALL_TESTS), 'prepared native census differs')
+    exact(receipt['pressure_proof'], pressure_result(arm, selected_purpose), 'prepared pressure result differs')
+    expected = list(PRESSURE_TESTS) if selected_purpose == 'ownership-proof' else []
+    exact(receipt['pressure_tests'], expected, 'prepared pressure census differs')
+    validate_census((root / 'evidence' / (arm + '-tests-list.stdout')).read_bytes(), listing=True)
+    validate_census((root / 'evidence' / (arm + '-tests.stdout')).read_bytes())
+    if expected:
+        validate_census((root / 'evidence' / (arm + '-pressure-list.stdout')).read_bytes(),
+                        listing=True, expected=PRESSURE_TESTS)
+        validate_census((root / 'evidence' / (arm + '-pressure.stdout')).read_bytes(),
+                        expected=PRESSURE_TESTS)
+
+
 def verify_build(args, root, contract):
     exact(load(root / 'evidence/owner.json'), contract, 'owner/plan identity differs')
     value = load(root / 'evidence/build.json')
     exact(value['owner'], contract, 'prepared owner differs')
+    exact(value['purpose'], purpose(args), 'prepared build purpose differs')
     exact(value['plan'], plan(), 'prepared plan differs')
     exact(value['flags'], FLAGS, 'prepared flags differ')
     source_gate(args.core, args.expected_suite, BASELINE)
@@ -659,9 +724,7 @@ def verify_build(args, root, contract):
         if record['source']['identity']['commit'] != commit or record['restoration'] != 'verified clean initial source':
             raise ValueError('prepared source/restoration differs')
         receipt = load(root / 'evidence' / (arm + '-cargo.json'))
-        exact(receipt['native_tests'], list(WALL_TESTS), 'prepared native census differs')
-        validate_census((root / 'evidence' / (arm + '-tests-list.stdout')).read_bytes(), listing=True)
-        validate_census((root / 'evidence' / (arm + '-tests.stdout')).read_bytes())
+        verify_tests(root, arm, receipt, purpose(args))
     artifact_check(root, value['artifacts'])
     return value
 
@@ -700,6 +763,8 @@ def affinity(root):
 
 def measure_worker(spec):
     args = argparse.Namespace(**spec['args'])
+    if purpose(args) != 'stage-a-screen':
+        raise ValueError('ownership proof cannot launch measurements')
     root = Path(args.output)
     budget = Budget(root, MEASURE_SECONDS)
     contract = owner(args, root)
@@ -775,7 +840,7 @@ def execute(args):
     contract = owner(args, root)
     source_gate(args.core, args.expected_suite, BASELINE)
     observed = preflight(root)
-    if args.command in ('build', 'all'):
+    if args.command in ('build', 'all', 'proof'):
         root.mkdir()
         (root / 'evidence').mkdir()
         save(root, 'owner.json', contract)
@@ -789,7 +854,7 @@ def execute(args):
         verify_build(args, root, contract)
     primary = None
     try:
-        if args.command in ('build', 'all'):
+        if args.command in ('build', 'all', 'proof'):
             build(args, root, contract)
         if args.command in ('measure', 'all'):
             value = verify_build(args, root, contract)
@@ -816,6 +881,16 @@ def execute(args):
                 if primary is None:
                     raise
                 primary.add_note('outer source finally: ' + str(error)[:1024])
+    if args.command == 'proof':
+        verify_build(args, root, contract)
+        save(root, 'proof-complete.json', dict(
+            passed=True, purpose='ownership-proof', measurements='NOT RUN',
+            scope=PROOF_SCOPE, unimplemented=UNIMPLEMENTED,
+            stage_b='NOT COMPLETE; no promotion', cores=CORES,
+            arms={arm: dict(wall_tests=list(WALL_TESTS), pressure_tests=list(PRESSURE_TESTS))
+                  for arm in CORES},
+            prepared_hashes={name: ds.digest(root / 'evidence' / name)
+                             for name in ('owner.json', 'build.json')}))
     if args.command == 'build':
         save(root, 'build-complete.json', dict(prepared_hashes={
              name: ds.digest(root / 'evidence' / name) for name in ('owner.json', 'build.json')}))
@@ -835,7 +910,7 @@ def main(argv=None):
             raise ValueError('unknown worker')
         return
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=('build', 'measure', 'all'))
+    parser.add_argument('command', choices=('build', 'measure', 'all', 'proof'))
     parser.add_argument('--core', required=True)
     parser.add_argument('--expected-suite', required=True)
     parser.add_argument('--output', required=True)
