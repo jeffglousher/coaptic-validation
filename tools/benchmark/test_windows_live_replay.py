@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import stat
 import struct
+import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -116,6 +117,21 @@ class Tests(unittest.TestCase):
                          '2026-10-30T10:12:01.671394+00:00')
         self.assertEqual(p['cohorts'][1]['original_config']['process_start_utc'],
                          '2026-10-30T10:12:01.6713940Z')
+
+    def test_source_pin_hash_survives_checkout_filters(self):
+        # Exercise Git's real smudge path, including a Windows CRLF checkout.
+        path = 'tools/benchmark/windows_live_replay_pins.json'
+        for autocrlf in ('true', 'input', 'false'):
+            with self.subTest(autocrlf=autocrlf):
+                raw = subprocess.check_output(
+                    ['git', '-c', 'core.autocrlf=' + autocrlf,
+                     'cat-file', '--filters', 'HEAD:' + path],
+                    cwd=r.w.SUITE, timeout=10)
+                self.assertLessEqual(len(raw), r.META_LIMIT)
+                self.assertNotIn(b'\r', raw)
+                self.assertEqual(r.sha(raw), r.PINS_SHA256)
+                with patch.object(Path, 'open', return_value=io.BytesIO(raw)):
+                    self.assertEqual(r.load_pins()['artifact_id'], 12969046956)
 
     def test_source_pin_hash_refusal_before_any_write(self):
         with patch.object(r, 'PINS_SHA256', '0' * 64), patch.object(r.old, 'fresh_root') as create:
