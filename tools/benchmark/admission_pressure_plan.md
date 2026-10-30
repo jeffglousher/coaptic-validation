@@ -226,3 +226,17 @@ at zero. That path is identical on all three pinned revisions. The current
 fixture expects NUM 0 and next NUM 0, while all exact wire-block, authentication,
 payload, ownership and final-release checks remain unchanged. Both failed runs
 remain retained. This corrected cohort is UNRUN; no timing or promotion follows.
+
+Run 41141222260/1 at 08c1ab7 passed the same six pressure cases on arm A but
+both Block2 cases failed the fixture's transfer.more() assertion. The retained
+sidecar is initialized with more=false; explicit range selection does not update
+that issuance state. Treating its flags as the wire M flag repeated the same
+incorrect model. The fixture now captures the complete actual BlockTransfer
+sidecar when the notification snapshot is established and requires exact equality
+after each incomplete explicit range selection. It still independently requires
+wire M=true/true/false for blocks 1/2/3, exact full payload assembly, stable body
+identity and bytes, handler exclusion, retained Calls, and final App-owned release.
+One bounded sidecar copy is extra test metadata; no production storage changes.
+This replaces guessed issuance-state values with a stronger preservation check;
+it does not establish the new cohort until native execution passes. All three
+failed software runs remain retained; Stage B timing remains NOT RUN.

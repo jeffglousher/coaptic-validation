@@ -920,7 +920,8 @@ fn block2_notification_under_rx_pressure_preserves_body_and_completes(protected:
     // The two body slots permit snapshot replacement. Pool sidecars belong to
     // these capacities, not additional payload buffers. Extra fixture scratch:
     // one WIRE auth buffer, one 128B postponed wire reply, three 128B exact RX
-    // snapshots plus lengths/IDs/metadata, 64B assembly and 32B collection.
+    // snapshots plus lengths/IDs/metadata, one copied BlockTransfer sidecar,
+    // 64B assembly and 32B collection.
     // This is neither a whole-memory nor a stack measurement.
     let builder = App::builder()
         .full_responses()
@@ -1149,6 +1150,7 @@ fn block2_notification_under_rx_pressure_preserves_body_and_completes(protected:
     let mut observing_binding = None;
     let mut assembly = [0; 64];
     let mut body = None;
+    let mut body_snapshot = None;
     let before = app.metrics();
     // Stage0 registers, stage1 explicitly exercises the public adaptive NON
     // notification, stages2..4 fetch notification blocks1..3, stage5 recovers.
@@ -1306,6 +1308,7 @@ fn block2_notification_under_rx_pressure_preserves_body_and_completes(protected:
             );
             assert_eq!(transfer.role(), coaptic::storage::BlockRole::OutgoingBlock2);
             assert_eq!(transfer.szx(), 0);
+            body_snapshot = Some(transfer);
             let io = app.transport_mut();
             io.input[..postponed_len].copy_from_slice(&postponed[..postponed_len]);
             io.input_len = Some(postponed_len);
@@ -1340,14 +1343,11 @@ fn block2_notification_under_rx_pressure_preserves_body_and_completes(protected:
             assert_eq!(transfer.token(), token);
             assert_eq!(transfer.endpoint(), PEER);
             assert_eq!(transfer.szx(), 0);
-            // Notification block0 and followups all select explicit ranges;
-            // requested_block2 never advances the sequential cursor. Wire NUM
-            // and exact payload checks above validate actual response progress.
-            assert_eq!(transfer.num(), 0);
-            assert_eq!(transfer.next_num(), 0);
+            // Explicit range selection preserves the entire retained sidecar,
+            // including issuance flags, selection and notification metadata.
+            // Actual progress is checked from wire NUM/M and exact payloads.
+            assert_eq!(transfer, body_snapshot.unwrap());
             assert_eq!(transfer.filled(), NOTIFICATION_BODY.len());
-            assert!(transfer.more());
-            assert!(!transfer.is_complete());
             assert_eq!(transfer.identity().as_slice(), Some(&b"notify64"[..]));
             retained_unchanged!(3);
             assert_eq!(
