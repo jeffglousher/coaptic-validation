@@ -114,8 +114,31 @@ class ProtocolTests(unittest.TestCase):
         source = (w.SUITE / w.FIXTURE).read_bytes().replace(b'\r\n', b'\n')
         self.assertEqual(hashlib.sha256(source).hexdigest(), w.FIXTURE_LF_SHA256)
         names = w.re.findall(rb'#\[test\]\s+fn (wall_\w+)\(', source)
-        self.assertEqual(sorted('tests::' + n.decode() for n in names), sorted(w.WALL_TESTS))
+        for match in w.re.finditer(rb'#\[test\]\s+fn (wall_\w+)\(', source):
+            modules = w.re.findall(rb'^mod (\w+) \{', source[:match.start()], w.re.M)
+            self.assertEqual(modules[-1], b'batch_tests')
+        self.assertEqual(sorted('batch_tests::' + n.decode() for n in names), sorted(w.WALL_TESTS))
         self.assertEqual(len(w.WALL_TESTS), 4)
+
+    def test_observed_native_module_listing_and_completion(self):
+        # Literal qualified names from run 41084281643, independent of WALL_TESTS.
+        listing = b'''batch_tests::wall_cli_bounds_and_mixed_flag_refusal: test
+batch_tests::wall_exact_presets_both_payloads_verify_without_growth: test
+batch_tests::wall_full_metadata_and_complete_payload_are_required: test
+batch_tests::wall_missing_bad_response_and_authentication_refuse_then_recover: test
+
+4 tests, 0 benchmarks
+'''
+        completed = b'\n'.join(b'test ' + row[:-6] + b' ... ok' for row in listing.splitlines()
+                                if row.endswith(b': test'))
+        completed += (b'\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; '
+                      b'24 filtered out; finished in 0.01s\n')
+        for raw, is_listing in ((listing, True), (completed, False)):
+            for newline in (b'\n', b'\r\n'):
+                observed = raw.replace(b'\n', newline)
+                self.assertEqual(w.validate_census(observed, is_listing), list(w.WALL_TESTS))
+                with self.assertRaises(ValueError):
+                    w.validate_census(observed.replace(b'batch_tests::', b'tests::'), is_listing)
 
     def test_census_refuses_empty_extra_duplicate_failed_ignored(self):
         for listing in (False, True):

@@ -117,3 +117,14 @@ First-fragment success does not establish a complete-body exchange.
 Do not promote the candidate before Stage B passes. Linux and device confirmation
 are separate later decisions. The original profiling campaign stays stopped;
 this screen creates no new trace and changes no profiler cap.
+
+## Retained setup failure
+
+Run `41084281643/1` stopped before native test execution or measurements. The
+baseline test-list process exited successfully and listed the four expected
+functions under `batch_tests::`; the runner incorrectly required `tests::`.
+The correction binds the same four functions to their actual Rust module and
+tests the observed listing with LF and CRLF. Both revisions must still complete
+the exact census before measurement. The workload, process selection, budgets,
+statistical method and acceptance gates are unchanged; this setup failure
+establishes no performance result.

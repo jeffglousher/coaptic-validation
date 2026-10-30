@@ -37,7 +37,7 @@ RESERVE = 4 * 1024**2  # Keep room for failure and final source/settlement recei
 TARGET = 'x86_64-pc-windows-msvc'
 FIXTURE = 'tools/benchmark/native/servers/src/bin/bench-core.rs'
 FIXTURE_LF_SHA256 = 'fe144de7598da4b753e668a17a8cbd91033896691a0ee045c5be711e784c0272'
-WALL_TESTS = tuple('tests::' + name for name in (
+WALL_TESTS = tuple('batch_tests::' + name for name in (
     'wall_cli_bounds_and_mixed_flag_refusal',
     'wall_exact_presets_both_payloads_verify_without_growth',
     'wall_full_metadata_and_complete_payload_are_required',
@@ -217,7 +217,7 @@ def compare(arms, security):
 
 def validate_census(raw, listing=False):
     text = '\n'.join(raw.decode('utf-8', errors='strict').splitlines())
-    pattern = r'^(tests::wall_\w+): test$' if listing else r'^test (tests::wall_\w+) \.\.\. ok$'
+    pattern = r'^(batch_tests::wall_\w+): test$' if listing else r'^test (batch_tests::wall_\w+) \.\.\. ok$'
     names = re.findall(pattern, text, re.M)
     if sorted(names) != sorted(WALL_TESTS):
         raise ValueError('native wall test census mismatch/empty/duplicate')
@@ -257,7 +257,7 @@ def source_gate(core, suite_sha, core_sha):
     if hashlib.sha256(normalized).hexdigest() != FIXTURE_LF_SHA256:
         raise ValueError('unchanged native fixture pin differs')
     names = re.findall(rb'#\[test\]\s+fn (wall_\w+)\(', normalized)
-    exact(sorted('tests::' + n.decode() for n in names), sorted(WALL_TESTS), 'source census differs')
+    exact(sorted('batch_tests::' + n.decode() for n in names), sorted(WALL_TESTS), 'source census differs')
     return value
 
 
