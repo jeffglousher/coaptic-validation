@@ -1,12 +1,16 @@
 # RX and TX ownership proofs before pressure timing
 
-This plan covers three public-App correctness tests with SmallDevice resources:
-unprotected retained-response RX pressure, and fixture-owned TX pressure in
-unprotected and OSCORE traffic. The expanded native cohort is UNRUN at this
-integration handoff. Portable Python mocks are not native execution. Historical
+This plan covers four public-App correctness tests with SmallDevice resources:
+retained-response RX pressure and fixture-owned TX pressure, each in unprotected
+and OSCORE traffic. The new protected-RX case and expanded four-test cohort are
+UNRUN at this integration handoff. Portable Python mocks are not native execution. Historical
 run [41094806564](https://github.com/jeffglousher/coaptic-validation/actions/runs/41094806564)
 passed the original single unprotected RX proof on both arms; it does not
-establish the new TX assertions or the expanded three-test census.
+establish later assertions. Run
+[41123960432](https://github.com/jeffglousher/coaptic-validation/actions/runs/41123960432)
+at source 54ce45a subsequently passed the original three pressure cases plus
+four wall tests on both arms: 14 native executions and 80 portable tests.
+That source-specific result does not establish the new protected-RX case.
 
 The immutable core arms are A 623c82db1a6606ec86cd56bb52009988b9f0d87e and
 B 8782a6a0b0aef2facf51bec884cfe37f2a80f28d. The parent checkout's unrelated
@@ -21,12 +25,13 @@ No old fixture pin is claimed to match the new test source.
 
 The exact pressure test census is:
 
+    admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_oscore
     admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected
     admission_pressure::tx_credit_survives_refusal_and_release_recovers_oscore
     admission_pressure::tx_credit_survives_refusal_and_release_recovers_unprotected
 
-Both arms must list and pass all three tests. An old successful RX-only listing
-or completion cannot satisfy the expanded proof. Both arms must also pass exactly
+Both arms must list and pass all four tests. Historical successful RX-only or
+three-case listings/completions cannot satisfy the expanded proof. Both arms must also pass exactly
 these four original wall tests, with their observed module namespace:
 
     batch_tests::wall_cli_bounds_and_mixed_flag_refusal
@@ -48,6 +53,17 @@ pin state and occupancy after poll. It collects the exact held response, verifie
 credit release and one-time collection, then uses another fresh GET to verify
 content recovery and one handler call. This is ownership evidence, not timing.
 
+The protected-RX case uses one OSCORE context pair for both directions and the
+entire refusal/recovery sequence. The App sends a real protected Call; the peer
+opens it and uses its request binding to protect the response. The App's opened
+Inner occupies the retained RX slot. The test checks that slot's endpoint,
+MID/token, occupancy, pin and post-authentication bytes before and after the
+incoming protected request. A single fixed scratch buffer is reused for peer
+authentication, the retained-byte snapshot and final collection. Every Access
+guard is dropped before polling. The refusal and fresh recovery are authenticated;
+collection verifies the original logical response and releases credit exactly once.
+No keys, sender sequences, replay history or bindings are reset for recovery.
+
 Each TX test reserves one genuine public TX slot, leaving exactly one free
 control slot. It encodes a sentinel without queuing a transmission and records
 the slot's bytes, endpoint, occupancy and pin state. An incoming fresh request
@@ -57,7 +73,7 @@ empty before pressure; the refusal's inline replay must not own a TX pin or hide
 an eviction. Only the fixture releases its reservation, once, then a distinct
 MID/token request must recover the complete expected response and one handler
 call. OSCORE protection and response authentication use one continuous context;
-no sequence, key, replay or binding state is reset for recovery. All three tests
+no sequence, key, replay or binding state is reset for recovery. All four tests
 serialize the shared handler counter through a module mutex, including ordinary
 parallel native-test invocations. No timer or performance sample is added.
 
@@ -85,8 +101,9 @@ outer worker, 8 GiB build and 64 MiB evidence, including the existing reserve.
 Existing source restoration, unresolved cleanup and reporting-error contracts
 apply. No new job cap or profiling dependency is introduced.
 
-Protected RX, Observe cancellation and Block2 continuation proofs remain
-UNIMPLEMENTED. The two TX tests are implemented but UNRUN. This cohort is not
+Observe cancellation and Block2 continuation proofs remain UNIMPLEMENTED.
+The new protected-RX test is implemented but UNRUN. The other three cases passed
+at source 54ce45a; they remain selected in the new cohort. This cohort is not
 Stage B completion or promotion. Establish
 correctness proofs before quantitative timing. A future four-case by two-mode by
 ABBA timing design would total 32 processes; its matrix and gates are not frozen.

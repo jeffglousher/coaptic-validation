@@ -1,9 +1,9 @@
 //! Public-App ownership proofs before admitting pressure timing samples.
 //!
-//! These tests do not measure performance. The TX refusal/recovery proofs below
-//! are UNRUN pending qualification against both pinned admission arms. Protected
-//! RX pressure, Observe cancellation and complete Block2 remain future work;
-//! these cases do not establish completion of Stage B.
+//! These tests do not measure performance. The original three cases passed on
+//! both pinned arms at source 54ce45a in run 41123960432/1. Only the protected RX
+//! case is UNRUN. Observe cancellation, complete Block2 and Stage B pressure /
+//! continuation timing qualification remain outstanding.
 use super::*;
 use coaptic::storage::Storage;
 use std::sync::Mutex;
@@ -165,6 +165,252 @@ fn rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected() {
         app.metrics().admission_rx_refused,
         before.admission_rx_refused + 1
     );
+}
+
+#[test]
+fn rx_credit_survives_incoming_refusal_and_collection_recovers_oscore() {
+    let _guard = FIXTURE_LOCK.lock().unwrap();
+    HANDLER_CALLS.store(0, Ordering::SeqCst);
+    let derive = |sender_id, recipient_id| {
+        coaptic::oscore::SecurityContext::derive(coaptic::oscore::DeriveParams {
+            master_secret: &[0x37; 16],
+            master_salt: &[0x51; 8],
+            sender_id,
+            recipient_id,
+            id_context: &[],
+        })
+        .unwrap()
+    };
+    // One context pair serves both directions throughout, including recovery.
+    let mut peer = derive(&[], &[1]);
+    let resources = coaptic::resources::SmallDevice::new();
+    assert_eq!(resources.route_capacity(), 4);
+    assert_eq!(resources.client_capacity(), 1);
+    assert_eq!(resources.deferred_capacity(), 0);
+    assert_eq!(resources.association_capacity(), 1);
+    assert_eq!(resources.security_request_capacity(), 4);
+    let mut app = App::with_resources(resources)
+        .randomness(|bytes| getrandom::fill(bytes).is_ok())
+        .route("bench", get(counted_representation))
+        .oscore(derive(&[1], &[]))
+        .bind(core_io())
+        .unwrap();
+    let capacities = app.engine_mut().capacities();
+    assert_eq!(capacities.rx_datagram_slots, 2);
+    assert_eq!(capacities.tx_datagram_slots, 2);
+    assert_eq!(capacities.rx_body_slots, None);
+    assert_eq!(capacities.tx_body_slots, None);
+    assert_eq!(capacities.rx_body_bytes, None);
+    assert_eq!(capacities.tx_body_bytes, None);
+    assert_eq!(SMALL_BODY.len(), 32);
+    let rx_ids = {
+        let pool = app.engine_mut().storage_mut().rx_datagram();
+        assert_eq!(pool.occupied_count(), 0);
+        let cursor = pool.cursor();
+        let a = pool.acquire().unwrap();
+        let b = pool.acquire().unwrap();
+        assert_ne!(a, b);
+        assert_eq!(pool.occupied_count(), 2);
+        pool.release(a).unwrap();
+        pool.release(b).unwrap();
+        assert_eq!(pool.occupied_count(), 0);
+        assert_eq!(pool.cursor(), cursor);
+        [a, b]
+    };
+    // Scratch is reused for peer authentication and the retained-byte snapshot.
+    let mut scratch = [0; WIRE];
+    let call = app.get("retained").to(PEER).send(0).unwrap();
+    let (call_mid, call_token) = {
+        let io = app.transport_mut();
+        let n = io.output_len.take().unwrap();
+        let wire = decode(&io.output[..n]).unwrap();
+        assert!(wire.oscore().is_some());
+        let (request, binding) = peer.unprotect_request(&wire, &mut scratch).unwrap();
+        assert_eq!(request.code(), Code::GET);
+        let mid = request.message_id();
+        let token = request.token();
+        let response = Message::new(Type::Acknowledgement, Code::CONTENT, mid)
+            .with_token(token)
+            .with_payload(b"retained-response");
+        io.input_len = Some(
+            peer.protect_response(&response, binding, &mut io.input)
+                .unwrap(),
+        );
+        (mid, token)
+    };
+    app.poll(1).unwrap();
+    assert!(app.transport().input_len.is_none());
+    assert!(app.transport().output_len.is_none());
+    assert_eq!(app.engine_mut().rx_occupied(), 1);
+    assert_eq!(app.engine_mut().tx_occupied(), 0);
+    let (held, held_pin) = {
+        let pool = app.engine_mut().storage_mut().rx_datagram();
+        assert_eq!(pool.occupied_count(), 1);
+        let [a, b] = rx_ids;
+        assert_ne!(pool.is_occupied(a), pool.is_occupied(b));
+        let id = if pool.is_occupied(a) { a } else { b };
+        (id, pool.is_pinned(id))
+    };
+    assert!(!held_pin);
+    assert_eq!(app.engine_mut().rx_endpoint(held), Some(PEER));
+    {
+        // Rebind inventoried locators to the actual authenticated Call reply.
+        // The pinned App writes opened Inner bytes over the received packet.
+        let reply = app.engine_mut().decode_rx(held).unwrap();
+        assert_eq!(reply.message_id(), call_mid);
+        assert_eq!(reply.token(), call_token);
+        assert_eq!(reply.ty(), Type::Acknowledgement);
+        assert_eq!(reply.code(), Code::CONTENT);
+        assert_eq!(reply.payload(), b"retained-response");
+    }
+    let held_len = {
+        let bytes = app.engine_mut().access_rx(held).unwrap();
+        scratch[..bytes.len()].copy_from_slice(&bytes);
+        bytes.len()
+    }; // Drop the pin before polling; snapshot actual post-authentication bytes.
+    let before = app.metrics();
+    let options = [Opt::uri_path("bench")];
+    let mid = MessageId::new(if call_mid == MessageId::new(42_000) {
+        42_001
+    } else {
+        42_000
+    });
+    let token = if call_token == Token::new(b"rx-busy").unwrap() {
+        Token::new(b"rx-other").unwrap()
+    } else {
+        Token::new(b"rx-busy").unwrap()
+    };
+    assert_ne!(mid, call_mid);
+    assert_ne!(token, call_token);
+    let request = Message::con(Code::GET, mid, token).with_options(&options);
+    let io = app.transport_mut();
+    io.input_len = Some(peer.protect_request(&request, &mut io.input).unwrap());
+    app.poll(2).unwrap();
+    assert!(app.transport().input_len.is_none());
+    assert_eq!(HANDLER_CALLS.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        app.metrics().admission_rx_refused,
+        before.admission_rx_refused + 1
+    );
+    assert_eq!(
+        app.metrics().admission_tx_refused,
+        before.admission_tx_refused
+    );
+    assert_eq!(
+        app.metrics().admission_refusal_sent,
+        before.admission_refusal_sent + 1
+    );
+    assert_eq!(
+        app.metrics().admission_refusal_unsent,
+        before.admission_refusal_unsent
+    );
+    assert_eq!(app.engine_mut().rx_occupied(), 1);
+    assert_eq!(app.engine_mut().tx_occupied(), 0);
+    {
+        let pool = app.engine_mut().storage_mut().rx_datagram();
+        assert_eq!(pool.occupied_count(), 1);
+        assert!(pool.is_occupied(held));
+        assert_eq!(pool.is_pinned(held), held_pin);
+    }
+    assert_eq!(app.engine_mut().rx_endpoint(held), Some(PEER));
+    {
+        let bytes = app.engine_mut().access_rx(held).unwrap();
+        assert_eq!(&*bytes, &scratch[..held_len]);
+        let reply = decode(&bytes).unwrap();
+        assert_eq!(reply.message_id(), call_mid);
+        assert_eq!(reply.token(), call_token);
+        assert_eq!(reply.code(), Code::CONTENT);
+        assert_eq!(reply.payload(), b"retained-response");
+    }
+    // Snapshot verified; reuse its scratch to authenticate the actual refusal.
+    {
+        let io = app.transport_mut();
+        let n = io.output_len.take().unwrap();
+        let wire = decode(&io.output[..n]).unwrap();
+        assert!(wire.oscore().is_some());
+        let binding = peer.take(token).unwrap();
+        let refusal = peer
+            .unprotect_response(&wire, binding, &mut scratch)
+            .unwrap();
+        assert_eq!(refusal.ty(), Type::Acknowledgement);
+        assert_eq!(refusal.message_id(), mid);
+        assert_eq!(refusal.token(), token);
+        assert_eq!(refusal.code(), Code::SERVICE_UNAVAILABLE);
+    }
+    assert!(app.transport().output_len.is_none());
+    let retained = app
+        .take_response_into(call, &mut scratch)
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(retained.message_id(), Some(call_mid));
+    assert_eq!(retained.token(), Some(call_token));
+    assert_eq!(retained.code(), Code::CONTENT);
+    assert_eq!(retained.payload(), b"retained-response");
+    assert_eq!(app.engine_mut().rx_occupied(), 0);
+    assert!(
+        !app.engine_mut()
+            .storage_mut()
+            .rx_datagram()
+            .is_occupied(held)
+    );
+    assert!(!app.engine_mut().rx_is_pinned(held));
+    assert!(
+        app.take_response_into(call, &mut scratch)
+            .unwrap()
+            .is_none()
+    );
+
+    // Fresh MID, token and sender sequence under the continuous peer context.
+    let recovered_mid = MessageId::new(if call_mid == MessageId::new(42_002) {
+        42_003
+    } else {
+        42_002
+    });
+    let recovered_token = if call_token == Token::new(b"rx-fresh").unwrap() {
+        Token::new(b"rx-next").unwrap()
+    } else {
+        Token::new(b"rx-fresh").unwrap()
+    };
+    assert_ne!(recovered_mid, call_mid);
+    assert_ne!(recovered_mid, mid);
+    assert_ne!(recovered_token, call_token);
+    assert_ne!(recovered_token, token);
+    let request = Message::con(Code::GET, recovered_mid, recovered_token).with_options(&options);
+    let io = app.transport_mut();
+    io.input_len = Some(peer.protect_request(&request, &mut io.input).unwrap());
+    app.poll(3).unwrap();
+    assert!(app.transport().input_len.is_none());
+    {
+        let io = app.transport_mut();
+        let n = io.output_len.take().unwrap();
+        let wire = decode(&io.output[..n]).unwrap();
+        assert!(wire.oscore().is_some());
+        let binding = peer.take(recovered_token).unwrap();
+        let reply = peer
+            .unprotect_response(&wire, binding, &mut scratch)
+            .unwrap();
+        verify_reply(&reply, recovered_mid, recovered_token, &SMALL_BODY).unwrap();
+    }
+    assert_eq!(HANDLER_CALLS.load(Ordering::SeqCst), 1);
+    assert_eq!(app.engine_mut().rx_occupied(), 0);
+    assert_eq!(
+        app.metrics().admission_rx_refused,
+        before.admission_rx_refused + 1
+    );
+    assert_eq!(
+        app.metrics().admission_tx_refused,
+        before.admission_tx_refused
+    );
+    assert_eq!(
+        app.metrics().admission_refusal_sent,
+        before.admission_refusal_sent + 1
+    );
+    assert_eq!(
+        app.metrics().admission_refusal_unsent,
+        before.admission_refusal_unsent
+    );
+    assert!(app.transport().output_len.is_none());
 }
 
 #[test]
