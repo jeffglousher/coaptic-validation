@@ -1029,6 +1029,17 @@ fn batch_event(
     Ok(())
 }
 
+#[cfg(windows)]
+fn current_windows_thread_id() -> u32 {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetCurrentThreadId() -> u32;
+    }
+    // SAFETY: GetCurrentThreadId takes no arguments and always returns the
+    // calling OS thread's ID; it borrows no memory and requires no cleanup.
+    unsafe { GetCurrentThreadId() }
+}
+
 fn batch_run(
     app: &mut CoreApp,
     client: Option<coaptic::oscore::SecurityContext>,
@@ -1050,15 +1061,25 @@ fn batch_run(
     }
     fixture.rows.resize_with(BATCH_OPS, BatchRow::empty);
     let mut output = std::io::stdout().lock();
-    writeln!(
+    write!(
         output,
-        "{{\"event\":\"fixture\",\"security\":\"{security}\",\"requested_bytes\":{requested_bytes},\"row_bytes\":{},\"row_metadata_bytes\":{metadata_bytes},\"request_ref_bytes\":{},\"optional_request_ref_bytes\":{},\"wire_bytes\":25600000,\"capture_datagram_bytes\":256,\"app_datagram_bytes\":1472,\"app_heap_bytes\":{app_heap_bytes},\"app_inline_bytes\":{},\"fixture_inline_bytes\":{},\"scratch_allowance_bytes\":16384,\"rows\":50000,\"limit_bytes\":33554432}}",
+        "{{\"event\":\"fixture\",\"security\":\"{security}\",\"requested_bytes\":{requested_bytes},\"row_bytes\":{},\"row_metadata_bytes\":{metadata_bytes},\"request_ref_bytes\":{},\"optional_request_ref_bytes\":{},\"wire_bytes\":25600000,\"capture_datagram_bytes\":256,\"app_datagram_bytes\":1472,\"app_heap_bytes\":{app_heap_bytes},\"app_inline_bytes\":{},\"fixture_inline_bytes\":{},\"scratch_allowance_bytes\":16384,\"rows\":50000,\"limit_bytes\":33554432",
         std::mem::size_of::<BatchRow>(),
         std::mem::size_of::<coaptic::oscore::RequestRef>(),
         std::mem::size_of::<Option<coaptic::oscore::RequestRef>>(),
         std::mem::size_of_val(app),
         std::mem::size_of::<BatchFixture>()
     )?;
+    // This synchronous thread also executes every batch_drive below. Report
+    // its OS identity once, outside all measured gates; other runtimes may
+    // have created auxiliary threads before batch_run starts.
+    #[cfg(windows)]
+    write!(
+        output,
+        ",\"workload_thread_id\":{}",
+        current_windows_thread_id()
+    )?;
+    writeln!(output, "}}")?;
     output.flush()?;
     for operation in 0..128 {
         fixture.rows[0].prepare(operation, &mut fixture.client)?;

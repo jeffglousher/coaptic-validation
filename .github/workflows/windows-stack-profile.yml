@@ -1,0 +1,117 @@
+name: Manual bounded Windows stack profiling
+
+on:
+  workflow_call:
+    inputs:
+      core_sha:
+        required: true
+        type: string
+      replay:
+        description: Export only the pinned original ETL; no recording or native build
+        default: false
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      core_sha:
+        description: Exact clean core SHA, 40 lowercase hex characters
+        required: true
+        type: string
+        default: 8af71fe4aa73b3bb76a921a836a1a9647d75f361
+      replay:
+        description: Export only the pinned original ETL; no recording or native build
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+concurrency:
+  group: windows-stack-profile
+  cancel-in-progress: false
+
+jobs:
+  profile:
+    permissions:
+      contents: read
+      actions: read
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      CORE_SHA: ${{ inputs.core_sha }}
+      SUITE_SHA: ${{ github.sha }}
+      PYTHONDONTWRITEBYTECODE: '1'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate fixed source input before provisioning
+        shell: pwsh
+        run: |
+          if ($env:CORE_SHA -cnotmatch '^[0-9a-f]{40}$') { throw 'Expected immutable core SHA' }
+          if ($env:SUITE_SHA -cnotmatch '^[0-9a-f]{40}$') { throw 'Expected immutable suite SHA' }
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'Dedicated hosted VM required' }
+          $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+          if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Elevated hosted token required' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: jeffglousher/coaptic
+          ref: ${{ inputs.core_sha }}
+          path: coaptic
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14.4'
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        if: ${{ !inputs.replay }}
+        with:
+          toolchain: 1.99.0
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '8.0.427'
+      - name: Portable analyzer and runner checks
+        shell: pwsh
+        run: |
+          Push-Location tools/benchmark
+          python -B -m unittest -v test_stack_profile test_perf_prerequisite test_windows_profile test_windows_replay
+          if ($LASTEXITCODE) { throw 'Portable checks failed' }
+          Pop-Location
+      - name: Build and collect fixed serial cohorts
+        if: ${{ !inputs.replay }}
+        shell: pwsh
+        run: |
+          # The pinned toolchain action sets these presentation/registry transport
+          # defaults. Remove only its known values; preparation still refuses all
+          # other unsupported ambient CARGO_* build inputs.
+          $setupDefaults = @{
+            CARGO_TERM_COLOR = @('always')
+            CARGO_REGISTRIES_CRATES_IO_PROTOCOL = @('sparse', 'git')
+            CARGO_HTTP_MULTIPLEXING = @('false')
+          }
+          foreach ($name in $setupDefaults.Keys) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if ($null -ne $value) {
+              if ($value -cnotin $setupDefaults[$name]) { throw "Unexpected toolchain setup value for $name" }
+              Write-Output "Removing setup-only $name=$value before strict build-input validation"
+              Remove-Item -LiteralPath "Env:$name"
+            }
+          }
+          python -B tools/benchmark/windows_profile.py all --core coaptic --expected-core $env:CORE_SHA --expected-suite $env:SUITE_SHA --output "$env:RUNNER_TEMP/coaptic-stack-profile"
+          if ($LASTEXITCODE) { throw 'Profiling refused or failed; preserve receipt' }
+      - name: Replay only the preserved original ETL offline
+        if: ${{ inputs.replay }}
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python -B tools/benchmark/windows_replay.py --core coaptic --expected-core $env:CORE_SHA --expected-suite $env:SUITE_SHA --output "$env:RUNNER_TEMP/coaptic-stack-profile"
+          if ($LASTEXITCODE) { throw 'Offline replay refused or failed; preserve receipt' }
+      - name: Retain bounded evidence, including failure receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-stack-profile-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/coaptic-stack-profile/evidence/
+          if-no-files-found: warn
+          retention-days: 14
+          compression-level: 6

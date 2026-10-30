@@ -1,0 +1,49 @@
+{
+  "schema": "coaptic-windows-capability-checks/1",
+  "capture_run": 41013864895,
+  "export_run": 41023864069,
+  "export_source": "acaf137d1cf7d45770e7ebfbbefb40d01a815466",
+  "export_tree": "fc0c419b7dc56e6eae4980a18ccf502fb997841d",
+  "source_sha256": {
+    "tools/benchmark/windows-stack/OwnedSymbols.cs": "f9dc3c7325382b75cffe6d2a82b06a978d21b5c656a5660817b0eea5b780eb52",
+    "tools/benchmark/windows-stack/Export.cs": "4aa99eff5f38b0f07a29c19feb259e2732e14ba07aacdce0187ad6d33f147554",
+    "tools/benchmark/windows-stack/SelfTests.cs": "c7766693c51a959eed0cabd6603b6ae676e995bb9989d372d96ebbcf6175385a",
+    "tools/benchmark/stack_profiling.md": "706936ea8b545a8a144f55c1ec2d909d1dd4973cb99e678c372989bde61a6c65"
+  },
+  "hosted_python_passes": 88,
+  "hosted_csharp_pure_model_passes": 113,
+  "native_and_raw_capture_reused_from_original": true,
+  "new_native_workloads": 0,
+  "new_etw_sessions": 0,
+  "parent_canonical_validation": true,
+  "parent_all_41_sample_timestamps_frames_weights_counts_match_collector": true,
+  "parent_all_548_frame_occurrences_match_collector": true,
+  "parent_all_events_in_original_half_open_window": true,
+  "parent_40_symbol_table_and_flame_tree_match_renderer_semantically": true,
+  "exact_original_html_retained": true,
+  "byte_rerender_not_identical_due_table_key_order": true,
+  "browser_qa": {
+    "light_width": 1000,
+    "dark_width": 728,
+    "symbol_rows": 40,
+    "flame_nodes": 42,
+    "filter_dispatch_rx_rows": 2,
+    "zoom": true,
+    "reset": true,
+    "frame_geometry_within_rows": true,
+    "console_errors": 0
+  },
+  "independent_reviews": {
+    "R16": "NONE; source-only four-file inspection",
+    "R17": "NONE in inspected evidence; raw artifact and canonical validator checked; full per-sample comparison and exact four-file recheck not repeated",
+    "R17_coordination": "NATS unavailable interrupted child pagination; parent completed full cursor check and GET/ACK of closure"
+  },
+  "qualified": false,
+  "qualified_cpu_share": false,
+  "app_ancestry_samples": 33,
+  "nomination_floor": 200,
+  "unresolved_frame_occurrences": 91,
+  "unwind_inline_completeness": "unknown",
+  "compiler_binary_cleanup_identity": "producer-attested except independently hashed retained input bytes",
+  "symbol_provenance": "live-owned-file binding, not exact in-memory bytes or hostile pre-lock replacement proof"
+}
