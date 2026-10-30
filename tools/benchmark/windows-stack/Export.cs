@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Etlx;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 
@@ -56,7 +57,16 @@ internal static class Export
         var targetModules = process.LoadedModules.Where(m => m.ModuleFile is not null &&
             symbols.Matches(m.ModuleFile, capturedBase)).Take(2).ToArray();
         if (targetModules.Length != 1)
+        {
+            // Diagnose the retained input before changing any identity policy. A
+            // failed diagnostic must not replace the original matching refusal.
+            try { WriteModuleDiagnostic(config, capture, symbols, process, capturedBase, targetModules.Length); }
+            catch (Exception error)
+            {
+                Console.Error.WriteLine("Module diagnostic unavailable: " + DiagnosticText(error.Message));
+            }
             throw new InvalidDataException("ETL target module does not match captured live owned EXE mapping and header/PDB identity.");
+        }
         var targetFile = targetModules[0].ModuleFile;
         var accumulator = new Samples(capture.Config.Pid, capture.Config.Tid, capture.StartQpc, capture.StopQpc,
             capture.QpcFrequency);
@@ -120,6 +130,85 @@ internal static class Export
         Wire.Emit("exported", capture.Config.CaptureId, new { output = config.Output, receipt = receiptPath });
         return 0;
     }
+
+    private static string DiagnosticText(string value) => value.Length <= 96 ? value : value[..96];
+
+    private static void WriteModuleDiagnostic(ExportConfig config, CaptureReceipt capture, OwnedSymbols symbols,
+        TraceProcess process, ulong capturedBase, int matchingCountCappedAtTwo)
+    {
+        var image = symbols.Identity;
+        var expectedName = Path.GetFileName(capture.Config.Exe);
+        var candidates = process.LoadedModules.Where(m => m.ModuleFile is not null &&
+            (m.ImageBase == capturedBase || string.Equals(Path.GetFileName(m.ModuleFile.FilePath),
+                expectedName, StringComparison.OrdinalIgnoreCase))).Take(17).ToArray();
+        var rows = candidates.Take(16).Select(m =>
+        {
+            var file = m.ModuleFile;
+            return new
+            {
+                module_file_index = (int)file.ModuleFileIndex, process_index = (int)m.Process.ProcessIndex,
+                path = DiagnosticText(file.FilePath), path_clipped = file.FilePath.Length > 96,
+                loaded_base = m.ImageBase.ToString("x"), file_base = file.ImageBase.ToString("x"),
+                size = file.ImageSize, image_id = unchecked((uint)file.ImageId).ToString("x8"),
+                checksum = unchecked((uint)file.ImageChecksum).ToString("x8"), file.PdbSignature, file.PdbAge,
+                load_relative_ms = FiniteDiagnosticTime(m.LoadTimeRelativeMSec),
+                unload_relative_ms = FiniteDiagnosticTime(m.UnloadTimeRelativeMSec),
+                predicates = new
+                {
+                    basename = string.Equals(Path.GetFileName(file.FilePath), expectedName, StringComparison.OrdinalIgnoreCase),
+                    live_base = file.ImageBase == capturedBase, size = file.ImageSize == image.ImageSize,
+                    debug_id = file.PdbSignature == Guid.Empty ? file.PdbAge == 0 :
+                        file.PdbSignature == image.PdbGuid && file.PdbAge == image.PdbAge,
+                    image_id = file.ImageId == image.ImageId,
+                    checksum = unchecked((uint)file.ImageChecksum) == image.ImageChecksum,
+                    complete_match = symbols.Matches(file, capturedBase)
+                },
+                notes = "Aggregate zero fields do not distinguish absent metadata from a recorded zero."
+            };
+        }).ToArray();
+        var raw = new List<object>(32);
+        var rawOverflow = false;
+        var eventCount = 0;
+        // ETLX can collapse or replace image metadata. Read raw ETL events without
+        // opening any module path; retain earlier contradictory observations too.
+        using (var source = new ETWTraceEventSource(capture.Etl))
+        {
+            source.AllEvents += _ =>
+            {
+                if (++eventCount > 1_000_000) throw new InvalidDataException("Raw diagnostic event bound exceeded.");
+            };
+            source.Kernel.ImageGroup += data =>
+            {
+                if (data.ProcessID != capture.Config.Pid || (data.ImageBase != capturedBase &&
+                    !string.Equals(Path.GetFileName(data.FileName), expectedName, StringComparison.OrdinalIgnoreCase))) return;
+                if (raw.Count == 32) { rawOverflow = true; return; }
+                raw.Add(new
+                {
+                    data.ProcessID, data.Version, opcode = (int)data.Opcode, qpc = RawQpc(data),
+                    path = DiagnosticText(data.FileName), path_clipped = data.FileName.Length > 96,
+                    live_base = data.ImageBase.ToString("x"), size = data.ImageSize,
+                    timestamp = unchecked((uint)data.TimeDateStamp).ToString("x8"),
+                    checksum = unchecked((uint)data.ImageChecksum).ToString("x8"),
+                    default_base = data.DefaultBase.ToString("x"), header_fields_present = data.Version >= 2
+                });
+            };
+            source.Process();
+        }
+        Wire.WriteNew(config.Output + ".module-diagnostic.json", new
+        {
+            schema = "coaptic-windows-module-diagnostic/1", capture.Config.CaptureId,
+            input_etl_sha256 = capture.EtlSha256, process_index = (int)process.ProcessIndex,
+            capture.Config.Pid, capture.Config.Tid, matching_count_capped_at_two = matchingCountCappedAtTwo,
+            expected = new { path = DiagnosticText(capture.Config.Exe), live_base = capturedBase.ToString("x"),
+                image.ImageSize, image_id = unchecked((uint)image.ImageId).ToString("x8"),
+                checksum = image.ImageChecksum.ToString("x8"), image.PdbGuid, image.PdbAge },
+            candidates = rows, candidates_overflow = candidates.Length > 16,
+            raw_image_events = raw, raw_image_events_overflow = rawOverflow, raw_events_inspected = eventCount,
+            notes = "Diagnostic only; identity refusal unchanged. Paths are ETL text, never opened. No field is synthesized or treated as matched."
+        }, 65536);
+    }
+
+    private static double? FiniteDiagnosticTime(double value) => double.IsFinite(value) ? value : null;
 
     private static long RawQpc(Microsoft.Diagnostics.Tracing.TraceEvent sample)
     {

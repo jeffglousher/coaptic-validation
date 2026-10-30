@@ -107,6 +107,81 @@ Each process and phase has a finite deadline, and failures retain bounded
 receipts. Existing local build lanes, caches, firmware and credentials are
 preserved.
 
+## Offline replay of the first Windows cohort
+
+`windows_replay.py` is a hosted-only exporter capability route for the original
+run **41013864895, attempt 1**, artifact **12959160518**. That run passed 63
+portable Python checks, both builds and 49 tool model assertions. Its one
+`unprotected-capture-00` ETW session stopped explicitly, then export refused
+module identity. It produced no profile. The remaining cohorts and controls
+were not run. Replay never records a replacement cohort, executes the workload,
+requests a live target inventory, enables ETW or builds Rust/native code.
+
+On a reviewed clean source revision, select both dispatcher inputs:
+
+```text
+gh workflow run ci.yml --repo jeffglousher/coaptic-validation --ref REVIEWED_BRANCH -f stack_profile=true -f stack_profile_replay=true -f library_revision=8af71fe4aa73b3bb76a921a836a1a9647d75f361
+```
+
+The dedicated reusable/manual workflow also accepts `replay=true` (default
+false). Capture remains the default route. Replay skips Rust provisioning and
+builds only the eight staged C# tooling sources with exact SDK 8.0.427, isolated
+owned NuGet/user/temp paths and the existing build flags. Its hosted command is:
+
+```powershell
+python -B tools/benchmark/windows_replay.py --core coaptic --expected-core 8af71fe4aa73b3bb76a921a836a1a9647d75f361 --expected-suite $env:SUITE_SHA --output "$env:RUNNER_TEMP/coaptic-stack-profile"
+```
+
+The source under replay is the clean reviewed exporter source. The capture
+remains attributed to original suite `a074120d6f50b1c061e2ab5b0940837c9d51b63e`
+and core `8af71fe4aa73b3bb76a921a836a1a9647d75f361`, PID 4936, TID 7436,
+process start `2026-10-30T06:28:42.3648387Z`, capture UUID
+`b9ca443c-4f73-4316-8219-8d9f4e346a48`. There is no pooling across App ancestry,
+other ancestry, unknown frames or cohorts.
+
+The downloader uses `GITHUB_TOKEN` with job-scoped `actions:read`. It accepts only
+the code-pinned artifact metadata and ZIP SHA256
+`3eaee1ec332399c8ece875eb748836a01ebb377c5c67860501c24f1eca54c76a`.
+It follows one explicit HTTPS artifact-storage redirect using a fresh request
+without Authorization; further redirects fail. Tokens and signed URLs are not
+logged. Metadata is bounded to 64 KiB, individual network reads to 15 seconds,
+and the entire worker to 830 seconds inside a 900-second contained outer worker.
+
+The archive is held in RAM: at most 8 MiB compressed, 32 MiB expanded, 64
+ordinary unique members and 16 MiB per member, with compression-ratio, path,
+CRC and hash checks. This fixture additionally requires exactly 34 members,
+3,368,810 ZIP bytes and 14,837,202 expanded bytes. All members are checked in
+RAM; only `binaries/bench-core.exe`, `binaries/bench_core.pdb`,
+`unprotected-capture-00/capture.json` and `unprotected-capture-00/capture.etl`
+are materialized, with separately pinned exact sizes and SHA256 hashes.
+No original ZIP is retained.
+
+The root must be fresh and exactly `RUNNER_TEMP/coaptic-stack-profile`.
+The original receipt requires `D:\a\_temp\coaptic-stack-profile\evidence\`
+followed by those member names. A different runner temp path refuses replay and
+retains the reason. Neither receipt bytes, embedded config, absolute input paths
+nor provenance are rewritten. The replay receipt retains the original receipt
+bytes as UTF-8, its hash, original build receipt and every archive member hash.
+Materialization uses exclusive new files and refuses existing links/reparse
+paths. Source identities are checked before and after tooling/export.
+
+Metadata and selftest precede export into a fresh output and empty scratch.
+Existing symbol, lifetime, loss and sample gates remain intact. ETL is capped
+at 128 MiB and conversion at a sampled 256 MiB refusal bound. The aggregate
+8 GiB owned build and 256 MiB evidence bounds remain unchanged; sampled direct
+child RSS limits are 4 GiB during build and 1 GiB during export. These are
+refusal monitors, not hard quotas or whole-job peak measurements.
+
+Failure receipts and bounded exporter stderr are always uploaded from the same
+evidence path. Nonzero export remains failure; any bounded
+`profile.json.module-diagnostic.json` is retained alongside its log, without
+automatic repair, retry or new capture. The module match policy stays unchanged.
+A successful export renders the canonical interactive profile
+with a diagnostic-only banner and records separate ancestry/quality counts.
+The roughly 45 ms original window may miss the unchanged 200 App-rooted sample
+floor. That floor does not prevent testing exporter capability, and export
+success never establishes qualified CPU shares, a hotspot ranking or a CPU gain.
+
 ## Linux and the Waveshare device
 
 The existing Linux runner produces flat reports, inline caller trees and raw

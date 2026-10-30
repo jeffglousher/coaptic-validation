@@ -9,6 +9,10 @@ on:
         description: Run only the bounded Windows profiling recipe
         default: false
         type: boolean
+      stack_profile_replay:
+        description: With stack_profile, replay only the preserved original Windows ETL
+        default: false
+        type: boolean
       library_revision:
         description: Full Coaptic commit SHA
         default: "739c277642219ae235b0ab0926b5c95d81f51b59"
@@ -29,5 +33,9 @@ jobs:
   windows-stack-profile:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.stack_profile }}
     uses: ./.github/workflows/windows-stack-profile.yml
+    permissions:
+      contents: read
+      actions: read
     with:
       core_sha: ${{ inputs.library_revision }}
+      replay: ${{ inputs.stack_profile_replay }}

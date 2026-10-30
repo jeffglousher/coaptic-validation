@@ -6,6 +6,10 @@ on:
       core_sha:
         required: true
         type: string
+      replay:
+        description: Export only the pinned original ETL; no recording or native build
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       core_sha:
@@ -13,6 +17,10 @@ on:
         required: true
         type: string
         default: 8af71fe4aa73b3bb76a921a836a1a9647d75f361
+      replay:
+        description: Export only the pinned original ETL; no recording or native build
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -22,6 +30,9 @@ concurrency:
 
 jobs:
   profile:
+    permissions:
+      contents: read
+      actions: read
     runs-on: windows-2022
     timeout-minutes: 30
     env:
@@ -52,6 +63,7 @@ jobs:
         with:
           python-version: '3.14.4'
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        if: ${{ !inputs.replay }}
         with:
           toolchain: 1.99.0
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -61,10 +73,11 @@ jobs:
         shell: pwsh
         run: |
           Push-Location tools/benchmark
-          python -B -m unittest -v test_stack_profile test_perf_prerequisite test_windows_profile
+          python -B -m unittest -v test_stack_profile test_perf_prerequisite test_windows_profile test_windows_replay
           if ($LASTEXITCODE) { throw 'Portable checks failed' }
           Pop-Location
       - name: Build and collect fixed serial cohorts
+        if: ${{ !inputs.replay }}
         shell: pwsh
         run: |
           # The pinned toolchain action sets these presentation/registry transport
@@ -85,6 +98,14 @@ jobs:
           }
           python -B tools/benchmark/windows_profile.py all --core coaptic --expected-core $env:CORE_SHA --expected-suite $env:SUITE_SHA --output "$env:RUNNER_TEMP/coaptic-stack-profile"
           if ($LASTEXITCODE) { throw 'Profiling refused or failed; preserve receipt' }
+      - name: Replay only the preserved original ETL offline
+        if: ${{ inputs.replay }}
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python -B tools/benchmark/windows_replay.py --core coaptic --expected-core $env:CORE_SHA --expected-suite $env:SUITE_SHA --output "$env:RUNNER_TEMP/coaptic-stack-profile"
+          if ($LASTEXITCODE) { throw 'Offline replay refused or failed; preserve receipt' }
       - name: Retain bounded evidence, including failure receipts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
