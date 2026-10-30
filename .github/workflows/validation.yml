@@ -601,6 +601,11 @@ jobs:
           toolchain: 1.97.1
           components: rustfmt, clippy
           targets: thumbv7em-none-eabi
+      - name: Select pinned ESPHome lock for checked-out macro source
+        env:
+          SUITE_REVISION: ${{ inputs.suite_revision }}
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+        run: python tools/esphome/lock_selection.py --ci-prepare --expected-suite-revision "$SUITE_REVISION" --expected-revision "$LIBRARY_REVISION"
       - name: Verify source and prepare pinned path dependencies
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
