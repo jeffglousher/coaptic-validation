@@ -2534,6 +2534,10 @@ def main():
               "iterations": args.iterations, "build_note": args.build_note, "timing_scope": "request_us excludes process startup; host_total_us includes it",
               "host_clock": {"name": time.get_clock_info("perf_counter").implementation, "resolution_ns": math.ceil(time.get_clock_info("perf_counter").resolution * 1e9)},
               "libcoap_source": "851533c3cf63d16984d370ce39d586ecb3694971",
+              "rust_dtls_cipher_offer": ["TLS_PSK_WITH_AES_128_CCM_8", "TLS_PSK_WITH_AES_128_GCM_SHA256"],
+              "dtls_cipher_notes": "Source-defined offer, not a negotiated-cipher observation. CCM8 remains first; "
+                                   "GCM permits 128-bit-tag peers without lowering their security policy. "
+                                   "Earlier CCM8-only timing results are a different fixture configuration.",
               "libcoap_patch": (json.loads(args.libcoap_patch_manifest.read_text(encoding="utf-8"))
                                   if args.libcoap_patch_manifest else None),
               "limitations": [],

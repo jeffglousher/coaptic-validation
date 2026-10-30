@@ -42,7 +42,11 @@ fn config(key: &str) -> Config {
     Config {
         psk: Some(Arc::new(move |_| Ok(key.clone()))),
         psk_identity_hint: Some(b"password".to_vec()),
-        cipher_suites: vec![CipherSuiteId::Tls_Psk_With_Aes_128_Ccm_8],
+        // Keep CCM8 coverage while allowing peers that require 128-bit tags.
+        cipher_suites: vec![
+            CipherSuiteId::Tls_Psk_With_Aes_128_Ccm_8,
+            CipherSuiteId::Tls_Psk_With_Aes_128_Gcm_Sha256,
+        ],
         ..Default::default()
     }
 }
@@ -278,7 +282,16 @@ async fn main() -> std::process::ExitCode {
 }
 
 #[cfg(test)]
+#[path = "../../../tools/interop/psk_cipher_tests.rs"]
+mod cipher_tests;
+
+#[cfg(test)]
 mod profile_capabilities {
+    #[tokio::test]
+    async fn configured_psk_ciphers_authenticate_ccm8_and_gcm() {
+        super::cipher_tests::check(super::config("fixture-secret")).await;
+    }
+
     #[test]
     fn pinned_decoder_accepts_compact_and_refuses_extended_token() {
         let compact = [0x48, 1, 0, 1, 1, 2, 3, 4, 5, 6, 7, 8];

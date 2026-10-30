@@ -8,6 +8,17 @@ Three executables talk over loopback UDP or DTLS:
 
 libcoap is BSD-2-Clause and is not linked into the library. OpenSSL is a test-machine dependency. The PSK `sesame` is a fixture.
 
+The two Rust process peers offer `TLS_PSK_WITH_AES_128_CCM_8` first and
+`TLS_PSK_WITH_AES_128_GCM_SHA256` second. GCM adds a 128-bit-tag alternative for
+independent peers whose policy rejects CCM8's 64-bit tag; no OpenSSL security
+level is lowered. Each Rust configuration has a native handshake test against
+single-suite CCM8 and GCM counterparts, in both client and server roles.
+The existing CCM8-only listener tests remain unchanged. This selection applies
+only to these independent process peers, not the core library, benchmark or
+plugtest transport configurations. The report records the source-defined offer,
+not a negotiated-cipher observation. Historical CCM8-only timings retain their
+original scope and are not directly comparable to the expanded offer.
+
 ## Build and run
 
 Requires stable Rust, Python 3.10+, CMake 3.20+, a C compiler, and OpenSSL headers.
@@ -34,7 +45,7 @@ Windows: MSVC (`-G "Visual Studio 17 2022" -A x64`, `--config Release`) and `.ex
 When the wire step fails, CI runs one additional IPv4 `coaptic -> libcoap`
 `GET /test` transaction and retains `dtls-diagnostic.json`. It does not retry
 the campaign or replace its failure. The six-second request deadline, fixture
-credentials, CCM8 offer and OpenSSL policy remain unchanged. Only that C-peer
+credentials, configured Rust offer and OpenSSL policy remain unchanged. Only that C-peer
 process enables diagnostic logging. A fixed allowlist retains warning reasons,
 alert direction/description and available native-session security levels;
 other backend text is suppressed. At most 32 records plus an overflow marker

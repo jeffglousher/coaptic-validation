@@ -151,15 +151,30 @@ pub fn psk_config(key: &[u8]) -> Config {
     Config {
         psk: Some(Arc::new(move |_| Ok(key.clone()))),
         psk_identity_hint: Some(b"password".to_vec()),
-        cipher_suites: vec![CipherSuiteId::Tls_Psk_With_Aes_128_Ccm_8],
+        // Retain CCM8 for constrained peers; permit a 128-bit-tag suite when
+        // the independent peer's security policy rejects CCM8's 64-bit tag.
+        cipher_suites: vec![
+            CipherSuiteId::Tls_Psk_With_Aes_128_Ccm_8,
+            CipherSuiteId::Tls_Psk_With_Aes_128_Gcm_Sha256,
+        ],
         ..Default::default()
     }
 }
 
 #[cfg(test)]
+#[path = "../../../tools/interop/psk_cipher_tests.rs"]
+mod cipher_tests;
+
+#[cfg(test)]
 mod shutdown_tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[tokio::test]
+    async fn configured_psk_ciphers_authenticate_ccm8_and_gcm() {
+        cipher_tests::check(psk_config(b"fixture-secret")).await;
+    }
+
     struct ClosingConn {
         closed: AtomicBool,
         fail: bool,

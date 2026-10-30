@@ -89,11 +89,12 @@ def diagnose(coaptic, libcoap):
         "diagnostics_complete": False, "cleanup_settled": False,
         "contract": {
             "request_timeout_ms": 6000, "request": "GET /test",
-            "rust_cipher": "TLS_PSK_WITH_AES_128_CCM_8",
+            "rust_cipher_offer": ["TLS_PSK_WITH_AES_128_CCM_8", "TLS_PSK_WITH_AES_128_GCM_SHA256"],
             "policy_override": False, "cipher_override": False,
             "notes": "Fixed fixture credentials unchanged; no key or packet output. "
                      "Warning categories are allowlisted observations, not cause proof. "
                      "A null or absent security level means unobserved. "
+                     "The offer is source-defined; negotiated cipher is not observed here. "
                      "This one transaction does not replace the failed interop campaign.",
         },
     }
