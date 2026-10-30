@@ -152,13 +152,14 @@ internal static class Export
 internal sealed class Samples(int pid, int? tid, long start, long stop, long frequency)
 {
     private readonly List<StackRow> rows = new();
+    private readonly int? selectedTid = tid;
     private int? observedTid = tid;
     private int frameCount;
     private long textBytes;
     public long Unresolved { get; private set; }
     public int Truncated { get; private set; }
     public bool InScope(int samplePid, int sampleTid, long qpc) =>
-        samplePid == pid && (!tid.HasValue || sampleTid == tid.Value) && qpc >= start && qpc < stop;
+        samplePid == pid && (!selectedTid.HasValue || sampleTid == selectedTid.Value) && qpc >= start && qpc < stop;
     public void Add(int sampleTid, long qpc, string comm, List<Frame> leafToRoot, bool truncated)
     {
         if (sampleTid <= 0 || qpc < start || qpc >= stop || frequency <= 0 || leafToRoot.Count is < 1 or > 128)

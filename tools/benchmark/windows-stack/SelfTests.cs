@@ -42,6 +42,7 @@ internal static class SelfTests
         Refuses(() => OwnedSymbols.RequireMatch(guid, 1, guid, 2), "mismatched PDB age");
         var mixed = new Samples(11, null, 100, 200, 1000);
         mixed.Add(22, 150, "bench", new() { new("leaf", "1", "owned.exe", false) }, false);
+        Check(mixed.InScope(11, 23, 151), "unselected TID still reaches mixed-thread refusal");
         Refuses(() => mixed.Add(23, 151, "bench", new() { new("leaf", "1", "owned.exe", false) }, false), "mixed TIDs");
         Refuses(() => new Samples(11, 22, 100, 200, 1000).Finish(identity, "one", 0, "empty"), "empty profile");
         var unresolved = new Samples(11, 22, 100, 200, 1000);

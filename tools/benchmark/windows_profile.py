@@ -296,8 +296,8 @@ class Process:
             stream.write(bytes(self.raw[0]) + b'\n--- stderr ---\n' + bytes(self.raw[1]))
 
 
-def command(command, budget, log, *, env=None):
-    child = Process(command, budget, env=env)
+def command(command, budget, log, *, env=None, cwd=SUITE):
+    child = Process(command, budget, env=env, cwd=cwd)
     try:
         child.p.stdin.close()
         child.finish(780)
@@ -410,6 +410,21 @@ def retain_build_evidence(root, binary, pdb, tool):
                  files_manifest=dict(path=str(manifest), sha256=digest(manifest))))
 
 
+def selected_dotnet_sdk(dotnet, root, budget, env):
+    """Select the exact provisioned SDK from an owned, retained global.json."""
+    directory = root / 'evidence/build-inputs'
+    directory.mkdir(parents=True, exist_ok=True)
+    selection = directory / 'global.json'
+    save(selection, dict(sdk=dict(version='8.0.427', rollForward='disable', allowPrerelease=False)))
+    version = command([dotnet, '--version'], budget, root / 'evidence/dotnet-version.log',
+                      env=env, cwd=directory).decode('utf-8').strip()
+    if version != '8.0.427':
+        raise ValueError('selected .NET SDK is not the exact provisioned 8.0.427')
+    info = command([dotnet, '--info'], budget, root / 'evidence/dotnet-info.log',
+                   env=env, cwd=directory).decode('utf-8')
+    return directory, info, dict(path=str(selection), sha256=digest(selection), version=version)
+
+
 def build_phase(args, root, budget):
     from development_suite import cargo_inputs, toolchain
     from native_lock import native_lock
@@ -426,6 +441,25 @@ def build_phase(args, root, budget):
                CARGO_PROFILE_RELEASE_CODEGEN_UNITS='1',
                DOTNET_CLI_TELEMETRY_OPTOUT='1', MSBUILDDISABLENODEREUSE='1')
     before = time.monotonic()
+    projects = list((HERE / 'windows-stack').glob('*.csproj'))
+    if len(projects) != 1:
+        raise ValueError('exactly one owned C# project required')
+    dotnet = shutil.which('dotnet')
+    if not dotnet:
+        raise ValueError('.NET SDK unavailable')
+    sdk_directory, sdk, sdk_selection = selected_dotnet_sdk(dotnet, root, budget, env)
+    command([dotnet, 'build', projects[0], '--configuration', 'Release', '--output', root / 'tool',
+             '-p:BaseIntermediateOutputPath=' + str(root / 'dotnet-obj') + os.sep,
+             '-p:NuGetLockFilePath=' + str(root / 'tool-packages.lock.json'),
+             '-p:RestorePackagesWithLockFile=true', '-p:UseSharedCompilation=false', '-nodeReuse:false'], budget,
+            root / 'evidence/tool-build.log', env=env, cwd=sdk_directory)
+    tool_dlls = [x for x in (root / 'tool').glob('*.runtimeconfig.json')]
+    if len(tool_dlls) != 1:
+        raise ValueError('tool executable receipt ambiguous')
+    tool = tool_dlls[0].with_name(tool_dlls[0].name.removesuffix('.runtimeconfig.json') + '.dll')
+    if not tool.is_file():
+        raise ValueError('tool DLL missing')
+    # Fail the smaller tooling build before spending time on the Rust workload.
     with native_lock(args.core) as lock:
         raw = command([tools['cargo']['path'], 'build', '--release', '--locked',
                        '--target', 'x86_64-pc-windows-msvc', '--manifest-path',
@@ -436,29 +470,12 @@ def build_phase(args, root, budget):
     binary, pdb = native_artifact_pair(raw, root / 'target')
     if not binary.is_file() or not pdb.is_file():
         raise ValueError('native Cargo executable/PDB missing')
-    projects = list((HERE / 'windows-stack').glob('*.csproj'))
-    if len(projects) != 1:
-        raise ValueError('exactly one owned C# project required')
-    dotnet = shutil.which('dotnet')
-    if not dotnet:
-        raise ValueError('.NET SDK unavailable')
-    sdk = command([dotnet, '--info'], budget, root / 'evidence/dotnet-info.log', env=env).decode('utf-8')
-    command([dotnet, 'build', projects[0], '--configuration', 'Release', '--output', root / 'tool',
-             '-p:BaseIntermediateOutputPath=' + str(root / 'dotnet-obj') + os.sep,
-             '-p:NuGetLockFilePath=' + str(root / 'tool-packages.lock.json'),
-             '-p:RestorePackagesWithLockFile=true', '-p:UseSharedCompilation=false', '-nodeReuse:false'], budget,
-            root / 'evidence/tool-build.log', env=env)
-    tool_dlls = [x for x in (root / 'tool').glob('*.runtimeconfig.json')]
-    if len(tool_dlls) != 1:
-        raise ValueError('tool executable receipt ambiguous')
-    tool = tool_dlls[0].with_name(tool_dlls[0].name.removesuffix('.runtimeconfig.json') + '.dll')
-    if not tool.is_file():
-        raise ValueError('tool DLL missing')
     if sources != source_identity(args.core, args.expected_core, args.expected_suite):
         raise ValueError('source changed during build')
     if any(digest(v['path']) != v['sha256'] for v in tools.values()):
         raise ValueError('compiler changed during build')
     native, tool_evidence = retain_build_evidence(root, binary, pdb, tool)
+    tool_evidence['sdk_selection'] = sdk_selection
     record = dict(schema='coaptic-windows-build/1', sources=sources, inputs=inputs,
                   compiler=compiler, cargo=cargo, tools=tools, lock=lock, dotnet=sdk,
                   native=native,

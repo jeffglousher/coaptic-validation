@@ -105,6 +105,29 @@ class Tests(unittest.TestCase):
                 self.assertFalse(w.owned_cache_alias(root, alias, SimpleNamespace(st_reparse_tag=0xA000000C)))
                 readlink.assert_not_called()
 
+    def test_exact_dotnet_sdk_is_selected_before_tool_build(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            calls = []
+            def command(argv, budget, log, *, env=None, cwd=None):
+                selection = json.loads((cwd / 'global.json').read_text())
+                self.assertEqual(selection, {'sdk': {'version': '8.0.427', 'rollForward': 'disable',
+                                                     'allowPrerelease': False}})
+                self.assertTrue(cwd.is_relative_to(root / 'evidence'))
+                calls.append(argv)
+                return b'8.0.427\n' if argv[-1] == '--version' else b'SDK info'
+            with patch.object(w, 'command', side_effect=command):
+                cwd, info, receipt = w.selected_dotnet_sdk('dotnet', root, None, {})
+            self.assertEqual(calls, [['dotnet', '--version'], ['dotnet', '--info']])
+            self.assertEqual(info, 'SDK info')
+            self.assertEqual(receipt['sha256'], w.digest(receipt['path']))
+            self.assertEqual(receipt['version'], '8.0.427')
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(w, 'command', return_value=b'10.0.403\n') as command:
+            with self.assertRaisesRegex(ValueError, 'exact provisioned'):
+                w.selected_dotnet_sdk('dotnet', Path(directory), None, {})
+            command.assert_called_once()
+
     def receipt(self, capture_id='owned'):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
