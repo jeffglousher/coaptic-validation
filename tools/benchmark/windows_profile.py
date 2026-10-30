@@ -66,7 +66,13 @@ def owned_size(root):
             except FileNotFoundError:
                 continue  # Normal compiler/SDK temporary-file churn.
             if path.is_symlink() or getattr(stat, 'st_file_attributes', 0) & 0x400:
-                raise ValueError('reparse entry in owned output')
+                # Preserve the refusing entry without following its target. A
+                # generic error cannot distinguish SDK output from an escape.
+                entry = path.relative_to(root).as_posix()[:512]
+                attributes = getattr(stat, 'st_file_attributes', 0)
+                tag = getattr(stat, 'st_reparse_tag', 0)
+                raise ValueError(f'reparse entry in owned output: {entry!r}; '
+                                 f'attributes={attributes:#x}; tag={tag:#x}')
             if name in files:
                 total += stat.st_size
     return total

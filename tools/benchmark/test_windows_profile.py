@@ -47,6 +47,22 @@ class Tests(unittest.TestCase):
                 return []
             with patch.object(w.os,'walk',side_effect=denied):
                 with self.assertRaises(PermissionError): w.owned_size(root)
+    def test_reparse_refusal_preserves_bounded_entry_and_native_tag(self):
+        from types import SimpleNamespace
+        root = Path('owned')
+        stat = SimpleNamespace(st_file_attributes=0x400, st_reparse_tag=0xA000000C)
+        with patch.object(w.os, 'walk', return_value=[(str(root), [], ['compiler-link'])]), \
+             patch.object(Path, 'lstat', return_value=stat), \
+             patch.object(Path, 'is_symlink', return_value=False):
+            with self.assertRaisesRegex(ValueError, "compiler-link.*attributes=0x400; tag=0xa000000c"):
+                w.owned_size(root)
+        with patch.object(w.os, 'walk', return_value=[(str(root), [], ['x' * 4096])]), \
+             patch.object(Path, 'lstat', return_value=stat), \
+             patch.object(Path, 'is_symlink', return_value=False):
+            with self.assertRaises(ValueError) as caught:
+                w.owned_size(root)
+            self.assertLess(len(str(caught.exception)), 640)
+
     def receipt(self, capture_id='owned'):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
