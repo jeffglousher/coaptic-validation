@@ -162,4 +162,28 @@ class LiveTests(unittest.TestCase):
             with self.subTest(output=output), self.assertRaises(ValueError):
                 w.native_test_result(output)
 
+    def test_deadlines_pass_real_shared_worker_validation_without_spawning(self):
+        import suite_process
+        for workload in ('batch', 'live-c1'):
+            for phase in ('build', 'capture'):
+                inner, outer = w.worker_limits(phase, workload)
+                self.assertEqual(inner, 650 if (phase, workload) == ('capture', 'batch') else 830)
+                self.assertEqual(outer, 900)
+                self.assertGreaterEqual(outer - inner, 70)
+                # Exercise the actual shared wrapper's argument validation. The
+                # sentinel prevents all native owner/process creation afterward.
+                sentinel = RuntimeError('accepted timeout; stop before native owner')
+                with self.subTest(phase=phase, workload=workload), \
+                        patch.object(suite_process, '_owner', side_effect=sentinel) as owner:
+                    with self.assertRaises(suite_process.WorkerError) as caught:
+                        suite_process.run_worker(['never-spawn'], timeout=outer, limit=w.LOG_LIMIT)
+                    self.assertIs(caught.exception.primary_cause, sentinel)
+                    owner.assert_called_once()
+        with patch.object(suite_process, '_owner') as owner:
+            with self.assertRaisesRegex(ValueError, 'timeout must be finite'):
+                suite_process.run_worker(['never-spawn'], timeout=1060, limit=w.LOG_LIMIT)
+            owner.assert_not_called()
+        for phase, workload in (('unknown', 'batch'), ('capture', 'unknown')):
+            with self.assertRaises(ValueError): w.worker_limits(phase, workload)
+
 if __name__ == '__main__': unittest.main()

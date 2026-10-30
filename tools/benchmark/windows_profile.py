@@ -814,7 +814,8 @@ def worker(phase, config):
     args = argparse.Namespace(**read_json(config))
     hosted_preflight()
     root = Path(args.output).resolve()
-    budget = Budget(root, 830 if phase == 'build' else (1000 if getattr(args, 'workload', 'batch') == 'live-c1' else 650),
+    inner_seconds, _ = worker_limits(phase, getattr(args, 'workload', 'batch'))
+    budget = Budget(root, inner_seconds,
                     rss_limit=(4 if phase == 'build' else 1) * 1024**3)
     try:
         if phase == 'build':
@@ -872,8 +873,9 @@ def execute(args):
         save(config, vars(args))
         env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path), PYTHONDONTWRITEBYTECODE='1')
         try:
+            _, outer_seconds = worker_limits(phase, getattr(args, 'workload', 'batch'))
             result = run_worker([sys._base_executable, '-B', str(Path(__file__).resolve()),
-                                 '_worker', phase, str(config)], timeout=1060 if phase == 'capture' and getattr(args, 'workload', 'batch') == 'live-c1' else 900, limit=LOG_LIMIT,
+                                 '_worker', phase, str(config)], timeout=outer_seconds, limit=LOG_LIMIT,
                                 cwd=SUITE, env=env, settle_build_auxiliaries=phase == 'build')
             save(root / 'evidence' / (phase + '-outer.json'),
                  dict(passed=True, seconds=result.duration_seconds, descendants_settled=True,
@@ -911,6 +913,13 @@ def workload_identity(args):
     live = name == 'live-c1'
     return dict(name=name, operations=LIVE_OPERATIONS if live else OPERATIONS,
                 warmup=WARMUP, cohorts=[list(row) for row in (live_plan() if live else plan())])
+
+
+def worker_limits(phase, workload):
+    """Leave stop/flush grace inside the shared owner's existing 900s ceiling."""
+    if phase not in ('build', 'capture') or workload not in ('batch', 'live-c1'):
+        raise ValueError('unsupported worker phase or workload')
+    return (830 if phase == 'build' or workload == 'live-c1' else 650), 900
 
 
 def native_test_result(output):

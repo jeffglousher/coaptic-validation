@@ -111,7 +111,24 @@ protocol, count/type/TID/capacity gates, stop-before-finalize and unchanged batc
 
 All hosted output belongs to Coaptic/root in a fresh RUNNER_TEMP child. Existing
 8 GiB owned build and 256 MiB evidence limits remain. Live capture worker inner
-deadline is 1000 seconds and outer containment is 1060 seconds, with cleanup
+deadline is 830 seconds and outer containment is 900 seconds, with cleanup
 grace inside that gap; the hosted job is capped at 40 minutes. Old batch bounds
 remain unchanged. RSS checks remain sampled guards, not hard whole-job quotas.
 No local native build or capture is part of this implementation phase.
+
+## Setup amendment before any recording
+
+[Attempt 41035344492](https://github.com/jeffglousher/coaptic-validation/actions/runs/41035344492)
+passed both builds, all 12 focused native tests and 98 portable checks. Capture
+orchestration then refused the requested 1,060-second timeout: the shared process
+owner has a 900-second ceiling and refused before creating a worker. All six
+native cohorts, four ETW captures, two controls and C# model self-tests were not
+run. Preserve that failure; no sample or operation cohort is replaced.
+
+The corrected setup keeps the shared ceiling at 900 seconds and uses an inner
+830-second live capture deadline, leaving 70 seconds for owned cleanup before
+outer containment. Six 90-second work bounds total 540 seconds, leaving 290
+seconds for capture setup/export and other work inside the inner deadline. This
+is a refusal budget, not a guarantee of completion. One corrected fixed attempt
+is permitted after source review; operations, cohort order, capacities, protocol,
+per-cohort deadlines, sample selection and all quality gates remain unchanged.

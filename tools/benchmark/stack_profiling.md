@@ -240,7 +240,7 @@ device measurement. It is neither a comparison with the old batch nor a CPU
 improvement claim. Runtime and sample sufficiency remain unproven.
 
 The work deadline is 90 seconds, the collector deadline 120 seconds, the live
-capture worker deadline 1,000 seconds and outer containment 1,060 seconds. Only
+capture worker deadline 830 seconds and outer containment 900 seconds. Only
 this new workload uses a 40-minute hosted job. All old batch deadlines remain
 unchanged. Failure retains actual counters; a completed prefix cannot become a
 successful smaller cohort. The existing 200 App-sample floor, quality refusals
@@ -250,6 +250,8 @@ Prepared builds and ownership receipts bind the exact workload and cohort plan;
 `build` and `capture` must use the same `--workload` selection. A mismatch refuses
 before tooling or native capture launch. Live preparation records the focused
 native-test census and log hash; a zero-test filter is refused.
+The plan retains attempt 41035344492's pre-capture timeout refusal and the narrow
+setup correction. The shared process-owner ceiling remains unchanged.
 
 ## Linux and the Waveshare device
 
