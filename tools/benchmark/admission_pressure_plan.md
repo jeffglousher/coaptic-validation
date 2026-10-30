@@ -194,3 +194,24 @@ existing by-value `dedup_entry` accessor for the same test-only TX-pin assertion
 It does not change core code or weaken the ownership check. The normalized
 pressure source hash was rebound. The corrected three-case proof subsequently
 passed in run 41123960432; no timing process was dispatched from the failed commit.
+
+## Retained requested-range assertion failure
+
+Run 41138605625/1 at cd8fdcd compiled and passed arm A's four wall tests, then
+failed the protected notification Block2 case at transfer.num: observed 0 versus
+expected 1. The other seven pressure tests hit the poisoned fixture mutex;
+those errors are not independent protocol outcomes. Arm B was not executed.
+No measurements ran. The original collector and input pins are retained unchanged.
+
+The fixture had confused sequential issuance with explicit requested-range
+selection. On all three pinned core revisions, requested_block2 takes &self and
+computes the requested range without advancing the stored sequential cursor.
+The initial notification issued block zero; the retained cursor stays NUM 0,
+next NUM 1 while explicit followups select blocks 1 and 2. The corrected fixture
+asserts that unchanged cursor and retains the exact wire NUM, payload, M flag,
+body/Call ownership, authentication, final release and recovery assertions.
+A fixture-only mutex helper preserves serialization but recovers poisoning:
+each case resets the only shared counter and constructs its own fresh App, so a
+prior panic remains a failed test without replacing all later results with
+PoisonError. No protocol state, core source, count, capacity or timing gate changes.
+The corrected cohort is UNRUN pending a separately frozen software proof.

@@ -14,6 +14,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 static HANDLER_CALLS: AtomicUsize = AtomicUsize::new(0);
 static FIXTURE_LOCK: Mutex<()> = Mutex::new(());
 
+fn fixture_lock() -> std::sync::MutexGuard<'static, ()> {
+    // Only the counter is shared; every case resets it and creates a fresh App.
+    // Preserve an earlier test's failure without masking later cases as poison.
+    FIXTURE_LOCK
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
+
 fn counted_representation(_: Request<'_>) -> Response<'static> {
     HANDLER_CALLS.fetch_add(1, Ordering::SeqCst);
     Response::content(&SMALL_BODY)
@@ -23,7 +31,7 @@ fn counted_representation(_: Request<'_>) -> Response<'static> {
 
 #[test]
 fn rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected() {
-    let _guard = FIXTURE_LOCK.lock().unwrap();
+    let _guard = fixture_lock();
     HANDLER_CALLS.store(0, Ordering::SeqCst);
     // The resource-based builder already retains complete client responses.
     let mut app = App::with_resources(coaptic::resources::SmallDevice::new())
@@ -171,7 +179,7 @@ fn rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected() {
 
 #[test]
 fn rx_credit_survives_incoming_refusal_and_collection_recovers_oscore() {
-    let _guard = FIXTURE_LOCK.lock().unwrap();
+    let _guard = fixture_lock();
     HANDLER_CALLS.store(0, Ordering::SeqCst);
     let derive = |sender_id, recipient_id| {
         coaptic::oscore::SecurityContext::derive(coaptic::oscore::DeriveParams {
@@ -417,13 +425,13 @@ fn rx_credit_survives_incoming_refusal_and_collection_recovers_oscore() {
 
 #[test]
 fn tx_credit_survives_refusal_and_release_recovers_unprotected() {
-    let _guard = FIXTURE_LOCK.lock().unwrap();
+    let _guard = fixture_lock();
     tx_credit_survives_refusal_and_release_recovers(false);
 }
 
 #[test]
 fn tx_credit_survives_refusal_and_release_recovers_oscore() {
-    let _guard = FIXTURE_LOCK.lock().unwrap();
+    let _guard = fixture_lock();
     tx_credit_survives_refusal_and_release_recovers(true);
 }
 
@@ -655,13 +663,13 @@ fn counted_observe_representation(_: Request<'_>) -> Response<'static> {
 
 #[test]
 fn observe_cancel_under_tx_pressure_releases_relation_and_recovers_unprotected() {
-    let _guard = FIXTURE_LOCK.lock().unwrap();
+    let _guard = fixture_lock();
     observe_cancel_under_tx_pressure_releases_relation_and_recovers(false);
 }
 
 #[test]
 fn observe_cancel_under_tx_pressure_releases_relation_and_recovers_oscore() {
-    let _guard = FIXTURE_LOCK.lock().unwrap();
+    let _guard = fixture_lock();
     observe_cancel_under_tx_pressure_releases_relation_and_recovers(true);
 }
 
@@ -881,13 +889,13 @@ fn notification_representation() -> Response<'static> {
 
 #[test]
 fn block2_notification_under_rx_pressure_preserves_body_and_completes_unprotected() {
-    let _guard = FIXTURE_LOCK.lock().unwrap();
+    let _guard = fixture_lock();
     block2_notification_under_rx_pressure_preserves_body_and_completes(false);
 }
 
 #[test]
 fn block2_notification_under_rx_pressure_preserves_body_and_completes_oscore() {
-    let _guard = FIXTURE_LOCK.lock().unwrap();
+    let _guard = fixture_lock();
     block2_notification_under_rx_pressure_preserves_body_and_completes(true);
 }
 
@@ -1332,8 +1340,11 @@ fn block2_notification_under_rx_pressure_preserves_body_and_completes(protected:
             assert_eq!(transfer.token(), token);
             assert_eq!(transfer.endpoint(), PEER);
             assert_eq!(transfer.szx(), 0);
-            assert_eq!(transfer.num(), num);
-            assert_eq!(transfer.next_num(), num + 1);
+            // Explicit requested_block2 ranges do not advance the retained
+            // sequential cursor. The notification issued block0; followups
+            // select ranges independently. Wire NUM/payloads are checked above.
+            assert_eq!(transfer.num(), 0);
+            assert_eq!(transfer.next_num(), 1);
             assert_eq!(transfer.filled(), NOTIFICATION_BODY.len());
             assert!(transfer.more());
             assert!(!transfer.is_complete());
