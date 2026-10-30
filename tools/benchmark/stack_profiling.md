@@ -54,8 +54,9 @@ After the dedicated workflow is present on the default branch, it can also be
 dispatched directly with `core_sha`. No capture runs on ordinary pull requests.
 
 Windows Profile collection uses a 1 ms sampling interval. TraceEvent sets that
-machine-wide interval and resets it when stopping, so this route is restricted
-to the dedicated hosted VM. Linux's existing 997 Hz route remains a distinct
+machine-wide interval. This tool stops only its owned session by handle and does
+not restore a previous interval, so this route is restricted to the dedicated
+hosted VM. Linux's existing 997 Hz route remains a distinct
 measurement. Different operating systems, compiler output and transports can
 produce different distributions.
 

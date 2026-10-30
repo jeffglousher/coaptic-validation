@@ -67,6 +67,22 @@ jobs:
       - name: Build and collect fixed serial cohorts
         shell: pwsh
         run: |
+          # The pinned toolchain action sets these presentation/registry transport
+          # defaults. Remove only its known values; preparation still refuses all
+          # other unsupported ambient CARGO_* build inputs.
+          $setupDefaults = @{
+            CARGO_TERM_COLOR = @('always')
+            CARGO_REGISTRIES_CRATES_IO_PROTOCOL = @('sparse', 'git')
+            CARGO_HTTP_MULTIPLEXING = @('false')
+          }
+          foreach ($name in $setupDefaults.Keys) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if ($null -ne $value) {
+              if ($value -cnotin $setupDefaults[$name]) { throw "Unexpected toolchain setup value for $name" }
+              Write-Output "Removing setup-only $name=$value before strict build-input validation"
+              Remove-Item -LiteralPath "Env:$name"
+            }
+          }
           python -B tools/benchmark/windows_profile.py all --core coaptic --expected-core $env:CORE_SHA --expected-suite $env:SUITE_SHA --output "$env:RUNNER_TEMP/coaptic-stack-profile"
           if ($LASTEXITCODE) { throw 'Profiling refused or failed; preserve receipt' }
       - name: Retain bounded evidence, including failure receipts
