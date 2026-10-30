@@ -165,3 +165,21 @@ compare. Each scope remains separate; no pooling or new sampling follows. One
 reviewed offline attempt may export both traces in that order. Any JSON, HTML,
 conversion, identity or resource refusal is retained without a larger cap or
 fallback recording. Successful projection alone does not qualify the stacks.
+
+## Retained offline outcome
+
+[Offline attempt 41044460748](https://github.com/jeffglousher/coaptic-validation/actions/runs/41044460748)
+passed all 126 portable checks, 209 C# pure model assertions and the SDK 8.0.427
+exporter build. No native workload or ETW session ran. The unprotected exact-path
+projection preserves all 3,164 original samples, 332 paths, 341 symbols, 531
+recursive prefixes, 42,573 weighted frame occurrences and 11,260 unresolved
+occurrences. Independent full control equivalence passes. Its 1,633 App samples
+meet the count floor but do not resolve the other qualification limits.
+
+OSCORE then refused `Stack/frame count budget exceeded.` Which predicate fired
+and partial sample/frame counts are unknown; no protected profile is inferred.
+This ends the offline attempt. Preserve both refusals and the final two original
+NOTRUN captures; do not raise limits, segment the trace, retry or record replacement
+cohorts. The [retained proof](evidence/windows-live-c1-capability-20261030/README.md)
+delivers diagnostic unprotected capture-to-flame capability and its exact projection
+check, without a qualified cost ranking, production optimization or device claim.

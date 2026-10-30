@@ -1,0 +1,42 @@
+{
+  "schema": "coaptic-windows-live-retained-failures/1",
+  "attempts": [
+    {
+      "run": 41035344492,
+      "source": "57785a3940f94e38e9fa63c6a4f76ccb67b538df",
+      "result": "capture orchestration refused1060>900seconds beforeworkercreation",
+      "checks": "98portable,12native,bothbuildsPASS",
+      "native_cohorts_ETW_controls_CSharp_models": "NOTRUN"
+    },
+    {
+      "run": 41038109816,
+      "source": "1897220f57b9379b4e1332a0f17bb977b8f01900",
+      "result": "InvalidDataException: Frame text budget exceeded.",
+      "full_native_workloads": 4,
+      "controls_complete": 2,
+      "ETW_captures_explicitly_stopped": 2,
+      "unprotected_profile": "exported3164samples",
+      "protected_profile": null,
+      "partial_protected_counts": null,
+      "last_two_original_captures": "oscore-capture-01 andunprotected-capture-01 NOTRUN"
+    },
+    {
+      "source_review": "40284cdf99977e0d8352b904ffdd25e29ad91f9b",
+      "result": "P1 exact source JSON hash changes underWindowsCRLFcheckout",
+      "repair": "625728b exact path text eol=lf plus realGitcheckoutfilterregression; R2NONE, no runtime retry consumed"
+    },
+    {
+      "run": 41044460748,
+      "source": "625728bd9aba0afc80c84fd6c78e046ca5b4efa8",
+      "result": "InvalidDataException: Stack/frame count budget exceeded.",
+      "kind": "offline same two ETLs; no new session/workload",
+      "unprotected": "exact projection/export/render/equivalencePASS",
+      "protected_profile": null,
+      "which_count_predicate": null,
+      "partial_protected_samples": null,
+      "partial_protected_frames": null,
+      "new_Rust_native_capture": "SKIPPED/NOTRUN"
+    }
+  ],
+  "disposition": "Campaign ended; no optimization delivered and all capabilities/core source unchanged."
+}

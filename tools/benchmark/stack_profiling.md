@@ -281,6 +281,15 @@ are unchanged. Host conversion is bounded separately. Refusal remains a failure,
 with no cap increase, automatic fallback or replacement samples. Both replay
 routes and live recording are mutually exclusive.
 
+The [retained live capability proof](evidence/windows-live-c1-capability-20261030/README.md)
+records the completed offline attempt: unprotected exact-path equivalence passes,
+while OSCORE refuses `Stack/frame count budget exceeded.` Its triggering predicate
+and partial counts remain unknown. No protected profile or replacement recording
+is inferred. All 126 portable checks, 209 model assertions and the exporter build
+pass. The unprotected count floor is met, but other quality gates remain unknown;
+the result is diagnostic and does not qualify CPU share or a speedup. The campaign
+ends with unchanged caps and the two final original captures still not run.
+
 ## Linux and the Waveshare device
 
 The existing Linux runner produces flat reports, inline caller trees and raw

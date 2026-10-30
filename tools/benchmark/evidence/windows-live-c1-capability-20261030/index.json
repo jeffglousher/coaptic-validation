@@ -1,0 +1,50 @@
+{
+  "schema": "coaptic-evidence-index/1",
+  "files": [
+    {
+      "path": "checks.json",
+      "bytes": 3751,
+      "sha256": "9328124a86ddc1ae22b7280c1f00e8af580e2c5bfd5ed822c24797f72bad0868"
+    },
+    {
+      "path": "equivalence.json.gz",
+      "bytes": 483,
+      "sha256": "734b48b0f4f1fb05ee8656a7b7a01358c6c0ce3a19535c95525e5793ba98b9bf"
+    },
+    {
+      "path": "export-receipt.json.gz",
+      "bytes": 1692,
+      "sha256": "7bd243750bd0e9ca26e9c0681c8b99dbb740138aa67704f580984604b19ce6fa"
+    },
+    {
+      "path": "offline-collector.json.gz",
+      "bytes": 17738,
+      "sha256": "59a56bea2d1717bfefc504d6b3a781dbc66aec0324f451f84c6b5b26fb99b4fd"
+    },
+    {
+      "path": "original-live-collector.json.gz",
+      "bytes": 19759,
+      "sha256": "5d5ed28f89b89f6a18eddbb022286ece63e4d31713aae2583d421ef2fe91332f"
+    },
+    {
+      "path": "profile.html.gz",
+      "bytes": 21740,
+      "sha256": "6c8f7c30b6b275e9b00a69b126ad95973ac62d5321a9fe5ff9e068063d5cd62d"
+    },
+    {
+      "path": "profile.json.gz",
+      "bytes": 11827,
+      "sha256": "06cf1058ba4344c3fd183adb72f76246085fff55058b19b3b4bc23b11bc1acfa"
+    },
+    {
+      "path": "README.md",
+      "bytes": 6015,
+      "sha256": "acad721f6d92d97e4e2533b8d61363a4a8a60ae5ce8b4b6412009561caf11e5a"
+    },
+    {
+      "path": "retained-failures.json",
+      "bytes": 1763,
+      "sha256": "2e4f9b1b97740f067ce32932e0cc8c415196bbe657d0a6e42c7e260f1cb18649"
+    }
+  ]
+}

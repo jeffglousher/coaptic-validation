@@ -1,0 +1,85 @@
+{
+  "schema": "coaptic-windows-live-capability-checks/1",
+  "classification": "diagnostic, unqualified; no runtime optimization",
+  "core": "8af71fe4aa73b3bb76a921a836a1a9647d75f361",
+  "capture_suite": "1897220f57b9379b4e1332a0f17bb977b8f01900",
+  "replay_suite": "625728bd9aba0afc80c84fd6c78e046ca5b4efa8",
+  "replay_tree": "f64cc7616307ff0a13304b708ac20531068046f0",
+  "original_run": 41038109816,
+  "offline_run": 41044460748,
+  "original_artifact": {
+    "id": 12969046956,
+    "bytes": 6179117,
+    "expanded_bytes": 52995829,
+    "members": 62,
+    "sha256": "bfc9b19766836cb5f3a7c59971bfc062068ff5ecb071433b0c74ced7c803a3bf"
+  },
+  "offline_artifact": {
+    "id": 12971628053,
+    "bytes": 6018623,
+    "expanded_bytes": 44523291,
+    "members": 33,
+    "sha256": "779ad633370b78bfee8cc8e8abc21c6b943be2a3ef30e14ed2a9994c2122ced0"
+  },
+  "unprotected": {
+    "samples": 3164,
+    "weight": 3164,
+    "exact_paths": 332,
+    "full_symbols": 341,
+    "nonempty_recursive_prefixes": 531,
+    "weighted_frame_occurrences": 42573,
+    "App_ancestry_samples": 1633,
+    "other_samples": 1531,
+    "unresolved_occurrences": 11260,
+    "lost_reported": 0,
+    "refused_reported": 0,
+    "App_floor": 200,
+    "App_floor_met": true,
+    "qualified": false,
+    "profile_sha256": "f5a699f58dd877143bc60c233a1ca683b392e0313cbfe3a87a51c48046b53f47",
+    "exact_path_counter_sha256": "66997201a5009a90a6bdfdae93ceda034dc13536cadf4682d596b313330c84b4"
+  },
+  "independent_checks": [
+    "collector checks all current artifact member CRC/size/SHA and API digest",
+    "parent separately checks all33currentmembers CRC/size/SHA and API digest in RAM",
+    "collector checks actual bytes of all10 original input pins and literal config/receipt objects",
+    "collector independently checks every exact path multiplicity, symbol self/inclusive/occurrence, recursive prefix, weighted depth and quality between original and projected unprotected profiles"
+  ],
+  "hosted_checks": {
+    "original_portable_passed": 99,
+    "original_native_passed": 12,
+    "original_CSharp_models_passed": 113,
+    "offline_portable_passed": 126,
+    "offline_CSharp_models_passed": 209,
+    "offline_SDK": "8.0.427",
+    "offline_build_seconds": 26.62,
+    "offline_build_warnings": 0,
+    "offline_build_errors": 0,
+    "offline_Rust_native_capture": "SKIPPED/NOTRUN"
+  },
+  "browser": {
+    "method": "Actual projected HTML loaded into owned collaborative browser in bounded32KiBchunks after html_preview rejected673343characters above512000limit",
+    "DOM_geometry_zoom_filter_reset": "PASS",
+    "flame_nodes_including_synthetic_root": 532,
+    "zoom_nodes": 299,
+    "filter_rows": 1,
+    "table_symbols": 341,
+    "geometry_violations": 0,
+    "snapshot_visual_QA": "UNRUN: two snapshots timed out; no full-artifact screenshot inspection claimed",
+    "prior_compact_presentation_QA": "separate shortened-label view of original unprotected data; no identity merging"
+  },
+  "limits": {
+    "unwind_complete": null,
+    "inline_complete": null,
+    "cpu_mode": "unknown",
+    "circular_overwrite_fully_measured": false,
+    "qualification_truncation": null,
+    "aggregate_JSON_event_metadata": "omitted; original ETL authoritative",
+    "aggregate_JSON_independently_proves_QPC_membership": false,
+    "compiler_tool_binary_cleanup": "producer-attested except retained original EXE/PDB/ETL byte hashes independently verified",
+    "exact_in_memory_image_bytes_proven": false,
+    "VM_retirement_observed": false,
+    "global_sampling_interval_restored": null
+  },
+  "stop": "OSCORE projection refused combined Stack/frame count budget exceeded; predicate and partial totals unknown. No retry, cap increase, segmentation, fallback, replacement cohorts or new recording."
+}
