@@ -213,6 +213,83 @@ The profile identity names the original capture tool; the replay build receipt
 identifies the current exporter. Browser checks cover zoom, filtering and reset.
 The other original 15 captures and two controls remain not run.
 
+## Separate live C1 server-thread screen
+
+The [live C1 plan](windows_live_c1_plan.md) defines a separate capability workload
+for collecting more server App samples. It preserves the old batch workload,
+cohort plan and historical evidence. Source integration and native validation
+must pass before any live recording.
+
+```
+gh workflow run ci.yml --repo jeffglousher/coaptic-validation --ref REVIEWED_BRANCH -f stack_profile=true -f stack_profile_live=true -f library_revision=FULL_CORE_SHA
+```
+
+This selects exactly four captures and two controls in the plan's serial order,
+each with fresh process/key material. One million fresh requests follow 128
+warmups. The main server thread runs the unchanged Default allocated App; one
+client helper prepares and authenticates requests through a single bounded
+handoff slot. The helper remains alive until the collector stops. Its crypto
+samples are excluded by the explicitly reported server TID, while scheduling
+and synchronization still affect the fixture. Retain those server-thread paths
+and unresolved frames alongside App ancestry.
+
+The live fixture uses virtual `index * 8 ms` protocol time to permit safe MID
+reuse across wraps. The existing batch uses real monotonic elapsed time. The
+live workload is socket-free protocol progress, not a socket traffic rate or a
+device measurement. It is neither a comparison with the old batch nor a CPU
+improvement claim. The first two captures completed in the partial attempt
+described below; replicated sampling and stack qualification remain unproven.
+
+The work deadline is 90 seconds, the collector deadline 120 seconds, the live
+capture worker deadline 830 seconds and outer containment 900 seconds. Only
+this new workload uses a 40-minute hosted job. All old batch deadlines remain
+unchanged. Failure retains actual counters; a completed prefix cannot become a
+successful smaller cohort. The existing 200 App-sample floor, quality refusals
+and no-pooling rule remain in force. Live and pinned offline replay are mutually
+exclusive; no extra recording is performed by the replay path.
+Prepared builds and ownership receipts bind the exact workload and cohort plan;
+`build` and `capture` must use the same `--workload` selection. A mismatch refuses
+before tooling or native capture launch. Live preparation records the focused
+native-test census and log hash; a zero-test filter is refused.
+The plan retains attempt 41035344492's pre-capture timeout refusal and the narrow
+setup correction. The shared process-owner ceiling remains unchanged.
+
+## Offline projection of the retained live pair
+
+The live recording campaign stopped after attempt 41038109816 exported the first
+unprotected profile and refused the protected export's frame-text budget. The
+last two captures did not run. The [plan](windows_live_c1_plan.md) preserves the
+actual census and diagnostic limitations. No replacement recording is selected.
+
+```
+gh workflow run ci.yml --repo jeffglousher/coaptic-validation --ref REVIEWED_BRANCH -f stack_profile=true -f stack_profile_live_replay=true -f library_revision=FULL_CORE_SHA
+```
+
+This separate route skips Rust provisioning, native builds, workload execution
+and ETW recording. It rebuilds the pinned .NET exporter, verifies the exact
+retained ZIP and original inputs, then explicitly projects each of the same two
+ETLs by exact full-symbol path. It does not pool scopes. The unprotected output
+must conserve all original paths, symbol self/inclusive counts, flame prefixes
+and quality counters. The canonical JSON omits event metadata; the original ETL
+and hashes are retained for independent replay. Exporter source/build identity is
+recorded separately from the historical capture identity.
+
+Default per-event export remains unchanged. The opt-in representation reuses the
+existing canonical schema with counted rows and no optional `event` object. Raw
+limits are checked before grouping; the 16 MiB JSON/HTML and retained-text caps
+are unchanged. Host conversion is bounded separately. Refusal remains a failure,
+with no cap increase, automatic fallback or replacement samples. Both replay
+routes and live recording are mutually exclusive.
+
+The [retained live capability proof](evidence/windows-live-c1-capability-20261030/README.md)
+records the completed offline attempt: unprotected exact-path equivalence passes,
+while OSCORE refuses `Stack/frame count budget exceeded.` Its triggering predicate
+and partial counts remain unknown. No protected profile or replacement recording
+is inferred. All 126 portable checks, 209 model assertions and the exporter build
+pass. The unprotected count floor is met, but other quality gates remain unknown;
+the result is diagnostic and does not qualify CPU share or a speedup. The campaign
+ends with unchanged caps and the two final original captures still not run.
+
 ## Linux and the Waveshare device
 
 The existing Linux runner produces flat reports, inline caller trees and raw

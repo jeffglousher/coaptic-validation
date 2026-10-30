@@ -23,6 +23,7 @@ CAPTURES_PER_MODE = 8
 EMPTY_GATES = 16
 OPERATIONS = 50000
 WARMUP = 128
+LIVE_OPERATIONS = 1000000
 MIN_APP_SAMPLES = 200
 HERE = Path(__file__).resolve().parent
 SUITE = HERE.parents[1]
@@ -499,6 +500,23 @@ def build_phase(args, root, budget):
         raise ValueError('source changed during tooling build')
     # Fail the smaller tooling build before spending time on the Rust workload.
     with native_lock(args.core) as lock:
+        if getattr(args, 'workload', 'batch') == 'live-c1':
+            test_command = [tools['cargo']['path'], 'test', '--release', '--locked',
+                            '--target', 'x86_64-pc-windows-msvc', '--manifest-path',
+                            str(HERE / 'native/Cargo.toml'), '-p', 'bench-rust-server',
+                            '--bin', 'bench-core', 'live_c1']
+            test_log = root / 'evidence/native-live-tests.log'
+            passed = False
+            test_result = None
+            try:
+                test_output = command(test_command, budget, test_log, env=env)
+                test_result = native_test_result(test_output)
+                passed = True
+            finally:
+                save(root / 'evidence/native-live-tests.json',
+                     dict(command=test_command, log=str(test_log), passed=passed,
+                          result=test_result,
+                          log_sha256=digest(test_log) if test_log.is_file() else None))
         raw = command([tools['cargo']['path'], 'build', '--release', '--locked',
                        '--target', 'x86_64-pc-windows-msvc', '--manifest-path',
                        HERE / 'native/Cargo.toml', '-p', 'bench-rust-server', '--bin', 'bench-core',
@@ -515,7 +533,7 @@ def build_phase(args, root, budget):
     native, tool_evidence = retain_build_evidence(root, binary, pdb, tool)
     tool_evidence['sdk_selection'] = sdk_selection
     tool_evidence['staged_sources'] = staged_sources
-    record = dict(schema='coaptic-windows-build/1', sources=sources, inputs=inputs,
+    record = dict(schema='coaptic-windows-build/1', workload=workload_identity(args), sources=sources, inputs=inputs,
                   compiler=compiler, cargo=cargo, tools=tools, lock=lock, dotnet=sdk,
                   native=native,
                   tool=dict(path=str(tool), sha256=digest(tool), dotnet=dotnet,
@@ -596,8 +614,22 @@ def stop_collector(child, capture_id, *, cleanup=False, receipt_path=None):
 def verified_build(args, root):
     root = Path(root).resolve()
     record = read_json(root / 'evidence/build.json')
+    expected_workload = workload_identity(args)
+    owner = read_json(root / 'evidence/owner.json')
+    if (record.get('workload') != expected_workload
+            or owner.get('workload') != expected_workload
+            or owner.get('plan') != expected_workload['cohorts']):
+        raise ValueError('prepared workload or ownership plan mismatch')
     if record['sources'] != source_identity(args.core, args.expected_core, args.expected_suite):
         raise ValueError('prepared sources changed')
+    if getattr(args, 'workload', 'batch') == 'live-c1':
+        receipt = read_json(root / 'evidence/native-live-tests.json')
+        log = Path(receipt['log']).resolve()
+        if (receipt.get('passed') is not True or not log.is_relative_to(root / 'evidence')
+                or digest(log) != receipt.get('log_sha256')):
+            raise ValueError('live native test receipt missing or changed')
+        if native_test_result(stack_profile.read_text(log).encode('utf-8')) != receipt.get('result'):
+            raise ValueError('live native test census changed')
     native, tool = record['native'], record['tool']
     for path in (native['path'], native['pdb']):
         if not Path(path).resolve().is_relative_to(root / 'evidence/binaries'):
@@ -621,7 +653,7 @@ def workload_thread_id(fixture):
     return tid
 
 
-def target_start_utc(detail, pid, exe, tid):
+def target_start_utc(detail, pid, exe, tid, client_tid=None):
     """Bind the reported workload TID to this exact process inventory."""
     if not isinstance(detail, dict) or type(detail.get('pid')) is not int or detail['pid'] != pid:
         raise ValueError('target inventory PID mismatch')
@@ -633,6 +665,8 @@ def target_start_utc(detail, pid, exe, tid):
             or any(type(value) is not int or not 1 <= value <= 0xffffffff for value in ids)
             or len(set(ids)) != len(ids) or tid not in ids):
         raise ValueError('invalid target thread inventory or workload TID absent')
+    if client_tid is not None and (type(client_tid) is not int or client_tid == tid or client_tid not in ids):
+        raise ValueError('client TID absent or not distinct')
     start = detail.get('process_start_utc')
     if not isinstance(start, str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{7}Z', start):
         raise ValueError('exact target process_start_utc required')
@@ -646,14 +680,16 @@ def capture_phase(args, root, budget):
     tool = [record['tool']['dotnet'], record['tool']['path']]
     command(tool + ['metadata'], budget, root / 'evidence/tool-metadata.log')
     command(tool + ['selftest'], budget, root / 'evidence/tool-selftest.log')
+    live = getattr(args, 'workload', 'batch') == 'live-c1'
+    operations = LIVE_OPERATIONS if live else OPERATIONS
     cohorts = []
-    for mode, kind, index in plan():
+    for mode, kind, index in (live_plan() if live else plan()):
         budget.check(force=True)
         name = f'{mode}-{kind}-{index:02d}'
         directory = root / 'evidence' / name
         directory.mkdir()
         events = []
-        native = Process([record['native']['path'], str(OPERATIONS), mode, '--batch-cpu'], budget)
+        native = Process([record['native']['path'], str(operations), mode, '--live-c1' if live else '--batch-cpu'], budget)
         collector = None
         settled = True
         capture_id = str(uuid.uuid4())
@@ -661,7 +697,7 @@ def capture_phase(args, root, budget):
         work_seconds = None
         config_path = directory / 'config.json'
         try:
-            protocol = BatchProtocol(mode)
+            protocol = LiveProtocol(mode) if live else BatchProtocol(mode)
             native.send('start')
             fixture = native.line(45)
             events.append(fixture)
@@ -673,22 +709,25 @@ def capture_phase(args, root, budget):
                                  directory / 'target.log')
             target = parse_event(raw_target)
             detail = target.get('detail', target)
-            start_utc = target_start_utc(detail, native.p.pid, record['native']['path'], tid)
+            start_utc = target_start_utc(detail, native.p.pid, record['native']['path'], tid,
+                                         fixture['client_thread_id'] if live else None)
             identity = dict(source=json.dumps(record['sources'], sort_keys=True),
                             tool='TraceEvent3.1.21; exporter SHA256 ' + record['tool']['sha256'],
-                            workload='64B Default allocated; server App; socket-free; batch50000; ' + mode,
+                            workload=(('64B Default allocated; server App; socket-free; live-c1 1000000; '
+                                       'virtual time index*8ms; client handoff and synchronization overhead; ' if live
+                                       else '64B Default allocated; server App; socket-free; batch50000; ') + mode),
                             capture=capture_id, platform=record['platform'], cohort=name)
             config = dict(capture_id=capture_id, directory=str(directory), pid=native.p.pid, tid=tid,
                           process_start_utc=start_utc, exe=record['native']['path'],
                           exe_sha256=record['native']['sha256'], pdb=record['native']['pdb'],
                           pdb_sha256=record['native']['pdb_sha256'], identity=identity,
-                          label='server main; ' + name, max_seconds=60, dedicated_hosted_vm=True)
+                          label='server main; ' + name, max_seconds=120 if live else 60, dedicated_hosted_vm=True)
             save(config_path, config)
             if kind == 'capture':
                 command(tool + ['preflight', '--config', config_path], budget, directory / 'preflight.log')
                 command(tool + ['symbols', '--config', config_path], budget, directory / 'symbols.log')
             while protocol.stage != 'done':
-                row = native.line(45)
+                row = native.line(92 if live and protocol.stage == 'measured' else 45)
                 events.append(row)
                 action = protocol.receive(row)
                 if action == 'capture_then_run':
@@ -716,7 +755,7 @@ def capture_phase(args, root, budget):
                                                 scope='parent-observed gate interval; includes IPC; no subtraction',
                                                 complete=True, etw_cleanup_settled=settled))
             item = dict(name=name, mode=mode, kind=kind, index=index,
-                        verified=OPERATIONS + WARMUP, work_gate_wall_seconds=work_seconds)
+                        verified=operations + WARMUP, work_gate_wall_seconds=work_seconds)
             if kind == 'capture':
                 scratch = root / ('conversion-' + name)
                 scratch.mkdir()
@@ -775,7 +814,8 @@ def worker(phase, config):
     args = argparse.Namespace(**read_json(config))
     hosted_preflight()
     root = Path(args.output).resolve()
-    budget = Budget(root, 830 if phase == 'build' else 650,
+    inner_seconds, _ = worker_limits(phase, getattr(args, 'workload', 'batch'))
+    budget = Budget(root, inner_seconds,
                     rss_limit=(4 if phase == 'build' else 1) * 1024**3)
     try:
         if phase == 'build':
@@ -821,7 +861,8 @@ def execute(args):
         (root / 'evidence').mkdir()
         save(root / 'evidence/owner.json', dict(project='Coaptic', owner=os.environ.get('GITHUB_RUN_ID'),
              release='Ephemeral job output; evidence retention14days', build_limit=BUILD_LIMIT,
-             evidence_limit=EVIDENCE_LIMIT, plan=plan()))
+             evidence_limit=EVIDENCE_LIMIT, workload=workload_identity(args),
+             plan=workload_identity(args)['cohorts']))
     elif not (root / 'evidence/build.json').is_file():
         raise ValueError('capture requires successful prepared build')
     phases = ('build', 'capture') if args.command == 'all' else (args.command,)
@@ -832,8 +873,9 @@ def execute(args):
         save(config, vars(args))
         env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path), PYTHONDONTWRITEBYTECODE='1')
         try:
+            _, outer_seconds = worker_limits(phase, getattr(args, 'workload', 'batch'))
             result = run_worker([sys._base_executable, '-B', str(Path(__file__).resolve()),
-                                 '_worker', phase, str(config)], timeout=900, limit=LOG_LIMIT,
+                                 '_worker', phase, str(config)], timeout=outer_seconds, limit=LOG_LIMIT,
                                 cwd=SUITE, env=env, settle_build_auxiliaries=phase == 'build')
             save(root / 'evidence' / (phase + '-outer.json'),
                  dict(passed=True, seconds=result.duration_seconds, descendants_settled=True,
@@ -855,6 +897,41 @@ def plan():
     """Fixed serial order; controls and captured workers have fresh processes."""
     return [(mode, "capture", i) for i in range(CAPTURES_PER_MODE) for mode in MODES] + [
         (mode, "control", 0) for mode in MODES]
+
+
+def live_plan():
+    return [('unprotected', 'control', 0), ('unprotected', 'capture', 0),
+            ('oscore', 'control', 0), ('oscore', 'capture', 0),
+            ('oscore', 'capture', 1), ('unprotected', 'capture', 1)]
+
+
+def workload_identity(args):
+    """Bind preparation, ownership and capture to one exact finite workload."""
+    name = getattr(args, 'workload', 'batch')
+    if name not in ('batch', 'live-c1'):
+        raise ValueError('unsupported workload')
+    live = name == 'live-c1'
+    return dict(name=name, operations=LIVE_OPERATIONS if live else OPERATIONS,
+                warmup=WARMUP, cohorts=[list(row) for row in (live_plan() if live else plan())])
+
+
+def worker_limits(phase, workload):
+    """Leave stop/flush grace inside the shared owner's existing 900s ceiling."""
+    if phase not in ('build', 'capture') or workload not in ('batch', 'live-c1'):
+        raise ValueError('unsupported worker phase or workload')
+    return (830 if phase == 'build' or workload == 'live-c1' else 650), 900
+
+
+def native_test_result(output):
+    """A successful Cargo exit with zero matching tests is not test evidence."""
+    matches = re.findall(rb'^test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored; '
+                         rb'(\d+) measured; (\d+) filtered out;[^\r\n]*\r?$', output, re.MULTILINE)
+    if len(matches) != 1:
+        raise ValueError('live native test census missing or ambiguous')
+    counts = dict(zip(('passed', 'failed', 'ignored', 'measured', 'filtered_out'), map(int, matches[0])))
+    if counts['passed'] < 1 or counts['failed'] != 0:
+        raise ValueError('live native tests did not execute successfully')
+    return counts
 
 
 def expected_sha(value):
@@ -969,6 +1046,77 @@ class BatchProtocol:
         return None
 
 
+
+LIVE_CAPACITIES = dict(routes=1, calls=4, deferred=0, security_bindings=4, associations=1,
+    rx_datagram_slots=4, rx_datagram_bytes=1472, tx_datagram_slots=4,
+    tx_datagram_bytes=1472, dedup_entries=8, observe_entries=4, rx_body_slots=1,
+    rx_body_bytes=1024, tx_body_slots=2, tx_body_bytes=1024, blockwise=True)
+LIVE_LAYOUT = ('shared_slot', 'client_context', 'client_request_ref', 'client_decrypt_scratch',
+               'server_app_inline', 'server_requested_heap', 'helper_stack_requested')
+LIVE_COUNTERS = dict(prepared=LIVE_OPERATIONS, polled=LIVE_OPERATIONS, responded=LIVE_OPERATIONS,
+    verified=LIVE_OPERATIONS, warmup_verified=WARMUP, total_verified=LIVE_OPERATIONS + WARMUP,
+    internal_datagrams=2000256, udp_datagrams=0, max_outstanding=1, slot_empty=True,
+    pending_binding=False, io_pending=False)
+
+
+def exact_fields(row, required):
+    return all(k in row and type(row[k]) is type(v) and row[k] == v for k, v in required.items())
+
+
+class LiveProtocol:
+    """Validate the live-C1 state machine; verify is gated on collector stop."""
+    def __init__(self, mode):
+        if mode not in MODES:
+            raise ValueError('invalid security mode')
+        self.mode, self.stage = mode, 'fixture'
+
+    def receive(self, row):
+        if isinstance(row, dict) and row.get('event') == 'failed':
+            raise ValueError('native live workload failed: ' + str(row.get('reason', 'unknown'))[:64])
+        base = dict(event=self.stage, mode='server-app-live-c1/1', security=self.mode)
+        if not isinstance(row, dict) or self.stage == 'done' or not exact_fields(row, base):
+            raise ValueError('live event order or identity mismatch')
+        if self.stage == 'fixture':
+            required = dict(operations=LIVE_OPERATIONS, warmup=WARMUP, deadline_seconds=90,
+                            virtual_tick_ms=8, virtual_first_ms=0, virtual_last_ms=8001016)
+            caps, layout = row.get('capacities'), row.get('layout')
+            if (not exact_fields(row, required) or not isinstance(caps, dict)
+                    or caps.keys() != LIVE_CAPACITIES.keys() or not exact_fields(caps, LIVE_CAPACITIES)
+                    or not isinstance(layout, dict) or layout.keys() != set(LIVE_LAYOUT)
+                    or any(type(layout[k]) is not int or layout[k] < 0 for k in LIVE_LAYOUT)
+                    or layout['client_decrypt_scratch'] != 1472
+                    or layout['helper_stack_requested'] != 2097152):
+                raise ValueError('live fixture mismatch')
+            tid = workload_thread_id(row)
+            client = row.get('client_thread_id')
+            if type(client) is not int or not 1 <= client <= 0xffffffff or client == tid:
+                raise ValueError('invalid client thread ID')
+            self.stage = 'warmup'
+            return None
+        if self.stage == 'warmup':
+            if not exact_fields(row, dict(warmup_verified=WARMUP)):
+                raise ValueError('live warmup mismatch')
+            self.stage = 'ready'
+            return None
+        if self.stage == 'ready':
+            if not exact_fields(row, dict(kind='work')):
+                raise ValueError('live ready mismatch')
+            self.stage = 'measured'
+            return 'capture_then_run'
+        required = dict(LIVE_COUNTERS)
+        if self.stage in ('verified', 'complete'):
+            required['helper_settled'] = True
+        if not exact_fields(row, required):
+            raise ValueError('live counters or settlement mismatch')
+        if self.stage == 'measured':
+            self.stage = 'verified'
+            return 'stop_then_verify'
+        if self.stage == 'verified':
+            self.stage = 'complete'
+            return None
+        self.stage = 'done'
+        return 'exit'
+
 def qualification(profile, *, app_rooted, pdb_match, truncated):
     """Return eligibility; unknown quality is not zero and counts never pool."""
     stack_profile.validate_profile(profile)
@@ -998,6 +1146,7 @@ def main(argv=None):
         return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("build", "capture", "all"))
+    parser.add_argument("--workload", choices=("batch", "live-c1"), default="batch")
     parser.add_argument("--core", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--expected-core", required=True, type=expected_sha)

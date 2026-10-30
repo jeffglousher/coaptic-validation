@@ -19,3 +19,9 @@ tools/qualification/evidence/completion-20261020/** -text whitespace=-blank-at-e
 tools/benchmark/evidence/hot-path-windows-20261021/** -text whitespace=-blank-at-eol
 tools/benchmark/evidence/cpu-cost-windows-20261022/** -text whitespace=-blank-at-eol
 tools/benchmark/evidence/cpu-cost-linux-20261022/** -text whitespace=-blank-at-eol
+
+# The live replay manifest is hashed as exact source bytes on every host.
+tools/benchmark/windows_live_replay_pins.json text eol=lf
+
+# Keep the live profiling proof and its integrity index byte-exact.
+tools/benchmark/evidence/windows-live-c1-capability-20261030/** -text

@@ -1,0 +1,519 @@
+{
+  "schema": "coaptic-windows-live-replay-pins/1",
+  "run_id": 41038109816,
+  "run_attempt": 1,
+  "event": "workflow_dispatch",
+  "artifact_id": 12969046956,
+  "artifact_name": "windows-stack-profile-41038109816-1",
+  "zip_bytes": 6179117,
+  "zip_sha256": "bfc9b19766836cb5f3a7c59971bfc062068ff5ecb071433b0c74ced7c803a3bf",
+  "expanded_bytes": 52995829,
+  "member_count": 62,
+  "original_root": "D:\\a\\_temp\\coaptic-stack-profile",
+  "original_sources": {
+    "core": {
+      "path": "D:\\a\\coaptic-validation\\coaptic-validation\\coaptic",
+      "commit": "8af71fe4aa73b3bb76a921a836a1a9647d75f361",
+      "tree": "1e8e24b17d69bf8703e47a21990a34bb9304b682"
+    },
+    "suite": {
+      "path": "D:\\a\\coaptic-validation\\coaptic-validation",
+      "commit": "1897220f57b9379b4e1332a0f17bb977b8f01900",
+      "tree": "c90493ed69f63a602957e835e2e2e4512ee4ea72"
+    }
+  },
+  "members": [
+    {
+      "path": "binaries/bench-core.exe",
+      "bytes": 1284608,
+      "sha256": "fc0e6a07137ca55470a767a9d76f9de810f588fcbf83e125ecbe9a345c6c6874"
+    },
+    {
+      "path": "binaries/bench_core.pdb",
+      "bytes": 10571776,
+      "sha256": "b1fca85bf59d7dab27fe57a02e7a1e5f2831bd3cc588f10607e35f8a95ec7e12"
+    },
+    {
+      "path": "build-inputs/global.json",
+      "bytes": 104,
+      "sha256": "a6e536b845a5e343d6408a385d55a82c87bff7e3a1a38d51e21039936ded92d2"
+    },
+    {
+      "path": "build-inputs/NuGet/Migrations/1",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "build-inputs/tool-files.json",
+      "bytes": 3210,
+      "sha256": "38ad2a91f5052afa9648a7fb3cf8a1fd28d502e615be093fefc434c4f8d5eaac"
+    },
+    {
+      "path": "build-inputs/tool-packages.lock.json",
+      "bytes": 6079,
+      "sha256": "d5e94b0801a870efd204fe5b0e3df8f2d5cf09611ee4d1990d10cd8125424ca0"
+    },
+    {
+      "path": "build-inputs/tool-source.json",
+      "bytes": 1352,
+      "sha256": "d66c54a6bf9f372ec4ee810987cdaed3a4974ee1bfc88732aeed0fd511742336"
+    },
+    {
+      "path": "build-inputs/tool.deps.json",
+      "bytes": 11978,
+      "sha256": "57731ac8a54e5128f36e6c7e3810d05e3212db41275d7965bdf35f483ee5bbea"
+    },
+    {
+      "path": "build-outer.json",
+      "bytes": 125,
+      "sha256": "d8710f821225145076d986c82c2acb9de36a2bd3c29ac5c9a6d361c1511b0707"
+    },
+    {
+      "path": "build-outer.log",
+      "bytes": 16,
+      "sha256": "d8760763be63067f00789fcf42648cb7e89259b37690e733415676ec0b8b6596"
+    },
+    {
+      "path": "build.json",
+      "bytes": 11435,
+      "sha256": "72c5a15f917e4df1cc9c2df9151ad9110f063f433f009a31497e72a9b876adf6"
+    },
+    {
+      "path": "capture-failure.json",
+      "bytes": 75,
+      "sha256": "a6511964019c89f220f4ab11563513b0cb996245ba885bfccd8a40205bd73733"
+    },
+    {
+      "path": "capture-outer.json",
+      "bytes": 1010,
+      "sha256": "537fdcf08ea82a5aa63cb9d719aaba5901cc7b256e3b49279618f05135a6f4c8"
+    },
+    {
+      "path": "capture-outer.log",
+      "bytes": 1222,
+      "sha256": "5dbb796ad93ce5d8f740f9d3fad0ac82a58e973eb16dbe81c7acc4a5f3a13de4"
+    },
+    {
+      "path": "dotnet-info.log",
+      "bytes": 5651,
+      "sha256": "c4f286314056250e04e7c14dc4638606bbfaff496a029b435e9dbe0346514baf"
+    },
+    {
+      "path": "dotnet-version.log",
+      "bytes": 25,
+      "sha256": "89465ce14d25cdfd355643a779ca44b41002019b7beccdae6cc03372cf7d1451"
+    },
+    {
+      "path": "native-build.log",
+      "bytes": 221107,
+      "sha256": "9a884a052240be26240419e9d1d89502e5ccf87067a9fd628e97d3c20816aab3"
+    },
+    {
+      "path": "native-live-tests.json",
+      "bytes": 703,
+      "sha256": "ae1b1a74d4f7ce062fddbd57c2a9a05a5a3446fda584d9057f1b3901a6bce33b"
+    },
+    {
+      "path": "native-live-tests.log",
+      "bytes": 20145,
+      "sha256": "70756aa06a815df260f527f12c74890500beb6c89e6f5d09bbdd23a13b58def2"
+    },
+    {
+      "path": "oscore-capture-00/capture.etl",
+      "bytes": 17563648,
+      "sha256": "bc9cef60ce771c4ce8fd010b9bf92a28a7642d93612bb9287efc1f11563b43d6"
+    },
+    {
+      "path": "oscore-capture-00/capture.json",
+      "bytes": 2971,
+      "sha256": "2825200aa77d968cf9507ff9c39fcdbfe79b780db0990aae009abbeed8876620"
+    },
+    {
+      "path": "oscore-capture-00/collector.log",
+      "bytes": 581,
+      "sha256": "6c6f15498f9b3666cba481f839c0a14bd08043cd9919783af188e8d09c41097d"
+    },
+    {
+      "path": "oscore-capture-00/config.json",
+      "bytes": 1514,
+      "sha256": "b46a289e5c6e7c5a8f6146010f61ab2e4c3c81e9b25fe6a678c828ae23073fc4"
+    },
+    {
+      "path": "oscore-capture-00/export.json",
+      "bytes": 359,
+      "sha256": "13a397ea677a367ae6a87c5a2c6bbbbbb79b7cd1ed574684cc8fb462bddc44fb"
+    },
+    {
+      "path": "oscore-capture-00/export.log",
+      "bytes": 67,
+      "sha256": "3830e15198dd069a4ba730fb8f6c5d99035387e66d5684d0ad3dd7b40c47c0b7"
+    },
+    {
+      "path": "oscore-capture-00/native.json",
+      "bytes": 2974,
+      "sha256": "ae7d0608966121b6cbbcd79c39a404f4299176b7eaea5a31a7f4d9af65a6c773"
+    },
+    {
+      "path": "oscore-capture-00/native.log",
+      "bytes": 1948,
+      "sha256": "2d4d5556bbc41e8383564269a79c92602102bbd13a914b6b0442ab7576344f67"
+    },
+    {
+      "path": "oscore-capture-00/preflight.log",
+      "bytes": 576,
+      "sha256": "82029f8a7b6d9d9088e632dfb1f0abb7a6f8d27c8ad1385d151ff28d2b1fb5d6"
+    },
+    {
+      "path": "oscore-capture-00/runner-failure.json",
+      "bytes": 2904,
+      "sha256": "01a9784925919a673de985f61ebd90fb7de9fbfb09b7214431b7e50189e3a1ce"
+    },
+    {
+      "path": "oscore-capture-00/started.json",
+      "bytes": 339,
+      "sha256": "3180dd6c6dd803cd6fc439d1733db702921d24ad8d918499cd2c713ef9fb24ac"
+    },
+    {
+      "path": "oscore-capture-00/symbols.log",
+      "bytes": 456,
+      "sha256": "33f33acde160654bee713a1d8dc34c7588aa5e52481673706796495459fd5610"
+    },
+    {
+      "path": "oscore-capture-00/target.log",
+      "bytes": 304,
+      "sha256": "98ca0d41e6b628430d9e5b8a66a5c55d24e5b4c4732fbc3f230c9d69bf88bca8"
+    },
+    {
+      "path": "oscore-control-00/config.json",
+      "bytes": 1514,
+      "sha256": "33fa2677982e8d0c726da5f53bb5718c50f49db1a8d7c64f3d084919d14c1789"
+    },
+    {
+      "path": "oscore-control-00/native.json",
+      "bytes": 2974,
+      "sha256": "fe50e9626d3b0fde8087d604b679d82b3c99259278de4fd598207dd1b07ae4ff"
+    },
+    {
+      "path": "oscore-control-00/native.log",
+      "bytes": 1948,
+      "sha256": "7288b4cddc97b602647e8e6f8a1555d1f64ce0f8909fdca360ebfd28515c1da5"
+    },
+    {
+      "path": "oscore-control-00/result.json",
+      "bytes": 160,
+      "sha256": "d10324b0acc26dc6fdaf27d6be3677eb56ae90ea817f3143c3732630b96477c8"
+    },
+    {
+      "path": "oscore-control-00/target.log",
+      "bytes": 304,
+      "sha256": "7e01dc1cbebe115312175f0b874f4188ccfbe662f0a5ae293d88abc503663a0e"
+    },
+    {
+      "path": "owner.json",
+      "bytes": 1042,
+      "sha256": "ad87d44388fe3f945f8f134fa23faafe62f104bb8f6bb620e0cd16e96c47938f"
+    },
+    {
+      "path": "tool-metadata.log",
+      "bytes": 1108,
+      "sha256": "fbf36d681e016bfdfee1ae05077066534242df09c054ae1cf6a47370737fb08b"
+    },
+    {
+      "path": "tool-build.log",
+      "bytes": 325,
+      "sha256": "76c717879a4dfd67bc0c33356eda28e84716b6767fd82f96a78e8fa77a3baf56"
+    },
+    {
+      "path": "tool-selftest.log",
+      "bytes": 188,
+      "sha256": "b8f8f62edb3253d4168990950509a7ae2190ad3c4e81c1ebab3f024c677f1c36"
+    },
+    {
+      "path": "unprotected-capture-00/capture.etl",
+      "bytes": 5439488,
+      "sha256": "bfa74e6a73622a382f46b25ec90fb547c592cc92d1ad8fb724d96a60960e22d8"
+    },
+    {
+      "path": "unprotected-capture-00/capture.json",
+      "bytes": 2995,
+      "sha256": "5330f1611f7dc8ff9129f403c7d612eead0e0140f97ba72f9451d20789e3d8fb"
+    },
+    {
+      "path": "unprotected-capture-00/config.json",
+      "bytes": 1534,
+      "sha256": "74909a67d10288913508553fb1c7c0dd19b65f23c597407deb9e846606c922ff"
+    },
+    {
+      "path": "unprotected-capture-00/collector.log",
+      "bytes": 591,
+      "sha256": "b237b916aef60a5f4adcdf6d640c8699722cb3579b80e3147889becb4d10689b"
+    },
+    {
+      "path": "unprotected-capture-00/export.json",
+      "bytes": 374,
+      "sha256": "feb99f953a745f5881b3886c0e937172c07223d74d23360a826a883eb148174b"
+    },
+    {
+      "path": "unprotected-capture-00/export.log",
+      "bytes": 306,
+      "sha256": "9b0ca330e7016545684ead07dc8af9934aca42c8f535dd341fb0cc6ea0cff964"
+    },
+    {
+      "path": "unprotected-capture-00/native.json",
+      "bytes": 3003,
+      "sha256": "98a2c5010b685cc0987c82659742c0f7594152bb0b5c9abb73d09a724bdedec9"
+    },
+    {
+      "path": "unprotected-capture-00/native.log",
+      "bytes": 1978,
+      "sha256": "b7a4f511d0f6e70648fe62e543fd4fa957b2daabf6899c435b61b4852f4882b7"
+    },
+    {
+      "path": "unprotected-capture-00/preflight.log",
+      "bytes": 576,
+      "sha256": "8f1b31ead0914ae032e2fc353a8e6eec0bd23f50c1aba5035b0c620dd711ea7d"
+    },
+    {
+      "path": "unprotected-capture-00/profile.html",
+      "bytes": 9454743,
+      "sha256": "0a9bb82b4a4a8a2f5358a04c97bf449f6ff6e32971488b035ff93a444ca84d44"
+    },
+    {
+      "path": "unprotected-capture-00/profile.json",
+      "bytes": 8351073,
+      "sha256": "04deaf4a681e6f5b58abe01c33dca9dd2839ca571fa20bf12892adde8eb3b91e"
+    },
+    {
+      "path": "unprotected-capture-00/profile.json.receipt.json",
+      "bytes": 1783,
+      "sha256": "53f477f772e631aa3284ceb300a653b4f7eadb004816eb5e00c2f4e901d29eb3"
+    },
+    {
+      "path": "unprotected-capture-00/result.json",
+      "bytes": 468,
+      "sha256": "34acf75e5a7e96493ba696111387733c097e7bc9e81bf473597ee4d9d8432c5c"
+    },
+    {
+      "path": "unprotected-capture-00/started.json",
+      "bytes": 344,
+      "sha256": "7f6996808516b95a1b74cb024e85ae9e8bcce70a0e855c32b9b2e52edde8848a"
+    },
+    {
+      "path": "unprotected-capture-00/symbols.log",
+      "bytes": 456,
+      "sha256": "df0349baed399eff672e7cb41c5951bff2ccef76d569bc18959a0fb2db653763"
+    },
+    {
+      "path": "unprotected-capture-00/target.log",
+      "bytes": 304,
+      "sha256": "df3ad3ac848af23614893b725684dbf65e49f6ecb1d6c48361cbc58091b20875"
+    },
+    {
+      "path": "unprotected-control-00/config.json",
+      "bytes": 1534,
+      "sha256": "06db4dd621c1e190ae7f28f74dc61e4ef358f3aae947df7b92c2a35f5136aa63"
+    },
+    {
+      "path": "unprotected-control-00/native.json",
+      "bytes": 3003,
+      "sha256": "1cedaf2371b89f7a73a297943d50669448b0154a82af53e27a81a338bdf459b3"
+    },
+    {
+      "path": "unprotected-control-00/native.log",
+      "bytes": 1978,
+      "sha256": "e9d2c90511cf727dda4ab433e9f689d4712a7294dd1776b2caddc626948f943f"
+    },
+    {
+      "path": "unprotected-control-00/result.json",
+      "bytes": 169,
+      "sha256": "b6d2302469605bf0e127e03f366dee29e0880b1d907e7fcb2b139e9dfdc99f7c"
+    },
+    {
+      "path": "unprotected-control-00/target.log",
+      "bytes": 304,
+      "sha256": "941787fa980e3133f5cb2e8fbd8f2b62f3a09eb8dfc5faed77c6997411b19487"
+    }
+  ],
+  "selected_members": [
+    "binaries/bench-core.exe",
+    "binaries/bench_core.pdb",
+    "build.json",
+    "unprotected-capture-00/capture.json",
+    "unprotected-capture-00/capture.etl",
+    "unprotected-capture-00/config.json",
+    "oscore-capture-00/capture.json",
+    "oscore-capture-00/capture.etl",
+    "oscore-capture-00/config.json",
+    "unprotected-capture-00/profile.json"
+  ],
+  "cohorts": [
+    {
+      "name": "unprotected-capture-00",
+      "capture": {
+        "schema": "coaptic-windows-stack-capture/1",
+        "config": {
+          "capture_id": "ec10dccb-c71f-45ac-ab3c-c326912d8505",
+          "directory": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\unprotected-capture-00",
+          "pid": 2688,
+          "tid": 6728,
+          "process_start_utc": "2026-10-30T10:11:33.2654683+00:00",
+          "exe": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\binaries\\bench-core.exe",
+          "exe_sha256": "fc0e6a07137ca55470a767a9d76f9de810f588fcbf83e125ecbe9a345c6c6874",
+          "pdb": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\binaries\\bench_core.pdb",
+          "pdb_sha256": "b1fca85bf59d7dab27fe57a02e7a1e5f2831bd3cc588f10607e35f8a95ec7e12",
+          "identity": {
+            "source": "{\"core\": {\"commit\": \"8af71fe4aa73b3bb76a921a836a1a9647d75f361\", \"path\": \"D:\\\\a\\\\coaptic-validation\\\\coaptic-validation\\\\coaptic\", \"tree\": \"1e8e24b17d69bf8703e47a21990a34bb9304b682\"}, \"suite\": {\"commit\": \"1897220f57b9379b4e1332a0f17bb977b8f01900\", \"path\": \"D:\\\\a\\\\coaptic-validation\\\\coaptic-validation\", \"tree\": \"c90493ed69f63a602957e835e2e2e4512ee4ea72\"}}",
+            "tool": "TraceEvent3.1.21; exporter SHA256 a9233b571cf639ff1522015cba79bda722ec12727373d51d0969aa2b89f4288a",
+            "workload": "64B Default allocated; server App; socket-free; live-c1 1000000; virtual time index*8ms; client handoff and synchronization overhead; unprotected",
+            "capture": "ec10dccb-c71f-45ac-ab3c-c326912d8505",
+            "platform": "Windows-2022Server-10.0.20348-SP0",
+            "cohort": "unprotected-capture-00"
+          },
+          "label": "server main; unprotected-capture-00",
+          "max_seconds": 120,
+          "dedicated_hosted_vm": true
+        },
+        "image": {
+          "exe_sha256": "fc0e6a07137ca55470a767a9d76f9de810f588fcbf83e125ecbe9a345c6c6874",
+          "pdb_sha256": "b1fca85bf59d7dab27fe57a02e7a1e5f2831bd3cc588f10607e35f8a95ec7e12",
+          "pdb_guid": "53f57876-0209-4387-98b2-18182bca0427",
+          "pdb_age": 1,
+          "image_id": 1793355083,
+          "image_size": 1298432,
+          "image_checksum": 0
+        },
+        "session_name": "CoapticStack-ec10dccb-c71f-45ac-ab3c-c326912d8505",
+        "etl": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\unprotected-capture-00\\capture.etl",
+        "etl_sha256": "bfa74e6a73622a382f46b25ec90fb547c592cc92d1ad8fb724d96a60960e22d8",
+        "etl_bytes": 5439488,
+        "start_qpc": 5112139533,
+        "stop_qpc": 5152843775,
+        "qpc_frequency": 10000000,
+        "ready_utc": "2026-10-30T10:11:35.3953257+00:00",
+        "stopped_utc": "2026-10-30T10:11:39.850873+00:00",
+        "lost": 0,
+        "log_buffers_lost": 0,
+        "real_time_buffers_lost": 0,
+        "stopped": true,
+        "notes": "Dedicated ephemeral hosted administrator VM only. EnableKernelProvider(Profile) writes the MACHINE-GLOBAL 1ms sample interval. Handle-only stop does not restore a prior global interval. Configured circular ETL 64MiB and requested buffers 64MiB are NOT a whole-resource cap; TraceEvent permits additional buffers. Parent must bound ETL, conversion, RSS, output and runtime. Window includes control transit after ready and before stop; sampled counts are not qualified CPU shares. Circular overwrite is not fully measurable.",
+        "module_base_address": "7ff7ba360000",
+        "module_size": 1298432
+      },
+      "original_config": {
+        "capture_id": "ec10dccb-c71f-45ac-ab3c-c326912d8505",
+        "directory": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\unprotected-capture-00",
+        "pid": 2688,
+        "tid": 6728,
+        "process_start_utc": "2026-10-30T10:11:33.2654683Z",
+        "exe": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\binaries\\bench-core.exe",
+        "exe_sha256": "fc0e6a07137ca55470a767a9d76f9de810f588fcbf83e125ecbe9a345c6c6874",
+        "pdb": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\binaries\\bench_core.pdb",
+        "pdb_sha256": "b1fca85bf59d7dab27fe57a02e7a1e5f2831bd3cc588f10607e35f8a95ec7e12",
+        "identity": {
+          "source": "{\"core\": {\"commit\": \"8af71fe4aa73b3bb76a921a836a1a9647d75f361\", \"path\": \"D:\\\\a\\\\coaptic-validation\\\\coaptic-validation\\\\coaptic\", \"tree\": \"1e8e24b17d69bf8703e47a21990a34bb9304b682\"}, \"suite\": {\"commit\": \"1897220f57b9379b4e1332a0f17bb977b8f01900\", \"path\": \"D:\\\\a\\\\coaptic-validation\\\\coaptic-validation\", \"tree\": \"c90493ed69f63a602957e835e2e2e4512ee4ea72\"}}",
+          "tool": "TraceEvent3.1.21; exporter SHA256 a9233b571cf639ff1522015cba79bda722ec12727373d51d0969aa2b89f4288a",
+          "workload": "64B Default allocated; server App; socket-free; live-c1 1000000; virtual time index*8ms; client handoff and synchronization overhead; unprotected",
+          "capture": "ec10dccb-c71f-45ac-ab3c-c326912d8505",
+          "platform": "Windows-2022Server-10.0.20348-SP0",
+          "cohort": "unprotected-capture-00"
+        },
+        "label": "server main; unprotected-capture-00",
+        "max_seconds": 120,
+        "dedicated_hosted_vm": true
+      },
+      "capture_receipt_path": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\unprotected-capture-00\\capture.json",
+      "config_path": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\unprotected-capture-00\\config.json",
+      "expected_original": {
+        "samples": 3164,
+        "app": 1633,
+        "frames": 42573,
+        "paths": 332,
+        "symbols": 341,
+        "unresolved": 11260
+      }
+    },
+    {
+      "name": "oscore-capture-00",
+      "capture": {
+        "schema": "coaptic-windows-stack-capture/1",
+        "config": {
+          "capture_id": "bb856dae-aaa6-4913-aa44-539d0a9e4b2b",
+          "directory": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\oscore-capture-00",
+          "pid": 5312,
+          "tid": 1004,
+          "process_start_utc": "2026-10-30T10:12:01.671394+00:00",
+          "exe": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\binaries\\bench-core.exe",
+          "exe_sha256": "fc0e6a07137ca55470a767a9d76f9de810f588fcbf83e125ecbe9a345c6c6874",
+          "pdb": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\binaries\\bench_core.pdb",
+          "pdb_sha256": "b1fca85bf59d7dab27fe57a02e7a1e5f2831bd3cc588f10607e35f8a95ec7e12",
+          "identity": {
+            "source": "{\"core\": {\"commit\": \"8af71fe4aa73b3bb76a921a836a1a9647d75f361\", \"path\": \"D:\\\\a\\\\coaptic-validation\\\\coaptic-validation\\\\coaptic\", \"tree\": \"1e8e24b17d69bf8703e47a21990a34bb9304b682\"}, \"suite\": {\"commit\": \"1897220f57b9379b4e1332a0f17bb977b8f01900\", \"path\": \"D:\\\\a\\\\coaptic-validation\\\\coaptic-validation\", \"tree\": \"c90493ed69f63a602957e835e2e2e4512ee4ea72\"}}",
+            "tool": "TraceEvent3.1.21; exporter SHA256 a9233b571cf639ff1522015cba79bda722ec12727373d51d0969aa2b89f4288a",
+            "workload": "64B Default allocated; server App; socket-free; live-c1 1000000; virtual time index*8ms; client handoff and synchronization overhead; oscore",
+            "capture": "bb856dae-aaa6-4913-aa44-539d0a9e4b2b",
+            "platform": "Windows-2022Server-10.0.20348-SP0",
+            "cohort": "oscore-capture-00"
+          },
+          "label": "server main; oscore-capture-00",
+          "max_seconds": 120,
+          "dedicated_hosted_vm": true
+        },
+        "image": {
+          "exe_sha256": "fc0e6a07137ca55470a767a9d76f9de810f588fcbf83e125ecbe9a345c6c6874",
+          "pdb_sha256": "b1fca85bf59d7dab27fe57a02e7a1e5f2831bd3cc588f10607e35f8a95ec7e12",
+          "pdb_guid": "53f57876-0209-4387-98b2-18182bca0427",
+          "pdb_age": 1,
+          "image_id": 1793355083,
+          "image_size": 1298432,
+          "image_checksum": 0
+        },
+        "session_name": "CoapticStack-bb856dae-aaa6-4913-aa44-539d0a9e4b2b",
+        "etl": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\oscore-capture-00\\capture.etl",
+        "etl_sha256": "bc9cef60ce771c4ce8fd010b9bf92a28a7642d93612bb9287efc1f11563b43d6",
+        "etl_bytes": 17563648,
+        "start_qpc": 5396216210,
+        "stop_qpc": 5667379412,
+        "qpc_frequency": 10000000,
+        "ready_utc": "2026-10-30T10:12:03.8029963+00:00",
+        "stopped_utc": "2026-10-30T10:12:31.7162366+00:00",
+        "lost": 0,
+        "log_buffers_lost": 0,
+        "real_time_buffers_lost": 0,
+        "stopped": true,
+        "notes": "Dedicated ephemeral hosted administrator VM only. EnableKernelProvider(Profile) writes the MACHINE-GLOBAL 1ms sample interval. Handle-only stop does not restore a prior global interval. Configured circular ETL 64MiB and requested buffers 64MiB are NOT a whole-resource cap; TraceEvent permits additional buffers. Parent must bound ETL, conversion, RSS, output and runtime. Window includes control transit after ready and before stop; sampled counts are not qualified CPU shares. Circular overwrite is not fully measurable.",
+        "module_base_address": "7ff7ba360000",
+        "module_size": 1298432
+      },
+      "original_config": {
+        "capture_id": "bb856dae-aaa6-4913-aa44-539d0a9e4b2b",
+        "directory": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\oscore-capture-00",
+        "pid": 5312,
+        "tid": 1004,
+        "process_start_utc": "2026-10-30T10:12:01.6713940Z",
+        "exe": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\binaries\\bench-core.exe",
+        "exe_sha256": "fc0e6a07137ca55470a767a9d76f9de810f588fcbf83e125ecbe9a345c6c6874",
+        "pdb": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\binaries\\bench_core.pdb",
+        "pdb_sha256": "b1fca85bf59d7dab27fe57a02e7a1e5f2831bd3cc588f10607e35f8a95ec7e12",
+        "identity": {
+          "source": "{\"core\": {\"commit\": \"8af71fe4aa73b3bb76a921a836a1a9647d75f361\", \"path\": \"D:\\\\a\\\\coaptic-validation\\\\coaptic-validation\\\\coaptic\", \"tree\": \"1e8e24b17d69bf8703e47a21990a34bb9304b682\"}, \"suite\": {\"commit\": \"1897220f57b9379b4e1332a0f17bb977b8f01900\", \"path\": \"D:\\\\a\\\\coaptic-validation\\\\coaptic-validation\", \"tree\": \"c90493ed69f63a602957e835e2e2e4512ee4ea72\"}}",
+          "tool": "TraceEvent3.1.21; exporter SHA256 a9233b571cf639ff1522015cba79bda722ec12727373d51d0969aa2b89f4288a",
+          "workload": "64B Default allocated; server App; socket-free; live-c1 1000000; virtual time index*8ms; client handoff and synchronization overhead; oscore",
+          "capture": "bb856dae-aaa6-4913-aa44-539d0a9e4b2b",
+          "platform": "Windows-2022Server-10.0.20348-SP0",
+          "cohort": "oscore-capture-00"
+        },
+        "label": "server main; oscore-capture-00",
+        "max_seconds": 120,
+        "dedicated_hosted_vm": true
+      },
+      "capture_receipt_path": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\oscore-capture-00\\capture.json",
+      "config_path": "D:\\a\\_temp\\coaptic-stack-profile\\evidence\\oscore-capture-00\\config.json",
+      "expected_original": null
+    }
+  ],
+  "unrun_original_cohorts": [
+    "oscore-capture-01",
+    "unprotected-capture-01"
+  ],
+  "original_collection_result": "failure: oscore-capture-00 exporter Frame text budget exceeded; four native workloads completed, last two NOTRUN"
+}

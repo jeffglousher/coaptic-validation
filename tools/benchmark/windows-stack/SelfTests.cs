@@ -33,7 +33,7 @@ internal static class SelfTests
         }, false);
         var profile = samples.Finish(identity, "one", 7, "loss retained");
         Check(profile.Stacks[0].Frames.SequenceEqual(new[] { "root", "caller", "leaf" }), "known caller chain root-to-leaf");
-        Check(profile.Stacks[0].Event.Addresses.SequenceEqual(new[] { "10", "20", "30" }), "addresses aligned");
+        Check(profile.Stacks[0].Event is { } firstEvent && firstEvent.Addresses.SequenceEqual(new[] { "10", "20", "30" }), "addresses aligned");
         Check(profile.Quality.Lost == 7 && profile.Totals.Samples == 1 && profile.Totals.Weight == 1, "loss not subtracted or hidden");
         var guid = Guid.Parse("4d14e9aa-ea74-47e8-a581-c75e7f4a6e74");
         OwnedSymbols.RequireMatch(guid, 1, guid, 1); passed++;
@@ -41,6 +41,7 @@ internal static class SelfTests
         Refuses(() => OwnedSymbols.RequireMatch(guid, 1, Guid.NewGuid(), 1), "mismatched PDB GUID");
         Refuses(() => OwnedSymbols.RequireMatch(guid, 1, guid, 2), "mismatched PDB age");
         AttributionTests();
+        ProjectionTests();
         var mixed = new Samples(11, null, 100, 200, 1000);
         mixed.Add(22, 150, "bench", new() { new("leaf", "1", "owned.exe", false) }, false);
         Check(mixed.InScope(11, 23, 151), "unselected TID still reaches mixed-thread refusal");
@@ -109,6 +110,167 @@ internal static class SelfTests
         }
         Wire.Emit("selftest", Guid.Empty, new { passed, native_capture = false, pdb_io = false, qualification = "pure models only" });
         return 0;
+    }
+
+    private static void ProjectionTests()
+    {
+        var identity = new Identity("source", "tool", "workload", "capture", "platform", "cohort");
+        Profile Finish(Samples samples) => samples.Finish(identity, "one", 7, "loss retained");
+        List<Frame> Frames(string[] path, string address = "a", string module = "owned.exe", bool unresolved = false) =>
+            path.Reverse().Select(f => new Frame(f, address, module, unresolved)).ToList();
+        void Add(Samples samples, string[] path) => samples.Add(22, 150, "bench", Frames(path), false);
+        string Json<T>(T value) => System.Text.Json.JsonSerializer.Serialize(value, Wire.Json);
+        long AppSamples(Profile p) => p.Stacks.Where(s => s.Frames.Any(f => f.Contains("coaptic::app::", StringComparison.Ordinal)))
+            .Sum(s => (long)s.Samples);
+
+        var oldConfig = System.Text.Json.JsonSerializer.Deserialize<ExportConfig>(
+            "{\"capture_receipt\":\"C:/capture.json\",\"output\":\"C:/profile.json\",\"scratch_directory\":\"C:/scratch\",\"max_etl_bytes\":1,\"max_conversion_bytes\":1}", Wire.Json)!;
+        Check(!oldConfig.AggregateExactPaths && !new ExportConfig("receipt", "output", "scratch", 1, 1).AggregateExactPaths,
+            "omitted JSON option and old positional constructor remain per-event");
+        Check(System.Text.Json.JsonSerializer.Deserialize<ExportConfig>(Json(oldConfig with { AggregateExactPaths = true }), Wire.Json)!
+            .AggregateExactPaths, "explicit aggregate_exact_paths round trip");
+
+        string[][] paths =
+        {
+            new[] { "root", "coaptic::app::poll", "leaf" },
+            new[] { "root", "coaptic::app::poll", "leaf" },
+            new[] { "root", "coaptic::app::poll", "coaptic::app::poll", "leaf" },
+            new[] { "root" }, new[] { "root", "root" }, new[] { "singleton" },
+            new[] { "a;b", "c" }, new[] { "a", "b;c" },
+            new[] { "Root", "leaf" }, new[] { "root", "Leaf" },
+            new[] { "root", "\u00e9" }, new[] { "root", "e\u0301" },
+            new[] { "root", "type<T; U>" }
+        };
+        var events = new Samples(11, 22, 100, 200, 1000);
+        var projection = new Samples(11, 22, 100, 200, 1000, true);
+        var explicitDefault = new Samples(11, 22, 100, 200, 1000, false);
+        foreach (var path in paths) { Add(events, path); Add(projection, path); Add(explicitDefault, path); }
+        var before = Finish(events); var after = Finish(projection);
+        Check(Json(before) == Json(Finish(explicitDefault)), "default and explicit per-event profile wire bytes agree");
+        Check(Json(before.Stacks[0]) == "{\"frames\":[\"root\",\"coaptic::app::poll\",\"leaf\"],\"weight\":1,\"samples\":1,\"event\":{\"comm\":\"bench\",\"timestamp\":\"0.150000000\",\"period\":1,\"name\":\"SampledProfile\",\"addresses\":[\"a\",\"a\",\"a\"],\"dsos\":[\"owned.exe\",\"owned.exe\",\"owned.exe\"]}}",
+            "original per-event row wire shape and field order unchanged");
+        Check(after.Stacks.Count == paths.Length - 1 && after.Totals == before.Totals && after.Identity == before.Identity &&
+            after.Scope == before.Scope && after.Measurement == before.Measurement, "only exact duplicates grouped; scope and denominators retained");
+        Check(after.Stacks.All(s => s.Event is null && s.Samples == s.Weight) && !Json(after).Contains("\"event\"", StringComparison.Ordinal),
+            "all projected events omitted, including singleton rows");
+        Check(Json(new Quality(null, null, null, "unknown")) == "{\"lost\":null,\"unresolved\":null,\"refused\":null,\"notes\":\"unknown\"}",
+            "required nullable quality fields remain serialized");
+        Check(after.Quality.Notes.Contains(Samples.ProjectionNotes, StringComparison.Ordinal) && before.Quality.Notes == "loss retained",
+            "projection explicitly disclosed; default notes unchanged");
+        foreach (var row in after.Stacks)
+        {
+            var originals = before.Stacks.Where(s => s.Frames.SequenceEqual(row.Frames, StringComparer.Ordinal)).ToArray();
+            Check(row.Samples == originals.Sum(s => s.Samples) && row.Weight == originals.Sum(s => s.Weight), "full-path multiplicity conserved");
+        }
+        foreach (var symbol in before.Stacks.SelectMany(s => s.Frames).Distinct(StringComparer.Ordinal))
+        {
+            long Self(Profile p) => p.Stacks.Where(s => s.Frames[^1] == symbol).Sum(s => (long)s.Weight);
+            long Inclusive(Profile p) => p.Stacks.Where(s => s.Frames.Contains(symbol, StringComparer.Ordinal)).Sum(s => (long)s.Weight);
+            Check(Self(before) == Self(after) && Inclusive(before) == Inclusive(after), "self/inclusive weight conserved, recursive symbols counted once");
+        }
+        foreach (var path in paths)
+        for (var depth = 1; depth <= path.Length; depth++)
+        {
+            long Prefix(Profile p) => p.Stacks.Where(s => s.Frames.Length >= depth &&
+                s.Frames.Take(depth).SequenceEqual(path.Take(depth), StringComparer.Ordinal)).Sum(s => (long)s.Weight);
+            Check(Prefix(before) == Prefix(after), "every flame prefix weight conserved, including recursion");
+        }
+        Check(projection.RawSamples == paths.Length && projection.RawFrameOccurrences == paths.Sum(p => p.Length) &&
+            projection.WeightedOutputFrameOccurrences == projection.RawFrameOccurrences && projection.AppAncestrySamples == 3 &&
+            AppSamples(before) == AppSamples(after), "raw event/frame/weighted frame/App totals conserve");
+        var repeat = new Samples(11, 22, 100, 200, 1000, true);
+        foreach (var path in paths) Add(repeat, path);
+        Check(Json(Finish(repeat)) == Json(after), "same input has deterministic first-seen output ordering");
+        Check(after.Stacks.Select(s => Json(s.Frames)).SequenceEqual(paths.Select(p => Json(p)).Distinct(StringComparer.Ordinal)),
+            "first-seen exact paths retained without delimiter encoding");
+        var otherScope = new Samples(12, 23, 200, 300, 1000, true);
+        otherScope.Add(23, 250, "other", Frames(paths[0]), false);
+        var otherProfile = otherScope.Finish(identity with { Cohort = "other" }, "other label", 0, "separate");
+        Check(otherProfile.Totals.Samples == 1 && otherProfile.Scope.Pid == 12 && otherProfile.Scope.Tid == 23 &&
+            otherProfile.Scope.Label == "other label" && otherProfile.Identity.Cohort == "other" && after.Totals.Samples == paths.Length,
+            "identical paths in separate PID/TID/window/cohort/label accumulators never pool");
+
+        var metadata = new Samples(11, 22, 100, 200, 1000, true);
+        metadata.Add(22, 100, "first", Frames(new[] { "root", "leaf" }, "a", "first.exe"), false);
+        metadata.Add(22, 199, "renamed", Frames(new[] { "root", "leaf" }, "B", "second.exe", true), true);
+        var merged = Finish(metadata);
+        Check(merged.Stacks.Count == 1 && merged.Stacks[0].Samples == 2 && merged.Stacks[0].Event is null &&
+            merged.Quality.Unresolved == 2 && metadata.Truncated == 1 && merged.Quality.Lost == 7 && merged.Quality.Refused == 0,
+            "different metadata groups by symbols only; raw unresolved/truncation/loss retained");
+        foreach (var address in new[] { "", "0x10", "g", "a\n", new string('a', 4097) })
+            Refuses(() => metadata.Add(22, 150, "bench", Frames(new[] { "root", "leaf" }, address), false), "invalid duplicate metadata address");
+        Refuses(() => metadata.Add(22, 150, "bad\ncomm", Frames(new[] { "root", "leaf" }), false), "invalid duplicate comm");
+        Refuses(() => metadata.Add(22, 150, "bench", Frames(new[] { "root", "leaf" }, module: "bad\nmodule"), false), "invalid duplicate module");
+        Refuses(() => metadata.Add(22, 150, "bench", Frames(new[] { "bad\nsymbol" }), false), "invalid symbol");
+        Refuses(() => metadata.Add(23, 150, "bench", Frames(new[] { "leaf" }), false), "projection mixed TID refused");
+        Refuses(() => metadata.Add(22, 99, "bench", Frames(new[] { "leaf" }), false), "projection before window refused");
+        Refuses(() => metadata.Add(22, 200, "bench", Frames(new[] { "leaf" }), false), "projection stop edge refused");
+        Check(!metadata.InScope(12, 22, 150) && !metadata.InScope(11, 23, 150), "projection PID/TID selection unchanged");
+        Check(metadata.RawSamples == 2 && metadata.RawFrameOccurrences == 4 && Finish(metadata).Totals.Samples == 2,
+            "invalid events never enter successful totals");
+        Refuses(() => Finish(new Samples(11, 22, 100, 200, 1000, true)), "empty projection refused");
+        Refuses(() => metadata.Add(22, 150, "bench", new(), false), "zero depth refused");
+        Refuses(() => metadata.Add(22, 150, "bench", Frames(Enumerable.Repeat("f", 129).ToArray()), false), "depth 129 refused before grouping");
+        Refuses(() => new Samples(11, 22, 100, 200, 0, true).Add(22, 150, "bench", Frames(new[] { "leaf" }), false),
+            "invalid frequency still refused without timestamps in JSON");
+        Refuses(() => metadata.Finish(identity, "one", -1, "bad loss"), "negative loss still refused");
+
+        var sampleLimit = new Samples(11, 22, 100, 200, 1000, true);
+        var one = Frames(new[] { "leaf" });
+        for (var i = 0; i < 100_000; i++) sampleLimit.Add(22, 150, "bench", one, false);
+        Check(Finish(sampleLimit).Stacks.Single().Samples == 100_000, "100000 duplicate events retained");
+        Refuses(() => sampleLimit.Add(22, 150, "bench", one, false), "duplicate event 100001 refused");
+        var frameLimit = new Samples(11, 22, 100, 200, 1000, true);
+        var deep = Frames(Enumerable.Repeat("f", 128).ToArray());
+        for (var i = 0; i < 1562; i++) frameLimit.Add(22, 150, "bench", deep, false);
+        frameLimit.Add(22, 150, "bench", Frames(Enumerable.Repeat("f", 64).ToArray()), false);
+        Check(Finish(frameLimit).Totals.Samples == 1563 && frameLimit.WeightedOutputFrameOccurrences == 200_000,
+            "200000 raw frames retained with depth 128 and recursion");
+        Refuses(() => frameLimit.Add(22, 150, "bench", one, false), "raw frame 200001 refused despite grouping");
+
+        // These are count-conservation checks, not a duplicate implementation of
+        // Python qualification: the parent's unchanged 200-sample gate consumes sums.
+        var floor = new Samples(11, 22, 100, 200, 1000, true);
+        for (var i = 0; i < 199; i++) Add(floor, new[] { "coaptic::app::poll", "coaptic::app::poll" });
+        Check(AppSamples(Finish(floor)) == 199 && floor.AppAncestrySamples == 199, "199 App samples remain below existing floor");
+        Add(floor, new[] { "coaptic::app::poll", "coaptic::app::poll" });
+        Check(AppSamples(Finish(floor)) == 200 && floor.AppAncestrySamples == 200, "200 App samples retained without recursion double counting");
+
+        void TextBoundary()
+        {
+            var text = new Samples(11, 22, 100, 200, 1000, true);
+            var full = new string('x', 4096);
+            List<Frame> Distinct(int i) => Frames(Enumerable.Repeat(full, 127)
+                .Append(i.ToString("D4", System.Globalization.CultureInfo.InvariantCulture) + full[4..]).ToArray());
+            for (var i = 0; i < 32; i++) text.Add(22, 150, "bench", Distinct(i), false);
+            text.Add(22, 150, "bench", Distinct(0), false);
+            Check(Finish(text).Stacks.Count == 32 && text.RawSamples == 33, "exact 16MiB retained symbol text and duplicate accepted");
+            Refuses(() => text.Add(22, 150, "bench", Distinct(32), false), "distinct retained text over 16MiB refused");
+            var perEvent = new Samples(11, 22, 100, 200, 1000);
+            var duplicate = Distinct(0);
+            for (var i = 0; i < 31; i++) perEvent.Add(22, 150, "bench", duplicate, false);
+            Refuses(() => perEvent.Add(22, 150, "bench", duplicate, false), "default repeated symbol/address/module text budget unchanged");
+        }
+        TextBoundary();
+        var escaped = new Samples(11, 22, 100, 200, 1000, true);
+        // The unchanged default JSON encoder escapes each '<' as six ASCII bytes.
+        var escapedSymbol = new string('<', 4096);
+        for (var i = 0; i < 8; i++)
+            escaped.Add(22, 150, "bench", Frames(Enumerable.Repeat(escapedSymbol, 127)
+                .Append(i.ToString(System.Globalization.CultureInfo.InvariantCulture) + escapedSymbol[1..]).ToArray()), false);
+        var escapedProfile = Finish(escaped);
+        Refuses(() =>
+        {
+            using var bounded = new LimitedStream(Stream.Null, Wire.ExportLimit);
+            System.Text.Json.JsonSerializer.Serialize(bounded, escapedProfile, Wire.Json);
+        }, "escaped JSON over 16MiB refused even when retained text fits");
+        using (var exact = new LimitedStream(Stream.Null, Wire.ExportLimit))
+        {
+            var chunk = new byte[4096];
+            for (var i = 0; i < Wire.ExportLimit / chunk.Length; i++) exact.Write(chunk, 0, chunk.Length);
+            Check(exact.Length == Wire.ExportLimit, "writer accepts exact unchanged byte cap");
+            Refuses(() => exact.Write(chunk, 0, 1), "writer refuses one extra byte");
+        }
     }
 
     private static void AttributionTests()

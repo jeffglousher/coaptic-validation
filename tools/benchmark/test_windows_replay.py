@@ -383,12 +383,15 @@ class Tests(unittest.TestCase):
 
     def test_workflow_selection_skips_rust_and_preserves_default_capture(self):
         workflow = (r.w.SUITE / '.github/workflows/windows-stack-profile.yml').read_text()
-        self.assertIn("if: ${{ !inputs.replay }}\n        with:\n          toolchain:", workflow)
+        self.assertIn("if: ${{ !inputs.replay && !inputs.live_replay }}\n        with:\n          toolchain:", workflow)
         self.assertIn('python -B tools/benchmark/windows_profile.py all', workflow)
         self.assertIn('python -B tools/benchmark/windows_replay.py --core', workflow)
         self.assertIn('GITHUB_TOKEN: ${{ github.token }}', workflow)
         ci = (r.w.SUITE / '.github/workflows/ci.yml').read_text()
         self.assertIn('replay: ${{ inputs.stack_profile_replay }}', ci)
+        self.assertIn('live_replay: ${{ inputs.stack_profile_live_replay }}', ci)
+        self.assertIn('if: ${{ inputs.live_replay }}', workflow)
+        self.assertIn('python -B tools/benchmark/windows_live_replay.py --core', workflow)
 
 
 if __name__ == '__main__':

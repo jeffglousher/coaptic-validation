@@ -35,7 +35,7 @@ internal sealed record CaptureConfig(Guid CaptureId, string Directory, int Pid, 
 }
 
 internal sealed record ExportConfig(string CaptureReceipt, string Output, string ScratchDirectory,
-    long MaxEtlBytes, long MaxConversionBytes)
+    long MaxEtlBytes, long MaxConversionBytes, bool AggregateExactPaths = false)
 {
     public void Validate()
     {
@@ -58,7 +58,8 @@ internal sealed record CaptureReceipt(string Schema, CaptureConfig Config, Image
 internal sealed record Frame(string Symbol, string Address, string Module, bool Unresolved);
 internal sealed record SampleEvent(string Comm, string Timestamp, int Period, string Name,
     string[] Addresses, string[] Dsos);
-internal sealed record StackRow(string[] Frames, int Weight, int Samples, SampleEvent Event);
+internal sealed record StackRow(string[] Frames, int Weight, int Samples,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] SampleEvent? Event);
 internal sealed record Measurement(string Kind, string Unit);
 internal sealed record Quality(long? Lost, long? Unresolved, long? Refused, string Notes);
 internal sealed record Scope(int Pid, int? Tid, string Label, string CpuMode);

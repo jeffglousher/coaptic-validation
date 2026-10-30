@@ -599,9 +599,11 @@ class Tests(unittest.TestCase):
         self.assertEqual({row['path'] for row in manifest['files']},
                          {path.name for path in files if path.parent == tool.parent})
         self.assertIn('bit-identical rebuilds are not claimed', manifest['notes'])
-        record = dict(sources={}, native=native,
+        contract = w.workload_identity(argparse.Namespace(workload='batch'))
+        record = dict(sources={}, workload=contract, native=native,
                       tool=dict(path=str(tool), sha256=w.digest(tool), retained_evidence=receipts))
         w.save(root / 'evidence/build.json', record)
+        w.save(root / 'evidence/owner.json', dict(workload=contract, plan=contract['cohorts']))
         # Capture validates and uses the retained pair after target output is gone/changed.
         binary.write_bytes(b'changed'); pdb.write_bytes(b'changed')
         with patch.object(w, 'source_identity', return_value={}):
