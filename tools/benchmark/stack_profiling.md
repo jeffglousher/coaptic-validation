@@ -135,7 +135,7 @@ python -B tools/benchmark/windows_replay.py --core coaptic --expected-core 8af71
 The source under replay is the clean reviewed exporter source. The capture
 remains attributed to original suite `a074120d6f50b1c061e2ab5b0940837c9d51b63e`
 and core `8af71fe4aa73b3bb76a921a836a1a9647d75f361`, PID 4936, TID 7436,
-process start `2026-10-30T06:28:42.3648387Z`, capture UUID
+serialized process start `2026-10-30T06:28:42.3648387+00:00`, capture UUID
 `b9ca443c-4f73-4316-8219-8d9f4e346a48`. There is no pooling across App ancestry,
 other ancestry, unknown frames or cohorts.
 
@@ -166,7 +166,23 @@ Materialization uses exclusive new files and refuses existing links/reparse
 paths. Source identities are checked before and after tooling/export.
 
 Metadata and selftest precede export into a fresh output and empty scratch.
-Existing symbol, lifetime, loss and sample gates remain intact. ETL is capped
+Original input pins, local EXE/PDB identity, loss and sample gates remain intact.
+The exporter selects a unique native mapping covering the complete window
+before inspecting its metadata. It validates the complete bounded `FileOnly`
+raw stream, retaining earlier contradictions even after a zero or matching
+record. Nonzero image IDs and checksums must agree with the owned PE; an empty
+DebugID requires age zero, and every present GUID/age must match. A recorded-zero
+image ID supplies no corroboration and is reported separately from a match.
+It can be used only with the independently verified live-owned file binding.
+Symbol lookup is restricted to the selected process, module index, window and
+address range. Other frames remain unresolved. Relevant synthetic metadata
+without trustworthy PID attribution refuses export.
+
+This is attribution of a trusted owned fixture. The receipt and held file hashes
+do not prove exact in-memory executable bytes or exclude executable replacement
+before those files were locked. No ETL-discovered module path is opened.
+
+ETL is capped
 at 128 MiB and conversion at a sampled 256 MiB refusal bound. The aggregate
 8 GiB owned build and 256 MiB evidence bounds remain unchanged; sampled direct
 child RSS limits are 4 GiB during build and 1 GiB during export. These are
@@ -175,7 +191,16 @@ refusal monitors, not hard quotas or whole-job peak measurements.
 Failure receipts and bounded exporter stderr are always uploaded from the same
 evidence path. Nonzero export remains failure; any bounded
 `profile.json.module-diagnostic.json` is retained alongside its log, without
-automatic repair, retry or new capture. The module match policy stays unchanged.
+automatic repair, retry or new capture. The original strict refusal and its
+field-level diagnostic remain part of the historical evidence.
+Offline replay **41018752790** passed 88 portable checks, the SDK 8.0.427
+tool build and 49 pure-model assertions. Its four retained input files match the
+original byte pins. The single target module agrees on name, loaded base, size
+and checksum; the refused predicate is ETL ImageId `0` against the owned PE
+value `0x6ae43917`. Both Version 3 rundown events record zero timestamps. This
+is a recorded zero, not an absent field; its cause remains unknown. The original
+refusal and bounded field diagnostic remain retained. No profile was emitted.
+
 A successful export renders the canonical interactive profile
 with a diagnostic-only banner and records separate ancestry/quality counts.
 The roughly 45 ms original window may miss the unchanged 200 App-rooted sample

@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Etlx;
+using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 
 namespace Coaptic.WindowsStack;
@@ -52,25 +53,60 @@ internal static class Export
         // This postcheck is deliberately not represented as a hard conversion cap.
         using var log = new TraceLog(etlx);
         var processes = log.Processes.Where(p => p.ProcessID == capture.Config.Pid).Take(2).ToArray();
-        if (processes.Length != 1) throw new InvalidDataException("Missing/ambiguous trace PID lifetime (including reuse).");
+        ModuleAttribution.RequireUniqueLifetime(processes.Length);
         var process = processes[0];
-        if (process.StartTime.ToUniversalTime() > capture.ReadyUtc.UtcDateTime ||
-            process.EndTime.ToUniversalTime() < capture.ReadyUtc.UtcDateTime)
-            throw new InvalidDataException("Trace PID lifetime does not cover ready.");
-        var targetModules = process.LoadedModules.Where(m => m.ModuleFile is not null &&
-            symbols.Matches(m.ModuleFile, capturedBase)).Take(2).ToArray();
-        if (targetModules.Length != 1)
+        // v3.1.21 exposes module QPC bounds only internally. Anchor its public
+        // relative bounds to an event's raw QPC; never use module DateTime getters
+        // (that version incorrectly treats QPC as FILETIME).
+        var anchor = log.Events.FirstOrDefault() ?? throw new InvalidDataException("Empty converted trace.");
+        var (startMSec, stopMSec) = RelativeWindow(RawQpc(anchor), anchor.TimeStampRelativeMSec, capture);
+        if (!ModuleAttribution.Covers(process.StartTimeRelativeMsec, process.EndTimeRelativeMsec, startMSec, stopMSec))
+            throw new InvalidDataException("Trace PID lifetime does not cover the entire selected window.");
+        var attribution = new ModuleAttribution(symbols.Identity, capture.Config.Pid, (int)process.ProcessIndex,
+            Path.GetFileName(capture.Config.Exe), capturedBase, capture.StartQpc, capture.StopQpc,
+            capture.QpcFrequency, startMSec, stopMSec, liveOwnedBinding: true);
+        var raw = new List<object>(32);
+        var rawOverflow = false;
+        void Retain(object row)
         {
-            // Diagnose the retained input before changing any identity policy. A
-            // failed diagnostic must not replace the original matching refusal.
-            try { WriteModuleDiagnostic(config, capture, symbols, process, capturedBase, targetModules.Length); }
+            if (raw.Count < 32) raw.Add(row);
+            else rawOverflow = true;
+        }
+        ModuleBinding binding;
+        var rawScanStarted = false;
+        try
+        {
+            var selectedMapping = attribution.SelectMapping(process.LoadedModules.Where(m => m is not TraceManagedModule && m.ModuleFile is not null)
+                .Select(m => new NativeMapping((int)m.Process.ProcessIndex, (int)m.ModuleFile.ModuleFileIndex,
+                    m.ModuleFile.FilePath, m.ImageBase, m.ModuleFile.ImageSize,
+                    m.LoadTimeRelativeMSec, m.UnloadTimeRelativeMSec)));
+            // Selection counted every relevant mapping before inspecting metadata.
+            var targetFile = process.LoadedModules.Single(m => m is not TraceManagedModule && m.ModuleFile is not null &&
+                (int)m.ModuleFile.ModuleFileIndex == selectedMapping.ModuleIndex).ModuleFile;
+            attribution.ObserveAggregate(targetFile.ImageId, unchecked((uint)targetFile.ImageChecksum),
+                targetFile.PdbSignature, targetFile.PdbAge);
+            rawScanStarted = true;
+            ReadRaw(capture, attribution, Retain);
+            binding = attribution.Finish(conversionTruncated);
+        }
+        catch (Exception)
+        {
+            // Preserve the original refusal even if bounded diagnostic output fails.
+            if (!rawScanStarted)
+            {
+                try { ReadRaw(capture, attribution, Retain); }
+                catch (Exception error)
+                {
+                    Console.Error.WriteLine("Raw module diagnostic incomplete: " + DiagnosticText(error.Message));
+                }
+            }
+            try { WriteModuleDiagnostic(config, capture, symbols, process, capturedBase, attribution, raw, rawOverflow); }
             catch (Exception error)
             {
                 Console.Error.WriteLine("Module diagnostic unavailable: " + DiagnosticText(error.Message));
             }
-            throw new InvalidDataException("ETL target module does not match captured live owned EXE mapping and header/PDB identity.");
+            throw;
         }
-        var targetFile = targetModules[0].ModuleFile;
         var accumulator = new Samples(capture.Config.Pid, capture.Config.Tid, capture.StartQpc, capture.StopQpc,
             capture.QpcFrequency);
         var wrongLifetime = 0;
@@ -79,13 +115,14 @@ internal static class Export
         {
             var qpc = RawQpc(sample);
             if (!accumulator.InScope(sample.ProcessID, sample.ThreadID, qpc)) continue;
-            if (sample.Process().ProcessIndex != process.ProcessIndex) { wrongLifetime++; continue; }
+            var sampleProcess = sample.Process();
+            if (sampleProcess is null || sampleProcess.ProcessIndex != process.ProcessIndex) { wrongLifetime++; continue; }
             nativeCountSum += sample.Count;
             var frames = new List<Frame>(128);
             var stack = sample.CallStack();
             while (stack is not null && frames.Count < 128)
             {
-                frames.Add(symbols.Resolve(stack.CodeAddress, capturedBase));
+                frames.Add(symbols.Resolve(stack.CodeAddress, binding, (int)sampleProcess.ProcessIndex, qpc));
                 stack = stack.Caller;
             }
             var truncated = stack is not null;
@@ -104,15 +141,18 @@ internal static class Export
         var loss = Math.Max(capture.Lost, Math.Max(log.EventsLost, conversionLoss));
         var notes = Capture.Notes + " Weights count observed SampledProfile events, not CPU milliseconds or the event payload Count. " +
             "Only supplied EXE/PDB symbols; all other modules/kernel remain unresolved. " +
-            "Symbol provenance: live owned-image receipt path/base/size/header + exact EXE/PDB SHA256/GUID/age; " +
-            (targetFile.PdbSignature == Guid.Empty ? "ETL has no target DebugID, none claimed. " : "ETL target DebugID also matched. ") +
+            "Symbol provenance: independent live owned-file receipt path/base/size + locked EXE/PDB SHA256/GUID/age; " +
+            "not proof of exact in-memory bytes or protection against hostile pre-lock replacement. " +
+            $"ETLX ImageId observed={unchecked((uint)attribution.AggregateImageId):x8}, expected={unchecked((uint)symbols.Identity.ImageId):x8}, " +
+            $"state={attribution.AggregateImageIdStatus}; raw recorded zero={attribution.RecordedZeroImageId}, raw nonzero matched={attribution.NonzeroImageIdMatched}. " +
+            $"ETLX DebugID={attribution.AggregateDebugIdStatus}; raw DebugID={attribution.RawDebugIdStatus}; absent/empty is not matched. " +
+            $"Complete FileOnly raw validation inspected {attribution.EventsInspected} events; zero timestamp cause unknown. " +
             $"Conversion truncated={conversionTruncated}; depth-truncated samples={accumulator.Truncated}; " +
             $"ETW log buffers lost={capture.LogBuffersLost}; realtime buffers lost={capture.RealTimeBuffersLost}. " +
             "Inlining and native unwind completeness unknown; missing/partial ancestry retained. " +
             "Conversion workspace/RSS bounded by parent watchdog, not this postcheck.";
         var profile = accumulator.Finish(capture.Config.Identity, capture.Config.Label, loss, notes);
-        if (process.Threads.Where(t => t.ThreadID == profile.Scope.Tid).Take(2).Count() != 1)
-            throw new InvalidDataException("Selected numeric TID has missing/ambiguous lifetime, including reuse.");
+        ModuleAttribution.RequireUniqueLifetime(process.Threads.Where(t => t.ThreadID == profile.Scope.Tid).Take(2).Count());
         symbols.VerifyUnchanged(); Wire.EqualHash(capture.EtlSha256, Wire.Hash(etl));
         Wire.WriteNew(config.Output, profile);
         var receiptPath = config.Output + ".receipt.json";
@@ -122,7 +162,20 @@ internal static class Export
             capture_receipt_sha256 = Wire.HashFile(config.CaptureReceipt), capture.Config.CaptureId,
             etl_sha256 = capture.EtlSha256, image = symbols.Identity,
             module_base_address = capture.ModuleBaseAddress, capture.ModuleSize,
-            symbol_provenance = "live-owned-image", embedded_debug_id_matched = targetFile.PdbSignature != Guid.Empty,
+            symbol_provenance = "live-owned-file-binding", exact_in_memory_bytes_proven = false,
+            embedded_debug_id_matched = attribution.AggregateDebugIdStatus == "matched",
+            module_file_index = binding.Mapping.ModuleIndex, process_index = binding.Mapping.ProcessIndex,
+            window_start_qpc = binding.StartQpc, window_stop_qpc = binding.StopQpc,
+            mapping_load_relative_ms = binding.Mapping.LoadMSec, mapping_unload_relative_ms = binding.Mapping.UnloadMSec,
+            mapping_load_qpc = binding.LoadQpc, mapping_unload_qpc = binding.UnloadQpc,
+            image_id_observed = unchecked((uint)attribution.AggregateImageId).ToString("x8"),
+            image_id_expected = unchecked((uint)symbols.Identity.ImageId).ToString("x8"),
+            image_id_state = attribution.AggregateImageIdStatus,
+            raw_recorded_zero_image_id = attribution.RecordedZeroImageId,
+            raw_nonzero_image_id_matched = attribution.NonzeroImageIdMatched,
+            raw_header_absent = attribution.RawHeaderAbsent,
+            aggregate_debug_id_state = attribution.AggregateDebugIdStatus, raw_debug_id_state = attribution.RawDebugIdStatus,
+            raw_scan_complete = true, raw_events_inspected = attribution.EventsInspected,
             output_sha256 = Wire.HashFile(config.Output), output_bytes = new FileInfo(config.Output).Length,
             conversion_truncated = conversionTruncated, depth_truncated_samples = accumulator.Truncated,
             total_samples = profile.Totals.Samples, unresolved_frame_occurrences = accumulator.Unresolved,
@@ -136,14 +189,65 @@ internal static class Export
 
     private static string DiagnosticText(string value) => value.Length <= 96 ? value : value[..96];
 
+    private static (double Start, double Stop) RelativeWindow(long anchorQpc, double anchorMSec, CaptureReceipt capture)
+    {
+        if (anchorQpc <= 0 || !double.IsFinite(anchorMSec)) throw new InvalidDataException("Invalid ETLX clock anchor.");
+        var scale = 1000.0 / capture.QpcFrequency;
+        var start = anchorMSec + (capture.StartQpc - anchorQpc) * scale;
+        var stop = anchorMSec + (capture.StopQpc - anchorQpc) * scale;
+        if (!ModuleAttribution.Covers(start, stop, start, stop)) throw new InvalidDataException("Invalid ETLX window bounds.");
+        return (start, stop);
+    }
+
+    private static void ReadRaw(CaptureReceipt capture, ModuleAttribution attribution, Action<object> retain)
+    {
+        // Mandatory validation of the one hash-locked input. Never discover sibling
+        // ETLs, open recorded paths, merge, or let diagnostic capacity stop checking.
+        using var source = new ETWTraceEventSource(capture.Etl, TraceEventSourceType.FileOnly);
+        source.AllEvents += _ => attribution.CountEvent();
+        source.Kernel.ImageGroup += data =>
+        {
+            if (!attribution.ObserveKernel(data.ProcessID, RawQpc(data), (int)data.Opcode,
+                data.ImageBase, data.ImageSize, data.FileName, data.Version >= 2,
+                data.TimeDateStamp, unchecked((uint)data.ImageChecksum))) return;
+            retain(new
+            {
+                kind = "kernel-image", data.ProcessID, data.Version, opcode = (int)data.Opcode, qpc = RawQpc(data),
+                path = DiagnosticText(data.FileName), path_clipped = data.FileName.Length > 96,
+                live_base = data.ImageBase.ToString("x"), size = data.ImageSize,
+                timestamp = unchecked((uint)data.TimeDateStamp).ToString("x8"),
+                checksum = unchecked((uint)data.ImageChecksum).ToString("x8"),
+                default_base = data.DefaultBase.ToString("x"), header_fields_present = data.Version >= 2
+            });
+        };
+        // Exact pinned v3.1.21 parser and body fields, independent of ETLX's
+        // last-record aggregation. Synthetic events are optional, never fabricated.
+        var symbols = new SymbolTraceEventParser(source);
+        symbols.ImageID += data =>
+        {
+            if (!attribution.ObserveImageId(data.ProcessID, data.ImageBase, data.ImageSize,
+                data.OriginalFileName, data.TimeDateStamp)) return;
+            retain(new { kind = "image-id", data.ProcessID, qpc = RawQpc(data), live_base = data.ImageBase.ToString("x"),
+                size = data.ImageSize, timestamp = unchecked((uint)data.TimeDateStamp).ToString("x8"),
+                path = DiagnosticText(data.OriginalFileName), path_clipped = data.OriginalFileName.Length > 96 });
+        };
+        symbols.ImageIDDbgID_RSDS += data =>
+        {
+            if (!attribution.ObserveDebugId(data.ProcessID, data.ImageBase, data.GuidSig, data.Age)) return;
+            retain(new { kind = "debug-id-rsds", data.ProcessID, qpc = RawQpc(data),
+                live_base = data.ImageBase.ToString("x"), data.GuidSig, data.Age,
+                path = DiagnosticText(data.PdbFileName), path_clipped = data.PdbFileName.Length > 96 });
+        };
+        attribution.CompleteScan(source.Process());
+    }
+
     private static void WriteModuleDiagnostic(ExportConfig config, CaptureReceipt capture, OwnedSymbols symbols,
-        TraceProcess process, ulong capturedBase, int matchingCountCappedAtTwo)
+        TraceProcess process, ulong capturedBase, ModuleAttribution attribution, List<object> raw, bool rawOverflow)
     {
         var image = symbols.Identity;
         var expectedName = Path.GetFileName(capture.Config.Exe);
         var candidates = process.LoadedModules.Where(m => m.ModuleFile is not null &&
-            (m.ImageBase == capturedBase || string.Equals(Path.GetFileName(m.ModuleFile.FilePath),
-                expectedName, StringComparison.OrdinalIgnoreCase))).Take(17).ToArray();
+            attribution.Relevant(m.ImageBase, m.ModuleFile.ImageSize, m.ModuleFile.FilePath)).Take(17).ToArray();
         var rows = candidates.Take(16).Select(m =>
         {
             var file = m.ModuleFile;
@@ -160,54 +264,30 @@ internal static class Export
                 {
                     basename = string.Equals(Path.GetFileName(file.FilePath), expectedName, StringComparison.OrdinalIgnoreCase),
                     live_base = file.ImageBase == capturedBase, size = file.ImageSize == image.ImageSize,
-                    debug_id = file.PdbSignature == Guid.Empty ? file.PdbAge == 0 :
-                        file.PdbSignature == image.PdbGuid && file.PdbAge == image.PdbAge,
-                    image_id = file.ImageId == image.ImageId,
+                    debug_id_state = ModuleAttribution.DebugIdStatus(file.PdbSignature, file.PdbAge, image),
+                    image_id_state = file.ImageId == 0 ? "unavailable-aggregate-zero" :
+                        ModuleAttribution.ImageIdStatus(file.ImageId, image.ImageId, true),
                     checksum = unchecked((uint)file.ImageChecksum) == image.ImageChecksum,
-                    complete_match = symbols.Matches(file, capturedBase)
+                    entire_window = ModuleAttribution.Covers(m.LoadTimeRelativeMSec, m.UnloadTimeRelativeMSec,
+                        attribution.WindowStartMSec, attribution.WindowStopMSec)
                 },
                 notes = "Aggregate zero fields do not distinguish absent metadata from a recorded zero."
             };
         }).ToArray();
-        var raw = new List<object>(32);
-        var rawOverflow = false;
-        var eventCount = 0;
-        // ETLX can collapse or replace image metadata. Read raw ETL events without
-        // opening any module path; retain earlier contradictory observations too.
-        using (var source = new ETWTraceEventSource(capture.Etl, TraceEventSourceType.FileOnly))
-        {
-            source.AllEvents += _ =>
-            {
-                if (++eventCount > 1_000_000) throw new InvalidDataException("Raw diagnostic event bound exceeded.");
-            };
-            source.Kernel.ImageGroup += data =>
-            {
-                if (data.ProcessID != capture.Config.Pid || (data.ImageBase != capturedBase &&
-                    !string.Equals(Path.GetFileName(data.FileName), expectedName, StringComparison.OrdinalIgnoreCase))) return;
-                if (raw.Count == 32) { rawOverflow = true; return; }
-                raw.Add(new
-                {
-                    data.ProcessID, data.Version, opcode = (int)data.Opcode, qpc = RawQpc(data),
-                    path = DiagnosticText(data.FileName), path_clipped = data.FileName.Length > 96,
-                    live_base = data.ImageBase.ToString("x"), size = data.ImageSize,
-                    timestamp = unchecked((uint)data.TimeDateStamp).ToString("x8"),
-                    checksum = unchecked((uint)data.ImageChecksum).ToString("x8"),
-                    default_base = data.DefaultBase.ToString("x"), header_fields_present = data.Version >= 2
-                });
-            };
-            source.Process();
-        }
         Wire.WriteNew(config.Output + ".module-diagnostic.json", new
         {
             schema = "coaptic-windows-module-diagnostic/1", capture.Config.CaptureId,
             input_etl_sha256 = capture.EtlSha256, process_index = (int)process.ProcessIndex,
-            capture.Config.Pid, capture.Config.Tid, matching_count_capped_at_two = matchingCountCappedAtTwo,
+            capture.Config.Pid, capture.Config.Tid, relevant_count_capped_at_two = attribution.CandidateCount,
             expected = new { path = DiagnosticText(capture.Config.Exe), live_base = capturedBase.ToString("x"),
                 image.ImageSize, image_id = unchecked((uint)image.ImageId).ToString("x8"),
                 checksum = image.ImageChecksum.ToString("x8"), image.PdbGuid, image.PdbAge },
             candidates = rows, candidates_overflow = candidates.Length > 16,
-            raw_image_events = raw, raw_image_events_overflow = rawOverflow, raw_events_inspected = eventCount,
-            notes = "Diagnostic only; identity refusal unchanged. Paths are ETL text, never opened. No field is synthesized or treated as matched."
+            raw_image_events = raw, raw_image_events_overflow = rawOverflow, raw_events_inspected = attribution.EventsInspected,
+            raw_scan_complete = attribution.ScanComplete, contradiction = attribution.Contradiction,
+            image_id_state = attribution.AggregateImageIdStatus,
+            notes = "Diagnostic only; refusal retained. Paths are ETL text, never opened. Row caps do not cap validation. " +
+                "Recorded zero is unavailable corroboration, not a match; cause unknown. Independent live owned-file binding is not exact in-memory proof."
         }, 65536);
     }
 
@@ -233,6 +313,7 @@ internal static class Export
             capture.ReadyUtc < c.ProcessStartUtc || capture.StoppedUtc < capture.ReadyUtc ||
             capture.SessionName != c.SessionName || capture.Etl != c.Etl ||
             capture.EtlBytes is <= 0 or > 134217728 ||
+            capture.QpcFrequency > long.MaxValue / 120L ||
             capture.StopQpc - capture.StartQpc > capture.QpcFrequency * 120L)
             throw new InvalidDataException("Invalid/incomplete owned capture receipt.");
         Wire.Digest(capture.EtlSha256);

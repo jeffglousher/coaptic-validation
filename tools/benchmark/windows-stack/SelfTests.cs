@@ -40,6 +40,7 @@ internal static class SelfTests
         Refuses(() => OwnedSymbols.RequireMatch(guid, 1, Guid.Empty, 1), "missing PDB identity");
         Refuses(() => OwnedSymbols.RequireMatch(guid, 1, Guid.NewGuid(), 1), "mismatched PDB GUID");
         Refuses(() => OwnedSymbols.RequireMatch(guid, 1, guid, 2), "mismatched PDB age");
+        AttributionTests();
         var mixed = new Samples(11, null, 100, 200, 1000);
         mixed.Add(22, 150, "bench", new() { new("leaf", "1", "owned.exe", false) }, false);
         Check(mixed.InScope(11, 23, 151), "unselected TID still reaches mixed-thread refusal");
@@ -108,6 +109,153 @@ internal static class SelfTests
         }
         Wire.Emit("selftest", Guid.Empty, new { passed, native_capture = false, pdb_io = false, qualification = "pure models only" });
         return 0;
+    }
+
+    private static void AttributionTests()
+    {
+        var guid = Guid.Parse("9ca23107-0be2-4350-8416-05e83dd701b8");
+        var image = new ImageIdentity("owned-exe-hash", "owned-pdb-hash", guid, 1, 0x6ae43917, 4096, 0);
+        var mapping = new NativeMapping(132, 1334, "C:/owned/bench-core.exe", 0x10000, 4096, 90, 210);
+        ModuleAttribution New(bool live = true, ImageIdentity? expected = null, ulong address = 0x10000) =>
+            new(expected ?? image, 4936, 132, "bench-core.exe", address, 100, 200, 1000, 100, 200, live);
+        ModuleAttribution Selected(int timestamp = 0, uint checksum = 0, Guid? debug = null, int age = 0)
+        {
+            var model = New();
+            model.SelectMapping(new[] { mapping });
+            model.ObserveAggregate(timestamp, checksum, debug ?? Guid.Empty, age);
+            return model;
+        }
+        void Kernel(ModuleAttribution model, int timestamp = 0, uint checksum = 0, long qpc = 90,
+            int opcode = 3, bool header = true, ulong address = 0x10000, string path = "C:/owned/bench-core.exe")
+        {
+            model.CountEvent();
+            model.ObserveKernel(4936, qpc, opcode, address, 4096, path, header, timestamp, checksum);
+        }
+        ModuleBinding Finish(ModuleAttribution model)
+        {
+            model.CompleteScan(true);
+            return model.Finish(false);
+        }
+        var zero = Selected(); Kernel(zero); Kernel(zero, qpc: 210, opcode: 4);
+        var binding = Finish(zero);
+        Check(zero.AggregateImageIdStatus == "unavailable-recorded-zero" && !zero.NonzeroImageIdMatched &&
+            zero.AggregateDebugIdStatus == "unavailable-recorded-empty" && zero.RawDebugIdStatus == "absent",
+            "recorded zero and absent DebugID never reported matched");
+        Refuses(() => New(false), "zero requires independent live owned binding");
+        Refuses(() => New(expected: image with { PdbGuid = Guid.Empty }), "live binding requires exact local PDB identity");
+        Check(binding.TryRva(132, 100, 1334, 0x10000, out var first) && first == 0 &&
+            binding.TryRva(132, 199, 1334, 0x10fff, out var last) && last == 4095, "selected RVA and window edges");
+        Check(!binding.TryRva(132, 99, 1334, 0x10000, out _) &&
+            !binding.TryRva(132, 200, 1334, 0x10000, out _) &&
+            !binding.TryRva(132, 150, 1334, 0xffff, out _) &&
+            !binding.TryRva(132, 150, 1334, 0x11000, out _), "outside window/range unresolved without subtraction underflow");
+        Check(!binding.TryRva(133, 150, 1334, 0x10000, out _) &&
+            !binding.TryRva(132, 150, 1335, 0x10000, out _), "shared code address and wrong module index cannot authorize lookup");
+        Refuses(() => ModuleAttribution.RequireUniqueLifetime(2), "PID/TID reuse refused");
+        Refuses(() => ModuleAttribution.RequireUniqueLifetime(0), "missing PID/TID refused");
+        foreach (var other in new[] { mapping, mapping with { ModuleIndex = 1335 },
+            mapping with { Base = 0xff00, Path = "C:/other/wrong.dll" },
+            mapping with { Base = 0x10800, Path = "C:/other/wrong.dll" },
+            mapping with { Base = 0x10800, Size = 0, Path = "C:/other/wrong.dll" },
+            mapping with { Base = 0x20000, Size = 2 } })
+            Refuses(() => New().SelectMapping(new[] { mapping, other }), "all relevant candidates counted before metadata");
+        foreach (var bad in new[] { mapping with { LoadMSec = 101 }, mapping with { UnloadMSec = 199 },
+            mapping with { LoadMSec = double.NaN }, mapping with { UnloadMSec = double.PositiveInfinity },
+            mapping with { ProcessIndex = 133 }, mapping with { ModuleIndex = -1 },
+            mapping with { Size = 4095 }, mapping with { Path = "C:/wrong.exe" } })
+            Refuses(() => New().SelectMapping(new[] { bad }), "invalid or partial selected mapping");
+        Refuses(() => New(address: ulong.MaxValue - 100), "owned address range overflow");
+        Check(!ModuleAttribution.ValidRange(1, 0) && !ModuleAttribution.ValidRange(1, -1), "invalid image sizes");
+        var overflowingRva = binding with { Mapping = mapping with { Base = 1, Size = (long)uint.MaxValue + 2 } };
+        Check(!overflowingRva.TryRva(132, 150, 1334, (ulong)uint.MaxValue + 2, out _), "RVA uint overflow refused");
+        Check(ModuleAttribution.ImageIdStatus(0, 0, true) == "unavailable-recorded-zero" &&
+            ModuleAttribution.ImageIdStatus(0, image.ImageId, false) == "refused-no-live-binding",
+            "zero is never corroboration even when expected timestamp is zero");
+        var matched = Selected(image.ImageId, debug: guid, age: 1);
+        Kernel(matched, image.ImageId); Finish(matched);
+        Check(matched.AggregateImageIdStatus == "matched" && matched.NonzeroImageIdMatched &&
+            matched.AggregateDebugIdStatus == "matched", "nonzero exact corroboration reported matched");
+        var contradiction = Selected();
+        Kernel(contradiction, 123); Kernel(contradiction); Kernel(contradiction, image.ImageId);
+        Refuses(() => Finish(contradiction), "earlier raw contradiction survives zero and match");
+        var aggregateWrong = Selected(123); Kernel(aggregateWrong, image.ImageId);
+        Refuses(() => Finish(aggregateWrong), "raw match cannot erase aggregate contradiction");
+        foreach (var aggregate in new[] { true, false })
+        {
+            var badChecksum = Selected(checksum: aggregate ? 1u : 0u);
+            Kernel(badChecksum, checksum: aggregate ? 0u : 1u);
+            Refuses(() => Finish(badChecksum), "checksum exact including expected zero");
+        }
+        var nonzeroChecksum = New(expected: image with { ImageChecksum = 1 });
+        nonzeroChecksum.SelectMapping(new[] { mapping });
+        nonzeroChecksum.ObserveAggregate(0, 1, Guid.Empty, 0); Kernel(nonzeroChecksum);
+        Refuses(() => Finish(nonzeroChecksum), "recorded zero checksum cannot replace expected nonzero");
+        foreach (var (debug, age) in new[] { (Guid.Empty, 1), (guid, 0), (guid, 2), (Guid.NewGuid(), 1) })
+        {
+            var bad = Selected(debug: debug, age: age); Kernel(bad);
+            Refuses(() => Finish(bad), "aggregate GUID/age contradiction");
+            var rawBad = Selected(); Kernel(rawBad);
+            rawBad.ObserveDebugId(4936, 0x10000, debug, age);
+            rawBad.ObserveDebugId(4936, 0x10000, Guid.Empty, 0);
+            rawBad.ObserveDebugId(4936, 0x10000, guid, 1);
+            Refuses(() => Finish(rawBad), "raw GUID/age contradiction sticky");
+        }
+        var rawDebug = Selected(); Kernel(rawDebug);
+        rawDebug.ObserveDebugId(4936, 0x10000, Guid.Empty, 0);
+        Check(rawDebug.RawDebugIdStatus == "unavailable-recorded-empty", "empty raw DebugID not matched");
+        rawDebug.ObserveDebugId(4936, 0x10000, guid, 1); Finish(rawDebug);
+        Check(rawDebug.RawDebugIdStatus == "matched", "actual exact raw DebugID matched");
+        var synthetic = Selected(); Kernel(synthetic);
+        synthetic.ObserveImageId(4936, 0x10000, 4096, "bench-core.exe", 123);
+        synthetic.ObserveImageId(4936, 0x10000, 4096, "bench-core.exe", 0);
+        synthetic.ObserveImageId(4936, 0x10000, 4096, "bench-core.exe", image.ImageId);
+        Refuses(() => Finish(synthetic), "synthetic ImageID contradiction survives zero/match");
+        var ambiguous = Selected(); Kernel(ambiguous);
+        ambiguous.ObserveDebugId(0, 0x10000, guid, 1);
+        Refuses(() => Finish(ambiguous), "synthetic shared base without PID refuses attribution");
+        foreach (var opcode in new[] { 10, 2 })
+        foreach (var qpc in new long[] { 100, 150, 199 })
+        {
+            var transition = Selected(); Kernel(transition, opcode: opcode, qpc: qpc);
+            Refuses(() => Finish(transition), "actual transition inside window refuses");
+        }
+        var transitions = Selected(); Kernel(transitions, opcode: 10); Kernel(transitions, opcode: 2, qpc: 200);
+        var timed = Finish(transitions);
+        Check(timed.LoadQpc == 90 && timed.UnloadQpc == 200 && timed.TryRva(132, 199, 1334, 0x10001, out _),
+            "raw actual bounds used when available");
+        Check(binding.LoadQpc is null && binding.UnloadQpc is null, "rundown observations are not transitions");
+        var observation = Selected(); Kernel(observation, qpc: 150); Kernel(observation, qpc: 160, opcode: 4);
+        Finish(observation);
+        Check(observation.Contradiction is null, "rundown inside window is only an observation");
+        var rawMapping = Selected(); Kernel(rawMapping, address: 0x10800, path: "C:/other/wrong.dll"); Kernel(rawMapping);
+        Refuses(() => Finish(rawMapping), "raw overlapping mapping cannot hide behind later correct metadata");
+        var unrelated = Selected(); Kernel(unrelated);
+        unrelated.ObserveKernel(99, 150, 10, 0x10000, 4096, "bench-core.exe", true, 123, 1);
+        unrelated.ObserveImageId(99, 0x10000, 4096, "bench-core.exe", 123);
+        unrelated.ObserveDebugId(99, 0x10000, Guid.Empty, 1);
+        unrelated.ObserveKernel(4936, 150, 10, 0x30000, 4096, "other.dll", true, 123, 1);
+        Finish(unrelated);
+        Check(unrelated.Contradiction is null, "unrelated process and nonoverlapping modules do not authorize or contaminate binding");
+        var lateContradiction = Selected();
+        for (var i = 0; i < 40; i++) Kernel(lateContradiction);
+        Kernel(lateContradiction, 123);
+        Refuses(() => Finish(lateContradiction), "validation continues beyond 32 diagnostic rows");
+        var absent = Selected(); Kernel(absent, header: false); Finish(absent);
+        Check(absent.RawHeaderAbsent && !absent.RecordedZeroImageId &&
+            absent.AggregateImageIdStatus == "unavailable-aggregate-zero", "absent versioned fields not reported recorded zero");
+        var incomplete = Selected(); Kernel(incomplete);
+        Refuses(() => incomplete.Finish(false), "uncompleted scan refuses");
+        incomplete.CompleteScan(false);
+        Refuses(() => Finish(incomplete), "incomplete scan remains refused after later completion");
+        var truncated = Selected(); Kernel(truncated); truncated.CompleteScan(true);
+        Refuses(() => truncated.Finish(true), "conversion truncation refuses");
+        var overflow = Selected(); Kernel(overflow);
+        for (var i = 1; i < 1_000_000; i++) overflow.CountEvent();
+        Check(overflow.EventsInspected == 1_000_000, "exact raw event budget retained");
+        Refuses(overflow.CountEvent, "one-million raw event budget exceeded");
+        Refuses(() => Finish(overflow), "event overflow remains refused");
+        var noRaw = Selected(); noRaw.CountEvent(); noRaw.CompleteScan(true);
+        Refuses(() => noRaw.Finish(false), "complete stream without target kernel mapping refuses");
     }
 
     private sealed class WithheldInput : TextReader
