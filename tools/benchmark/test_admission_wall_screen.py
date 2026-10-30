@@ -4,7 +4,7 @@ import copy
 import gc
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import tempfile
 import threading
 from types import SimpleNamespace
@@ -939,7 +939,19 @@ class StartingHeadGoldenTests(unittest.TestCase):
     def test_admission_owner_starting_head_golden(self):
         args = argparse.Namespace(command='build', expected_suite='1'*40, core='C:/core')
         with patch.dict(w.os.environ, {'GITHUB_RUN_ID': 'gold-run', 'GITHUB_RUN_ATTEMPT': '2'}):
-            self.assertEqual(hashlib.sha256(w.ds.encoded(w.owner(args, Path('C:/gold-root')))).hexdigest(),
+            root = Path('C:/gold-root')
+            value = w.owner(args, root)
+            raw = (w.HERE / 'admission_wall_plan.md').read_bytes()
+            canonical_plan = '6e6bcb2378ea7ea4034b75d0f7b25c29bd66730700894343d93cb81eea177296'
+            self.assertEqual(value['root'], str(root))
+            self.assertEqual(value['core'], str(Path(args.core).resolve()))
+            self.assertEqual(value['plan_sha256'], hashlib.sha256(raw).hexdigest())
+            self.assertEqual(hashlib.sha256(raw.replace(b'\r\n', b'\n')).hexdigest(), canonical_plan)
+            # Freeze all logical fields against the original Windows/LF fixture,
+            # after separately checking the three host-specific values above.
+            value.update(root=str(PureWindowsPath('C:/gold-root')),
+                         core=str(PureWindowsPath('C:/core')), plan_sha256=canonical_plan)
+            self.assertEqual(hashlib.sha256(w.ds.encoded(value)).hexdigest(),
                              '0044677b30a9b6aefefe6b1b8b3d61f329bc6cdcd7f673d91dfdc8e4ff5d2a6c')
 
 class ContractSelectionTests(TempTests):
