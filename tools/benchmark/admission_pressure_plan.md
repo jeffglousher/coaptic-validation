@@ -6,8 +6,15 @@ notification-backed Block2 under RX pressure, each in unprotected and OSCORE
 traffic. The original four RX/TX bodies passed on both core arms in run
 [41129635329](https://github.com/jeffglousher/coaptic-validation/actions/runs/41129635329)
 at source c5eb333: 81 portable tests and 16 native executions (eight wall plus
-eight pressure). The four new Observe and Block2 cases and this expanded cohort
-are UNRUN at this integration handoff. Portable mocks are not native execution.
+eight pressure). The completed eight-case cohort passed on both core arms in run
+[41142584716](https://github.com/jeffglousher/coaptic-validation/actions/runs/41142584716)
+at source 49b1cab44205e3c50fe68a7b6483ecaf113e3330, tree
+34803bfa898123698ac3e83da00e94fcde9e32bd: 82 portable tests and 24 native
+executions (each arm: four wall tests plus all eight pressure cases). This
+source-specific software proof establishes the selected ownership assertions,
+not a pressure/continuation timing result or promotion of the core optimization.
+The current follow-up changes this document only; tested native/runner bytes
+remain unchanged. Portable mocks alone are not native execution.
 
 Historical run
 [41094806564](https://github.com/jeffglousher/coaptic-validation/actions/runs/41094806564)
@@ -153,9 +160,8 @@ outer worker, 8 GiB build and 64 MiB evidence, including the existing reserve.
 Existing source restoration, unresolved cleanup and reporting-error contracts
 apply. No new job cap or profiling dependency is introduced.
 
-All eight specified software cases are implemented, but the four new Observe
-and Block2 cases are UNRUN. This cohort is not Stage B completion or promotion.
-Native compilation and exact two-arm execution must pass before timing design.
+All eight specified software cases are implemented and passed the exact two-arm
+software proof above. This cohort is not Stage B completion or promotion.
 The required pressure/continuation performance comparisons remain NOT RUN;
 their supported matrix, counts and gates must be frozen separately. Do not infer
 quantitative regression safety from these correctness assertions.
@@ -214,7 +220,7 @@ A fixture-only mutex helper preserves serialization but recovers poisoning:
 each case resets the only shared counter and constructs its own fresh App, so a
 prior panic remains a failed test without replacing all later results with
 PoisonError. No protocol state, core source, count, capacity or timing gate changes.
-The corrected cohort is UNRUN pending a separately frozen software proof.
+That corrected cohort was UNRUN at its handoff; its later failure is retained below.
 
 Run 41139860286/1 at 969d208 passed arm A's four wall tests and six RX/TX/Observe
 pressure cases. Both Block2 cases failed at next_num: observed 0 versus expected
@@ -225,7 +231,8 @@ NUM=0 into issue_classic and requested_block2: the entire path leaves next_num
 at zero. That path is identical on all three pinned revisions. The current
 fixture expects NUM 0 and next NUM 0, while all exact wire-block, authentication,
 payload, ownership and final-release checks remain unchanged. Both failed runs
-remain retained. This corrected cohort is UNRUN; no timing or promotion follows.
+remain retained. That corrected cohort was UNRUN at its handoff; its later
+transfer.more failure is retained below. No timing or promotion follows.
 
 Run 41141222260/1 at 08c1ab7 passed the same six pressure cases on arm A but
 both Block2 cases failed the fixture's transfer.more() assertion. The retained
@@ -238,5 +245,18 @@ wire M=true/true/false for blocks 1/2/3, exact full payload assembly, stable bod
 identity and bytes, handler exclusion, retained Calls, and final App-owned release.
 One bounded sidecar copy is extra test metadata; no production storage changes.
 This replaces guessed issuance-state values with a stronger preservation check;
-it does not establish the new cohort until native execution passes. All three
-failed software runs remain retained; Stage B timing remains NOT RUN.
+native execution of this exact source subsequently passed in run 41142584716.
+All three failed software runs remain retained; Stage B timing remains NOT RUN.
+
+## Completed software proof and evidence limits
+
+The successful collector independently verified the run/attempt/source identities,
+82 portable tests, both exact native listings and completions, all 48 artifact
+members and both retained EXE/PDB pairs. The bounded receipt retains the archive
+and canonical manifest hashes, pair hashes, scope and actual test counts; full
+member/source manifests were checked in RAM and omitted from that compact receipt.
+Compiler execution, affinity, RSS, source restoration and descendant cleanup remain
+producer attestations; dedicated VM retirement is unknown. No measurement worker,
+latency/calibration arrays or ETL were produced. Historical failures remain part
+of the record. The next task is a separately frozen full-App pressure/continuation
+timing comparison; the successful Stage A cohort is not repeated.
