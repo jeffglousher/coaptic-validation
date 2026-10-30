@@ -5,6 +5,11 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      wall_screen_contract:
+        description: Explicit frozen wall screen contract; requires admission_wall_screen
+        default: admission
+        type: choice
+        options: [admission, dedup-classified]
       admission_wall_screen:
         description: Run only the frozen normal-headroom App wall comparison
         default: false
@@ -37,22 +42,22 @@ permissions:
   contents: read
 concurrency:
   group: suite-ci-${{ inputs.stack_profile && 'stack-profile' || inputs.admission_wall_screen && 'admission-wall' || 'validation' }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ !inputs.stack_profile && !inputs.admission_wall_screen && !inputs.admission_pressure_proof }}
+  cancel-in-progress: ${{ !inputs.stack_profile && !inputs.admission_wall_screen && !inputs.admission_pressure_proof && (inputs.wall_screen_contract == '' || inputs.wall_screen_contract == 'admission') }}
 jobs:
   reject-mixed-manual-modes:
-    if: ${{ github.event_name == 'workflow_dispatch' && ((inputs.stack_profile && inputs.admission_wall_screen) || (inputs.admission_pressure_proof && (!inputs.admission_wall_screen || inputs.stack_profile))) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && ((inputs.wall_screen_contract && inputs.wall_screen_contract != 'admission' && inputs.wall_screen_contract != 'dedup-classified') || (inputs.wall_screen_contract == 'dedup-classified' && (!inputs.admission_wall_screen || inputs.admission_pressure_proof)) || (inputs.admission_wall_screen && (inputs.stack_profile || inputs.stack_profile_replay || inputs.stack_profile_live || inputs.stack_profile_live_replay)) || (inputs.admission_pressure_proof && (!inputs.admission_wall_screen || inputs.stack_profile))) }}
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
   validation:
-    if: ${{ !inputs.stack_profile && !inputs.admission_wall_screen && !inputs.admission_pressure_proof }}
+    if: ${{ !inputs.stack_profile && !inputs.admission_wall_screen && !inputs.admission_pressure_proof && (inputs.wall_screen_contract == '' || inputs.wall_screen_contract == 'admission') }}
     uses: ./.github/workflows/validation.yml
     with:
       suite_revision: ${{ github.sha }}
       library_repository: jeffglousher/coaptic
       library_revision: ${{ inputs.library_revision || '739c277642219ae235b0ab0926b5c95d81f51b59' }}
   windows-stack-profile:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.stack_profile && !inputs.admission_wall_screen && !inputs.admission_pressure_proof }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.stack_profile && !inputs.admission_wall_screen && !inputs.admission_pressure_proof && (inputs.wall_screen_contract == '' || inputs.wall_screen_contract == 'admission') }}
     uses: ./.github/workflows/windows-stack-profile.yml
     permissions:
       contents: read
@@ -63,9 +68,10 @@ jobs:
       live: ${{ inputs.stack_profile_live }}
       live_replay: ${{ inputs.stack_profile_live_replay }}
   admission-wall-screen:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.admission_wall_screen && !inputs.stack_profile }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.admission_wall_screen && !inputs.stack_profile && !inputs.stack_profile_replay && !inputs.stack_profile_live && !inputs.stack_profile_live_replay && (inputs.wall_screen_contract == 'admission' || (inputs.wall_screen_contract == 'dedup-classified' && !inputs.admission_pressure_proof)) }}
     uses: ./.github/workflows/admission-wall-screen.yml
     permissions:
       contents: read
     with:
       proof_only: ${{ inputs.admission_pressure_proof }}
+      contract: ${{ inputs.wall_screen_contract }}

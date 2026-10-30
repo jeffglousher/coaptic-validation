@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import time
+from typing import NamedTuple
 
 import development_suite as ds
 import native_lock as locks
@@ -51,6 +52,9 @@ UNIMPLEMENTED = ['protected', 'TX pressure', 'cancellation', 'Block2 continuatio
 
 
 def purpose(args):
+    if getattr(args, 'contract', 'admission') == 'dedup-classified':
+        selection(args)
+        return 'rejection-screen'
     return 'ownership-proof' if getattr(args, 'command', None) == 'proof' else 'stage-a-screen'
 
 
@@ -85,8 +89,90 @@ FLAGS = dict(RUSTFLAGS='-Cforce-frame-pointers=yes', CARGO_PROFILE_RELEASE_DEBUG
              CARGO_INCREMENTAL='0', CARGO_BUILD_JOBS='2')
 
 
-def plan():
-    return dict(schema='coaptic-admission-wall/1', cores=CORES,
+class Contract(NamedTuple):
+    id: str
+    schema: str
+    owner_schema: str
+    root: str
+    artifact_prefix: str
+    cores: tuple
+    trees: tuple
+    preregistration: tuple
+
+
+ADMISSION = Contract('admission', 'coaptic-admission-wall/1', 'coaptic-admission-owner/1',
+                     'coaptic-admission-wall', 'admission-wall-screen', tuple(CORES.items()), (), ())
+DEDUP = Contract(
+    'dedup-classified', 'coaptic-dedup-classified-wall/1', 'coaptic-dedup-classified-owner/1',
+    'coaptic-dedup-classified-wall', 'dedup-classified-wall-screen',
+    (('A', BASELINE), ('B', '8f1f138c825f431149ed8a0a7eefbb6be6cb1b6a')),
+    (('A', '4f349c19039de513487dff283289658402593991'),
+     ('B', '598db5cb5bd3851381d783f1bc02ecf664e778a5')),
+    (
+        'EARLY REJECTION screen only; no proof mode or promotion. No gain established. '
+        'Core 717 all 11 checks passed at 8f per notification; source review NONE.',
+        'Exactly 16 healthy fresh serial processes: AB then BA per profile/security cell. '
+        'Measure all 16 before all eight gate comparisons; first source/runtime/resource failure '
+        'aborts later work and records not-run. Failed or uncertain gate rejects this source screen.',
+        'SmallDevice fixed Constrained 32B dedup4; allocated Default 64B dedup8; '
+        'all existing route, Call, deferred, security and body capacities untouched.',
+        '60000 measured plus 128 warmup per process; 960000 measured / 2048 warmup total; '
+        '4096 separate calibrations/process. Native wall/default arguments and four exact wall tests unchanged.',
+        '60 consecutive 1000-block means using math.fsum; 10000 bootstrap replicates; '
+        'Random(20261030) reset per comparison, A60 draws then B60 draws; linear equal-tail '
+        '.025/.975; B/A including BA. Each profile/order: unprotected mean<=.99 and upper95<1; '
+        'OSCORE upper95<=1.02. No pooling, outlier drop, calibration subtraction, replacement or cap raises.',
+        'Distinct MID 0..60127 and fixed endpoint; token changes alone do not prove keys. '
+        'Responses fit inline replay 256B; warmup fills dedup4/8; ExchangeLifetime247s exceeds 30s/process. '
+        'Timed fresh keys/full table: baseline misses twice before failed acquire/oldest eviction/ordinary retry; '
+        'classified Full saves one initial search; remaining eviction/retry unchanged.',
+        'No pinned replies measured. Existing, replacement, duplicate, custom store, missing payload and '
+        'spare capacity performance unmeasured. Pass only admits future replacement/pin/pressure regression design; '
+        'no merge, API, device, CPU, general host, stack or whole memory claim.',
+        'Companion exact future commit supplied externally via expected-suite; Git tree and tracked source '
+        'snapshots bound before launches. No admission plan document authorizes this contract.',
+    ))
+
+
+def resolve_contract(identifier='admission', proof=False):
+    for selected in (ADMISSION, DEDUP):
+        if identifier == selected.id:
+            if proof and selected == DEDUP:
+                raise ValueError('dedup-classified refuses proof mode')
+            return selected
+    raise ValueError('unknown contract selector')
+
+
+def selection(args):
+    return resolve_contract(getattr(args, 'contract', 'admission'),
+                            getattr(args, 'command', None) == 'proof')
+
+
+def binding(selected=ADMISSION):
+    if selected == ADMISSION:
+        return {}
+    return dict(contract_id=selected.id, contract_sha256=hashlib.sha256(
+        ds.encoded(dict(descriptor=selected._asdict(), plan=plan(selected)))).hexdigest())
+
+
+def bound(value, selected=ADMISSION):
+    return dict(value, **binding(selected))
+
+
+def check_binding(value, selected=ADMISSION):
+    expected = binding(selected)
+    exact({k: value.get(k) for k in ('contract_id', 'contract_sha256')},
+          {k: expected.get(k) for k in ('contract_id', 'contract_sha256')},
+          'selected contract identity differs')
+
+
+def tree_check(identity, commit, tree):
+    exact(identity['commit'], commit, 'selected source commit differs')
+    exact(identity['tree'], tree, 'selected source tree differs')
+
+
+def plan(selected=ADMISSION):
+    value = dict(schema=selected.schema, cores=dict(selected.cores),
                 cells=[[p, s] for p in ('small-device', 'default') for s in wp.MODES],
                 rounds=['AB', 'BA'], operations=OPERATIONS, warmup=WARMUP,
                 calibration=CALIBRATION, processes=16, measured_total=960000, warmup_total=2048,
@@ -104,12 +190,19 @@ def plan():
                              evidence_bytes=EVIDENCE_LIMIT),
                 scope='Conditional two-process comparisons, not CPU or general-host proof; '
                       'Stage B pressure/continuation required before any merge promotion')
+    if selected == DEDUP:
+        value.update(core_trees=dict(selected.trees), purpose='rejection-screen',
+                     preregistration=list(selected.preregistration),
+                     scope=' '.join(selected.preregistration), sampling='all 16 before all eight gates',
+                     fixture_lf_sha256=FIXTURE_LF_SHA256, pressure_lf_sha256=PRESSURE_LF_SHA256,
+                     evidence_reserve_bytes=RESERVE, artifact_prefix=selected.artifact_prefix)
+    return value
 
 
-def schedule():
+def schedule(selected=ADMISSION):
     return [dict(index=i, profile=p, security=s, round=r, arm=a)
             for i, (p, s, r, a) in enumerate(
-                (p, s, r, a) for p, s in plan()['cells'] for r in ('AB', 'BA') for a in r)]
+                (p, s, r, a) for p, s in plan(selected)['cells'] for r in ('AB', 'BA') for a in r)]
 
 
 def exact(actual, expected, message):
@@ -201,7 +294,7 @@ def gate(mean, upper, security):
     raise ValueError('unknown security')
 
 
-def compare(arms, security):
+def compare(arms, security, selected=ADMISSION):
     if set(arms) != {'A', 'B'}:
         raise ValueError('comparison must name A and B, including BA')
     for values in arms.values():
@@ -224,7 +317,7 @@ def compare(arms, security):
     mean = means['B'] / means['A']
     return dict(block_means_ns=blocks, arm_mean_ns=means, mean_B_over_A=mean,
                 lower95=lower, upper95=upper, passed=gate(mean, upper, security),
-                scope=plan()['scope'])
+                scope=plan(selected)['scope'], **binding(selected))
 
 
 def validate_census(raw, listing=False, expected=WALL_TESTS):
@@ -273,8 +366,17 @@ def check_files(root, files):
             raise ValueError('immutable input changed: ' + name)
 
 
-def source_gate(core, suite_sha, core_sha):
+def source_gate(core, suite_sha, core_sha, selected=ADMISSION):
     value = wp.source_identity(core, core_sha, suite_sha)
+    if selected == DEDUP:
+        cores = dict(selected.cores)
+        if core_sha not in cores.values():
+            raise ValueError('foreign core revision')
+        arm = next(a for a, sha in selected.cores if sha == core_sha)
+        tree_check(ds.identity(core), core_sha, dict(selected.trees)[arm])
+        exact(ds.identity(SUITE)['commit'], suite_sha, 'companion revision differs')
+        if not re.fullmatch('[0-9a-f]{40}', ds.identity(SUITE)['tree']):
+            raise ValueError('companion tree required')
     normalized = (SUITE / FIXTURE).read_bytes().replace(b'\r\n', b'\n')
     if hashlib.sha256(normalized).hexdigest() != FIXTURE_LF_SHA256:
         raise ValueError('native fixture pin differs')
@@ -398,13 +500,14 @@ def report_preserving(primary, label, action):
         primary.add_note(label + ': ' + str(reporting)[:1024])
 
 
-def launch(root, name, spec, env, *, timeout, build=False):
+def launch(root, name, spec, env, *, timeout, build=False, selected=ADMISSION):
+    check_binding(spec, selected)
     path = root / (name + '-task.json')
     with path.open('xb') as stream:
         stream.write(ds.encoded(spec))
     result, error = None, None
     try:
-        result = run_worker([sys._base_executable, '-B', str(Path(__file__).resolve()), '_worker', str(path)],
+        result = run_worker([sys._base_executable, '-B', str(Path(__file__).resolve()), '_worker', str(path), selected.id],
                             timeout=timeout, limit=LOG_LIMIT, cwd=SUITE, env=env,
                             settle_build_auxiliaries=build)
         return result
@@ -469,17 +572,17 @@ class NativeStage:
         locks._restore(self.canonical, self.selected, self.base, self.inputs)
 
 
-def transaction(core, suite_sha, selected, operation, record):
+def transaction(core, suite_sha, selected, operation, record, contract_selection=ADMISSION):
     """Outer-owned source transaction; never restore into an unresolved worker."""
-    source_gate(core, suite_sha, BASELINE)
+    source_gate(core, suite_sha, BASELINE, contract_selection)
     initial_ref = ds.git(core, 'symbolic-ref', '--short', '-q', 'HEAD') if ds.git(core, 'rev-parse', '--abbrev-ref', 'HEAD') != 'HEAD' else None
     initial = snapshot(core)
     stage, settled, primary, current, suite = None, True, None, None, None
-    record.update(restoration='unknown', cleanup_unresolved=False)
+    record.update(restoration='unknown', cleanup_unresolved=False, **binding(contract_selection))
     try:
         if selected != BASELINE:
             ds.git(core, 'checkout', '--detach', selected)
-        source_gate(core, suite_sha, selected)
+        source_gate(core, suite_sha, selected, contract_selection)
         current, suite = snapshot(core), snapshot(SUITE)
         stage = NativeStage(core)
         lock = stage.stage()
@@ -487,7 +590,7 @@ def transaction(core, suite_sha, selected, operation, record):
         staged['tools/benchmark/native/Cargo.lock'] = lock['selected_sha256']
         check_files(SUITE, staged)
         check_files(core, current['files'])
-        record.update(source=current, suite=suite, lock=lock)
+        record.update(source=bound(current, contract_selection), suite=bound(suite, contract_selection), lock=lock)
         # Until run_worker returns or raises its structured settled error, custody is unknown.
         settled = False
         try:
@@ -527,7 +630,7 @@ def transaction(core, suite_sha, selected, operation, record):
                     check_files(core, current['files'])
                 if suite is not None:
                     check_files(SUITE, suite['files'])
-                source_gate(core, suite_sha, selected)
+                source_gate(core, suite_sha, selected, contract_selection)
                 if selected != BASELINE:
                     ds.git(core, 'checkout', initial_ref or '--detach', *([] if initial_ref else [BASELINE]))
                 exact(snapshot(core), initial, 'restored core bytes/ref identity differ')
@@ -549,21 +652,70 @@ def pressure_result(arm, selected_purpose):
                 source_lf_sha256=PRESSURE_LF_SHA256, scope=PROOF_SCOPE)
 
 
-def cargo_worker(spec):
+def verify_staged_suite(core, expected_commit, held, lock):
+    # The outer owner has intentionally substituted only the native lock.
+    # A normal ds.identity() cleanliness check would reject that owned change.
+    # Require the exact worktree-only delta, fixed Git identity, held sources,
+    # and the lock selected by the unchanged core manifest instead.
+    actual = dict(commit=ds.git(SUITE, 'rev-parse', 'HEAD'),
+                  tree=ds.git(SUITE, 'rev-parse', 'HEAD^{tree}'))
+    tree_check(actual, expected_commit, held['identity']['tree'])
+    relative = 'tools/benchmark/native/Cargo.lock'
+    base = held['files'][relative]
+    manifest = locks._toml((Path(core) / 'crates/coaptic-io/Cargo.toml').read_bytes())
+    syn = manifest.get('dependencies', {}).get('syn')
+    requirement = syn.get('version') if isinstance(syn, dict) else None
+    if requirement not in ('2', '3'):
+        raise ValueError('unsupported staged core syn.version')
+    expected = ds.digest(NATIVE / 'Cargo.syn3.lock') if requirement == '3' else base
+    exact(lock['canonical_base_sha256'], base, 'staged lock base differs')
+    exact(lock['selected_sha256'], expected, 'staged lock selection differs')
+    exact(ds.digest(NATIVE / 'Cargo.lock'), expected, 'staged lock bytes differ')
+    status = subprocess.check_output(
+        ['git', '-C', str(SUITE), 'status', '--porcelain=v1', '-z', '--untracked-files=normal'], timeout=15)
+    allowed = b' M ' + relative.encode() + b'\0' if expected != base else b''
+    if status != allowed:
+        raise ValueError('unexpected suite edits during staged lock')
+
+
+def cargo_worker(spec, selected=ADMISSION):
+    check_binding(spec, selected)
+    def verify_source():
+        if selected == DEDUP:
+            args = argparse.Namespace(**spec['args'])
+            exact(selection(args), selected, 'worker selection differs')
+            exact(load(Path(spec['root']) / 'evidence/owner.json'), owner(args, Path(spec['root'])),
+                  'Cargo owner differs')
+            check_binding(spec['source'], selected)
+            check_binding(spec['suite'], selected)
+            arm = spec['arm']
+            tree_check(spec['source']['identity'], dict(selected.cores)[arm], dict(selected.trees)[arm])
+            tree_check(ds.identity(args.core), dict(selected.cores)[arm], dict(selected.trees)[arm])
+            verify_staged_suite(args.core, args.expected_suite, spec['suite'], spec['lock'])
+            check_files(args.core, spec['source']['files'])
+            staged = dict(spec['suite']['files'])
+            staged['tools/benchmark/native/Cargo.lock'] = spec['lock']['selected_sha256']
+            check_files(SUITE, staged)
+            exact(spec['purpose'], 'rejection-screen', 'Cargo purpose differs')
+    verify_source()
+    selected_purpose = spec.get('purpose', 'stage-a-screen')
+    allowed = ('rejection-screen',) if selected == DEDUP else ('stage-a-screen', 'ownership-proof')
+    if selected_purpose not in allowed:
+        raise ValueError('unknown build purpose for selected contract')
     root, arm = Path(spec['root']), spec['arm']
     budget = Budget(root, spec['seconds'], rss_limit=2 * 1024**3)
     prefix = [spec['cargo'], 'test', '--release', '--locked', '--target', TARGET,
               '--manifest-path', str(NATIVE / 'Cargo.toml'), '-p', 'bench-rust-server', '--bin', 'bench-core']
+    verify_source()
     listing = child_command(prefix + ['wall_', '--', '--list'], budget, arm + '-tests-list',
                             env=os.environ, seconds=spec['seconds'])
     validate_census(listing, listing=True)
+    verify_source()
     tests = child_command(prefix + ['wall_', '--', '--test-threads=1'], budget, arm + '-tests',
                           env=os.environ, seconds=spec['seconds'])
     validate_census(tests)
-    selected_purpose = spec.get('purpose', 'stage-a-screen')
-    if selected_purpose not in ('stage-a-screen', 'ownership-proof'):
-        raise ValueError('unknown build purpose')
     if selected_purpose == 'ownership-proof':
+        verify_source()
         listing = child_command(prefix + ['admission_pressure::', '--', '--list'], budget,
                                 arm + '-pressure-list', env=os.environ, seconds=spec['seconds'])
         validate_census(listing, listing=True, expected=PRESSURE_TESTS)
@@ -571,6 +723,7 @@ def cargo_worker(spec):
                               arm + '-pressure', env=os.environ, seconds=spec['seconds'])
         validate_census(tests, expected=PRESSURE_TESTS)
     prefix[1] = 'build'
+    verify_source()
     raw = child_command(prefix + ['--message-format=json-render-diagnostics'], budget, arm + '-build',
                         env=os.environ, seconds=spec['seconds'])
     pair = wp.native_artifact_pair(raw, root / 'target')
@@ -579,14 +732,14 @@ def cargo_worker(spec):
          pressure_proof=pressure_result(arm, selected_purpose),
          artifacts=list(map(str, pair)),
          sampled_direct_child_working_set_peak_bytes=budget.observed_child_working_set_peak,
-         sampled_owned_build_peak_bytes=budget.peak))
+         sampled_owned_build_peak_bytes=budget.peak, **binding(selected)))
     budget.check(force=True)
 
 
-def retain_pair(root, arm, selected_purpose='stage-a-screen'):
+def retain_pair(root, arm, selected_purpose='stage-a-screen', selected=ADMISSION):
     result = load(root / 'evidence' / (arm + '-cargo.json'))
     pair = wp.native_artifact_pair((root / 'evidence' / (arm + '-build.stdout')).read_bytes(), root / 'target')
-    verify_tests(root, arm, result, selected_purpose)
+    verify_tests(root, arm, result, selected_purpose, selected)
     exact(result['artifacts'], list(map(str, pair)), 'artifact receipt mismatch')
     retained = {}
     for kind, source in zip(('exe', 'pdb'), pair):
@@ -594,7 +747,7 @@ def retain_pair(root, arm, selected_purpose='stage-a-screen'):
             raise ValueError('actual Cargo EXE/PDB missing')
         if source.stat().st_size + wp.owned_size(root / 'evidence') + RESERVE > EVIDENCE_LIMIT:
             raise ValueError('both owned pairs must fit 64 MiB evidence')
-        retained[kind] = wp.retain_file(root, source, root / 'evidence' / arm / source.name)
+        retained[kind] = bound(wp.retain_file(root, source, root / 'evidence' / arm / source.name), selected)
     return retained
 
 
@@ -622,15 +775,19 @@ def artifact_check(root, artifacts):
 
 
 def owner(args, root):
-    return dict(schema='coaptic-admission-owner/1', project='Coaptic', root=str(root),
+    selected = selection(args)
+    value = dict(schema=selected.owner_schema, project='Coaptic', root=str(root),
                 purpose=purpose(args), owner=os.environ.get('GITHUB_RUN_ID'), attempt=os.environ.get('GITHUB_RUN_ATTEMPT'),
-                expected_suite=args.expected_suite, core=str(Path(args.core).resolve()), plan=plan(),
-                plan_sha256=ds.digest(HERE / 'admission_wall_plan.md'),
+                expected_suite=args.expected_suite, core=str(Path(args.core).resolve()), plan=plan(selected),
+                plan_sha256=(ds.digest(HERE / 'admission_wall_plan.md') if selected == ADMISSION
+                             else binding(selected)['contract_sha256']),
                 release='Retain through reviewed delivery; retire ephemeral VM after unresolved cleanup',
                 abrupt_outer_death='restoration UNKNOWN; no universal crash recovery')
+    return bound(value, selected)
 
 
 def build(args, root, contract):
+    selected = selection(args)
     deadline = time.monotonic() + BUILD_SECONDS
     inputs = ds.cargo_inputs()
     compiler, cargo, tools = ds.toolchain()
@@ -643,7 +800,7 @@ def build(args, root, contract):
     records, artifacts = {}, {}
     primary = None
     try:
-        for arm, commit in CORES.items():
+        for arm, commit in selected.cores:
             # Include wrapper settlement and outer finalization within the overall owner deadline.
             remaining = deadline - time.monotonic()
             if remaining <= 35:
@@ -654,18 +811,20 @@ def build(args, root, contract):
             transaction(args.core, args.expected_suite, commit,
                         lambda lock: launch(root, arm, dict(kind='cargo', root=str(root), arm=arm,
                                                            cargo=tools['cargo']['path'], seconds=inner,
-                                                           purpose=purpose(args)),
-                                            env, timeout=outer, build=True), record)
-            artifacts[arm] = retain_pair(root, arm, purpose(args))
+                                                           purpose=purpose(args), args=vars(args),
+                                                           source=record['source'], suite=record['suite'],
+                                                           lock=lock, **binding(selected)),
+                                            env, timeout=outer, build=True, selected=selected), record, selected)
+            artifacts[arm] = retain_pair(root, arm, purpose(args), selected)
             tool_check(tools)
             config_check(inputs)
             exact(snapshot(SUITE), suite, 'suite changed after build')
         if time.monotonic() >= deadline:
             raise TimeoutError('830-second outer build owner deadline')
-        result = dict(owner=contract, purpose=purpose(args), plan=plan(), suite=suite, records=records, artifacts=artifacts,
+        result = dict(owner=contract, purpose=purpose(args), plan=plan(selected), suite=suite, records=records, artifacts=artifacts,
                       compiler=compiler, cargo=cargo, tools=tools, inputs=inputs, flags=FLAGS,
                       host=ds.host_identity())
-        save(root, 'build.json', result)
+        save(root, 'build.json', bound(result, selected))
         return result
     except BaseException as error:
         primary = error
@@ -676,7 +835,7 @@ def build(args, root, contract):
             for check in (lambda: tool_check(tools), lambda: config_check(inputs),
                           lambda: artifact_check(root, artifacts),
                           lambda: exact(snapshot(SUITE), suite, 'suite changed in build finally'),
-                          lambda: source_gate(args.core, args.expected_suite, BASELINE)):
+                          lambda: source_gate(args.core, args.expected_suite, BASELINE, selected)):
                 try:
                     check()
                 except BaseException as error:
@@ -691,7 +850,8 @@ def build(args, root, contract):
             raise check_error
 
 
-def verify_tests(root, arm, receipt, selected_purpose):
+def verify_tests(root, arm, receipt, selected_purpose, selected=ADMISSION):
+    check_binding(receipt, selected)
     exact(receipt['purpose'], selected_purpose, 'prepared test purpose differs')
     exact(receipt['native_tests'], list(WALL_TESTS), 'prepared native census differs')
     exact(receipt['pressure_proof'], pressure_result(arm, selected_purpose), 'prepared pressure result differs')
@@ -707,24 +867,34 @@ def verify_tests(root, arm, receipt, selected_purpose):
 
 
 def verify_build(args, root, contract):
+    selected = selection(args)
     exact(load(root / 'evidence/owner.json'), contract, 'owner/plan identity differs')
     value = load(root / 'evidence/build.json')
+    check_binding(value, selected)
     exact(value['owner'], contract, 'prepared owner differs')
     exact(value['purpose'], purpose(args), 'prepared build purpose differs')
-    exact(value['plan'], plan(), 'prepared plan differs')
+    exact(value['plan'], plan(selected), 'prepared plan differs')
     exact(value['flags'], FLAGS, 'prepared flags differ')
-    source_gate(args.core, args.expected_suite, BASELINE)
+    source_gate(args.core, args.expected_suite, BASELINE, selected)
     exact(snapshot(SUITE), value['suite'], 'prepared suite/source bytes differ')
-    exact(snapshot(args.core), value['records']['A']['source'], 'prepared baseline source differs')
+    exact(bound(snapshot(args.core), selected), value['records']['A']['source'], 'prepared baseline source differs')
     tool_check(value['tools'])
     config_check(value['inputs'])
     exact(sorted(value['artifacts']), ['A', 'B'], 'prepared artifact arms differ')
-    for arm, commit in CORES.items():
+    for arm, commit in selected.cores:
         record = value['records'][arm]
+        if selected == DEDUP:
+            check_binding(record, selected)
+            check_binding(record['source'], selected)
+            check_binding(record['suite'], selected)
+            tree_check(record['source']['identity'], commit, dict(selected.trees)[arm])
+            tree_check(record['suite']['identity'], args.expected_suite, value['suite']['identity']['tree'])
+            for artifact in value['artifacts'][arm].values():
+                check_binding(artifact, selected)
         if record['source']['identity']['commit'] != commit or record['restoration'] != 'verified clean initial source':
             raise ValueError('prepared source/restoration differs')
         receipt = load(root / 'evidence' / (arm + '-cargo.json'))
-        verify_tests(root, arm, receipt, purpose(args))
+        verify_tests(root, arm, receipt, purpose(args), selected)
     artifact_check(root, value['artifacts'])
     return value
 
@@ -761,9 +931,11 @@ def affinity(root):
                           save(root, 'affinity-finally.json', dict(restored_cpus=allowed if restored else None)))
 
 
-def measure_worker(spec):
+def measure_worker(spec, selected=ADMISSION):
     args = argparse.Namespace(**spec['args'])
-    if purpose(args) != 'stage-a-screen':
+    exact(selection(args), selected, 'measurement selection differs')
+    check_binding(spec, selected)
+    if purpose(args) not in ('stage-a-screen', 'rejection-screen'):
         raise ValueError('ownership proof cannot launch measurements')
     root = Path(args.output)
     budget = Budget(root, MEASURE_SECONDS)
@@ -771,13 +943,14 @@ def measure_worker(spec):
     def verify():
         check_files(root / 'evidence', spec['prepared_hashes'])
         return verify_build(args, root, contract)
-    prepared = verify()
     comparisons, completed, attempted = [], [], []
+    pending = []
     primary = None
     try:
+        prepared = verify()
         with affinity(root):
             arms = {}
-            for row in schedule():
+            for row in schedule(selected):
                 budget.check(force=True)
                 verify()
                 binary = prepared['artifacts'][row['arm']]['exe']['path']
@@ -791,17 +964,33 @@ def measure_worker(spec):
                 facts = validate_wall(value, row['profile'], row['security'])
                 verify()
                 save(root, stem + '.json', dict(selection=row, command=command, facts=facts,
-                                              raw_sha256=hashlib.sha256(raw).hexdigest()))
+                                              raw_sha256=hashlib.sha256(raw).hexdigest(), **binding(selected)))
                 completed.append(row)
                 arms[row['arm']] = value['latencies_ns']
                 if len(arms) == 2:
-                    comparison = compare(arms, row['security'])
+                    if selected == DEDUP:
+                        pending.append((arms, dict(row)))
+                        arms = {}
+                        continue
+                    comparison = compare(arms, row['security'], selected)
                     comparison.update(profile=row['profile'], security=row['security'], round=row['round'])
                     comparisons.append(comparison)
                     save(root, stem + '-comparison.json', comparison)
                     arms = {}
                     if not comparison['passed']:
                         raise ValueError('Stage A gate failed; no further samples or replacement')
+        for arms, row in pending:
+            budget.check(force=True)
+            try:
+                comparison = compare(arms, row['security'], selected)
+            except ValueError as error:
+                comparison = dict(passed=False, uncertain=True, failure=failure(error))
+            comparison.update(profile=row['profile'], security=row['security'], round=row['round'],
+                              **binding(selected))
+            comparisons.append(comparison)
+            save(root, 'sample-' + str(row['index']).zfill(2) + '-comparison.json', comparison)
+        if selected == DEDUP and not all(c['passed'] for c in comparisons):
+            raise ValueError('dedup rejection screen failed; no promotion')
         if len(completed) != 16 or len(comparisons) != 8:
             raise ValueError('incomplete fixed cohort')
         budget.check(force=True)
@@ -818,15 +1007,16 @@ def measure_worker(spec):
                 primary.add_note('measurement source finally: ' + str(error)[:1024])
         report_preserving(primary, 'measurement-result receipt', lambda: save(root, 'result.json', dict(passed=primary is None, completed=completed,
              attempted=attempted, failed_or_incomplete=[r for r in attempted if r not in completed],
-             not_run=schedule()[len(attempted):], comparisons=comparisons,
+             not_run=schedule(selected)[len(attempted):], comparisons=comparisons,
              failure=failure(primary) if primary else None, stage_b='unimplemented; no merge promotion',
              sampled_direct_child_working_set_peak_bytes=budget.observed_child_working_set_peak,
-             scope=plan()['scope'])))
+             scope=plan(selected)['scope'], **binding(selected))))
         if primary is not None and sys.exc_info()[0] is None:
             raise primary
 
 
 def execute(args):
+    selected = selection(args)
     if sys.platform != 'win32' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted':
         raise ValueError('dedicated hosted Windows runner required')
     if shutil.which('agent-resources'):
@@ -834,11 +1024,11 @@ def execute(args):
     if not re.fullmatch('[0-9a-f]{40}', args.expected_suite):
         raise ValueError('immutable expected suite SHA required')
     root = Path(args.output).resolve()
-    if root.parent != Path(os.environ['RUNNER_TEMP']).resolve() or root.name != 'coaptic-admission-wall':
+    if root.parent != Path(os.environ['RUNNER_TEMP']).resolve() or root.name != selected.root:
         raise ValueError('output must be new RUNNER_TEMP/coaptic-admission-wall')
     args.output, args.core = str(root), str(Path(args.core).resolve())
     contract = owner(args, root)
-    source_gate(args.core, args.expected_suite, BASELINE)
+    source_gate(args.core, args.expected_suite, BASELINE, selected)
     observed = preflight(root)
     if args.command in ('build', 'all', 'proof'):
         root.mkdir()
@@ -850,6 +1040,7 @@ def execute(args):
             raise ValueError('one attempt only; prior failure/measurement refuses further work')
         # A partial build/abrupt outer death is not a successfully handed-off build.
         completed_build = load(root / 'evidence/build-complete.json')
+        check_binding(completed_build, selected)
         check_files(root / 'evidence', completed_build['prepared_hashes'])
         verify_build(args, root, contract)
     primary = None
@@ -860,8 +1051,8 @@ def execute(args):
             value = verify_build(args, root, contract)
             env = environment(root, value['tools'])
             pins = {name: ds.digest(root / 'evidence' / name) for name in ('owner.json', 'build.json')}
-            launch(root, 'measure', dict(kind='measure', args=vars(args), prepared_hashes=pins),
-                   env, timeout=MEASURE_OUTER)
+            launch(root, 'measure', dict(kind='measure', args=vars(args), prepared_hashes=pins, **binding(selected)),
+                   env, timeout=MEASURE_OUTER, selected=selected)
             check_files(root / 'evidence', pins)
             exact(load(root / 'evidence/result.json')['passed'], True, 'Stage A did not pass')
     except BaseException as error:
@@ -871,7 +1062,7 @@ def execute(args):
     finally:
         if not getattr(primary, 'cleanup_unresolved', False):
             try:
-                source_gate(args.core, args.expected_suite, BASELINE)
+                source_gate(args.core, args.expected_suite, BASELINE, selected)
                 if (root / 'evidence/build.json').exists():
                     verify_build(args, root, contract)
                 save(root, args.command + '-final-source-check.json', dict(passed=True))
@@ -892,7 +1083,7 @@ def execute(args):
             prepared_hashes={name: ds.digest(root / 'evidence' / name)
                              for name in ('owner.json', 'build.json')}))
     if args.command == 'build':
-        save(root, 'build-complete.json', dict(prepared_hashes={
+        save(root, 'build-complete.json', dict(**binding(selected), prepared_hashes={
              name: ds.digest(root / 'evidence' / name) for name in ('owner.json', 'build.json')}))
 
 
@@ -902,15 +1093,18 @@ def main(argv=None):
         if sys.stdin.buffer.readline(4) != b'go\n':
             raise ValueError('owned worker handshake required')
         spec = load(argv[1])
+        selected = resolve_contract(argv[2] if len(argv) > 2 else 'admission')
+        check_binding(spec, selected)
         if spec['kind'] == 'cargo':
-            cargo_worker(spec)
+            cargo_worker(spec, selected)
         elif spec['kind'] == 'measure':
-            measure_worker(spec)
+            measure_worker(spec, selected)
         else:
             raise ValueError('unknown worker')
         return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=('build', 'measure', 'all', 'proof'))
+    parser.add_argument('--contract', choices=('admission', 'dedup-classified'), default='admission')
     parser.add_argument('--core', required=True)
     parser.add_argument('--expected-suite', required=True)
     parser.add_argument('--output', required=True)
