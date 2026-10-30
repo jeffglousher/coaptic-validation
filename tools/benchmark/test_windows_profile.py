@@ -286,40 +286,51 @@ class Tests(unittest.TestCase):
 
     def test_retain_build_evidence_keeps_replay_pair_and_small_dependency_receipts(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory); (root / 'evidence').mkdir()
-            (root / 'target').mkdir(); (root / 'tool').mkdir()
-            binary, pdb = root / 'target/bench-core.exe', root / 'target/bench-core.pdb'
-            tool = root / 'tool/Coaptic.WindowsStack.dll'
-            files = {binary:b'exe', pdb:b'pdb', tool:b'tool', tool.with_suffix('.deps.json'):b'{"runtimeTarget":{}}',
-                     root / 'tool-packages.lock.json':b'{"version":1}',
-                     root / 'tool/TraceEvent.dll':b'traceevent', root / 'tool/tool.runtimeconfig.json':b'{}'}
-            for path, data in files.items(): path.write_bytes(data)
-            native, receipts = w.retain_build_evidence(root, binary, pdb, tool)
-            for key, original in (('path', binary), ('pdb', pdb)):
-                retained = Path(native[key])
-                self.assertEqual(retained.parent, root / 'evidence/binaries')
-                self.assertEqual(retained.read_bytes(), files[original])
-                self.assertEqual(w.digest(retained), w.digest(original))
-            for key in ('package_lock', 'dependencies', 'files_manifest'):
-                receipt = receipts[key]
-                self.assertTrue(Path(receipt['path']).is_relative_to(root / 'evidence'))
-                self.assertEqual(receipt['sha256'], w.digest(receipt['path']))
-            manifest = w.read_json(receipts['files_manifest']['path'])
-            self.assertEqual({row['path'] for row in manifest['files']},
-                             {path.name for path in files if path.parent == tool.parent})
-            self.assertIn('bit-identical rebuilds are not claimed', manifest['notes'])
-            record = dict(sources={}, native=native,
-                          tool=dict(path=str(tool), sha256=w.digest(tool), retained_evidence=receipts))
-            w.save(root / 'evidence/build.json', record)
-            # Capture validates and uses the retained pair after target output is gone/changed.
-            binary.write_bytes(b'changed'); pdb.write_bytes(b'changed')
-            with patch.object(w, 'source_identity', return_value={}):
-                args = argparse.Namespace(core='core', expected_core='a'*40, expected_suite='b'*40)
-                self.assertEqual(w.verified_build(args, root)['native'], native)
-                Path(receipts['dependencies']['path']).write_bytes(b'changed')
-                with self.assertRaisesRegex(ValueError, 'dependency evidence changed'):
-                    w.verified_build(args, root)
-            self.assertLess(w.owned_size(root / 'evidence'), w.EVIDENCE_LIMIT)
+            self.assert_retained_build_evidence(Path(directory))
+
+    def test_retain_build_evidence_normalizes_owned_root_before_containment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'alias').mkdir()
+            # A lexical alias models the same canonical/noncanonical comparison
+            # as Windows 8.3 temporary paths without requiring 8.3 volume support.
+            self.assert_retained_build_evidence(root / 'alias' / '..')
+
+    def assert_retained_build_evidence(self, root):
+        (root / 'evidence').mkdir()
+        (root / 'target').mkdir(); (root / 'tool').mkdir()
+        binary, pdb = root / 'target/bench-core.exe', root / 'target/bench-core.pdb'
+        tool = root / 'tool/Coaptic.WindowsStack.dll'
+        files = {binary:b'exe', pdb:b'pdb', tool:b'tool', tool.with_suffix('.deps.json'):b'{"runtimeTarget":{}}',
+                 root / 'tool-packages.lock.json':b'{"version":1}',
+                 root / 'tool/TraceEvent.dll':b'traceevent', root / 'tool/tool.runtimeconfig.json':b'{}'}
+        for path, data in files.items(): path.write_bytes(data)
+        native, receipts = w.retain_build_evidence(root, binary, pdb, tool)
+        for key, original in (('path', binary), ('pdb', pdb)):
+            retained = Path(native[key])
+            self.assertEqual(retained.parent, root.resolve() / 'evidence/binaries')
+            self.assertEqual(retained.read_bytes(), files[original])
+            self.assertEqual(w.digest(retained), w.digest(original))
+        for key in ('package_lock', 'dependencies', 'files_manifest'):
+            receipt = receipts[key]
+            self.assertTrue(Path(receipt['path']).is_relative_to(root.resolve() / 'evidence'))
+            self.assertEqual(receipt['sha256'], w.digest(receipt['path']))
+        manifest = w.read_json(receipts['files_manifest']['path'])
+        self.assertEqual({row['path'] for row in manifest['files']},
+                         {path.name for path in files if path.parent == tool.parent})
+        self.assertIn('bit-identical rebuilds are not claimed', manifest['notes'])
+        record = dict(sources={}, native=native,
+                      tool=dict(path=str(tool), sha256=w.digest(tool), retained_evidence=receipts))
+        w.save(root / 'evidence/build.json', record)
+        # Capture validates and uses the retained pair after target output is gone/changed.
+        binary.write_bytes(b'changed'); pdb.write_bytes(b'changed')
+        with patch.object(w, 'source_identity', return_value={}):
+            args = argparse.Namespace(core='core', expected_core='a'*40, expected_suite='b'*40)
+            self.assertEqual(w.verified_build(args, root)['native'], native)
+            Path(receipts['dependencies']['path']).write_bytes(b'changed')
+            with self.assertRaisesRegex(ValueError, 'dependency evidence changed'):
+                w.verified_build(args, root)
+        self.assertLess(w.owned_size(root / 'evidence'), w.EVIDENCE_LIMIT)
 
     def test_capture_refuses_retained_evidence_over_budget_before_processes(self):
         with tempfile.TemporaryDirectory() as directory:

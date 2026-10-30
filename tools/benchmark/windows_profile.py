@@ -332,6 +332,9 @@ def retain_file(root, source, destination, expected=None):
 
 def retain_build_evidence(root, binary, pdb, tool):
     """Keep replay symbols and compact rebuild identities in uploaded evidence."""
+    # Windows temporary roots may use an 8.3 alias; compare canonical paths on
+    # both sides, as retain_file does for each retained artifact.
+    root = Path(root).resolve()
     evidence = root / 'evidence'
     binary, pdb, tool = Path(binary), Path(pdb), Path(tool)
     native = retain_file(root, binary, evidence / 'binaries' / binary.name)
@@ -492,6 +495,7 @@ def stop_collector(child, capture_id, *, cleanup=False, receipt_path=None):
 
 
 def verified_build(args, root):
+    root = Path(root).resolve()
     record = read_json(root / 'evidence/build.json')
     if record['sources'] != source_identity(args.core, args.expected_core, args.expected_suite):
         raise ValueError('prepared sources changed')
