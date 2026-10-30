@@ -326,7 +326,7 @@ fn tx_credit_survives_refusal_and_release_recovers(protected: bool) {
         .unwrap();
     assert!(
         app.engine_mut()
-            .dedup_entry_ref(row)
+            .dedup_entry(row)
             .unwrap()
             .tx_pin()
             .is_none()

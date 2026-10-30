@@ -115,3 +115,14 @@ declared census, portable refusal coverage and this plan. Production fixture
 behavior, core arms, Stage A plan/statistics and all process/resource limits stay
 unchanged. The original dedup screen at immutable suite b0d4662 remains rejected;
 no new dedup screen, timing process or replacement sample is authorized here.
+
+## Retained expanded-cohort compile failure
+
+PR check run 41121946433, job 124289889389, at cca98fbb ran 689 portable
+tests successfully (17 skipped), then failed native test compilation with E0599 at the
+new `dedup_entry_ref` call. That accessor exists on the two admission pins but
+is absent from the core checked by ordinary CI. The correction uses the
+existing by-value `dedup_entry` accessor for the same test-only TX-pin assertion.
+It does not change core code or weaken the ownership check. The normalized
+pressure source hash is rebound. New TX execution remains unrun; no two-arm
+proof or timing process was dispatched from the failed commit.
