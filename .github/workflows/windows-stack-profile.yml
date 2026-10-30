@@ -10,6 +10,10 @@ on:
         description: Export only the pinned original ETL; no recording or native build
         default: false
         type: boolean
+      live:
+        description: Run the separately frozen live C1 server-thread screen
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       core_sha:
@@ -19,6 +23,10 @@ on:
         default: 8af71fe4aa73b3bb76a921a836a1a9647d75f361
       replay:
         description: Export only the pinned original ETL; no recording or native build
+        default: false
+        type: boolean
+      live:
+        description: Run the separately frozen live C1 server-thread screen
         default: false
         type: boolean
 
@@ -34,13 +42,15 @@ jobs:
       contents: read
       actions: read
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: ${{ inputs.live && 40 || 30 }}
     env:
       CORE_SHA: ${{ inputs.core_sha }}
       SUITE_SHA: ${{ github.sha }}
       PYTHONDONTWRITEBYTECODE: '1'
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       DOTNET_NOLOGO: '1'
+      LIVE_PROFILE: ${{ inputs.live }}
+      REPLAY_PROFILE: ${{ inputs.replay }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -50,6 +60,7 @@ jobs:
         run: |
           if ($env:CORE_SHA -cnotmatch '^[0-9a-f]{40}$') { throw 'Expected immutable core SHA' }
           if ($env:SUITE_SHA -cnotmatch '^[0-9a-f]{40}$') { throw 'Expected immutable suite SHA' }
+          if ($env:LIVE_PROFILE -eq 'true' -and $env:REPLAY_PROFILE -eq 'true') { throw 'Live workload and pinned offline replay are separate modes' }
           if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'Dedicated hosted VM required' }
           $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
           if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Elevated hosted token required' }
@@ -73,7 +84,7 @@ jobs:
         shell: pwsh
         run: |
           Push-Location tools/benchmark
-          python -B -m unittest -v test_stack_profile test_perf_prerequisite test_windows_profile test_windows_replay
+          python -B -m unittest -v test_stack_profile test_perf_prerequisite test_windows_profile test_windows_live_profile test_windows_replay
           if ($LASTEXITCODE) { throw 'Portable checks failed' }
           Pop-Location
       - name: Build and collect fixed serial cohorts
@@ -96,7 +107,8 @@ jobs:
               Remove-Item -LiteralPath "Env:$name"
             }
           }
-          python -B tools/benchmark/windows_profile.py all --core coaptic --expected-core $env:CORE_SHA --expected-suite $env:SUITE_SHA --output "$env:RUNNER_TEMP/coaptic-stack-profile"
+          $workload = if ($env:LIVE_PROFILE -eq 'true') { 'live-c1' } else { 'batch' }
+          python -B tools/benchmark/windows_profile.py all --core coaptic --expected-core $env:CORE_SHA --expected-suite $env:SUITE_SHA --workload $workload --output "$env:RUNNER_TEMP/coaptic-stack-profile"
           if ($LASTEXITCODE) { throw 'Profiling refused or failed; preserve receipt' }
       - name: Replay only the preserved original ETL offline
         if: ${{ inputs.replay }}

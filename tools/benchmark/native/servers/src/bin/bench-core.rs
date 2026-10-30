@@ -12,6 +12,9 @@ use std::hint::black_box;
 use std::io::{Read, Write};
 use std::time::Instant;
 
+#[path = "bench_core/live_c1.rs"]
+mod live_c1;
+
 const BODY: [u8; 64] = [0x5a; 64];
 const SMALL_BODY: [u8; 32] = [0x5a; 32];
 const PEER: Endpoint = Endpoint::v4([127, 0, 0, 1], 30000);
@@ -61,6 +64,7 @@ enum ProbeMode {
     Wall,
     SmallDevice,
     BatchCpu,
+    LiveC1,
     Service { allocated: bool, payload: usize },
 }
 
@@ -76,6 +80,19 @@ fn parse_args(args: &[String]) -> Result<Config<'_>, Failure> {
         return Err(USAGE.into());
     }
     let operations = args[1].parse::<usize>().map_err(|_| USAGE)?;
+    // A separate admission path: all historical modes retain their old bounds.
+    if args.len() == 4 && args[3] == "--live-c1" {
+        if operations != live_c1::OPERATIONS
+            || !matches!(args[2].as_str(), "unprotected" | "oscore")
+        {
+            return Err("live C1 requires: bench-core 1000000 unprotected|oscore --live-c1".into());
+        }
+        return Ok(Config {
+            operations,
+            security: &args[2],
+            mode: ProbeMode::LiveC1,
+        });
+    }
     if !(1..=60000).contains(&operations) {
         return Err("operation limit (1..=60000)".into());
     }
@@ -219,7 +236,9 @@ fn main() -> Result<(), Failure> {
         )
     } else {
         let mut app = default_app(server_context)?;
-        if config.mode == ProbeMode::BatchCpu {
+        if config.mode == ProbeMode::LiveC1 {
+            live_c1::run(&mut app, client_context, config.security)
+        } else if config.mode == ProbeMode::BatchCpu {
             batch_run(&mut app, client_context, config.security)
         } else {
             wall_run(
@@ -1171,7 +1190,17 @@ mod batch_tests {
         }
     }
 
-    fn fixture(protected: bool) -> (CoreApp, Option<coaptic::oscore::SecurityContext>) {
+    // Shared by the live sibling; there remains exactly one global allocator.
+    pub(super) fn observe_allocations<T>(f: impl FnOnce() -> T) -> (T, usize) {
+        ALLOCATIONS.with(|count| count.set(Some(0)));
+        let guard = Counting;
+        let result = f();
+        let count = ALLOCATIONS.with(Cell::get).unwrap();
+        drop(guard);
+        (result, count)
+    }
+
+    pub(super) fn fixture(protected: bool) -> (CoreApp, Option<coaptic::oscore::SecurityContext>) {
         let derive = |sender_id, recipient_id| {
             coaptic::oscore::SecurityContext::derive(coaptic::oscore::DeriveParams {
                 master_secret: &[0x37; 16],

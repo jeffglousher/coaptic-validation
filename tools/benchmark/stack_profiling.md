@@ -213,6 +213,44 @@ The profile identity names the original capture tool; the replay build receipt
 identifies the current exporter. Browser checks cover zoom, filtering and reset.
 The other original 15 captures and two controls remain not run.
 
+## Separate live C1 server-thread screen
+
+The [live C1 plan](windows_live_c1_plan.md) defines a separate capability workload
+for collecting more server App samples. It preserves the old batch workload,
+cohort plan and historical evidence. Source integration and native validation
+must pass before any live recording.
+
+```
+gh workflow run ci.yml --repo jeffglousher/coaptic-validation --ref REVIEWED_BRANCH -f stack_profile=true -f stack_profile_live=true -f library_revision=FULL_CORE_SHA
+```
+
+This selects exactly four captures and two controls in the plan's serial order,
+each with fresh process/key material. One million fresh requests follow 128
+warmups. The main server thread runs the unchanged Default allocated App; one
+client helper prepares and authenticates requests through a single bounded
+handoff slot. The helper remains alive until the collector stops. Its crypto
+samples are excluded by the explicitly reported server TID, while scheduling
+and synchronization still affect the fixture. Retain those server-thread paths
+and unresolved frames alongside App ancestry.
+
+The live fixture uses virtual `index * 8 ms` protocol time to permit safe MID
+reuse across wraps. The existing batch uses real monotonic elapsed time. The
+live workload is socket-free protocol progress, not a socket traffic rate or a
+device measurement. It is neither a comparison with the old batch nor a CPU
+improvement claim. Runtime and sample sufficiency remain unproven.
+
+The work deadline is 90 seconds, the collector deadline 120 seconds, the live
+capture worker deadline 1,000 seconds and outer containment 1,060 seconds. Only
+this new workload uses a 40-minute hosted job. All old batch deadlines remain
+unchanged. Failure retains actual counters; a completed prefix cannot become a
+successful smaller cohort. The existing 200 App-sample floor, quality refusals
+and no-pooling rule remain in force. Live and pinned offline replay are mutually
+exclusive; no extra recording is performed by the replay path.
+Prepared builds and ownership receipts bind the exact workload and cohort plan;
+`build` and `capture` must use the same `--workload` selection. A mismatch refuses
+before tooling or native capture launch. Live preparation records the focused
+native-test census and log hash; a zero-test filter is refused.
+
 ## Linux and the Waveshare device
 
 The existing Linux runner produces flat reports, inline caller trees and raw
