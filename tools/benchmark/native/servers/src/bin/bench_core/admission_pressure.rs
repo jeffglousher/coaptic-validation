@@ -1,9 +1,11 @@
 //! Public-App ownership proofs before admitting pressure timing samples.
 //!
-//! These tests do not measure performance. The original three cases passed on
-//! both pinned arms at source 54ce45a in run 41123960432/1. Only the protected RX
-//! case is UNRUN. Observe cancellation, complete Block2 and Stage B pressure /
-//! continuation timing qualification remain outstanding.
+//! These tests do not measure performance. The original four RX/TX cases passed
+//! both pinned arms at C5 in run 41129635329/1. The two Observe cancellation
+//! and two notification-backed Block2 cases are UNRUN. Ordinary borrowed Block2
+//! selects directly from handler bytes; the new cases explicitly use App.notify
+//! snapshot ownership after a real Observe registration.
+//! Stage B pressure / continuation timing qualification remains outstanding.
 use super::*;
 use coaptic::storage::Storage;
 use std::sync::Mutex;
@@ -11,6 +13,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 static HANDLER_CALLS: AtomicUsize = AtomicUsize::new(0);
 static FIXTURE_LOCK: Mutex<()> = Mutex::new(());
+
+fn fixture_lock() -> std::sync::MutexGuard<'static, ()> {
+    // Only the counter is shared; every case resets it and creates a fresh App.
+    // Preserve an earlier test's failure without masking later cases as poison.
+    FIXTURE_LOCK
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
 
 fn counted_representation(_: Request<'_>) -> Response<'static> {
     HANDLER_CALLS.fetch_add(1, Ordering::SeqCst);
@@ -21,7 +31,7 @@ fn counted_representation(_: Request<'_>) -> Response<'static> {
 
 #[test]
 fn rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected() {
-    let _guard = FIXTURE_LOCK.lock().unwrap();
+    let _guard = fixture_lock();
     HANDLER_CALLS.store(0, Ordering::SeqCst);
     // The resource-based builder already retains complete client responses.
     let mut app = App::with_resources(coaptic::resources::SmallDevice::new())
@@ -169,7 +179,7 @@ fn rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected() {
 
 #[test]
 fn rx_credit_survives_incoming_refusal_and_collection_recovers_oscore() {
-    let _guard = FIXTURE_LOCK.lock().unwrap();
+    let _guard = fixture_lock();
     HANDLER_CALLS.store(0, Ordering::SeqCst);
     let derive = |sender_id, recipient_id| {
         coaptic::oscore::SecurityContext::derive(coaptic::oscore::DeriveParams {
@@ -415,13 +425,13 @@ fn rx_credit_survives_incoming_refusal_and_collection_recovers_oscore() {
 
 #[test]
 fn tx_credit_survives_refusal_and_release_recovers_unprotected() {
-    let _guard = FIXTURE_LOCK.lock().unwrap();
+    let _guard = fixture_lock();
     tx_credit_survives_refusal_and_release_recovers(false);
 }
 
 #[test]
 fn tx_credit_survives_refusal_and_release_recovers_oscore() {
-    let _guard = FIXTURE_LOCK.lock().unwrap();
+    let _guard = fixture_lock();
     tx_credit_survives_refusal_and_release_recovers(true);
 }
 
@@ -641,4 +651,802 @@ fn tx_credit_survives_refusal_and_release_recovers(protected: bool) {
         before.admission_refusal_unsent
     );
     assert!(app.transport().output_len.is_none());
+}
+
+fn counted_observe_representation(_: Request<'_>) -> Response<'static> {
+    HANDLER_CALLS.fetch_add(1, Ordering::SeqCst);
+    Response::content(&SMALL_BODY)
+        .content_format(ContentFormat::OCTET_STREAM)
+        .etag(b"fixture")
+        .observe(0)
+}
+
+#[test]
+fn observe_cancel_under_tx_pressure_releases_relation_and_recovers_unprotected() {
+    let _guard = fixture_lock();
+    observe_cancel_under_tx_pressure_releases_relation_and_recovers(false);
+}
+
+#[test]
+fn observe_cancel_under_tx_pressure_releases_relation_and_recovers_oscore() {
+    let _guard = fixture_lock();
+    observe_cancel_under_tx_pressure_releases_relation_and_recovers(true);
+}
+
+fn observe_cancel_under_tx_pressure_releases_relation_and_recovers(protected: bool) {
+    // Both wrappers hold FIXTURE_LOCK; this helper must not lock again.
+    HANDLER_CALLS.store(0, Ordering::SeqCst);
+    let derive = |sender_id, recipient_id| {
+        coaptic::oscore::SecurityContext::derive(coaptic::oscore::DeriveParams {
+            master_secret: &[0x37; 16],
+            master_salt: &[0x51; 8],
+            sender_id,
+            recipient_id,
+            id_context: &[],
+        })
+        .unwrap()
+    };
+    let resources = coaptic::resources::SmallDevice::new();
+    assert_eq!(resources.route_capacity(), 4);
+    assert_eq!(resources.client_capacity(), 1);
+    assert_eq!(resources.deferred_capacity(), 0);
+    assert_eq!(resources.association_capacity(), 1);
+    assert_eq!(resources.security_request_capacity(), 4);
+    let builder = App::with_resources(resources)
+        .randomness(|bytes| getrandom::fill(bytes).is_ok())
+        .route("bench", get(counted_observe_representation));
+    let (builder, mut peer) = if protected {
+        (builder.oscore(derive(&[1], &[])), Some(derive(&[], &[1])))
+    } else {
+        (builder.allow_unprotected(), None)
+    };
+    let mut app = builder.bind(core_io()).unwrap();
+    let capacities = app.engine_mut().capacities();
+    assert_eq!(capacities.rx_datagram_slots, 2);
+    assert_eq!(capacities.tx_datagram_slots, 2);
+    assert_eq!(capacities.observe_entries, 2);
+    assert_eq!(capacities.rx_body_slots, None);
+    assert_eq!(capacities.tx_body_slots, None);
+    assert_eq!(capacities.rx_body_bytes, None);
+    assert_eq!(capacities.tx_body_bytes, None);
+    assert_eq!(SMALL_BODY.len(), 32);
+    // Test-only scratch/snapshot buffers are separate from App storage.
+    // No access guard or pin spans a mutable poll.
+    let mut opened = [0; WIRE];
+    let mut sentinel_bytes = [0; WIRE];
+    // Fixed security_capacity + 1 cycles exercise binding/row reclamation.
+    // Fifteen request/response exchanges (30 internal datagrams), distinct
+    // MIDs/tokens, monotonic virtual polls 1..=15.
+    // One continuous context pair; no history, key, sequence or table resets.
+    for cycle in 0..5_u16 {
+        let base = 44_000 + cycle * 3;
+        let token = Token::new(&u64::from(base).to_be_bytes()).unwrap();
+        let key = coaptic::storage::ObserveKey::new(token, PEER);
+        // Each cycle registers, cancels under pressure, then recovers via GET.
+        let mut held = None;
+        let mut held_len = 0;
+        let mut before = app.metrics();
+        for phase in 0..3_u16 {
+            let mid = MessageId::new(base + phase);
+            let request_token = if phase == 2 {
+                Token::new(&u64::from(base + 2).to_be_bytes()).unwrap()
+            } else {
+                token
+            };
+            let observe_options = [
+                if phase == 0 {
+                    Opt::observe_register()
+                } else {
+                    Opt::observe_deregister()
+                },
+                Opt::uri_path("bench"),
+            ];
+            let ordinary_options = [Opt::uri_path("bench")];
+            let options = if phase == 2 {
+                &ordinary_options[..]
+            } else {
+                &observe_options[..]
+            };
+            let request = Message::con(Code::GET, mid, request_token).with_options(options);
+            let io = app.transport_mut();
+            io.input_len = Some(match peer.as_mut() {
+                Some(context) => context.protect_request(&request, &mut io.input).unwrap(),
+                None => request.encode(&mut io.input).unwrap(),
+            });
+            app.poll(u64::from(cycle * 3 + phase + 1)).unwrap();
+            assert!(app.transport().input_len.is_none());
+            {
+                let io = app.transport_mut();
+                let n = io.output_len.take().unwrap();
+                let wire = decode(&io.output[..n]).unwrap();
+                assert_eq!(wire.oscore().is_some(), protected);
+                let reply = match peer.as_mut() {
+                    Some(context) => {
+                        let binding = context.take(request_token).unwrap();
+                        context
+                            .unprotect_response(&wire, binding, &mut opened)
+                            .unwrap()
+                    }
+                    None => wire,
+                };
+                assert_eq!(reply.ty(), Type::Acknowledgement);
+                assert_eq!(reply.message_id(), mid);
+                assert_eq!(reply.token(), request_token);
+                if phase == 1 {
+                    assert_eq!(reply.code(), Code::SERVICE_UNAVAILABLE);
+                    assert!(reply.observe().is_none());
+                } else {
+                    verify_reply(&reply, mid, request_token, &SMALL_BODY).unwrap();
+                    assert_eq!(reply.observe(), if phase == 0 { Some(Ok(0)) } else { None });
+                }
+            }
+            assert_eq!(app.engine_mut().rx_occupied(), 0);
+            assert!(app.transport().output_len.is_none());
+            let row = app
+                .engine_mut()
+                .lookup_dedup(coaptic::storage::DedupKey::new(mid, PEER))
+                .unwrap();
+            assert!(
+                app.engine_mut()
+                    .dedup_entry(row)
+                    .unwrap()
+                    .tx_pin()
+                    .is_none()
+            );
+            assert_eq!(
+                HANDLER_CALLS.load(Ordering::SeqCst),
+                usize::from(cycle) * 2 + if phase == 2 { 2 } else { 1 }
+            );
+            if phase == 0 {
+                let relation = app.engine_mut().lookup_observe(key).unwrap();
+                let interest = app.engine_mut().observe_interest(relation).unwrap();
+                assert_eq!(interest.key(), key);
+                assert!(!interest.resource().is_none());
+                assert_eq!(interest.content_format(), Some(ContentFormat::OCTET_STREAM));
+                assert_eq!(interest.seq(), 0);
+                assert_eq!(app.engine_mut().storage_mut().observe().occupied_count(), 1);
+                // No initial cache pin can be evicted to manufacture TX credit.
+                assert_eq!(app.engine_mut().tx_occupied(), 0);
+                let id = app.engine_mut().acquire_tx().unwrap();
+                let sentinel =
+                    Message::new(Type::NonConfirmable, Code::CONTENT, MessageId::new(43_999))
+                        .with_token(Token::new(b"held").unwrap())
+                        .with_payload(b"fixture-owned-tx");
+                app.engine_mut().encode_tx(id, &sentinel).unwrap();
+                app.engine_mut().set_tx_endpoint(id, PEER).unwrap();
+                held_len = {
+                    let bytes = app.engine_mut().access_tx(id).unwrap();
+                    sentinel_bytes[..bytes.len()].copy_from_slice(&bytes);
+                    bytes.len()
+                };
+                assert!(!app.engine_mut().tx_is_pinned(id));
+                assert!(app.engine_mut().pending_con(id).is_none());
+                assert_eq!(app.engine_mut().tx_occupied(), 1);
+                held = Some(id);
+                before = app.metrics();
+            } else {
+                assert!(app.engine_mut().lookup_observe(key).is_none());
+                assert_eq!(app.engine_mut().storage_mut().observe().occupied_count(), 0);
+                assert_eq!(
+                    app.metrics().admission_tx_refused,
+                    before.admission_tx_refused + 1
+                );
+                assert_eq!(
+                    app.metrics().admission_rx_refused,
+                    before.admission_rx_refused
+                );
+                assert_eq!(
+                    app.metrics().admission_refusal_sent,
+                    before.admission_refusal_sent + 1
+                );
+                assert_eq!(
+                    app.metrics().admission_refusal_unsent,
+                    before.admission_refusal_unsent
+                );
+                if phase == 1 {
+                    let id = held.take().unwrap();
+                    assert_eq!(app.engine_mut().tx_occupied(), 1);
+                    assert!(app.engine_mut().storage_mut().tx_datagram().is_occupied(id));
+                    assert!(!app.engine_mut().tx_is_pinned(id));
+                    assert!(app.engine_mut().pending_con(id).is_none());
+                    assert_eq!(app.engine_mut().tx_endpoint(id), Some(PEER));
+                    {
+                        let bytes = app.engine_mut().access_tx(id).unwrap();
+                        assert_eq!(&*bytes, &sentinel_bytes[..held_len]);
+                    }
+                    // Only the fixture's reservation is released, exactly once.
+                    app.engine_mut().release_tx(id).unwrap();
+                    assert!(!app.engine_mut().storage_mut().tx_datagram().is_occupied(id));
+                    assert!(!app.engine_mut().tx_is_pinned(id));
+                }
+                assert_eq!(app.engine_mut().tx_occupied(), 0);
+            }
+        }
+        assert!(held.is_none());
+    }
+    assert_eq!(HANDLER_CALLS.load(Ordering::SeqCst), 10);
+    assert_eq!(app.metrics().admission_tx_refused, 5);
+    assert_eq!(app.metrics().admission_rx_refused, 0);
+    assert_eq!(app.metrics().admission_refusal_sent, 5);
+    assert_eq!(app.metrics().admission_refusal_unsent, 0);
+}
+
+// Test-only nonuniform representation: equal-sized blocks cannot hide an offset
+// error. Production BODY and default_app remain unchanged.
+const NOTIFICATION_BODY: [u8; 64] =
+    *b"0123456789abcdefABCDEFGHIJKLMNOPqrstuvwxyz#$%^&*ZYXWVUTSRQPONMLK";
+
+fn counted_notification_representation(_: Request<'_>) -> Response<'static> {
+    HANDLER_CALLS.fetch_add(1, Ordering::SeqCst);
+    notification_representation().observe(0)
+}
+
+fn notification_representation() -> Response<'static> {
+    Response::content(&NOTIFICATION_BODY)
+        .content_format(ContentFormat::OCTET_STREAM)
+        .etag(b"notify64")
+}
+
+#[test]
+fn block2_notification_under_rx_pressure_preserves_body_and_completes_unprotected() {
+    let _guard = fixture_lock();
+    block2_notification_under_rx_pressure_preserves_body_and_completes(false);
+}
+
+#[test]
+fn block2_notification_under_rx_pressure_preserves_body_and_completes_oscore() {
+    let _guard = fixture_lock();
+    block2_notification_under_rx_pressure_preserves_body_and_completes(true);
+}
+
+fn block2_notification_under_rx_pressure_preserves_body_and_completes(protected: bool) {
+    use coaptic::storage::SlotId;
+    // Wrappers own FIXTURE_LOCK. One continuous security pair serves both
+    // directions, notification, downloads and recovery; no resets or rebinding.
+    HANDLER_CALLS.store(0, Ordering::SeqCst);
+    let derive = |sender_id, recipient_id| {
+        coaptic::oscore::SecurityContext::derive(coaptic::oscore::DeriveParams {
+            master_secret: &[0x37; 16],
+            master_salt: &[0x51; 8],
+            sender_id,
+            recipient_id,
+            id_context: &[],
+        })
+        .unwrap()
+    };
+    // Explicit test-only client retention option, with the production default
+    // allocated capacities: route1, Calls4, deferred0, association1/security4,
+    // RX/TX4x1472, dedup8, Observe4, RXbody1x1024, TXbody2x1024.
+    // The two body slots permit snapshot replacement. Pool sidecars belong to
+    // these capacities, not additional payload buffers. Extra fixture scratch:
+    // one WIRE auth buffer, one 128B postponed wire reply, three 128B exact RX
+    // snapshots plus lengths/IDs/metadata, one copied BlockTransfer sidecar,
+    // 64B assembly and 32B collection.
+    // This is neither a whole-memory nor a stack measurement.
+    let builder = App::builder()
+        .full_responses()
+        .routes::<1>()
+        .block_wise::<true>()
+        .randomness(|bytes| getrandom::fill(bytes).is_ok())
+        .route("bench", get(counted_notification_representation));
+    let (builder, mut peer) = if protected {
+        (builder.oscore(derive(&[1], &[])), Some(derive(&[], &[1])))
+    } else {
+        (builder.allow_unprotected(), None)
+    };
+    let mut app = builder
+        .bind_alloc(
+            core_io(),
+            Capacities {
+                rx_datagram_slots: 4,
+                rx_datagram_bytes: 1472,
+                tx_datagram_slots: 4,
+                tx_datagram_bytes: 1472,
+                dedup_entries: 8,
+                observe_entries: 4,
+                rx_body_slots: Some(1),
+                rx_body_bytes: Some(1024),
+                tx_body_slots: Some(2),
+                tx_body_bytes: Some(1024),
+            },
+        )
+        .unwrap();
+    let capacities = app.engine_mut().capacities();
+    assert_eq!(capacities.rx_datagram_slots, 4);
+    assert_eq!(capacities.tx_datagram_slots, 4);
+    assert_eq!(capacities.rx_body_slots, Some(1));
+    assert_eq!(capacities.tx_body_slots, Some(2));
+    assert_eq!(capacities.rx_body_bytes, Some(1024));
+    assert_eq!(capacities.tx_body_bytes, Some(1024));
+    assert_eq!(capacities.dedup_entries, 8);
+    assert_eq!(capacities.observe_entries, 4);
+    // Public inventory only; every temporary reservation is returned before
+    // protocol work. IDs below are locators, rebound to actual App-owned bytes.
+    let rx_ids = {
+        let pool = app.engine_mut().storage_mut().rx_datagram();
+        assert_eq!(pool.occupied_count(), 0);
+        let cursor = pool.cursor();
+        let ids: [SlotId; 4] = std::array::from_fn(|_| pool.acquire().unwrap());
+        for id in ids {
+            pool.release(id).unwrap();
+        }
+        assert_eq!(pool.occupied_count(), 0);
+        assert_eq!(pool.cursor(), cursor);
+        ids
+    };
+    let body_ids = {
+        let pool = app.engine_mut().storage_mut().tx_body().unwrap();
+        assert_eq!(pool.occupied_count(), 0);
+        let cursor = pool.cursor();
+        let ids: [SlotId; 2] = std::array::from_fn(|_| pool.acquire().unwrap());
+        for id in ids {
+            pool.release(id).unwrap();
+        }
+        assert_eq!(pool.occupied_count(), 0);
+        assert_eq!(pool.cursor(), cursor);
+        ids
+    };
+    let mut opened = [0; WIRE];
+    let mut postponed = [0; 128];
+    let mut postponed_len = 0;
+    let mut calls = [None; 3];
+    let mut mids = [MessageId::new(0); 3];
+    let mut tokens = [Token::EMPTY; 3];
+    let mut held = [None; 3];
+    let mut snapshots = [[0; 128]; 3];
+    let mut lengths = [0; 3];
+    let payloads: [&[u8]; 3] = [b"retained-one", b"retained-two", b"retained-three"];
+    macro_rules! bind_reply {
+        ($i:expr) => {{
+            let i = $i;
+            let mut found = rx_ids.into_iter().filter(|id| {
+                app.engine_mut()
+                    .storage_mut()
+                    .rx_datagram()
+                    .is_occupied(*id)
+                    && !held.contains(&Some(*id))
+            });
+            let id = found.next().unwrap();
+            assert!(found.next().is_none());
+            held[i] = Some(id);
+            assert!(!app.engine_mut().rx_is_pinned(id));
+            assert_eq!(app.engine_mut().rx_endpoint(id), Some(PEER));
+            let reply = app.engine_mut().decode_rx(id).unwrap();
+            assert_eq!(reply.message_id(), mids[i]);
+            assert_eq!(reply.token(), tokens[i]);
+            assert_eq!(
+                reply.ty(),
+                if i == 2 {
+                    Type::NonConfirmable
+                } else {
+                    Type::Acknowledgement
+                }
+            );
+            assert_eq!(reply.code(), Code::CONTENT);
+            assert_eq!(
+                reply.content_format(),
+                Some(Ok(ContentFormat::OCTET_STREAM))
+            );
+            assert_eq!(reply.etag().next(), Some(&b"call"[..]));
+            assert_eq!(reply.payload(), payloads[i]);
+            let bytes = app.engine_mut().access_rx(id).unwrap();
+            assert!(bytes.len() <= snapshots[i].len());
+            lengths[i] = bytes.len();
+            snapshots[i][..bytes.len()].copy_from_slice(&bytes);
+        }};
+    }
+    macro_rules! retained_unchanged {
+        ($count:expr) => {{
+            assert_eq!(app.engine_mut().rx_occupied(), $count);
+            for i in 0..$count {
+                let id = held[i].unwrap();
+                assert!(app.engine_mut().storage_mut().rx_datagram().is_occupied(id));
+                assert!(!app.engine_mut().rx_is_pinned(id));
+                assert_eq!(app.engine_mut().rx_endpoint(id), Some(PEER));
+                let bytes = app.engine_mut().access_rx(id).unwrap();
+                assert_eq!(&*bytes, &snapshots[i][..lengths[i]]);
+            }
+        }};
+    }
+    for i in 0..3 {
+        // Third setup Call is deliberately NON: leaving a CON to this same
+        // physical endpoint pending would block notify under NSTART. Target
+        // registration and all continuation GETs below remain CON.
+        let outgoing = app.get("retained").to(PEER);
+        let call = if i == 2 {
+            outgoing.non().send(4)
+        } else {
+            outgoing.send((i * 2) as u64)
+        }
+        .unwrap();
+        calls[i] = Some(call);
+        let io = app.transport_mut();
+        let n = io.output_len.take().unwrap();
+        let wire = decode(&io.output[..n]).unwrap();
+        assert_eq!(wire.oscore().is_some(), protected);
+        assert_eq!(wire.code(), if protected { Code::POST } else { Code::GET });
+        assert_eq!(
+            wire.ty(),
+            if i == 2 {
+                Type::NonConfirmable
+            } else {
+                Type::Confirmable
+            }
+        );
+        let (request, binding) = match peer.as_mut() {
+            Some(context) => {
+                let (request, binding) = context.unprotect_request(&wire, &mut opened).unwrap();
+                (request, Some(binding))
+            }
+            None => (wire, None),
+        };
+        assert_eq!(request.code(), Code::GET);
+        tokens[i] = request.token();
+        mids[i] = if i == 2 {
+            // A NON response has a fresh peer MID, not an echo requirement.
+            MessageId::new(if request.message_id() == MessageId::new(47_999) {
+                47_998
+            } else {
+                47_999
+            })
+        } else {
+            request.message_id()
+        };
+        let format = ContentFormat::OCTET_STREAM.encode();
+        let options = [Opt::etag(b"call"), Opt::content_format(&format)];
+        let response = Message::new(
+            if i == 2 {
+                Type::NonConfirmable
+            } else {
+                Type::Acknowledgement
+            },
+            Code::CONTENT,
+            mids[i],
+        )
+        .with_token(tokens[i])
+        .with_options(&options)
+        .with_payload(payloads[i]);
+        let n = match peer.as_mut() {
+            Some(context) => context
+                .protect_response(&response, binding.unwrap(), &mut io.input)
+                .unwrap(),
+            None => response.encode(&mut io.input).unwrap(),
+        };
+        let outer = decode(&io.input[..n]).unwrap();
+        assert_eq!(outer.message_id(), mids[i]);
+        assert_eq!(outer.token(), tokens[i]);
+        assert_eq!(
+            outer.ty(),
+            if i == 2 {
+                Type::NonConfirmable
+            } else {
+                Type::Acknowledgement
+            }
+        );
+        assert_eq!(
+            outer.code(),
+            if protected {
+                Code::CHANGED
+            } else {
+                Code::CONTENT
+            }
+        );
+        assert_eq!(outer.oscore().is_some(), protected);
+        if i == 2 {
+            postponed_len = n;
+            postponed[..n].copy_from_slice(&io.input[..n]);
+        } else {
+            io.input_len = Some(n);
+            app.poll((i * 2 + 1) as u64).unwrap();
+            assert!(app.transport().input_len.is_none());
+            assert!(app.transport().output_len.is_none());
+            bind_reply!(i);
+            retained_unchanged!(i + 1);
+        }
+    }
+    assert_eq!(HANDLER_CALLS.load(Ordering::SeqCst), 0);
+    let token = Token::new(b"notify").unwrap();
+    assert!(!tokens.contains(&token));
+    let mut observing_binding = None;
+    let mut assembly = [0; 64];
+    let mut body = None;
+    let mut body_snapshot = None;
+    let before = app.metrics();
+    // Stage0 registers, stage1 explicitly exercises the public adaptive NON
+    // notification, stages2..4 fetch notification blocks1..3, stage5 recovers.
+    for stage in 0..6_u16 {
+        let num = if stage <= 1 { 0 } else { u32::from(stage - 1) };
+        let mid = MessageId::new(48_000 + stage);
+        let request_token = if stage == 5 {
+            Token::new(b"recover").unwrap()
+        } else {
+            token
+        };
+        if stage == 1 {
+            assert_eq!(
+                app.notify(6, &["bench"], notification_representation())
+                    .unwrap(),
+                1
+            );
+        } else {
+            let block = coaptic::message::BlockValue::new(num, false, 0)
+                .unwrap()
+                .encode();
+            let registration = [
+                Opt::observe_register(),
+                Opt::uri_path("bench"),
+                Opt::block2(&block),
+            ];
+            let continuation = [Opt::uri_path("bench"), Opt::block2(&block)];
+            let recovery = [Opt::uri_path("bench")];
+            let options = if stage == 0 {
+                &registration[..]
+            } else if stage == 5 {
+                &recovery[..]
+            } else {
+                &continuation[..]
+            };
+            let request = Message::con(Code::GET, mid, request_token).with_options(options);
+            let io = app.transport_mut();
+            io.input_len = Some(match peer.as_mut() {
+                Some(context) => context.protect_request(&request, &mut io.input).unwrap(),
+                None => request.encode(&mut io.input).unwrap(),
+            });
+            app.poll(if stage == 0 { 5 } else { u64::from(stage) + 6 })
+                .unwrap();
+            assert!(app.transport().input_len.is_none());
+        }
+        {
+            let io = app.transport_mut();
+            let n = io.output_len.take().unwrap();
+            let wire = decode(&io.output[..n]).unwrap();
+            assert_eq!(wire.oscore().is_some(), protected);
+            assert_eq!(
+                wire.code(),
+                if protected && stage >= 2 {
+                    Code::CHANGED
+                } else {
+                    Code::CONTENT
+                }
+            );
+            assert_eq!(
+                wire.ty(),
+                if stage == 1 {
+                    Type::NonConfirmable
+                } else {
+                    Type::Acknowledgement
+                }
+            );
+            if stage != 1 {
+                assert_eq!(wire.message_id(), mid);
+            }
+            assert_eq!(wire.token(), request_token);
+            let reply = match peer.as_mut() {
+                Some(context) => {
+                    let binding = if stage == 1 {
+                        // RequestRef is publicly Copy/Clone on all three pins.
+                        // Notification authenticates against the registration,
+                        // never a guessed followup or a second trial binding.
+                        observing_binding.unwrap()
+                    } else {
+                        let binding = context.take(request_token).unwrap();
+                        if stage == 0 {
+                            observing_binding = Some(binding);
+                        }
+                        binding
+                    };
+                    context
+                        .unprotect_response(&wire, binding, &mut opened)
+                        .unwrap()
+                }
+                None => wire,
+            };
+            assert_eq!(reply.ty(), wire.ty());
+            assert_eq!(reply.message_id(), wire.message_id());
+            assert_eq!(reply.token(), request_token);
+            assert_eq!(reply.code(), Code::CONTENT);
+            assert_eq!(
+                reply.content_format(),
+                Some(Ok(ContentFormat::OCTET_STREAM))
+            );
+            let mut tags = reply.etag();
+            assert_eq!(tags.next(), Some(&b"notify64"[..]));
+            assert!(tags.next().is_none());
+            if stage == 5 {
+                assert!(reply.block2().is_none());
+                assert!(reply.observe().is_none());
+                assert_eq!(reply.payload(), &NOTIFICATION_BODY);
+            } else {
+                let block = reply.block2().unwrap().unwrap();
+                assert_eq!(block.num(), num);
+                assert_eq!(block.szx(), 0);
+                assert_eq!(block.more(), num < 3);
+                assert_eq!(
+                    reply.payload(),
+                    &NOTIFICATION_BODY[num as usize * 16..(num as usize + 1) * 16]
+                );
+                if stage == 0 {
+                    assert_eq!(reply.observe(), Some(Ok(0)));
+                } else if stage == 1 {
+                    assert!(reply.observe().unwrap().is_ok());
+                } else {
+                    assert!(reply.observe().is_none());
+                }
+                if stage != 0 {
+                    // Start NEW assembly at notification block0. The initial
+                    // registration fragment is validated but never assembled.
+                    assembly[num as usize * 16..(num as usize + 1) * 16]
+                        .copy_from_slice(reply.payload());
+                }
+            }
+        }
+        assert!(app.transport().output_len.is_none());
+        assert_eq!(
+            HANDLER_CALLS.load(Ordering::SeqCst),
+            if stage == 5 { 2 } else { 1 }
+        );
+        if stage == 1 {
+            let mut owned = body_ids.into_iter().filter(|id| {
+                app.engine_mut()
+                    .storage_mut()
+                    .tx_body()
+                    .unwrap()
+                    .is_occupied(*id)
+            });
+            body = Some(owned.next().unwrap());
+            assert!(owned.next().is_none());
+            let id = body.unwrap();
+            assert_eq!(
+                app.engine_mut().tx_body_payload(id),
+                Some(&NOTIFICATION_BODY[..])
+            );
+            let transfer = app.engine_mut().tx_body_transfer(id).unwrap();
+            assert_eq!(
+                transfer.key(),
+                coaptic::storage::BlockKey::new(token, PEER)
+                    .with_identity(coaptic::storage::BodyTag::new(b"notify64").unwrap())
+            );
+            assert_eq!(transfer.role(), coaptic::storage::BlockRole::OutgoingBlock2);
+            assert_eq!(transfer.szx(), 0);
+            body_snapshot = Some(transfer);
+            let io = app.transport_mut();
+            io.input[..postponed_len].copy_from_slice(&postponed[..postponed_len]);
+            io.input_len = Some(postponed_len);
+            app.poll(7).unwrap();
+            assert!(app.transport().input_len.is_none());
+            assert!(app.transport().output_len.is_none());
+            bind_reply!(2);
+        }
+        if (1..=3).contains(&stage) {
+            let id = body.unwrap();
+            assert_eq!(
+                app.engine_mut()
+                    .storage_mut()
+                    .tx_body()
+                    .unwrap()
+                    .occupied_count(),
+                1
+            );
+            assert!(
+                app.engine_mut()
+                    .storage_mut()
+                    .tx_body()
+                    .unwrap()
+                    .is_occupied(id)
+            );
+            assert!(!app.engine_mut().tx_body_is_pinned(id));
+            assert_eq!(
+                app.engine_mut().tx_body_payload(id),
+                Some(&NOTIFICATION_BODY[..])
+            );
+            let transfer = app.engine_mut().tx_body_transfer(id).unwrap();
+            assert_eq!(transfer.token(), token);
+            assert_eq!(transfer.endpoint(), PEER);
+            assert_eq!(transfer.szx(), 0);
+            // Explicit range selection preserves the entire retained sidecar,
+            // including issuance flags, selection and notification metadata.
+            // Actual progress is checked from wire NUM/M and exact payloads.
+            assert_eq!(transfer, body_snapshot.unwrap());
+            assert_eq!(transfer.filled(), NOTIFICATION_BODY.len());
+            assert_eq!(transfer.identity().as_slice(), Some(&b"notify64"[..]));
+            retained_unchanged!(3);
+            assert_eq!(
+                capacities.rx_datagram_slots - app.engine_mut().rx_occupied(),
+                1
+            );
+        } else if stage == 0 {
+            retained_unchanged!(2);
+        } else if stage == 4 {
+            assert_eq!(assembly, NOTIFICATION_BODY);
+            let id = body.unwrap();
+            assert!(
+                !app.engine_mut()
+                    .storage_mut()
+                    .tx_body()
+                    .unwrap()
+                    .is_occupied(id)
+            );
+            assert_eq!(
+                app.engine_mut()
+                    .storage_mut()
+                    .tx_body()
+                    .unwrap()
+                    .occupied_count(),
+                0
+            );
+            assert!(app.engine_mut().tx_body_transfer(id).is_none());
+            retained_unchanged!(3);
+            // Only public Call collection releases RX ownership, once per Call.
+            let mut collected = [0; 32];
+            for i in 0..3 {
+                let call = calls[i].unwrap();
+                let reply = app
+                    .take_response_into(call, &mut collected)
+                    .unwrap()
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(reply.message_id(), Some(mids[i]));
+                assert_eq!(reply.token(), Some(tokens[i]));
+                assert_eq!(reply.code(), Code::CONTENT);
+                assert_eq!(reply.format(), Some(ContentFormat::OCTET_STREAM));
+                assert_eq!(reply.etag_bytes(), Some(&b"call"[..]));
+                assert_eq!(reply.payload(), payloads[i]);
+                assert!(
+                    app.take_response_into(call, &mut collected)
+                        .unwrap()
+                        .is_none()
+                );
+                assert!(
+                    !app.engine_mut()
+                        .storage_mut()
+                        .rx_datagram()
+                        .is_occupied(held[i].unwrap())
+                );
+                assert_eq!(app.engine_mut().rx_occupied(), 2 - i);
+            }
+        } else if stage == 5 {
+            assert_eq!(app.engine_mut().rx_occupied(), 0);
+        }
+        assert_eq!(
+            app.metrics().admission_rx_refused,
+            before.admission_rx_refused
+        );
+        assert_eq!(
+            app.metrics().admission_tx_refused,
+            before.admission_tx_refused
+        );
+        assert_eq!(
+            app.metrics().admission_refusal_sent,
+            before.admission_refusal_sent
+        );
+        assert_eq!(
+            app.metrics().admission_refusal_unsent,
+            before.admission_refusal_unsent
+        );
+    }
+    // The Observe relation legitimately remains; this proves body and Call
+    // recovery, not cancellation or whole-subscription reclamation.
+    assert!(
+        app.engine_mut()
+            .lookup_observe(coaptic::storage::ObserveKey::new(token, PEER))
+            .is_some()
+    );
+    assert_eq!(app.engine_mut().storage_mut().observe().occupied_count(), 1);
+    assert_eq!(
+        app.engine_mut()
+            .storage_mut()
+            .rx_body()
+            .unwrap()
+            .occupied_count(),
+        0
+    );
+    assert_eq!(
+        app.engine_mut()
+            .storage_mut()
+            .tx_body()
+            .unwrap()
+            .occupied_count(),
+        0
+    );
+    assert_eq!(app.engine_mut().rx_occupied(), 0);
 }

@@ -749,13 +749,17 @@ class ReportingTests(TempTests):
 def pressure_census(listing=False):
     # Literal source namespace and census, independent of the runner constant.
     names = (
+        'admission_pressure::block2_notification_under_rx_pressure_preserves_body_and_completes_oscore',
+        'admission_pressure::block2_notification_under_rx_pressure_preserves_body_and_completes_unprotected',
+        'admission_pressure::observe_cancel_under_tx_pressure_releases_relation_and_recovers_oscore',
+        'admission_pressure::observe_cancel_under_tx_pressure_releases_relation_and_recovers_unprotected',
         'admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_oscore',
         'admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected',
         'admission_pressure::tx_credit_survives_refusal_and_release_recovers_oscore',
         'admission_pressure::tx_credit_survives_refusal_and_release_recovers_unprotected')
-    return ((''.join(name + ': test\n' for name in names) + '\n4 tests, 0 benchmarks\n') if listing else
-            ('running 4 tests\n' + ''.join('test ' + name + ' ... ok\n' for name in names) +
-             '\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; '
+    return ((''.join(name + ': test\n' for name in names) + '\n8 tests, 0 benchmarks\n') if listing else
+            ('running 8 tests\n' + ''.join('test ' + name + ' ... ok\n' for name in names) +
+             '\ntest result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; '
              '9 filtered out; finished in 0.01s\n')).encode()
 
 
@@ -770,7 +774,7 @@ class ProofTests(TempTests):
         for listing in (True, False):
             raw = pressure_census(listing)
             for bad in (b'', raw.replace(b'admission_pressure::', b'wrong::'),
-                        raw + raw, raw[:-30], raw.replace(b'4 test', b'3 test'),
+                        raw + raw, raw[:-30], raw.replace(b'8 test', b'7 test'),
                         raw.replace(b' ... ok', b' ... FAILED'), raw.replace(b' ... ok', b' ... ignored'),
                         raw + b'other::test: test\ntest other::test ... ok\n'):
                 if bad == raw:
@@ -789,7 +793,7 @@ class ProofTests(TempTests):
                  '0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.01s\n')):
             with self.subTest(listing=listing), self.assertRaises(ValueError):
                 w.validate_census(raw.encode(), listing=listing, expected=w.PRESSURE_TESTS)
-        self.assertEqual(len(w.PRESSURE_TESTS), 4)
+        self.assertEqual(len(w.PRESSURE_TESTS), 8)
 
     def test_prior_three_case_proof_cannot_satisfy_protected_rx_census(self):
         names = (
@@ -803,6 +807,25 @@ class ProofTests(TempTests):
         for listing, raw in ((True, old_listing), (False, old_execution)):
             with self.subTest(listing=listing), self.assertRaises(ValueError):
                 w.validate_census(raw.encode(), listing=listing, expected=w.PRESSURE_TESTS)
+
+    def test_prior_four_and_partial_six_case_proofs_cannot_satisfy_continuations(self):
+        original = (
+            'admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_oscore',
+            'admission_pressure::rx_credit_survives_incoming_refusal_and_collection_recovers_unprotected',
+            'admission_pressure::tx_credit_survives_refusal_and_release_recovers_oscore',
+            'admission_pressure::tx_credit_survives_refusal_and_release_recovers_unprotected')
+        observe = (
+            'admission_pressure::observe_cancel_under_tx_pressure_releases_relation_and_recovers_oscore',
+            'admission_pressure::observe_cancel_under_tx_pressure_releases_relation_and_recovers_unprotected')
+        for names in (original, observe + original):
+            n = len(names)
+            listing = ''.join(name + ': test\n' for name in names) + f'\n{n} tests, 0 benchmarks\n'
+            execution = (f'running {n} tests\n' + ''.join('test ' + name + ' ... ok\n' for name in names) +
+                         f'\ntest result: ok. {n} passed; 0 failed; 0 ignored; 0 measured; '
+                         '28 filtered out; finished in 0.00s\n')
+            for is_listing, raw in ((True, listing), (False, execution)):
+                with self.subTest(count=n, listing=is_listing), self.assertRaises(ValueError):
+                    w.validate_census(raw.encode(), listing=is_listing, expected=w.PRESSURE_TESTS)
 
     def test_pressure_source_hash_and_declared_census_guards(self):
         source = (w.SUITE / w.PRESSURE_SOURCE).read_bytes().replace(b'\r\n', b'\n')
