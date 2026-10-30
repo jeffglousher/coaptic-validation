@@ -5,6 +5,10 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      admission_wall_screen:
+        description: Run only the frozen normal-headroom App wall comparison
+        default: false
+        type: boolean
       stack_profile:
         description: Run only the bounded Windows profiling recipe
         default: false
@@ -28,18 +32,23 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: suite-ci-${{ inputs.stack_profile && 'stack-profile' || 'validation' }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ !inputs.stack_profile }}
+  group: suite-ci-${{ inputs.stack_profile && 'stack-profile' || inputs.admission_wall_screen && 'admission-wall' || 'validation' }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !inputs.stack_profile && !inputs.admission_wall_screen }}
 jobs:
+  reject-mixed-manual-modes:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.stack_profile && inputs.admission_wall_screen }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
   validation:
-    if: ${{ !inputs.stack_profile }}
+    if: ${{ !inputs.stack_profile && !inputs.admission_wall_screen }}
     uses: ./.github/workflows/validation.yml
     with:
       suite_revision: ${{ github.sha }}
       library_repository: jeffglousher/coaptic
       library_revision: ${{ inputs.library_revision || '739c277642219ae235b0ab0926b5c95d81f51b59' }}
   windows-stack-profile:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.stack_profile }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.stack_profile && !inputs.admission_wall_screen }}
     uses: ./.github/workflows/windows-stack-profile.yml
     permissions:
       contents: read
@@ -49,3 +58,8 @@ jobs:
       replay: ${{ inputs.stack_profile_replay }}
       live: ${{ inputs.stack_profile_live }}
       live_replay: ${{ inputs.stack_profile_live_replay }}
+  admission-wall-screen:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.admission_wall_screen && !inputs.stack_profile }}
+    uses: ./.github/workflows/admission-wall-screen.yml
+    permissions:
+      contents: read

@@ -1,0 +1,87 @@
+name: Manual bounded admission wall screen
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: admission-wall-screen
+  cancel-in-progress: false
+
+jobs:
+  screen:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    env:
+      SUITE_SHA: ${{ github.sha }}
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Validate the fixed hosted source plan
+        shell: pwsh
+        run: |
+          if ($env:SUITE_SHA -cnotmatch '^[0-9a-f]{40}$') { throw 'Immutable suite SHA required' }
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'Dedicated hosted runner required' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: jeffglousher/coaptic
+          ref: 623c82db1a6606ec86cd56bb52009988b9f0d87e
+          path: coaptic
+          persist-credentials: false
+      - name: Fetch only the immutable candidate
+        shell: pwsh
+        run: |
+          git -C coaptic fetch --no-tags --depth=1 origin 8782a6a0b0aef2facf51bec884cfe37f2a80f28d
+          if ($LASTEXITCODE) { throw 'Candidate fetch failed' }
+          $candidate = git -C coaptic rev-parse FETCH_HEAD
+          if ($candidate -cne '8782a6a0b0aef2facf51bec884cfe37f2a80f28d') { throw 'Candidate identity differs' }
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.14.4'
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: 1.99.0
+      - name: Provision the existing process-inspection dependency
+        shell: pwsh
+        run: |
+          python -m pip install --no-cache-dir --disable-pip-version-check psutil==7.0.0
+          if ($LASTEXITCODE) { throw 'Process-inspection dependency setup failed' }
+      - name: Portable screen checks before native work
+        shell: pwsh
+        run: |
+          Push-Location tools/benchmark
+          python -B -m unittest -v test_admission_wall_screen
+          if ($LASTEXITCODE) { throw 'Portable screen checks failed' }
+          Pop-Location
+      - name: Build the pair and run the fixed wall-only screen
+        shell: pwsh
+        run: |
+          # Remove only the pinned action's known transport/presentation defaults.
+          # The runner retains strict refusal of unknown ambient build inputs.
+          $setupDefaults = @{
+            CARGO_TERM_COLOR = @('always')
+            CARGO_REGISTRIES_CRATES_IO_PROTOCOL = @('sparse', 'git')
+            CARGO_HTTP_MULTIPLEXING = @('false')
+          }
+          foreach ($name in $setupDefaults.Keys) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if ($null -ne $value) {
+              if ($value -cnotin $setupDefaults[$name]) { throw "Unexpected toolchain setup value for $name" }
+              Remove-Item -LiteralPath "Env:$name"
+            }
+          }
+          python -B tools/benchmark/admission_wall_screen.py all --core coaptic --expected-suite $env:SUITE_SHA --output "$env:RUNNER_TEMP/coaptic-admission-wall"
+          if ($LASTEXITCODE) { throw 'Screen refused, failed, or did not satisfy its frozen gates; retain evidence' }
+      - name: Retain bounded raw observations and failures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: admission-wall-screen-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/coaptic-admission-wall/evidence/
+          if-no-files-found: warn
+          retention-days: 14
+          compression-level: 6
