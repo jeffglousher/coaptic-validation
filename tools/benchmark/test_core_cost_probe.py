@@ -1183,6 +1183,45 @@ signal.pause()
         self.killed_worker("after")
 
 
+def check_perf_prerequisite(perf):
+    """Keep bounded failure evidence without adding another privileged command."""
+    argv = probe.prefix(probe.META, 3) + ["perf", "stat", "--null", "--", "true"]
+
+    def field(value):
+        # Bound both raw bytes and escaped diagnostic text, including bad UTF-8.
+        if isinstance(value, bytes):
+            text = ascii(value[:1024].decode("utf-8", errors="replace"))
+        elif isinstance(value, (str, list)):
+            text = ascii(value[:1024])
+        else:
+            return ascii(value)[:1024]
+        truncated = len(value) > 1024 or len(text) > 1024
+        return text[:1024] + (" [truncated]" if truncated else "")
+
+    with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+        def diagnostic(code):
+            output.seek(0)
+            errors.seek(0)
+            return ("privileged cleanup opt-in requires working sudo -n and perf stat --null; "
+                    f"argv={field(argv)}; returncode={code!r}; "
+                    # sudo's executable search may differ from the runner's PATH.
+                    f"runner_perf={field(perf)} (sudo-selected path/version unverified); "
+                    f"stdout={field(output.read(1025))}; stderr={field(errors.read(1025))}")
+
+        try:
+            code = probe.run_owned(argv, timeout=10, check=False, elevated=True,
+                                   file_limit=probe.META, stdin=subprocess.DEVNULL,
+                                   stdout=output, stderr=errors)
+        except Exception as error:
+            try:
+                error.add_note(diagnostic(getattr(error, "returncode", None)))
+            except Exception as diagnostic_error:
+                error.add_note("prerequisite diagnostic unavailable: " + type(diagnostic_error).__name__)
+            raise
+        if code:
+            raise AssertionError(diagnostic(code))
+
+
 @unittest.skipUnless(os.environ.get("COAPTIC_PRIVILEGED_CLEANUP_TESTS") == "1",
                      "set COAPTIC_PRIVILEGED_CLEANUP_TESTS=1 on a Linux NOPASSWD sudo/perf runner")
 class PrivilegedCleanupTests(unittest.TestCase):
@@ -1208,11 +1247,7 @@ class PrivilegedCleanupTests(unittest.TestCase):
             raise AssertionError("privileged cleanup opt-in missing prerequisites: " + ", ".join(missing))
         # --null opens no performance counters. Do this before any campaign;
         # explicit opt-in must not turn missing sudo/perf into a passing skip.
-        check = subprocess.run(probe.prefix(probe.META, 3) + ["perf", "stat", "--null", "--", "true"],
-                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                               stderr=subprocess.DEVNULL, timeout=10, start_new_session=True)
-        if check.returncode:
-            raise AssertionError("privileged cleanup opt-in requires working sudo -n and perf stat --null")
+        check_perf_prerequisite(shutil.which("perf"))
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
