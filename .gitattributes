@@ -28,3 +28,4 @@ tools/benchmark/evidence/windows-live-c1-capability-20261030/** -text
 tools/benchmark/evidence/admission-headroom-20261030/** -text
 
 /tools/esphome/rust/Cargo.syn2.lock text eol=lf
+tools/benchmark/evidence/dedup-classified-20261030/** -text
