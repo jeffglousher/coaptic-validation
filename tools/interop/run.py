@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import platform
 import queue
 import select
@@ -79,14 +80,36 @@ def decode(line):
 
 
 class Server:
-    def __init__(self, exe, transport, number=None, family="ipv4", echo=False, sequence=None, replay=None, path="test"):
+    def __init__(self, exe, transport, number=None, family="ipv4", echo=False, sequence=None, replay=None, path="test", diagnostics=False):
         self.number = number or port(family)
-        self.stderr = tempfile.TemporaryFile()
+        self.diagnostics = diagnostics
+        self.diagnostic_stderr = None
+        environment = None
+        if diagnostics:
+            if transport != "dtls":
+                raise ValueError("diagnostics require DTLS")
+            environment = dict(os.environ, COAPTIC_DTLS_DIAGNOSTICS="1")
+        self.stderr = None if diagnostics else tempfile.TemporaryFile()
         start = time.perf_counter_ns()
         self.proc = subprocess.Popen(
             command(exe, "server", transport, self.number, family=family, echo=echo, sequence=sequence, replay=replay, path=path),
                                      stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                     stderr=self.stderr)
+                                     stderr=subprocess.PIPE if diagnostics else self.stderr, env=environment)
+        if diagnostics:
+            self.diagnostic_stderr = bytearray()
+            self.diagnostic_stderr_complete = False
+            def drain_diagnostics():
+                try:
+                    while chunk := self.proc.stderr.read1(4096):
+                        # Keep one sentinel byte over the parser's bound while
+                        # continuing to drain; no diagnostic spool on disk.
+                        available = 8193 - len(self.diagnostic_stderr)
+                        self.diagnostic_stderr.extend(chunk[:available])
+                    self.diagnostic_stderr_complete = True
+                except (OSError, ValueError):
+                    pass
+            self.stderr_reader = threading.Thread(target=drain_diagnostics, daemon=True)
+            self.stderr_reader.start()
         self.stdout_after_ready = bytearray()
         self.stdout_after_ready_truncated = False
         self.stdout_after_ready_complete = False
@@ -135,7 +158,12 @@ class Server:
                 self.proc.wait(timeout=2)
         self.reader.join(timeout=1)
         self.proc.stdout.close()
-        self.stderr.close()
+        if self.diagnostics:
+            self.stderr_reader.join(timeout=1)
+            self.proc.stderr.close()
+            self.diagnostic_stderr = bytes(self.diagnostic_stderr)
+        else:
+            self.stderr.close()
 
     def __enter__(self):
         return self
@@ -2506,6 +2534,10 @@ def main():
               "iterations": args.iterations, "build_note": args.build_note, "timing_scope": "request_us excludes process startup; host_total_us includes it",
               "host_clock": {"name": time.get_clock_info("perf_counter").implementation, "resolution_ns": math.ceil(time.get_clock_info("perf_counter").resolution * 1e9)},
               "libcoap_source": "851533c3cf63d16984d370ce39d586ecb3694971",
+              "rust_dtls_cipher_offer": ["TLS_PSK_WITH_AES_128_CCM_8", "TLS_PSK_WITH_AES_128_GCM_SHA256"],
+              "dtls_cipher_notes": "Source-defined offer, not a negotiated-cipher observation. CCM8 remains first; "
+                                   "GCM permits 128-bit-tag peers without lowering their security policy. "
+                                   "Earlier CCM8-only timing results are a different fixture configuration.",
               "libcoap_patch": (json.loads(args.libcoap_patch_manifest.read_text(encoding="utf-8"))
                                   if args.libcoap_patch_manifest else None),
               "limitations": [],

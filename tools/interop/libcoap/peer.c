@@ -13,6 +13,8 @@
 #include <time.h>
 #endif
 
+#include "dtls_diagnostics.h"
+
 static unsigned counter, upload_accepted, upload_calls;
 static int patch_present = 1;
 static unsigned patch_n;
@@ -514,6 +516,7 @@ int main(int argc,char **argv) {
   }
   clock_init();started=clock_stamp();
   coap_startup();coap_set_log_level(COAP_LOG_EMERG);
+  diagnostic_start(dtls);
   if(dtls && !coap_dtls_is_supported()){failure("DTLS unavailable in libcoap build");coap_cleanup();return 2;}
   if(oscore && !coap_oscore_is_supported()){failure("OSCORE unavailable in libcoap build");coap_cleanup();return 2;}
   if(q_block && !coap_q_block_is_supported()){failure("Q-Block unavailable in libcoap build");coap_cleanup();return 2;}
@@ -522,6 +525,7 @@ int main(int argc,char **argv) {
   for(unsigned i=0;i<3;i++){memset(selected_right[i],'m'+i,96);memset(q_observed_bodies[i],'a'+i,704);}
   coap_context_t *ctx=coap_new_context(NULL);
   if(!ctx){failure("context failed");coap_cleanup();return 1;}
+  if(diagnostic_enabled) coap_register_event_handler(ctx, diagnostic_event);
   coap_context_set_max_token_size(ctx,server?64:requested_token);
   /* A server with Q-Block answers Q-Block requests and still serves classic Block. */
   const int try_q_block=(server||q_block)&&coap_q_block_is_supported();

@@ -8,6 +8,17 @@ Three executables talk over loopback UDP or DTLS:
 
 libcoap is BSD-2-Clause and is not linked into the library. OpenSSL is a test-machine dependency. The PSK `sesame` is a fixture.
 
+The two Rust process peers offer `TLS_PSK_WITH_AES_128_CCM_8` first and
+`TLS_PSK_WITH_AES_128_GCM_SHA256` second. GCM adds a 128-bit-tag alternative for
+independent peers whose policy rejects CCM8's 64-bit tag; no OpenSSL security
+level is lowered. Each Rust configuration has a native handshake test against
+single-suite CCM8 and GCM counterparts, in both client and server roles.
+The existing CCM8-only listener tests remain unchanged. This selection applies
+only to these independent process peers, not the core library, benchmark or
+plugtest transport configurations. The report records the source-defined offer,
+not a negotiated-cipher observation. Historical CCM8-only timings retain their
+original scope and are not directly comparable to the expanded offer.
+
 ## Build and run
 
 Requires stable Rust, Python 3.10+, CMake 3.20+, a C compiler, and OpenSSL headers.
@@ -30,6 +41,28 @@ Windows: MSVC (`-G "Visual Studio 17 2022" -A x64`, `--config Release`) and `.ex
 [`capabilities.json`](capabilities.json) is the case list. A report passes when every enabled case appears once, passes, and keeps evidence. Gaps in that file are open. Linux and Windows are the declared platforms.
 
 `--libcoap-udp-only` and `--libcoap-oscore-unavailable` mark the matching C cases build-excluded. An empty run fails. Wrong-key and blackhole cases need the peer's error exit. A timeout is not a DTLS alert.
+
+When the wire step fails, CI runs one additional IPv4 `coaptic -> libcoap`
+`GET /test` transaction and retains `dtls-diagnostic.json`. It does not retry
+the campaign or replace its failure. The six-second request deadline, fixture
+credentials, configured Rust offer and OpenSSL policy remain unchanged. Only that C-peer
+process enables diagnostic logging. A fixed allowlist retains warning reasons,
+alert direction/description and available native-session security levels;
+other backend text is suppressed. At most 32 records plus an overflow marker
+are retained, with an 8 KiB input and 32 KiB report limit. No keys, packet dumps
+or raw stderr are published. Missing policy values remain null; absence of a
+reason is not evidence of policy compatibility. The security level is observed
+on the reported session event, not inferred from the OpenSSL version.
+
+For the same isolated check with already built peers:
+
+```sh
+python3 tools/interop/dtls_diagnostic.py --coaptic target/release/peer-coaptic --libcoap target/libcoap-peer/peer-libcoap --output target/dtls-diagnostic.json
+```
+
+The output must be new. A failed exchange, unsettled cleanup or incomplete
+diagnostic stream exits nonzero. This diagnostic is not a transport fix or
+interoperability qualification; the original complete-case gate remains active.
 
 Upload readback is `accepted:calls`. `sesame` selects the public RFC 8613 C.1 secret. Any other key label mismatches on purpose.
 

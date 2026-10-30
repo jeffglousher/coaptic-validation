@@ -565,6 +565,20 @@ fn actual_service_ordinary_calls_use_borrowed_server_blocks_and_four_client_bodi
 
 #[test]
 fn actual_body_occupancy_refusal_preserves_owners_retained_ciphertext_and_recovery() {
+    // Fixed Service construction has large debug-only temporaries. Reserve one
+    // bounded host-test stack; this does not measure the App's production stack.
+    const HOST_TEST_STACK_BYTES: usize = 8 * 1024 * 1024;
+    std::thread::Builder::new()
+        .name("body-occupancy-fixture".into())
+        .stack_size(HOST_TEST_STACK_BYTES)
+        .spawn(body_occupancy_refusal_fixture)
+        .expect("spawn bounded body-occupancy fixture")
+        .join()
+        .expect("body-occupancy fixture assertions");
+}
+
+#[inline(never)]
+fn body_occupancy_refusal_fixture() {
     fn representation(_: coaptic::Request<'_>) -> coaptic::Response<'static> {
         coaptic::Response::content(&[6; 2048])
             .content_format(coaptic::ContentFormat::OCTET_STREAM)

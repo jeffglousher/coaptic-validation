@@ -15,6 +15,10 @@ use std::time::Instant;
 #[path = "bench_core/live_c1.rs"]
 mod live_c1;
 
+#[cfg(test)]
+#[path = "bench_core/admission_pressure.rs"]
+mod admission_pressure;
+
 const BODY: [u8; 64] = [0x5a; 64];
 const SMALL_BODY: [u8; 32] = [0x5a; 32];
 const PEER: Endpoint = Endpoint::v4([127, 0, 0, 1], 30000);
