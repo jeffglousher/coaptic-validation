@@ -24,6 +24,7 @@ import development_suite as ds
 import native_lock as locks
 from suite_process import run_worker, WorkerError
 import windows_profile as wp
+import admission_stage_b as stage_b
 
 HERE, SUITE, NATIVE = ds.HERE, ds.SUITE, ds.NATIVE
 BASELINE = '623c82db1a6606ec86cd56bb52009988b9f0d87e'
@@ -64,6 +65,8 @@ UNIMPLEMENTED = []
 
 
 def purpose(args):
+    if getattr(args, 'contract', 'admission') == 'admission-stage-b':
+        return stage_b.purpose(args)
     if getattr(args, 'contract', 'admission') == 'dedup-classified':
         selection(args)
         return 'rejection-screen'
@@ -147,6 +150,8 @@ DEDUP = Contract(
 
 
 def resolve_contract(identifier='admission', proof=False):
+    if identifier == 'admission-stage-b':
+        return stage_b.descriptor(sys.modules[__name__])
     for selected in (ADMISSION, DEDUP):
         if identifier == selected.id:
             if proof and selected == DEDUP:
@@ -161,6 +166,8 @@ def selection(args):
 
 
 def binding(selected=ADMISSION):
+    if selected.id == 'admission-stage-b':
+        return stage_b.binding()
     if selected == ADMISSION:
         return {}
     return dict(contract_id=selected.id, contract_sha256=hashlib.sha256(
@@ -184,6 +191,8 @@ def tree_check(identity, commit, tree):
 
 
 def plan(selected=ADMISSION):
+    if selected.id == 'admission-stage-b':
+        return stage_b.contract()
     value = dict(schema=selected.schema, cores=dict(selected.cores),
                 cells=[[p, s] for p in ('small-device', 'default') for s in wp.MODES],
                 rounds=['AB', 'BA'], operations=OPERATIONS, warmup=WARMUP,
@@ -380,6 +389,8 @@ def check_files(root, files):
 
 def source_gate(core, suite_sha, core_sha, selected=ADMISSION):
     value = wp.source_identity(core, core_sha, suite_sha)
+    if selected.id == 'admission-stage-b':
+        stage_b.source_check(sys.modules[__name__], core, suite_sha, core_sha)
     if selected == DEDUP:
         cores = dict(selected.cores)
         if core_sha not in cores.values():
@@ -1028,6 +1039,8 @@ def measure_worker(spec, selected=ADMISSION):
 
 
 def execute(args):
+    if getattr(args, 'contract', 'admission') == 'admission-stage-b':
+        return stage_b.execute(sys.modules[__name__], args)
     selected = selection(args)
     if sys.platform != 'win32' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted':
         raise ValueError('dedicated hosted Windows runner required')
@@ -1107,7 +1120,9 @@ def main(argv=None):
         spec = load(argv[1])
         selected = resolve_contract(argv[2] if len(argv) > 2 else 'admission')
         check_binding(spec, selected)
-        if spec['kind'] == 'cargo':
+        if selected.id == 'admission-stage-b':
+            stage_b.worker(sys.modules[__name__], spec)
+        elif spec['kind'] == 'cargo':
             cargo_worker(spec, selected)
         elif spec['kind'] == 'measure':
             measure_worker(spec, selected)
@@ -1116,7 +1131,7 @@ def main(argv=None):
         return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=('build', 'measure', 'all', 'proof'))
-    parser.add_argument('--contract', choices=('admission', 'dedup-classified'), default='admission')
+    parser.add_argument('--contract', choices=('admission', 'dedup-classified', 'admission-stage-b'), default='admission')
     parser.add_argument('--core', required=True)
     parser.add_argument('--expected-suite', required=True)
     parser.add_argument('--output', required=True)

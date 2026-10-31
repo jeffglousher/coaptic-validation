@@ -9,7 +9,7 @@ on:
         description: Explicit frozen wall screen contract; requires admission_wall_screen
         default: admission
         type: choice
-        options: [admission, dedup-classified]
+        options: [admission, dedup-classified, admission-stage-b]
       admission_wall_screen:
         description: Run only the frozen normal-headroom App wall comparison
         default: false
@@ -45,7 +45,7 @@ concurrency:
   cancel-in-progress: ${{ !inputs.stack_profile && !inputs.admission_wall_screen && !inputs.admission_pressure_proof && (inputs.wall_screen_contract == '' || inputs.wall_screen_contract == 'admission') }}
 jobs:
   reject-mixed-manual-modes:
-    if: ${{ github.event_name == 'workflow_dispatch' && ((inputs.wall_screen_contract && inputs.wall_screen_contract != 'admission' && inputs.wall_screen_contract != 'dedup-classified') || (inputs.wall_screen_contract == 'dedup-classified' && (!inputs.admission_wall_screen || inputs.admission_pressure_proof)) || (inputs.admission_wall_screen && (inputs.stack_profile || inputs.stack_profile_replay || inputs.stack_profile_live || inputs.stack_profile_live_replay)) || (inputs.admission_pressure_proof && (!inputs.admission_wall_screen || inputs.stack_profile))) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && ((inputs.wall_screen_contract && inputs.wall_screen_contract != 'admission' && inputs.wall_screen_contract != 'dedup-classified' && inputs.wall_screen_contract != 'admission-stage-b') || (inputs.wall_screen_contract == 'dedup-classified' && (!inputs.admission_wall_screen || inputs.admission_pressure_proof)) || (inputs.wall_screen_contract == 'admission-stage-b' && !inputs.admission_wall_screen) || (inputs.admission_wall_screen && (inputs.stack_profile || inputs.stack_profile_replay || inputs.stack_profile_live || inputs.stack_profile_live_replay)) || (inputs.admission_pressure_proof && (!inputs.admission_wall_screen || inputs.stack_profile))) }}
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
@@ -68,7 +68,7 @@ jobs:
       live: ${{ inputs.stack_profile_live }}
       live_replay: ${{ inputs.stack_profile_live_replay }}
   admission-wall-screen:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.admission_wall_screen && !inputs.stack_profile && !inputs.stack_profile_replay && !inputs.stack_profile_live && !inputs.stack_profile_live_replay && (inputs.wall_screen_contract == 'admission' || (inputs.wall_screen_contract == 'dedup-classified' && !inputs.admission_pressure_proof)) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.admission_wall_screen && !inputs.stack_profile && !inputs.stack_profile_replay && !inputs.stack_profile_live && !inputs.stack_profile_live_replay && (inputs.wall_screen_contract == 'admission' || inputs.wall_screen_contract == 'admission-stage-b' || (inputs.wall_screen_contract == 'dedup-classified' && !inputs.admission_pressure_proof)) }}
     uses: ./.github/workflows/admission-wall-screen.yml
     permissions:
       contents: read
