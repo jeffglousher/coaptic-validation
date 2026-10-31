@@ -223,3 +223,22 @@ without dropping samples or enlarging caps. The earlier continuation phase is
 closed65391/65536B and unchanged. Source implementations retain0B private output.
 Parent owns final source freeze, software proof, preregistration, dispatch,
 review and promotion; all new execution remains NOT RUN.
+
+
+## Retained qualification failure and primary-context correction
+
+Qualification run41151191502/1 at41cad50 compiled armA and passed114 portable
+checks. A's rx_unprotected passed16 untimed cycles; rx_oscore then failed with
+macro-located assertion left0/right1 at fixture.rs:1147. The remaining22 native
+cases, armB build and all timing were NOT RUN. The original sealed collector is
+24395B, SHA256 f393110575fd493727ad01fba1eb53eaef5c53b2f3f4fc2ddbe2d2c32c4381e6.
+
+Source inspection found the sequence observer used association_at(0), although
+Builder.oscore attaches an unnamed primary context. That observer always fell
+back to zero. The corrected fixture reads the live primary context through
+App.oscore; it neither changes protocol state nor resets a sequence. Cycle
+checks now identify the case, cycle and counter. The original macro panic did
+not identify its narrower assertion; the source defect is independently clear.
+Corrected compilation and all24 qualification executions remain UNRUN until a
+separately recorded source-specific dispatch. Counts, capacities, protocol,
+clock boundary, contract hash, gates and all prior failures remain unchanged.

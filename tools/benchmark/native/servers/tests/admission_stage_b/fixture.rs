@@ -425,8 +425,10 @@ macro_rules! driver {
             use super::*;
             type A = $app;
             fn seq(app: &A) -> u64 {
-                app.association_at(0)
-                    .map(|a| app.association_context(a).unwrap().sender_seq())
+                // Builder.oscore attaches a primary context, not a named
+                // Association. Read that exact live context without mutating it.
+                app.oscore()
+                    .map(|context| context.sender_seq())
                     .unwrap_or(0)
             }
             fn empty(app: &mut A, expiry: bool) {
@@ -1031,7 +1033,12 @@ macro_rules! driver {
                         (None, None, None, None)
                     }
                 );
-                assert_eq!(seq(&app), 0);
+                assert_eq!(
+                    app.oscore().is_some(),
+                    protected,
+                    "primary context attachment"
+                );
+                assert_eq!(seq(&app), 0, "initial primary sender sequence");
                 assert_eq!(aux.peer.as_ref().map(|p| p.sender_seq()).unwrap_or(0), 0);
                 for cycle in 0..cycles {
                     empty(&mut app, false);
@@ -1049,24 +1056,40 @@ macro_rules! driver {
                     let after = app.metrics();
                     let expected = case.metrics();
                     for i in 0..7 {
-                        assert_eq!(selected(after)[i] - selected(before)[i], expected[i]);
+                        assert_eq!(
+                            selected(after)[i] - selected(before)[i],
+                            expected[i],
+                            "case={} cycle={cycle} selected metric={i}",
+                            case.id()
+                        );
                     }
                     let (datagrams, h) = case.counts();
                     assert_eq!(
                         app.transport().received - inputs + app.transport().sent - outputs,
-                        datagrams
+                        datagrams,
+                        "case={} cycle={cycle} datagram census",
+                        case.id()
                     );
-                    assert_eq!(HANDLERS.load(Ordering::SeqCst) - handlers, h);
+                    assert_eq!(
+                        HANDLERS.load(Ordering::SeqCst) - handlers,
+                        h,
+                        "case={} cycle={cycle} handler census",
+                        case.id()
+                    );
                     // Accepted packets and successful Engine sends must account for every IO
                     // event. Idle progress and due dedup expiry are expected; no eviction is
                     // used to supply admission credit, verified by each owner's snapshot.
                     assert_eq!(
                         u64::from(after.rx_accepted - before.rx_accepted),
-                        app.transport().received - inputs
+                        app.transport().received - inputs,
+                        "case={} cycle={cycle} accepted input census",
+                        case.id()
                     );
                     assert_eq!(
                         u64::from(after.tx_ok - before.tx_ok),
-                        app.transport().sent - outputs
+                        app.transport().sent - outputs,
+                        "case={} cycle={cycle} successful output census",
+                        case.id()
                     );
                     assert_eq!(
                         (
@@ -1115,10 +1138,17 @@ macro_rules! driver {
                         );
                     }
                     assert_eq!(aux.bindings, 0);
-                    assert_eq!(seq(&app), aux.fresh[0]);
+                    assert_eq!(
+                        seq(&app),
+                        aux.fresh[0],
+                        "case={} cycle={cycle} primary sender sequence",
+                        case.id()
+                    );
                     assert_eq!(
                         aux.peer.as_ref().map(|p| p.sender_seq()).unwrap_or(0),
-                        aux.fresh[1]
+                        aux.fresh[1],
+                        "case={} cycle={cycle} peer sender sequence",
+                        case.id()
                     );
                     empty(&mut app, false);
                 }
