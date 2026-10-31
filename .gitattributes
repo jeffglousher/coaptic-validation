@@ -29,3 +29,6 @@ tools/benchmark/evidence/admission-headroom-20261030/** -text
 
 /tools/esphome/rust/Cargo.syn2.lock text eol=lf
 tools/benchmark/evidence/dedup-classified-20261030/** -text
+
+# Stable compile-time Stage B contract on Windows and Unix checkouts.
+tools/benchmark/admission_stage_b_contract.json text eol=lf
