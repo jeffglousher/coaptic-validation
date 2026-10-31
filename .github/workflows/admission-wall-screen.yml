@@ -16,7 +16,7 @@ on:
       contract:
         description: Explicit frozen wall screen contract
         type: choice
-        options: [admission, dedup-classified]
+        options: [admission, dedup-classified, admission-stage-b]
         default: admission
       proof_only:
         description: Run ownership proof with measurements NOT RUN
@@ -45,10 +45,10 @@ jobs:
       - name: Validate the fixed hosted source plan
         shell: pwsh
         run: |
-          if ($env:WALL_CONTRACT -cnotin @('admission', 'dedup-classified')) { throw 'Unknown wall contract' }
+          if ($env:WALL_CONTRACT -cne 'admission-stage-b' -and $env:WALL_CONTRACT -cnotin @('admission', 'dedup-classified')) { throw 'Unknown wall contract' }
           if ($env:WALL_CONTRACT -ceq 'dedup-classified' -and $env:PROOF_ONLY -ceq 'true') { throw 'Dedup refuses proof' }
-          $root = if ($env:WALL_CONTRACT -ceq 'dedup-classified') { 'coaptic-dedup-classified-wall' } else { 'coaptic-admission-wall' }
-          $prefix = if ($env:WALL_CONTRACT -ceq 'dedup-classified') { 'dedup-classified-wall-screen' } else { 'admission-wall-screen' }
+          $root = if ($env:WALL_CONTRACT -ceq 'admission-stage-b') { 'coaptic-admission-stage-b' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { 'coaptic-dedup-classified-wall' } else { 'coaptic-admission-wall' }
+          $prefix = if ($env:WALL_CONTRACT -ceq 'admission-stage-b') { 'admission-stage-b' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { 'dedup-classified-wall-screen' } else { 'admission-wall-screen' }
           "WALL_ROOT=$root" >> $env:GITHUB_ENV
           "WALL_ARTIFACT=$prefix" >> $env:GITHUB_ENV
           if ($env:PROOF_ONLY -cnotin @('true', 'false')) { throw 'Strict proof_only boolean required' }
@@ -83,7 +83,7 @@ jobs:
         shell: pwsh
         run: |
           Push-Location tools/benchmark
-          python -B -m unittest -v test_admission_wall_screen
+          python -B -m unittest -v test_admission_wall_screen test_admission_stage_b
           if ($LASTEXITCODE) { throw 'Portable screen checks failed' }
           Pop-Location
       - name: Build the pair and run the fixed wall-only screen
