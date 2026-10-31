@@ -119,8 +119,20 @@ reuse a parser that demands `test NAME ... ok` on one line with nocapture output
 Actual hosted output-format qualification is required before timing dispatch.
 
 Before any campaign, run twelve nonignored stage_b_validation tests from the
-contract: ten cells for16 continuous verified cycles without clocks or latency
-output, plus ordinary-three-RX-owner refusal in both modes. Prove repeat reuse
+contract, each in its own exact selection with --test-threads=1 --nocapture
+--format=terse --color=never: ten cells for16 continuous verified cycles without
+clocks or latency output, plus ordinary-three-RX-owner refusal for16 cycles in
+both modes. Every successful qualification test emits exactly one newline-prefixed
+`COAPTIC_STAGE_B_QUALIFICATION ` compact JSON object with exact keys schema,
+contract_sha256, case, security, cycles, passed, measurement. schema is
+coaptic-admission-stage-b-qualification/1, cycles=16, passed=true,
+measurement="NOT RUN". The two negative-case IDs are ordinary_three_rx_owners_refuse;
+other IDs match the five case names. This exercises the real terse libtest/prefix
+parser without producing timing samples. List these12 separately; also list the
+10 ignored timing tests. A build of either arm must pass all12 exact qualification
+processes before retaining its executable. Software proof mode stops after both
+arms (24 qualification executions). A later campaign builds and qualifies both
+fresh artifact pairs again, then launches its separate40 timing processes. Prove repeat reuse
 beyond four bindings, legal relation/Call/body cleanup and exact phase counts.
 Feature-off defaults/censuses and both old source files remain unchanged. Reuse
 old run41142584716 only for those byte-identical proofs; do not infer the new
