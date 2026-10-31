@@ -13,7 +13,12 @@ as measurement complete. This bundle preserves the rejected result for review;
 it does not authorize promotion. [screen.html](screen.html) shows every exact
 comparison with accessible values and optional filters, without external assets
 or network requests. It has not been browser-rendered by the evidence publisher;
-the parent owns visual review after freeze.
+the parent owns visual review after freeze. Parent QA subsequently checked the
+exact HTML in a full 728-pixel light desktop capture and a 390-pixel dark phone
+capture (first 4000 of 9288 pixels); no console messages were observed. Lower
+phone content was not visually inspected. The actual filter script passed 162
+DOM-mock selections; browser clicks were not run. These are visual/data checks,
+not new native execution or performance qualification.
 
 ## Immutable identities
 

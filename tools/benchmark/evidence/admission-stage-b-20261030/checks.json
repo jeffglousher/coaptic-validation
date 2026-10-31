@@ -1,1 +1,130 @@
-{"attributes":{"exact_appended_bytes":61,"git_text_unset_with_core_autocrlf":["true","input","false"],"prior_sha256":"23ce53a8c51e9c1ad1c425de0e9e503c3b0c0f1a376b1aaac9b0bb4b5ffee5eb","result_sha256":"037b03d4254491953e723d78230dbddb08a074ea3ef1f317528ea93f0423c093"},"budget":{"combined_phase_cap":1048576,"parent_future_root_reservation":20480,"private_phase_bytes_at_snapshot":184688,"publication_cap_including_attributes":700000},"coordination":{"identity":"supplied host hook identity","initial_native_id_registration_exception":"Initial genuine CODEX_THREAD_ID check began a query before the host supplied its hook identity. Its incomplete cursor expired; a restarted same-mailbox full query completed 4 pages/53 items at wrap. The supplied hook startup query completed before substantive publication work. Historical retention gaps remain.","relevant_full_get_ack":3,"resource_active_registered_builds_at_wrap":0,"resource_fast_status_startup_and_wrap":true,"resource_revision":5222,"startup_items":27,"startup_pages":2,"startup_retentiongap":true,"wrap":{"explicit_sealed_core_STOP_get_ack":1,"initial_native_query_restart":{"items":53,"pages":4,"relevant_get_ack":4,"retentiongap":true},"supplied_hook_companion":{"items":25,"pages":2,"relevant_get_ack":1,"retentiongap":true},"supplied_hook_core":{"items":245,"pages":18,"relevant_get_ack":12,"retentiongap":true}}},"custody":"Publication write/read holds released to parent after final freeze. No raw ZIP/binaries retained; RAM downloader exited. Parent owns review, integration, publication and eventual settled cleanup.","decision":"STOP","limits":["No browser render by publisher; parent owns visual review after freeze.","Source pure validator reuse attributed; independent statistical arithmetic only.","VM retirement unknown; no cleanup or runtime proof."],"native_execution":"NOT RUN","publication_artifact_ram_check":{"actual_sha256":"9a41a3511034bb316c82cd4c662043b7b074677f6ce40ffad174385a4fab5b70","actual_zip_bytes":5090445,"all_members":274,"authorization_stripped_foreign_redirect":true,"downloads":1,"excluded_binaries":4,"retained_texts":270,"strict_paths_regular_unique_crc_size_sha":true},"refusal_and_roundtrip_checks":["strict duplicate JSON","nonfinite JSON","boolean unsigned","negative unsigned","missing sample","boolean sample","zero arithmetic denominator","counter mismatch","unsettled state","memory accounting","calibration dropped","latency bound","PIV bound","duplicate output marker","inclusive arithmetic boundary","over-limit arithmetic boundary","bundle byte tamper","pack offset tamper","all packs gzip/XZ/member roundtrip"],"schema":"coaptic-stage-b-publication-checks/1","scope_verification":{"git_diff_check":"PASS","owned_only":true,"private_retained_bytes_unchanged":true,"source_native_workflows_old_evidence_unchanged":true},"screen_delivery":{"all36_static_rows_visible_by_default":true,"chart_pixel_height":32,"exact36_data_verified":true,"external_assets_or_fetch":false,"responsive_breakpoint_pixels":760,"theme_variables_with_standalone_fallbacks":true,"transparent_html_body_and_outer_content":true,"visual_render":"NOT RUN by publisher; parent owns html_preview/html_render after freeze"},"security_scan":{"findings":0,"limits":"common credential patterns and binary signatures/NUL only; not a complete secret or malware audit","payloads":300,"scope":"all reconstructed artifact texts, sealed collectors, parent/source records and uncompressed publication files"},"standalone":{"calibration_values":163840,"collector_binding_checks":137,"command":"python -B verify.py --self-test","comparisons_exact":36,"failed_gates":13,"gate_reproduction_is_verification_success":true,"latency_values":72000,"listing_outputs":4,"passed_gates":23,"qualification_outputs":24,"result":"PASS","retained_json_binding_occurrences":114,"retained_texts":270,"source_map_entries":1505,"timing_schemas":40}}
+{
+  "attributes": {
+    "exact_appended_bytes": 61,
+    "git_text_unset_with_core_autocrlf": [
+      "true",
+      "input",
+      "false"
+    ],
+    "prior_sha256": "23ce53a8c51e9c1ad1c425de0e9e503c3b0c0f1a376b1aaac9b0bb4b5ffee5eb",
+    "result_sha256": "037b03d4254491953e723d78230dbddb08a074ea3ef1f317528ea93f0423c093"
+  },
+  "budget": {
+    "combined_phase_cap": 1048576,
+    "parent_future_root_reservation": 20480,
+    "private_phase_bytes_at_snapshot": 184688,
+    "publication_cap_including_attributes": 700000
+  },
+  "coordination": {
+    "identity": "supplied host hook identity",
+    "initial_native_id_registration_exception": "Initial genuine CODEX_THREAD_ID check began a query before the host supplied its hook identity. Its incomplete cursor expired; a restarted same-mailbox full query completed 4 pages/53 items at wrap. The supplied hook startup query completed before substantive publication work. Historical retention gaps remain.",
+    "relevant_full_get_ack": 3,
+    "resource_active_registered_builds_at_wrap": 0,
+    "resource_fast_status_startup_and_wrap": true,
+    "resource_revision": 5222,
+    "startup_items": 27,
+    "startup_pages": 2,
+    "startup_retentiongap": true,
+    "wrap": {
+      "explicit_sealed_core_STOP_get_ack": 1,
+      "initial_native_query_restart": {
+        "items": 53,
+        "pages": 4,
+        "relevant_get_ack": 4,
+        "retentiongap": true
+      },
+      "supplied_hook_companion": {
+        "items": 25,
+        "pages": 2,
+        "relevant_get_ack": 1,
+        "retentiongap": true
+      },
+      "supplied_hook_core": {
+        "items": 245,
+        "pages": 18,
+        "relevant_get_ack": 12,
+        "retentiongap": true
+      }
+    }
+  },
+  "custody": "Publication write/read holds released to parent after final freeze. No raw ZIP/binaries retained; RAM downloader exited. Parent owns review, integration, publication and eventual settled cleanup.",
+  "decision": "STOP",
+  "limits": [
+    "No browser render by publisher; parent owns visual review after freeze.",
+    "Source pure validator reuse attributed; independent statistical arithmetic only.",
+    "VM retirement unknown; no cleanup or runtime proof."
+  ],
+  "native_execution": "NOT RUN",
+  "publication_artifact_ram_check": {
+    "actual_sha256": "9a41a3511034bb316c82cd4c662043b7b074677f6ce40ffad174385a4fab5b70",
+    "actual_zip_bytes": 5090445,
+    "all_members": 274,
+    "authorization_stripped_foreign_redirect": true,
+    "downloads": 1,
+    "excluded_binaries": 4,
+    "retained_texts": 270,
+    "strict_paths_regular_unique_crc_size_sha": true
+  },
+  "refusal_and_roundtrip_checks": [
+    "strict duplicate JSON",
+    "nonfinite JSON",
+    "boolean unsigned",
+    "negative unsigned",
+    "missing sample",
+    "boolean sample",
+    "zero arithmetic denominator",
+    "counter mismatch",
+    "unsettled state",
+    "memory accounting",
+    "calibration dropped",
+    "latency bound",
+    "PIV bound",
+    "duplicate output marker",
+    "inclusive arithmetic boundary",
+    "over-limit arithmetic boundary",
+    "bundle byte tamper",
+    "pack offset tamper",
+    "all packs gzip/XZ/member roundtrip"
+  ],
+  "schema": "coaptic-stage-b-publication-checks/1",
+  "scope_verification": {
+    "git_diff_check": "PASS",
+    "owned_only": true,
+    "private_retained_bytes_unchanged": true,
+    "source_native_workflows_old_evidence_unchanged": true
+  },
+  "screen_delivery": {
+    "all36_static_rows_visible_by_default": true,
+    "chart_pixel_height": 32,
+    "exact36_data_verified": true,
+    "external_assets_or_fetch": false,
+    "parent_actual_filter_script_dom_mock_cases": 162,
+    "responsive_breakpoint_pixels": 600,
+    "theme_variables_with_standalone_fallbacks": true,
+    "transparent_html_body_and_outer_content": true,
+    "visual_render": "Parent html_preview: full2843px desktop light728 and first4000of9288px phone dark390, no console messages. Lower phone visual unobserved; actual browser clicks NOT RUN."
+  },
+  "security_scan": {
+    "findings": 0,
+    "limits": "common credential patterns and binary signatures/NUL only; not a complete secret or malware audit",
+    "payloads": 300,
+    "scope": "all reconstructed artifact texts, sealed collectors, parent/source records and uncompressed publication files"
+  },
+  "standalone": {
+    "calibration_values": 163840,
+    "collector_binding_checks": 137,
+    "command": "python -B verify.py --self-test",
+    "comparisons_exact": 36,
+    "failed_gates": 13,
+    "gate_reproduction_is_verification_success": true,
+    "latency_values": 72000,
+    "listing_outputs": 4,
+    "passed_gates": 23,
+    "qualification_outputs": 24,
+    "result": "PASS",
+    "retained_json_binding_occurrences": 114,
+    "retained_texts": 270,
+    "source_map_entries": 1505,
+    "timing_schemas": 40
+  }
+}
