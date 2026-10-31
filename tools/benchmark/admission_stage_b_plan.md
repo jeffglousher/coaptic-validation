@@ -129,8 +129,10 @@ coaptic-admission-stage-b-qualification/1, cycles=16, passed=true,
 measurement="NOT RUN". The two negative-case IDs are ordinary_three_rx_owners_refuse;
 other IDs match the five case names. This exercises the real terse libtest/prefix
 parser without producing timing samples. List these12 separately; also list the
-10 ignored timing tests. A build of either arm must pass all12 exact qualification
-processes before retaining its executable. Software proof mode stops after both
+10 ignored timing tests. Retain/hash the test artifact pair before its first
+validation launch and verify those bytes afterward. A build of either arm must
+pass all12 exact qualification processes before a successful build handoff.
+Software proof mode stops after both
 arms (24 qualification executions). A later campaign builds and qualifies both
 fresh artifact pairs again, then launches its separate40 timing processes. Prove repeat reuse
 beyond four bindings, legal relation/Call/body cleanup and exact phase counts.
