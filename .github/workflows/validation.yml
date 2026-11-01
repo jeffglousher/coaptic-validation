@@ -36,11 +36,14 @@ jobs:
           ref: ${{ inputs.library_revision }}
           path: coaptic
           persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
       - name: Verify source and prepare pinned path dependencies
         shell: bash
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
-        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+        run: python tools/prepare.py --select-macro-locks --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: 1.97.1
@@ -82,10 +85,13 @@ jobs:
           ref: ${{ inputs.library_revision }}
           path: coaptic
           persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
       - name: Verify source and prepare pinned path dependencies
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
-        run: python3 tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+        run: python3 tools/prepare.py --select-macro-locks --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - run: python3 -m unittest discover -s tools/qualification -p 'test_container_host.py'
       - run: python3 tools/qualification/container_host.py --output "$RUNNER_TEMP/protected-container"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -117,17 +123,17 @@ jobs:
           ref: ${{ inputs.library_revision }}
           path: coaptic
           persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
       - name: Verify source and prepare pinned path dependencies
         shell: bash
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
-        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+        run: python tools/prepare.py --select-macro-locks --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: 1.97.1
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.13'
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: python -m unittest discover -s tools/qualification -p "test_*.py"
       - run: python tools/qualification/host.py --output "${{ runner.temp }}/host-qualification.json"
@@ -164,18 +170,18 @@ jobs:
           ref: ${{ inputs.library_revision }}
           path: coaptic
           persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
       - name: Verify source and prepare pinned path dependencies
         shell: bash
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
-        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+        run: python tools/prepare.py --select-macro-locks --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: 1.97.1
           targets: ${{ matrix.target }}
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.13'
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: ${{ matrix.target }}
@@ -208,11 +214,14 @@ jobs:
           ref: ${{ inputs.library_revision }}
           path: coaptic
           persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
       - name: Verify source and prepare pinned path dependencies
         shell: bash
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
-        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+        run: python tools/prepare.py --select-macro-locks --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: 1.97.1
@@ -248,11 +257,14 @@ jobs:
           ref: ${{ inputs.library_revision }}
           path: coaptic
           persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
       - name: Verify source and prepare pinned path dependencies
         shell: bash
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
-        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+        run: python tools/prepare.py --select-macro-locks --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: 1.97.1
@@ -284,11 +296,14 @@ jobs:
           ref: ${{ inputs.library_revision }}
           path: coaptic
           persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
       - name: Verify source and prepare pinned path dependencies
         shell: bash
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
-        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+        run: python tools/prepare.py --select-macro-locks --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: nightly-2026-10-01
@@ -320,11 +335,14 @@ jobs:
           ref: ${{ inputs.library_revision }}
           path: coaptic
           persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
       - name: Verify source and prepare pinned path dependencies
         shell: bash
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
-        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+        run: python tools/prepare.py --select-macro-locks --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: nightly-2026-10-01
@@ -360,11 +378,14 @@ jobs:
           ref: ${{ inputs.library_revision }}
           path: coaptic
           persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
       - name: Verify source and prepare pinned path dependencies
         shell: bash
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
-        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+        run: python tools/prepare.py --select-macro-locks --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: 1.97.1
@@ -394,11 +415,14 @@ jobs:
           ref: ${{ inputs.library_revision }}
           path: coaptic
           persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
       - name: Verify source and prepare pinned path dependencies
         shell: bash
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
-        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+        run: python tools/prepare.py --select-macro-locks --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: 1.97.1
@@ -428,11 +452,14 @@ jobs:
           ref: ${{ inputs.library_revision }}
           path: coaptic
           persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
       - name: Verify source and prepare pinned path dependencies
         shell: bash
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
-        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+        run: python tools/prepare.py --select-macro-locks --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: stable
@@ -546,11 +573,14 @@ jobs:
           ref: ${{ inputs.library_revision }}
           path: coaptic
           persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
       - name: Verify source and prepare pinned path dependencies
         shell: bash
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
-        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+        run: python tools/prepare.py --select-macro-locks --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
         with:
           toolchain: stable
@@ -615,7 +645,7 @@ jobs:
       - name: Verify source and prepare pinned path dependencies
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
-        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+        run: python tools/prepare.py --select-macro-locks --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - run: python -m pip install esphome==2026.9.1
       - run: python -m unittest discover -s tools/esphome -p 'test_*.py'
       - run: cargo +1.97.1 fmt --manifest-path tools/esphome/rust/Cargo.toml -- --check
@@ -637,14 +667,14 @@ jobs:
           ref: ${{ inputs.library_revision }}
           path: coaptic
           persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.13'
       - name: Verify source and prepare pinned path dependencies
         shell: bash
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
-        run: python tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
-        with:
-          python-version: '3.13'
+        run: python tools/prepare.py --select-macro-locks --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - run: python -m pip install -r tools/benchmark/protected/requirements.txt -r tools/interop/libedhoc/requirements.txt
       - run: python -m unittest discover -s tools -p 'test_*.py'
       - run: python -m unittest discover -s tools/qualification -p 'test_*.py'
@@ -657,17 +687,13 @@ jobs:
           toolchain: 1.97.1
           components: rustfmt, clippy
       - name: Check diagnostic profiler
-        run: |
-          cargo fmt --manifest-path tools/benchmark/native/Cargo.toml -p bench-profile -- --check
-          cargo clippy --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-profile --all-targets -- -D warnings
-          cargo test --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-profile
+        env:
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+          SUITE_REVISION: ${{ inputs.suite_revision }}
+        run: python tools/macro_lock_selection.py --native-checks profile --expected-revision "$LIBRARY_REVISION" --expected-suite-revision "$SUITE_REVISION" --prepared-report "$RUNNER_TEMP/validation-source.json"
       - name: Check matched protected benchmark fixtures
         env:
           CARGO_TARGET_DIR: target/benchmark-native
-        run: |
-          cargo fmt --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server -- --check
-          cargo clippy --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server --all-targets -- -D warnings
-          cargo test --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server --bin bench-native-client
-          cargo build --release --locked --manifest-path tools/benchmark/native/Cargo.toml -p bench-rust-server
-          python tools/benchmark/protected/network_check.py --server target/benchmark-native/release/bench-rust-server
-          python tools/benchmark/native_check.py --server target/benchmark-native/release/bench-rust-server --client target/benchmark-native/release/bench-native-client
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+          SUITE_REVISION: ${{ inputs.suite_revision }}
+        run: python tools/macro_lock_selection.py --native-checks fixtures --expected-revision "$LIBRARY_REVISION" --expected-suite-revision "$SUITE_REVISION" --prepared-report "$RUNNER_TEMP/validation-source.json"
