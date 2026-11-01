@@ -38,3 +38,6 @@ tools/benchmark/evidence/admission-stage-b-20261030/** -text
 /Cargo.syn3.lock text eol=lf
 /tools/durable-host/Cargo.syn3.lock text eol=lf
 /fuzz/Cargo.syn3.lock text eol=lf
+
+# Stable native parser-regression contract across Windows and Unix.
+/tools/benchmark/regular_option_regression_contract.json text eol=lf

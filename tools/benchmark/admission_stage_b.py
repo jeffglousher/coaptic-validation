@@ -14,11 +14,49 @@ import re
 import shutil
 import sys
 import time
+from typing import NamedTuple
 
 HASH = '161b7fd033cd7c2cc37b203f878b4307de913e2da2b651bacdbe9e84c186a83c'
 ID = 'admission-stage-b'
 ROOT = 'coaptic-admission-stage-b'
 QUAL_SCHEMA = 'coaptic-admission-stage-b-qualification/1'
+
+
+class Context(NamedTuple):
+    """One immutable, allowlisted source/contract selection; never read from evidence."""
+    identifier: str
+    root: str
+    filename: str
+    sha256: str
+    test_target: str
+    feature: str
+    qualification_schema: str
+    proof_schema: str
+
+
+ADMISSION = Context(ID, ROOT, 'admission_stage_b_contract.json', HASH, ID, ID,
+                    QUAL_SCHEMA, QUAL_SCHEMA)
+PARSER = Context('regular-option-parser-regression', 'coaptic-regular-option-parser-regression',
+                 'regular_option_regression_contract.json',
+                 'bcb57fc34170707f1395a449d9f511a3fb292f094599b6f1c35a630581c6a205',
+                 'regular-option-parser-regression', 'admission-stage-b', QUAL_SCHEMA,
+                 'coaptic-regular-option-parser-regression-qualification/1')
+CONTEXTS = (ADMISSION, PARSER)
+IDENTIFIERS = tuple(c.identifier for c in CONTEXTS)
+
+
+def resolve_context(identifier=ID):
+    for context in CONTEXTS:
+        if identifier == context.identifier:
+            return context
+    raise ValueError('unknown frozen regression context')
+
+
+def checked_context(context):
+    if (type(context) is not Context or any(type(value) is not str for value in context)
+            or context not in CONTEXTS):
+        raise ValueError('unrecognized immutable regression context')
+    return context
 METRICS = ('admission_rx_refused', 'admission_tx_refused', 'admission_refusal_sent',
            'admission_refusal_unsent', 'observe_register', 'observe_cancel', 'observe_notify')
 SETTLED = ('calls_collected_once', 'peer_bindings_consumed', 'rx_empty', 'tx_empty',
@@ -43,46 +81,47 @@ def equal(value, expected):
         raise ValueError('frozen Stage B value differs')
 
 
-def contract():
-    raw = (Path(__file__).with_name('admission_stage_b_contract.json')).read_bytes()
+def contract(*, context=ADMISSION):
+    context = checked_context(context)
+    raw = (Path(__file__).with_name(context.filename)).read_bytes()
     value = json.loads(raw)
     if raw != encoded(value)+b'\n':
         raise ValueError('canonical frozen contract bytes required')
-    if hashlib.sha256(encoded(value)).hexdigest() != HASH:
+    if hashlib.sha256(encoded(value)).hexdigest() != context.sha256:
         raise ValueError('frozen Stage B contract hash differs')
     return value
 
 
-def descriptor(api):
-    c = contract()
-    return api.Contract(ID, c['schema'], c['owner_schema'], ROOT, ID,
+def descriptor(api, *, context=ADMISSION):
+    c = contract(context=context)
+    return api.Contract(context.identifier, c['schema'], c['owner_schema'], context.root, context.identifier,
                         tuple((a, v['commit']) for a, v in c['cores'].items()),
                         tuple((a, v['tree']) for a, v in c['cores'].items()), ())
 
 
-def binding():
-    contract()
-    return dict(contract_id=ID, contract_sha256=HASH)
+def binding(*, context=ADMISSION):
+    contract(context=context)
+    return dict(contract_id=context.identifier, contract_sha256=context.sha256)
 
 
-def purpose(args):
-    equal(args.contract, ID)
+def purpose(args, *, context=ADMISSION):
+    equal(args.contract, context.identifier)
     if args.command not in ('build', 'measure', 'all', 'proof'):
         raise ValueError('unknown Stage B command')
-    return contract()['qualification_purpose' if args.command == 'proof' else 'purpose']
+    return contract(context=context)['qualification_purpose' if args.command == 'proof' else 'purpose']
 
 
-def check(value, selected_purpose):
-    equal({k: value.get(k) for k in binding()}, binding())
+def check(value, selected_purpose, *, context=ADMISSION):
+    equal({k: value.get(k) for k in binding(context=context)}, binding(context=context))
     equal(value.get('purpose'), selected_purpose)
 
 
-def bound(value, selected_purpose):
-    return dict(value, **binding(), purpose=selected_purpose)
+def bound(value, selected_purpose, *, context=ADMISSION):
+    return dict(value, **binding(context=context), purpose=selected_purpose)
 
 
-def source_check(api, core, suite_sha, core_sha):
-    c = contract()
+def source_check(api, core, suite_sha, core_sha, *, context=ADMISSION):
+    c = contract(context=context)
     known = {v['commit']: v['tree'] for v in c['cores'].values()}
     if core_sha not in known:
         raise ValueError('foreign Stage B core')
@@ -90,11 +129,11 @@ def source_check(api, core, suite_sha, core_sha):
     equal(api.ds.identity(api.SUITE)['commit'], suite_sha)
 
 
-def schedule():
+def schedule(*, context=ADMISSION):
     rows = []
-    for case in contract()['cases']:
-        for mode in contract()['modes']:
-            for order in contract()['rounds']:
+    for case in contract(context=context)['cases']:
+        for mode in contract(context=context)['modes']:
+            for order in contract(context=context)['rounds']:
                 for arm in order:
                     rows.append(dict(index=len(rows), arm=arm, case=case['id'], security=mode,
                                      profile=case['profile'], order=order))
@@ -119,8 +158,8 @@ def array(value, count, maximum=2**128-1):
         uint(item, maximum)
 
 
-def test_cell(name, qualification=False):
-    c = contract()
+def test_cell(name, qualification=False, *, context=ADMISSION):
+    c = contract(context=context)
     if name not in c['native_validation_tests' if qualification else 'native_timing_tests']:
         raise ValueError('unselected native test')
     stem = name.split('::')[1]
@@ -128,11 +167,11 @@ def test_cell(name, qualification=False):
     return stem[:-len(mode)-1], mode
 
 
-def validate_native(value, row):
-    c = contract()
+def validate_native(value, row, *, context=ADMISSION):
+    c = contract(context=context)
     keys(value, NATIVE_KEYS)
     equal(value['schema'], c['native_schema'])
-    equal(value['contract_sha256'], HASH)
+    equal(value['contract_sha256'], context.sha256)
     equal(value['contract'], c)
     case = next(x for x in c['cases'] if x['id'] == row['case'])
     for key, expected in dict(case=case['id'], security=row['security'], profile=case['profile'],
@@ -161,16 +200,24 @@ def validate_native(value, row):
             equal(seq[direction][0], 0)
             uint(seq['fresh_'+direction], 11280)
             equal(seq['fresh_'+direction], seq[direction][1]-seq[direction][0])
+    if case['id'] in c.get('extended_options',{}).get('case_ids',[]) and row['security']=='oscore':
+        equal(seq['app'],[0,0])
+        equal(seq['fresh_app'],0)
+        expected=c['extended_options']['fresh_peer_sequences_per_process']
+        equal(seq['peer'],[0,expected])
+        equal(seq['fresh_peer'],expected)
     mem = value['memory']
     keys(mem, MEMORY)
     for key in MEMORY[:-1]:
         uint(mem[key], 2**64-1)
     equal(mem['remaining'], 'allocator/runtime/initialization/peak-stack costs unknown')
-    for key, n in dict(latency_bytes=48000, calibration_bytes=65536,
-                       token_ledger_bytes=27072, serializer_buffer_bytes=8192).items():
+    for key, n in dict(latency_bytes=case.get('latency_storage_bytes',c['latency_storage_bytes']),
+                       calibration_bytes=c['calibration_storage_bytes'],
+                       token_ledger_bytes=case.get('token_ledger_storage_bytes',c['token_ledger_storage_bytes']),
+                       serializer_buffer_bytes=c['serializer_buffer_bytes']).items():
         equal(mem[key], n)
     equal(mem['fixture_total_requested_bytes'], mem['fixture_inline_bytes']+mem['fixture_requested_heap_bytes'])
-    if (mem['fixture_total_requested_bytes'] > 262144 or
+    if (mem['fixture_total_requested_bytes'] > c['fixture_storage_limit_bytes'] or
             mem['fixture_total_requested_bytes'] < sum(mem[k] for k in
                 ('latency_bytes','calibration_bytes','token_ledger_bytes','serializer_buffer_bytes')) or
             mem['peer_context_nested_bytes'] > mem['fixture_total_requested_bytes'] or mem['app_inline_bytes'] == 0):
@@ -182,7 +229,7 @@ def validate_native(value, row):
     return value
 
 
-def parse_result(api, raw, name, qualification=False, *, stderr=b'', returncode=0):
+def parse_result(api, raw, name, qualification=False, *, stderr=b'', returncode=0, context=ADMISSION):
     if returncode != 0 or stderr:
         raise ValueError('failed native process')
     if len(raw)+len(stderr) > 2*1024**2:
@@ -200,12 +247,12 @@ def parse_result(api, raw, name, qualification=False, *, stderr=b'', returncode=
                r'0 ignored; 0 measured; \d+ filtered out; finished in [0-9.]+s\s*')
     if not re.fullmatch(pattern, rest):
         raise ValueError('unexpected terse libtest census/output')
-    case, mode = test_cell(name, qualification)
+    case, mode = test_cell(name, qualification, context=context)
     if qualification:
-        equal(value, dict(schema=QUAL_SCHEMA, contract_sha256=HASH, case=case,
+        equal(value, dict(schema=context.qualification_schema, contract_sha256=context.sha256, case=case,
                           security=mode, cycles=16, passed=True, measurement='NOT RUN'))
     else:
-        validate_native(value, dict(case=case, security=mode))
+        validate_native(value, dict(case=case, security=mode), context=context)
     return value
 
 
@@ -221,19 +268,19 @@ def validate_listing(raw, names):
         raise ValueError('native listing differs')
 
 
-def cargo_command(api, cargo):
+def cargo_command(api, cargo, *, context=ADMISSION):
     return [cargo, 'test', '--release', '--locked', '--target', api.TARGET,
             '--manifest-path', str(api.NATIVE/'servers/Cargo.toml'), '-p', 'bench-rust-server',
-            '--test', ID, '--features', ID, '--no-run', '--message-format=json-render-diagnostics']
+            '--test', context.test_target, '--features', context.feature, '--no-run', '--message-format=json-render-diagnostics']
 
 
-def artifact_pair(api, raw, target):
+def artifact_pair(api, raw, target, *, context=ADMISSION):
     artifacts, finished = [], []
     for line in raw.splitlines():
         value = api.read_json(line)
         if value.get('reason') == 'build-finished':
             finished.append(value.get('success') is True)
-        if value.get('reason') == 'compiler-artifact' and value.get('target', {}).get('name') == ID:
+        if value.get('reason') == 'compiler-artifact' and value.get('target', {}).get('name') == context.test_target:
             artifacts.append(value)
     if len(artifacts) != 1 or finished != [True]:
         raise ValueError('exactly one Stage B Cargo artifact required')
@@ -274,13 +321,13 @@ def compare(api, arms):
                 passed=math.isfinite(upper) and upper <= 1.02, orientation='B/A')
 
 
-def owner(api, args, root):
-    return bound(dict(schema=contract()['owner_schema'], root=str(root), owner=os.environ.get('GITHUB_RUN_ID'),
+def owner(api, args, root, *, context=ADMISSION):
+    return bound(dict(schema=contract(context=context)['owner_schema'], root=str(root), owner=os.environ.get('GITHUB_RUN_ID'),
                       attempt=os.environ.get('GITHUB_RUN_ATTEMPT'), expected_suite=args.expected_suite,
-                      core=str(Path(args.core).resolve()), contract=contract(), flags=api.FLAGS), purpose(args))
+                      core=str(Path(args.core).resolve()), contract=contract(context=context), flags=api.FLAGS), purpose(args, context=context), context=context)
 
 
-def run_native(api, budget, binary, name, stem, qualification):
+def run_native(api, budget, binary, name, stem, qualification, *, context=ADMISSION):
     command = [str(binary)] + ([] if qualification else ['--ignored']) + [
         '--exact', name, '--test-threads=1', '--nocapture', '--format=terse', '--color=never']
     raw = api.child_command(command, budget, stem, env=os.environ, seconds=30)
@@ -288,27 +335,27 @@ def run_native(api, budget, binary, name, stem, qualification):
     equal(receipt['passed'], True)
     return parse_result(api, raw, name, qualification,
                         stderr=(budget.root/'evidence'/(stem+'.stderr')).read_bytes(),
-                        returncode=receipt['returncode'])
+                        returncode=receipt['returncode'], context=context)
 
 
-def verify_worker_source(api, spec):
+def verify_worker_source(api, spec, *, context=ADMISSION):
     args = argparse.Namespace(**spec['args'])
-    p = purpose(args)
-    check(spec,p)
+    p = purpose(args, context=context)
+    check(spec,p, context=context)
     root = Path(args.output)
-    equal(api.load(root/'evidence/owner.json'), owner(api,args,root))
+    equal(api.load(root/'evidence/owner.json'), owner(api,args,root, context=context))
     for tool in spec['tools'].values():
-        check(tool,p)
-    check(spec['inputs'],p)
+        check(tool,p, context=context)
+    check(spec['inputs'],p, context=context)
     api.tool_check(spec['tools'])
     api.config_check(spec['inputs'])
     equal(spec['cargo'],spec['tools']['cargo']['path'])
     equal(spec['flags'],api.FLAGS)
     arm = spec['arm']
-    identity = contract()['cores'][arm]
+    identity = contract(context=context)['cores'][arm]
     api.tree_check(api.ds.identity(args.core),identity['commit'],identity['tree'])
-    check(spec['source'],p)
-    check(spec['suite'],p)
+    check(spec['source'],p, context=context)
+    check(spec['suite'],p, context=context)
     equal(str(Path(spec['root']).resolve()), str(root.resolve()))
     api.tree_check(spec['source']['identity'],identity['commit'],identity['tree'])
     api.verify_staged_suite(args.core,args.expected_suite,spec['suite'],spec['lock'])
@@ -318,75 +365,75 @@ def verify_worker_source(api, spec):
     api.check_files(api.SUITE,files)
 
 
-def cargo_worker(api,spec):
-    verify_worker_source(api,spec)
+def cargo_worker(api,spec, *, context=ADMISSION):
+    verify_worker_source(api,spec, context=context)
     root, arm, p = Path(spec['root']), spec['arm'], spec['purpose']
     budget = api.Budget(root,spec['seconds'],rss_limit=2*1024**3)
-    raw = api.child_command(cargo_command(api,spec['cargo']), budget,arm+'-build',env=os.environ,seconds=spec['seconds'])
-    pair = artifact_pair(api,raw,root/'target')
+    raw = api.child_command(cargo_command(api,spec['cargo'], context=context), budget,arm+'-build',env=os.environ,seconds=spec['seconds'])
+    pair = artifact_pair(api,raw,root/'target', context=context)
     retained = {}
     for kind,path in zip(('exe','pdb'),pair):
         if path.stat().st_size+api.wp.owned_size(root/'evidence')+api.RESERVE > api.EVIDENCE_LIMIT:
             raise ValueError('retained pair evidence budget')
-        retained[kind] = bound(api.wp.retain_file(root,path,root/'evidence'/arm/path.name),p)
+        retained[kind] = bound(api.wp.retain_file(root,path,root/'evidence'/arm/path.name),p, context=context)
     api.artifact_check(root,{arm:retained})
     binary = retained['exe']['path']
-    for qualification,names,prefix in ((True,contract()['native_validation_tests'],'stage_b_validation::'),
-                                      (False,contract()['native_timing_tests'],'stage_b::')):
+    for qualification,names,prefix in ((True,contract(context=context)['native_validation_tests'],'stage_b_validation::'),
+                                      (False,contract(context=context)['native_timing_tests'],'stage_b::')):
         cmd = [binary]+([] if qualification else ['--ignored'])+[prefix,'--list']
         stem = arm+('-qualification-list' if qualification else '-timing-list')
         listing = api.child_command(cmd,budget,stem,env=os.environ,seconds=30)
         if (root/'evidence'/(stem+'.stderr')).read_bytes():
             raise ValueError('unexpected listing stderr')
         validate_listing(listing,names)
-    for i,name in enumerate(contract()['native_validation_tests']):
-        verify_worker_source(api,spec)
+    for i,name in enumerate(contract(context=context)['native_validation_tests']):
+        verify_worker_source(api,spec, context=context)
         api.artifact_check(root,{arm:retained})
-        run_native(api,budget,binary,name,arm+'-qualification-'+str(i),True)
-    verify_worker_source(api,spec)
+        run_native(api,budget,binary,name,arm+'-qualification-'+str(i),True, context=context)
+    verify_worker_source(api,spec, context=context)
     api.artifact_check(root,{arm:retained})
-    api.save(root,arm+'-cargo.json',bound(dict(artifacts=retained, native_tests=contract()['native_validation_tests'],
-                  timing_tests=contract()['native_timing_tests'], measurements='NOT RUN'),p))
+    api.save(root,arm+'-cargo.json',bound(dict(artifacts=retained, native_tests=contract(context=context)['native_validation_tests'],
+                  timing_tests=contract(context=context)['native_timing_tests'], measurements='NOT RUN'),p, context=context))
 
 
-def build(api,args,root,owned):
+def build(api,args,root,owned, *, context=ADMISSION):
     deadline = time.monotonic()+830
-    inputs = bound(api.ds.cargo_inputs(),purpose(args))
+    inputs = bound(api.ds.cargo_inputs(),purpose(args, context=context), context=context)
     compiler,cargo,tools = api.ds.toolchain()
     if not compiler.startswith('rustc 1.99.0 ') or '\nhost: '+api.TARGET not in compiler or not cargo.startswith('cargo 1.99.0 '):
         raise ValueError('exact Rust/Cargo 1.99.0 host MSVC required')
     tools['python'] = dict(path=str(Path(sys._base_executable).resolve()),sha256=api.ds.digest(sys._base_executable))
-    tools = {name:bound(value,purpose(args)) for name,value in tools.items()}
+    tools = {name:bound(value,purpose(args, context=context), context=context) for name,value in tools.items()}
     env = api.environment(root,tools)
     suite = api.snapshot(api.SUITE)
     records,artifacts,primary = {},{},None
-    p = purpose(args)
+    p = purpose(args, context=context)
     try:
-        for arm,identity in contract()['cores'].items():
+        for arm,identity in contract(context=context)['cores'].items():
             remaining = deadline-time.monotonic()
             if remaining <= 35:
                 raise TimeoutError('830-second build owner deadline')
             outer = min(450,remaining-20)
             record = records[arm] = {}
             def operation(lock):
-                record['source'] = bound(record['source'],p)
-                record['suite'] = bound(record['suite'],p)
+                record['source'] = bound(record['source'],p, context=context)
+                record['suite'] = bound(record['suite'],p, context=context)
                 return api.launch(root,arm,bound(dict(kind='cargo',root=str(root),arm=arm,cargo=tools['cargo']['path'],
                     seconds=min(400,outer-30),args=vars(args),source=record['source'],suite=record['suite'],lock=lock,
-                    tools=tools,inputs=inputs,flags=api.FLAGS),p),
-                    env,timeout=outer,build=True,selected=descriptor(api))
-            api.transaction(args.core,args.expected_suite,identity['commit'],operation,record,descriptor(api))
-            records[arm] = bound(record,p)
+                    tools=tools,inputs=inputs,flags=api.FLAGS),p, context=context),
+                    env,timeout=outer,build=True,selected=descriptor(api, context=context))
+            api.transaction(args.core,args.expected_suite,identity['commit'],operation,record,descriptor(api, context=context))
+            records[arm] = bound(record,p, context=context)
             receipt = api.load(root/'evidence'/(arm+'-cargo.json'))
-            check(receipt,p)
+            check(receipt,p, context=context)
             artifacts[arm] = receipt['artifacts']
             api.tool_check(tools)
             api.config_check(inputs)
             equal(api.snapshot(api.SUITE),suite)
         if time.monotonic() >= deadline:
             raise TimeoutError('830-second build owner deadline')
-        api.save(root,'build.json',bound(dict(owner=owned,contract=contract(),suite=suite,records=records,
-                 artifacts=artifacts,compiler=compiler,cargo=cargo,tools=tools,inputs=inputs,flags=api.FLAGS),p))
+        api.save(root,'build.json',bound(dict(owner=owned,contract=contract(context=context),suite=suite,records=records,
+                 artifacts=artifacts,compiler=compiler,cargo=cargo,tools=tools,inputs=inputs,flags=api.FLAGS),p, context=context))
     except BaseException as error:
         primary = error
         raise
@@ -397,48 +444,48 @@ def build(api,args,root,owned):
                 api.config_check(inputs)
                 api.artifact_check(root,artifacts)
                 equal(api.snapshot(api.SUITE),suite)
-                api.source_gate(args.core,args.expected_suite,api.BASELINE,descriptor(api))
+                api.source_gate(args.core,args.expected_suite,contract(context=context)['cores']['A']['commit'],descriptor(api, context=context))
             api.report_preserving(primary,'build immutable checks',immutable_checks)
         api.report_preserving(primary,'build-finally receipt',lambda:api.save(root,'build-finally.json',
-            bound(dict(records=records,cleanup_unresolved=getattr(primary,'cleanup_unresolved',False)),p)))
+            bound(dict(records=records,cleanup_unresolved=getattr(primary,'cleanup_unresolved',False)),p, context=context)))
 
 
-def verify_build(api,args,root):
-    p = purpose(args)
-    equal(api.load(root/'evidence/owner.json'),owner(api,args,root))
+def verify_build(api,args,root, *, context=ADMISSION):
+    p = purpose(args, context=context)
+    equal(api.load(root/'evidence/owner.json'),owner(api,args,root, context=context))
     value = api.load(root/'evidence/build.json')
-    check(value,p)
-    equal(value['owner'],owner(api,args,root))
-    equal(value['contract'],contract())
+    check(value,p, context=context)
+    equal(value['owner'],owner(api,args,root, context=context))
+    equal(value['contract'],contract(context=context))
     equal(value['flags'],api.FLAGS)
-    api.source_gate(args.core,args.expected_suite,api.BASELINE,descriptor(api))
+    api.source_gate(args.core,args.expected_suite,contract(context=context)['cores']['A']['commit'],descriptor(api, context=context))
     equal(api.snapshot(api.SUITE),value['suite'])
     baseline = api.snapshot(args.core)
-    equal(value['records']['A']['source'],bound(baseline,p))
+    equal(value['records']['A']['source'],bound(baseline,p, context=context))
     for tool in value['tools'].values():
-        check(tool,p)
-    check(value['inputs'],p)
+        check(tool,p, context=context)
+    check(value['inputs'],p, context=context)
     api.tool_check(value['tools'])
     api.config_check(value['inputs'])
     equal(sorted(value['artifacts']),['A','B'])
     equal(sorted(value['records']),['A','B'])
-    for arm,identity in contract()['cores'].items():
+    for arm,identity in contract(context=context)['cores'].items():
         record = value['records'][arm]
-        check(record,p)
-        check(record['source'],p)
-        check(record['suite'],p)
+        check(record,p, context=context)
+        check(record['source'],p, context=context)
+        check(record['suite'],p, context=context)
         api.tree_check(record['source']['identity'],identity['commit'],identity['tree'])
         equal(record['restoration'],'verified clean initial source')
-        equal(record['suite'],bound(value['suite'],p))
+        equal(record['suite'],bound(value['suite'],p, context=context))
         receipt = api.load(root/'evidence'/(arm+'-cargo.json'))
-        check(receipt,p)
-        equal(receipt['native_tests'],contract()['native_validation_tests'])
-        equal(receipt['timing_tests'],contract()['native_timing_tests'])
+        check(receipt,p, context=context)
+        equal(receipt['native_tests'],contract(context=context)['native_validation_tests'])
+        equal(receipt['timing_tests'],contract(context=context)['native_timing_tests'])
         equal(receipt['artifacts'],value['artifacts'][arm])
         for artifact in value['artifacts'][arm].values():
-            check(artifact,p)
-        for qualification,names,stem in ((True,contract()['native_validation_tests'],'qualification'),
-                                         (False,contract()['native_timing_tests'],'timing')):
+            check(artifact,p, context=context)
+        for qualification,names,stem in ((True,contract(context=context)['native_validation_tests'],'qualification'),
+                                         (False,contract(context=context)['native_timing_tests'],'timing')):
             list_stem = arm+'-'+stem+'-list'
             listing_receipt = api.load(root/'evidence'/(list_stem+'-process.json'))
             equal(listing_receipt['passed'],True)
@@ -447,49 +494,49 @@ def verify_build(api,args,root):
                   ['stage_b_validation::' if qualification else 'stage_b::','--list'])
             equal((root/'evidence'/(list_stem+'.stderr')).read_text(),'')
             validate_listing((root/'evidence'/(list_stem+'.stdout')).read_bytes(),names)
-        for i,name in enumerate(contract()['native_validation_tests']):
+        for i,name in enumerate(contract(context=context)['native_validation_tests']):
             stem = arm+'-qualification-'+str(i)
             receipt = api.load(root/'evidence'/(stem+'-process.json'))
             equal(receipt['passed'],True)
             equal(receipt['command'],[value['artifacts'][arm]['exe']['path'],'--exact',name,
                   '--test-threads=1','--nocapture','--format=terse','--color=never'])
             parse_result(api,(root/'evidence'/(stem+'.stdout')).read_bytes(),name,True,
-                         stderr=(root/'evidence'/(stem+'.stderr')).read_bytes(),returncode=receipt['returncode'])
+                         stderr=(root/'evidence'/(stem+'.stderr')).read_bytes(),returncode=receipt['returncode'], context=context)
     api.artifact_check(root,value['artifacts'])
     return value
 
 
-def measure_worker(api,spec):
+def measure_worker(api,spec, *, context=ADMISSION):
     args = argparse.Namespace(**spec['args'])
-    p = purpose(args)
-    equal(p,contract()['purpose'])
-    check(spec,p)
+    p = purpose(args, context=context)
+    equal(p,contract(context=context)['purpose'])
+    check(spec,p, context=context)
     root = Path(args.output)
     budget = api.Budget(root,300)
     completed,attempted,comparisons,data = [],[],[],{}
     primary = None
     def verify():
         api.check_files(root/'evidence',spec['prepared_hashes'])
-        return verify_build(api,args,root)
+        return verify_build(api,args,root, context=context)
     try:
         prepared = verify()
         with api.affinity(root):
-            for row in schedule():
+            for row in schedule(context=context):
                 budget.check(force=True)
                 verify()
                 pair = prepared['artifacts'][row['arm']]
                 name = 'stage_b::'+row['case']+'_'+row['security']
                 stem = 'sample-'+str(row['index']).zfill(2)
                 attempted.append(row)
-                result = run_native(api,budget,pair['exe']['path'],name,stem,False)
+                result = run_native(api,budget,pair['exe']['path'],name,stem,False, context=context)
                 verify()
                 api.save(root,stem+'.json',bound(dict(selection=row,artifact=pair['exe'],
-                    raw_sha256=api.ds.digest(root/'evidence'/(stem+'.stdout')),passed=True),p))
+                    raw_sha256=api.ds.digest(root/'evidence'/(stem+'.stdout')),passed=True),p, context=context))
                 data[(row['case'],row['security'],row['order'],row['arm'])] = result['latencies_ns']
                 completed.append(row)
-        for case in contract()['cases']:
-            for mode in contract()['modes']:
-                for order in contract()['rounds']:
+        for case in contract(context=context)['cases']:
+            for mode in contract(context=context)['modes']:
+                for order in contract(context=context)['rounds']:
                     for label in case['labels']:
                         budget.check(force=True)
                         try:
@@ -497,8 +544,8 @@ def measure_worker(api,spec):
                         except ValueError as error:
                             comparison = dict(passed=False,inconclusive=True,failure=api.failure(error),orientation='B/A')
                         comparisons.append(dict(comparison,case=case['id'],security=mode,order=order,label=label))
-        equal(len(completed),40)
-        equal(len(comparisons),36)
+        equal(len(completed),contract(context=context)['processes'])
+        equal(len(comparisons),contract(context=context)['statistics']['decisions'])
         if not all(c['passed'] for c in comparisons):
             raise ValueError('Stage B gate failed; STOP')
         verify()
@@ -508,23 +555,24 @@ def measure_worker(api,spec):
     finally:
         api.report_preserving(primary,'measurement-result receipt',lambda:api.save(root,'result.json',bound(dict(
             passed=primary is None,completed=completed,attempted=attempted,
-            failed_or_incomplete=[r for r in attempted if r not in completed],not_run=schedule()[len(attempted):],
+            failed_or_incomplete=[r for r in attempted if r not in completed],not_run=schedule(context=context)[len(attempted):],
             comparisons=comparisons,failure=api.failure(primary) if primary else None,
-            scope=contract()['measurement_scope']),p)))
+            scope=contract(context=context)['measurement_scope'],
+            **(dict(schema=contract(context=context)['schema']) if context != ADMISSION else {})),p, context=context)))
 
 
-def worker(api,spec):
-    p = purpose(argparse.Namespace(**spec['args']))
-    check(spec,p)
+def worker(api,spec, *, context=ADMISSION):
+    p = purpose(argparse.Namespace(**spec['args']), context=context)
+    check(spec,p, context=context)
     if spec['kind'] == 'cargo':
-        return cargo_worker(api,spec)
+        return cargo_worker(api,spec, context=context)
     if spec['kind'] == 'measure':
-        return measure_worker(api,spec)
+        return measure_worker(api,spec, context=context)
     raise ValueError('unknown Stage B worker')
 
 
-def execute(api,args):
-    p = purpose(args)
+def execute(api,args, *, context=ADMISSION):
+    p = purpose(args, context=context)
     if sys.platform != 'win32' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted':
         raise ValueError('dedicated hosted Windows runner required')
     if shutil.which('agent-resources'):
@@ -532,52 +580,52 @@ def execute(api,args):
     if not re.fullmatch('[0-9a-f]{40}',args.expected_suite):
         raise ValueError('immutable expected suite SHA required')
     root = Path(args.output).resolve()
-    if root.parent != Path(os.environ['RUNNER_TEMP']).resolve() or root.name != ROOT:
+    if root.parent != Path(os.environ['RUNNER_TEMP']).resolve() or root.name != context.root:
         raise ValueError('owned Stage B output root required')
     args.output,args.core = str(root),str(Path(args.core).resolve())
-    owned = owner(api,args,root)
-    api.source_gate(args.core,args.expected_suite,api.BASELINE,descriptor(api))
+    owned = owner(api,args,root, context=context)
+    api.source_gate(args.core,args.expected_suite,contract(context=context)['cores']['A']['commit'],descriptor(api, context=context))
     observed = api.preflight(root)
     if args.command != 'measure':
         root.mkdir()
         (root/'evidence').mkdir()
         api.save(root,'owner.json',owned)
-        api.save(root,'preflight.json',bound(observed,p))
+        api.save(root,'preflight.json',bound(observed,p, context=context))
     else:
         if (root/'measure-task.json').exists() or (root/'evidence/failure.json').exists() or (root/'evidence/proof-complete.json').exists():
             raise ValueError('one attempt; qualification cannot authorize timing')
         receipt = api.load(root/'evidence/build-complete.json')
-        check(receipt,p)
+        check(receipt,p, context=context)
         api.check_files(root/'evidence',receipt['prepared_hashes'])
-        verify_build(api,args,root)
+        verify_build(api,args,root, context=context)
     primary = None
     try:
         if args.command != 'measure':
-            build(api,args,root,owned)
-        verify_build(api,args,root)
+            build(api,args,root,owned, context=context)
+        verify_build(api,args,root, context=context)
         if args.command in ('measure','all'):
-            value = verify_build(api,args,root)
+            value = verify_build(api,args,root, context=context)
             pins = {name:api.ds.digest(root/'evidence'/name) for name in ('owner.json','build.json')}
-            api.launch(root,'measure',bound(dict(kind='measure',args=vars(args),prepared_hashes=pins),p),
-                       api.environment(root,value['tools']),timeout=450,selected=descriptor(api))
+            api.launch(root,'measure',bound(dict(kind='measure',args=vars(args),prepared_hashes=pins),p, context=context),
+                       api.environment(root,value['tools']),timeout=450,selected=descriptor(api, context=context))
             api.check_files(root/'evidence',pins)
             result = api.load(root/'evidence/result.json')
-            check(result,p)
+            check(result,p, context=context)
             equal(result['passed'],True)
         else:
             hashes = {path.name:api.ds.digest(path) for path in (root/'evidence').iterdir() if path.is_file()}
             api.save(root,'proof-complete.json' if args.command == 'proof' else 'build-complete.json',bound(dict(
-                schema=QUAL_SCHEMA if args.command == 'proof' else contract()['schema'],passed=True,
-                measurements='NOT RUN',qualification_executions=24,prepared_hashes=hashes),p))
+                schema=context.proof_schema if args.command == 'proof' else contract(context=context)['schema'],passed=True,
+                measurements='NOT RUN',qualification_executions=2*len(contract(context=context)['native_validation_tests']),prepared_hashes=hashes),p, context=context))
     except BaseException as error:
         primary = error
-        api.report_preserving(primary,'outer failure receipt',lambda:api.save(root,'failure.json',bound(api.failure(error),p)))
+        api.report_preserving(primary,'outer failure receipt',lambda:api.save(root,'failure.json',bound(api.failure(error),p, context=context)))
         raise
     finally:
         if not getattr(primary,'cleanup_unresolved',False):
             def final_check():
-                api.source_gate(args.core,args.expected_suite,api.BASELINE,descriptor(api))
+                api.source_gate(args.core,args.expected_suite,contract(context=context)['cores']['A']['commit'],descriptor(api, context=context))
                 if (root/'evidence/build.json').exists():
-                    verify_build(api,args,root)
-                api.save(root,args.command+'-final-source-check.json',bound(dict(passed=True),p))
+                    verify_build(api,args,root, context=context)
+                api.save(root,args.command+'-final-source-check.json',bound(dict(passed=True),p, context=context))
             api.report_preserving(primary,'outer final source check',final_check)

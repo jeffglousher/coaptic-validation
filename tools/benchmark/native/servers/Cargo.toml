@@ -26,3 +26,8 @@ admission-stage-b = []
 name = "admission-stage-b"
 path = "tests/admission-stage-b.rs"
 required-features = ["admission-stage-b"]
+
+[[test]]
+name = "regular-option-parser-regression"
+path = "tests/regular-option-parser-regression.rs"
+required-features = ["admission-stage-b"]
