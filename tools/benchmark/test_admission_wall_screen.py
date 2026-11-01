@@ -33,6 +33,12 @@ def census(listing=False):
             '\r\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 45 filtered out; finished in 0.01s\r\n').encode()
 
 
+def layout_census():
+    return ('running 1 test\r\ntest ' + w.LAYOUT_TEST + ' ... ok\r\n'
+            'test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1200 filtered out; '
+            'finished in 0.01s\r\n').encode()
+
+
 def worker_error(unsettled=False):
     return WorkerError(['python'], TimeoutError('worker killed'),
                        [RuntimeError('Job exit proof unavailable')] if unsettled else [],
@@ -1180,9 +1186,14 @@ class DedupPreparedEvidenceTests(TempTests):
                 suite=w.bound(suite, selected), restoration='verified clean initial source'), selected)
             for kind in ('exe', 'pdb'):
                 value['artifacts'][arm][kind].update(w.binding(selected))
+            extra = {}
+            if selected == w.OPTION_CEILING:
+                if arm == 'B':
+                    (self.root / 'evidence/B-layout.stdout').write_bytes(layout_census())
+                extra['layout_proof'] = w.layout_proof(layout_census()) if arm == 'B' else None
             self.write(arm+'-cargo.json', w.bound(dict(
                 purpose=w.purpose(args), pressure_tests=[], pressure_proof=None,
-                native_tests=list(w.WALL_TESTS)), selected))
+                native_tests=list(w.WALL_TESTS), **extra), selected))
         self.write('owner.json', contract)
         self.write('build.json', value)
         return args, contract, source, suite, value
@@ -1572,21 +1583,108 @@ class OptionCeilingTests(TempTests):
              patch.object(w, 'verify_staged_suite'), patch.object(w, 'check_files'), \
              patch.object(w, 'Budget', return_value=Mock(observed_child_working_set_peak=1, peak=2)), \
              patch.object(w.wp, 'native_artifact_pair', return_value=pair), \
-             patch.object(w, 'child_command', side_effect=[census(True), census(), b'cargo-json']) as child:
+             patch.object(w, 'child_command', side_effect=[census(True), census(), layout_census(), b'cargo-json']) as child:
             # Existing preparation wrote a receipt; remove only that test-owned mock receipt.
             (self.root / 'evidence/B-cargo.json').unlink()
             w.cargo_worker(spec, selected)
-            self.assertEqual(len(child.call_args_list), 3)
+            self.assertEqual(len(child.call_args_list), 4)
             commands = [c.args[0] for c in child.call_args_list]
             self.assertEqual(commands[0][-3:], ['wall_', '--', '--list'])
             self.assertEqual(commands[1][-3:], ['wall_', '--', '--test-threads=1'])
-            self.assertEqual(commands[2][1], 'build')
-            self.assertIn('--locked', commands[2])
+            self.assertEqual(commands[2], w.layout_command('cargo'))
+            self.assertEqual(commands[3][1], 'build')
+            self.assertIn('--locked', commands[3])
             receipt = w.load(self.root / 'evidence/B-cargo.json')
             w.check_binding(receipt, selected)
             self.assertEqual(receipt['purpose'], 'early-benefit-screen')
             self.assertEqual(receipt['native_tests'], list(w.WALL_TESTS))
             self.assertEqual(receipt['pressure_tests'], [])
+            self.assertEqual(receipt['layout_proof'], w.layout_proof(layout_census()))
+
+    def test_windows_layout_test_exact_census_and_bound_metadata(self):
+        proof = w.layout_proof(layout_census())
+        self.assertEqual(proof['test'], w.LAYOUT_TEST)
+        self.assertEqual(proof['target'], 'x86_64-pc-windows-msvc')
+        self.assertEqual(proof['library_features'], 'std,alloc,oscore')
+        self.assertFalse(proof['library_default_features'])
+        self.assertEqual(proof['stdout_sha256'], hashlib.sha256(layout_census()).hexdigest())
+        for bad in (b'running 0 tests\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0s',
+                    layout_census().replace(b' ... ok', b' ... ignored'),
+                    layout_census().replace(w.LAYOUT_TEST.encode(), b'foreign::test'),
+                    layout_census() + layout_census()):
+            with self.assertRaises(ValueError):
+                w.layout_proof(bad)
+
+    def test_missing_or_rewritten_layout_proof_refuses_prepared_build(self):
+        selected = w.OPTION_CEILING
+        args, contract, source, suite, value = DedupPreparedEvidenceTests.prepared(self, selected)
+        def snapshot(path):
+            return source if str(path) == args.core else suite
+        original = w.load(self.root / 'evidence/B-cargo.json')
+        for mutate in (lambda r: r.pop('layout_proof'),
+                       lambda r: r['layout_proof'].update(target='foreign-target'),
+                       lambda r: r['layout_proof'].update(stdout_sha256='0'*64)):
+            receipt = copy.deepcopy(original)
+            mutate(receipt)
+            self.write('B-cargo.json', receipt)
+            with patch.object(w, 'source_gate'), patch.object(w, 'snapshot', side_effect=snapshot), \
+                 patch.object(w, 'child_command') as child:
+                with self.assertRaises(ValueError):
+                    w.verify_build(args, self.root, contract)
+                child.assert_not_called()
+        self.write('B-cargo.json', original)
+        (self.root / 'evidence/B-layout.stdout').unlink()
+        with patch.object(w, 'source_gate'), patch.object(w, 'snapshot', side_effect=snapshot):
+            with self.assertRaises(FileNotFoundError):
+                w.verify_build(args, self.root, contract)
+
+    def test_failed_windows_layout_stops_before_normal_binary_build(self):
+        selected = w.OPTION_CEILING
+        args, _, _, _, value = DedupPreparedEvidenceTests.prepared(self, selected)
+        spec = w.bound(dict(root=str(self.root), args=vars(args), arm='B',
+            source=value['records']['B']['source'], suite=value['records']['B']['suite'],
+            purpose='early-benefit-screen', cargo='cargo', seconds=400,
+            lock={'selected_sha256': 'held'}), selected)
+        identity = dict(commit=dict(selected.cores)['B'], tree=dict(selected.trees)['B'])
+        with patch.object(w.ds, 'identity', return_value=identity), \
+             patch.object(w, 'verify_staged_suite'), patch.object(w, 'check_files'), \
+             patch.object(w, 'Budget', return_value=Mock()), \
+             patch.object(w, 'child_command', side_effect=[census(True), census(), b'running 0 tests']) as child:
+            (self.root / 'evidence/B-cargo.json').unlink()
+            with self.assertRaises(ValueError):
+                w.cargo_worker(spec, selected)
+            self.assertEqual(len(child.call_args_list), 3)
+            self.assertFalse((self.root / 'evidence/B-cargo.json').exists())
+
+    def test_layout_source_tampering_refuses_source_gate(self):
+        selected = w.OPTION_CEILING
+        def identity(path):
+            return (dict(commit=w.baseline(selected), tree=dict(selected.trees)['A'])
+                    if str(path) == 'core' else dict(commit='a'*40, tree='b'*40))
+        with patch.object(w.wp, 'source_identity', return_value={}), \
+             patch.object(w.ds, 'identity', side_effect=identity), \
+             patch.object(Path, 'read_bytes', return_value=b'tampered layout source'):
+            with self.assertRaisesRegex(ValueError, 'native layout source pin differs'):
+                w.source_gate('core', 'a'*40, w.baseline(selected), selected)
+
+    def test_baseline_build_does_not_claim_candidate_layout_test(self):
+        selected = w.OPTION_CEILING
+        args, _, _, _, value = DedupPreparedEvidenceTests.prepared(self, selected)
+        spec = w.bound(dict(root=str(self.root), args=vars(args), arm='A',
+            source=value['records']['A']['source'], suite=value['records']['A']['suite'],
+            purpose='early-benefit-screen', cargo='cargo', seconds=400,
+            lock={'selected_sha256': 'held'}), selected)
+        identity = dict(commit=dict(selected.cores)['A'], tree=dict(selected.trees)['A'])
+        pair = (self.root / 'target/bench-core.exe', self.root / 'target/bench-core.pdb')
+        with patch.object(w.ds, 'identity', return_value=identity), \
+             patch.object(w, 'verify_staged_suite'), patch.object(w, 'check_files'), \
+             patch.object(w, 'Budget', return_value=Mock(observed_child_working_set_peak=1, peak=2)), \
+             patch.object(w.wp, 'native_artifact_pair', return_value=pair), \
+             patch.object(w, 'child_command', side_effect=[census(True), census(), b'cargo-json']) as child:
+            (self.root / 'evidence/A-cargo.json').unlink()
+            w.cargo_worker(spec, selected)
+            self.assertEqual(len(child.call_args_list), 3)
+            self.assertIsNone(w.load(self.root / 'evidence/A-cargo.json')['layout_proof'])
 
     def test_execute_build_handoff_uses_selected_initial_and_final_baseline(self):
         selected = w.OPTION_CEILING

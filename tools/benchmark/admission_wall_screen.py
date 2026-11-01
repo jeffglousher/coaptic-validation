@@ -39,6 +39,10 @@ RESERVE = 4 * 1024**2  # Keep room for failure and final source/settlement recei
 TARGET = 'x86_64-pc-windows-msvc'
 FIXTURE = 'tools/benchmark/native/servers/src/bin/bench-core.rs'
 FIXTURE_LF_SHA256 = 'a645fdc88dee2aba922013c7af6553d25461d2122a0884cd75c70afa2d472398'
+LAYOUT_TEST = ('decoded_option_layout::'
+               'compact_custom_and_extended_token_view_layouts_preserve_baseline_size')
+LAYOUT_SOURCE = 'tools/benchmark/native/servers/tests/decoded-option-layout.rs'
+LAYOUT_LF_SHA256 = '6f15e93a25fefaa0d8abae7c77fcc26aa615665db44569c441ed8c8a8b62ca5a'
 WALL_TESTS = tuple('batch_tests::' + name for name in (
     'wall_cli_bounds_and_mixed_flag_refusal',
     'wall_exact_presets_both_payloads_verify_without_growth',
@@ -172,7 +176,12 @@ OPTION_CEILING = Contract(
         'header reuses guaranteed version1 backing while retaining Type enum niches and original '
         'TKL, including13/14 tokenless views. Public Header is unchanged. No App option-scalar reuse, '
         'dedup, response encoding, public API or pool capacity change. Native layout and '
-        'functional/security checks must pass before dispatch; source alone proves no gain.',
+        'functional/security checks must pass before dispatch; source alone proves no gain. '
+        'QUALIFICATION-AMENDMENT.json 1288 bytes SHA256 8537d9cd53a4957fd9a526751ef0eeb782312089e179d08703dfedf1dcce017f binds one '
+        'exact candidate-only Windows MSVC library layout test before measurement. Existing '
+        'Cargo/build/evidence/deadline limits are unchanged. '
+        'QUALIFICATION-REFINEMENT.json 1725 bytes SHA256 8b633167cd04a2232530f205856a01c07a0b004434f6e0886819da46a7357925 '
+        'uses the tiny pinned public-view integration target to avoid compiling unrelated core tests.',
         'Exactly 16 fresh serial processes, SmallDevice/Default x unprotected/OSCORE x AB/BA; '
         'all 16 before all eight comparisons; first source/runtime/resource failure stops later work. '
         '60000 measured + 128 warmups + 4096 separate calibrations each; totals 960000/2048/65536. '
@@ -274,6 +283,11 @@ def plan(selected=ADMISSION):
                      fixture_lf_sha256=FIXTURE_LF_SHA256, pressure_lf_sha256=PRESSURE_LF_SHA256,
                      evidence_reserve_bytes=RESERVE, artifact_prefix=selected.artifact_prefix)
     if selected == OPTION_CEILING:
+        value['candidate_layout_qualification'] = dict(arm='B', test=LAYOUT_TEST, target=TARGET,
+            package='bench-rust-server', test_target='decoded-option-layout',
+            library_features='std,alloc,oscore', library_default_features=False, profile='release',
+            source=LAYOUT_SOURCE, source_lf_sha256=LAYOUT_LF_SHA256,
+            scope='Exact one native layout test before timing; not a performance observation')
         value['gates'] = {
             profile: {mode: (dict(role='benefit', mean_max=.97, upper_exclusive=1.0)
                              if mode == 'unprotected'
@@ -472,6 +486,10 @@ def source_gate(core, suite_sha, core_sha, selected=ADMISSION):
         exact(ds.identity(SUITE)['commit'], suite_sha, 'companion revision differs')
         if not re.fullmatch('[0-9a-f]{40}', ds.identity(SUITE)['tree']):
             raise ValueError('companion tree required')
+    if selected == OPTION_CEILING:
+        layout_source = (SUITE / LAYOUT_SOURCE).read_bytes().replace(b'\r\n', b'\n')
+        exact(hashlib.sha256(layout_source).hexdigest(), LAYOUT_LF_SHA256,
+              'native layout source pin differs')
     normalized = (SUITE / FIXTURE).read_bytes().replace(b'\r\n', b'\n')
     if hashlib.sha256(normalized).hexdigest() != FIXTURE_LF_SHA256:
         raise ValueError('native fixture pin differs')
@@ -818,6 +836,13 @@ def cargo_worker(spec, selected=ADMISSION):
         tests = child_command(prefix + ['admission_pressure::', '--', '--test-threads=1'], budget,
                               arm + '-pressure', env=os.environ, seconds=spec['seconds'])
         validate_census(tests, expected=PRESSURE_TESTS)
+    layout = None
+    if selected == OPTION_CEILING and arm == 'B':
+        verify_source()
+        raw_layout = child_command(layout_command(spec['cargo']), budget,
+                                   arm + '-layout', env=os.environ, seconds=spec['seconds'])
+        layout = layout_proof(raw_layout)
+        verify_source()
     prefix[1] = 'build'
     verify_source()
     raw = child_command(prefix + ['--message-format=json-render-diagnostics'], budget, arm + '-build',
@@ -828,7 +853,8 @@ def cargo_worker(spec, selected=ADMISSION):
          pressure_proof=pressure_result(arm, selected_purpose),
          artifacts=list(map(str, pair)),
          sampled_direct_child_working_set_peak_bytes=budget.observed_child_working_set_peak,
-         sampled_owned_build_peak_bytes=budget.peak, **binding(selected)))
+         sampled_owned_build_peak_bytes=budget.peak,
+         **({'layout_proof': layout} if selected == OPTION_CEILING else {}), **binding(selected)))
     budget.check(force=True)
 
 
@@ -948,6 +974,19 @@ def build(args, root, contract):
             raise check_error
 
 
+def layout_command(cargo):
+    return [cargo, 'test', '--release', '--locked', '--target', TARGET,
+            '--manifest-path', str(NATIVE / 'Cargo.toml'), '-p', 'bench-rust-server',
+            '--test', 'decoded-option-layout', LAYOUT_TEST,
+            '--', '--exact', '--test-threads=1']
+
+
+def layout_proof(raw):
+    validate_census(raw, expected=(LAYOUT_TEST,))
+    return dict(plan(OPTION_CEILING)['candidate_layout_qualification'],
+                stdout_sha256=hashlib.sha256(raw).hexdigest())
+
+
 def verify_tests(root, arm, receipt, selected_purpose, selected=ADMISSION):
     check_binding(receipt, selected)
     exact(receipt['purpose'], selected_purpose, 'prepared test purpose differs')
@@ -957,6 +996,10 @@ def verify_tests(root, arm, receipt, selected_purpose, selected=ADMISSION):
     exact(receipt['pressure_tests'], expected, 'prepared pressure census differs')
     validate_census((root / 'evidence' / (arm + '-tests-list.stdout')).read_bytes(), listing=True)
     validate_census((root / 'evidence' / (arm + '-tests.stdout')).read_bytes())
+    if selected == OPTION_CEILING:
+        expected_layout = (layout_proof((root / 'evidence/B-layout.stdout').read_bytes())
+                           if arm == 'B' else None)
+        exact(receipt.get('layout_proof'), expected_layout, 'prepared native layout proof differs')
     if expected:
         validate_census((root / 'evidence' / (arm + '-pressure-list.stdout')).read_bytes(),
                         listing=True, expected=PRESSURE_TESTS)
