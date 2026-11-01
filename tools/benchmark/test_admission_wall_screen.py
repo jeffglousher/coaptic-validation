@@ -20,9 +20,20 @@ from test_native_lock import BASE, SYN3, MANIFEST
 
 
 def frozen_fixture():
-    # Older contracts retain their original fixture bytes while routing is integrated.
-    return subprocess.check_output(['git', '-C', str(w.SUITE), 'show',
-        'b069ed2fcfc0a4edb103d1fae940bde739b6efcb:' + w.FIXTURE], timeout=15)
+    # Test-only reverse projection of the six declared routing adapter lines.
+    # Runtime historical contracts still refuse the changed full fixture bytes.
+    source = (w.SUITE / w.FIXTURE).read_bytes().replace(b'\r\n', b'\n')
+    for adapter in (
+        b'#[path = "bench_core/request_route.rs"]\nmod request_route;\n\n',
+        b'    if args.get(1).is_some_and(|arg| arg == "--request-route") {\n'
+        b'        return request_route::run(&args);\n    }\n',
+    ):
+        if source.count(adapter) != 1:
+            raise AssertionError('declared routing adapter changed')
+        source = source.replace(adapter, b'', 1)
+    if hashlib.sha256(source).hexdigest() != w.FIXTURE_LF_SHA256:
+        raise AssertionError('historical native fixture body changed')
+    return source
 
 
 @contextmanager
@@ -131,7 +142,8 @@ class ProtocolTests(unittest.TestCase):
                 w.read_json(raw)
 
     def test_exact_native_census_source_frozen(self):
-        source = frozen_fixture().replace(b'\r\n', b'\n')
+        with patch.object(subprocess, 'check_output', side_effect=AssertionError('Git history unavailable')):
+            source = frozen_fixture().replace(b'\r\n', b'\n')
         self.assertEqual(hashlib.sha256(source).hexdigest(), w.FIXTURE_LF_SHA256)
         names = w.re.findall(rb'#\[test\]\s+fn (wall_\w+)\(', source)
         for match in w.re.finditer(rb'#\[test\]\s+fn (wall_\w+)\(', source):

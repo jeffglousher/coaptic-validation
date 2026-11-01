@@ -82,10 +82,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-          fetch-depth: 0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
-          python-version: '3.14.4'
+          python-version: '3.13'
       - run: python -m pip install --no-cache-dir --disable-pip-version-check psutil==7.0.0
       - run: python -B -m unittest test_request_route_wall test_admission_wall_screen test_admission_stage_b
         working-directory: tools/benchmark

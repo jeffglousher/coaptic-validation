@@ -436,16 +436,31 @@ class BuildWorkerTests(unittest.TestCase):
                         self.assertEqual(saved,[])
 
     def test_old_plan_schedule_and_bindings_remain_byte_exact(self):
-        import subprocess
-        old_source=subprocess.check_output(['git','-C',str(w.SUITE),'show',
-            'b069ed2fcfc0a4edb103d1fae940bde739b6efcb:tools/benchmark/admission_wall_screen.py'],timeout=15)
-        namespace=dict(__name__='immutable_wall_reference',__file__=str(Path(w.__file__)))
-        exec(compile(old_source,'immutable-wall-reference','exec'),namespace)
-        for name in ('ADMISSION','DEDUP','REGULAR_OPTIONS'):
-            current=getattr(w,name);old=namespace[name]
-            self.assertEqual(w.ds.encoded(w.plan(current)),w.ds.encoded(namespace['plan'](old)))
-            self.assertEqual(w.ds.encoded(w.schedule(current)),w.ds.encoded(namespace['schedule'](old)))
-            self.assertEqual(w.ds.encoded(w.binding(current)),w.ds.encoded(namespace['binding'](old)))
+        # Canonical-byte hashes independently frozen from immutable b069ed2.
+        # No historical Git object is required in shallow CI checkouts.
+        expected = {
+            "ADMISSION": {
+                "plan": "3af1f730d1f9e580cf7c4cf7beebfe19c58f323fcab642e10600850519f73e33",
+                "schedule": "35074d03febe5ae69f2cac5d15833fd4ef5729bf355502f73caf899bdfea48b8",
+                "binding": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+            },
+            "DEDUP": {
+                "plan": "76db03001435e2e89db2a401107fb03d4513d9c1b49c482539a68a2614716df5",
+                "schedule": "35074d03febe5ae69f2cac5d15833fd4ef5729bf355502f73caf899bdfea48b8",
+                "binding": "e9f2641f6d7a35e8c4f4ed6a782184f1b27c0c69d29d721a653730a4b9719bb7"
+            },
+            "REGULAR_OPTIONS": {
+                "plan": "a0e04e199df6a6d88677778cf99ad15b66d9f8fcded043b13e17e75e6eca852c",
+                "schedule": "173c2596d5b2de65e12f36e394e5b3c3360b72e0e25b83ae6b5f46b4a6ce18df",
+                "binding": "bc80d2a40b2bee9c86213df6735fc5fd7e58a663fec058b91d53cef9ed607337"
+            }
+        }
+        with patch('subprocess.check_output', side_effect=AssertionError('Git history unavailable')):
+            for name, kinds in expected.items():
+                selected = getattr(w, name)
+                for kind, digest in kinds.items():
+                    self.assertEqual(hashlib.sha256(w.ds.encoded(
+                        getattr(w, kind)(selected))).hexdigest(), digest)
 
 
 class WorkflowTests(unittest.TestCase):
