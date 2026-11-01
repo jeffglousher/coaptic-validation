@@ -158,7 +158,6 @@ fn pair(
     Ok((Some(result.0?), Some(result.1?)))
 }
 
-#[derive(Default)]
 struct Audit {
     partial: Sample,
     partial_timed: bool,
@@ -177,6 +176,29 @@ struct Audit {
     tokens: [u64; TRANSFERS],
     token_count: usize,
     digest: u64,
+}
+impl Default for Audit {
+    fn default() -> Self {
+        Self {
+            partial: Sample::default(),
+            partial_timed: false,
+            requests: 0,
+            responses: 0,
+            receiving: 0,
+            handlers: 0,
+            bytes_in: 0,
+            bytes_out: 0,
+            collections: 0,
+            releases: 0,
+            pivs: 0,
+            crossed_256: false,
+            last_piv: None,
+            last_mid: None,
+            tokens: [0; TRANSFERS],
+            token_count: 0,
+            digest: 0,
+        }
+    }
 }
 impl Audit {
     fn hash(&mut self, bytes: &[u8]) {
