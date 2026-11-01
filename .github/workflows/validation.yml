@@ -597,6 +597,9 @@ jobs:
       - run: cargo test --locked -p coaptic-plugtest --features dtls,oscore
         env:
           COAPTIC_OBSERVE_CAPTURE_DIR: ${{ runner.temp }}/observe-captures
+          COAPTIC_PREPARED_CAPTURE_REPORT: ${{ runner.temp }}/validation-source.json
+          COAPTIC_PREPARED_CAPTURE_CORE: ${{ inputs.library_revision }}
+          COAPTIC_PREPARED_CAPTURE_SUITE: ${{ inputs.suite_revision }}
       - run: cargo test --locked -p coaptic-plugtest --features edhoc --test cloud_admission_progress -- --nocapture
         env:
           COAPTIC_CLOUD_PROGRESS_REPORT: ${{ runner.temp }}/cloud-admission-progress.json

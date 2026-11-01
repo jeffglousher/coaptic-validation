@@ -373,6 +373,61 @@ fn identity(path: &std::path::Path) -> serde_json::Value {
     assert!(status.is_empty(), "capture requires clean source");
     serde_json::json!({"revision":revision,"dirty":false})
 }
+fn source_identity(root: &std::path::Path) -> (serde_json::Value, serde_json::Value) {
+    let configured = [
+        "COAPTIC_PREPARED_CAPTURE_REPORT",
+        "COAPTIC_PREPARED_CAPTURE_CORE",
+        "COAPTIC_PREPARED_CAPTURE_SUITE",
+    ]
+    .map(std::env::var_os);
+    if configured.iter().all(Option::is_none) {
+        return (identity(root), identity(&root.join("coaptic")));
+    }
+    assert!(
+        configured.iter().all(Option::is_some),
+        "prepared capture requires report and both immutable revisions"
+    );
+    let [report, expected_core, expected_suite] = configured.map(|value| {
+        value
+            .unwrap()
+            .into_string()
+            .expect("prepared capture configuration must be UTF-8")
+    });
+    // This fixed helper derives the checkpoint from Git source and verifies every
+    // permitted lock edit. It never turns prepared source into a clean claim.
+    let output = std::process::Command::new("python3")
+        .args([
+            "-B",
+            "tools/verify_prepared_capture.py",
+            "--expected-core",
+            &expected_core,
+            "--expected-suite",
+            &expected_suite,
+            "--prepared-report",
+            &report,
+        ])
+        .current_dir(root)
+        .output()
+        .expect("prepared capture verifier did not start");
+    assert!(
+        output.status.success(),
+        "prepared capture source refused: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stdout.len() <= 16_384,
+        "capture provenance too large"
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("invalid prepared capture provenance");
+    assert_eq!(value["schema"], "coaptic-prepared-capture-source/1");
+    assert_eq!(value["suite"]["revision"], expected_suite);
+    assert_eq!(value["core"]["revision"], expected_core);
+    assert_eq!(value["core"]["dirty"], false);
+    assert!(value["suite"]["dirty"].is_boolean());
+    assert!(value["suite"]["prepared_checkpoint"].is_object());
+    (value["suite"].clone(), value["core"].clone())
+}
 #[test]
 fn dtls_record_policy_ordinary_wrong_key_refusal_and_fresh_recovery() {
     qualify_record_policy(false);
@@ -388,8 +443,7 @@ fn qualify_record_policy(gcm: bool) {
         .unwrap()
         .parent()
         .unwrap();
-    let suite = identity(root);
-    let core = identity(&root.join("coaptic"));
+    let (suite, core) = source_identity(root);
     let provenance = serde_json::json!({
         "suite":suite,"core":core,"cipher_suite":if gcm { "TLS_PSK_WITH_AES_128_GCM_SHA256" } else { "TLS_PSK_WITH_AES_128_CCM_8" },
         "compiler":command(root,"rustc", &["-Vv"]),
@@ -517,11 +571,10 @@ fn qualify_record_policy(gcm: bool) {
     let mut repeated = cases.clone();
     repeated[2] = cases[0].clone();
     assert!(grade_sequence(&repeated, gcm).is_err());
-    assert_eq!(identity(root), suite, "suite changed during capture");
     assert_eq!(
-        identity(&root.join("coaptic")),
-        core,
-        "core changed during capture"
+        source_identity(root),
+        (suite, core),
+        "source or prepared checkpoint changed during capture"
     );
     std::fs::write(directory.join("report.json"), serde_json::to_vec_pretty(&serde_json::json!({"provenance":provenance,"cases":reports,"complete":true,"mutation_refusals":46})).unwrap()).unwrap();
     assert!(crate::catalog::skip_reason("TD_COAP_DTLS_02").is_some());

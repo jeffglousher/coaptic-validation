@@ -2,7 +2,8 @@
 
 The caller owns a dedicated checkout and opts in before prepare.py records its
 provenance. Canonical Syn2 locks remain source inputs. Three checked alternates
-select the macro's declared Syn major; every other resolved edge is conserved.
+select the macro's declared Syn major, removing a displaced Syn2 package only
+when no other package uses it. All unrelated resolved packages are conserved.
 Hosted Cargo --locked acceptance remains a separate qualification.
 """
 from copy import deepcopy
@@ -28,7 +29,7 @@ INPUTS = (
      "5a73ed0d47b66608676cf8c344ab0e321583c01328684800ff9c0f3274a5e9e5"),
     ("fuzz/Cargo.lock", "fuzz/Cargo.syn3.lock",
      "a463590ec3555d76ad4a3b8996ca8cbc18b2c9f97502b7ba87f32d7dbc7386ee",
-     "73cf693fdaedaac1861d17d10db68e537c28d18708389d2b2ce86faba74365ae"),
+     "cb4fc3fda0fe9cda1db44985002e8ea5981a488172faf9c2ed4e308b71906513"),
 )
 REGISTRY = "registry+https://github.com/rust-lang/crates.io-index"
 SYN_CHECKSUMS = {
@@ -81,7 +82,7 @@ def syn_rows(rows):
 
 
 def expected_graph(base, native):
-    """Only change the macro edge; add native Syn3 when none was already pinned."""
+    """Move the macro edge, retaining Syn2 only while another package uses it."""
     value = deepcopy(parse(base))
     rows = packages(value)
     syns = syn_rows(rows)
@@ -120,6 +121,15 @@ def expected_graph(base, native):
         for dependency in added["dependencies"]:
             one(rows, dependency)
         rows.insert(rows.index(syns[0]) + 1, added)
+        if not any("syn 2.0.119" in row.get("dependencies", []) for row in rows):
+            # The fuzz graph used Syn2 only through coaptic-io. Remove its
+            # displaced package as part of the checked lock transition; no
+            # other resolved package is pruned.
+            rows.remove(syns[0])
+            for row in rows:
+                if "dependencies" in row:
+                    row["dependencies"] = ["syn" if d == "syn " + target else d
+                                           for d in row["dependencies"]]
     return value
 
 

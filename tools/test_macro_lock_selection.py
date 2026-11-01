@@ -77,13 +77,45 @@ python tools/benchmark/native_check.py --server target/benchmark-native/release/
                     before = {(p["name"], p["version"]): p for p in original["package"]}
                     after = {(p["name"], p["version"]): p for p in selected["package"]}
                     self.assertEqual(set(after) - set(before), {("syn", "3.0.9")})
+                    removed = {("syn", "2.0.119")} if name == "fuzz/Cargo.lock" else set()
+                    self.assertEqual(set(before) - set(after), removed)
                     for key, row in before.items():
-                        if key[0] != "coaptic-io":
+                        if key[0] != "coaptic-io" and key not in removed:
                             expected = deepcopy(row)
                             if "dependencies" in expected:
                                 expected["dependencies"] = ["syn 2.0.119" if d == "syn" else d
                                                             for d in expected["dependencies"]]
                             self.assertEqual(after[key], expected)
+
+    def test_fuzz_replaces_the_only_syn_user_without_orphan_packages(self):
+        before = locks.parse(BASES["fuzz/Cargo.lock"])["package"]
+        after = locks.parse(ALTERNATES["fuzz/Cargo.lock"])["package"]
+        self.assertEqual(len(before), 36)
+        self.assertEqual(len(after), 36)
+        self.assertEqual([p for p in before if p["name"] not in ("syn", "coaptic-io")],
+                         [p for p in after if p["name"] not in ("syn", "coaptic-io")])
+        self.assertEqual([p["version"] for p in after if p["name"] == "syn"], ["3.0.9"])
+        self.assertEqual(locks.one(after, "coaptic-io")["dependencies"],
+                         ["proc-macro2", "quote", "syn"])
+        by_name = {p["name"]: p for p in after}
+        self.assertEqual(len(by_name), len(after))
+        reachable, pending = set(), ["coaptic-fuzz"]
+        while pending:
+            name = pending.pop()
+            if name not in reachable:
+                reachable.add(name)
+                pending.extend(d.split()[0] for d in by_name[name].get("dependencies", []))
+        self.assertEqual(reachable, set(by_name))
+
+    def test_another_syn2_user_prevents_pruning_and_keeps_qualified_edges(self):
+        base = BASES["fuzz/Cargo.lock"]
+        needle = b'name = "coaptic-fuzz"\nversion = "0.0.0"\ndependencies = [\n'
+        self.assertEqual(base.count(needle), 1)
+        rows = locks.expected_graph(base.replace(needle, needle + b' "syn",\n'), NATIVE)["package"]
+        self.assertEqual(sorted(p["version"] for p in rows if p["name"] == "syn"),
+                         ["2.0.119", "3.0.9"])
+        self.assertIn("syn 2.0.119", locks.one(rows, "coaptic-fuzz")["dependencies"])
+        self.assertIn("syn 3.0.9", locks.one(rows, "coaptic-io")["dependencies"])
 
     def test_unknown_edge_or_package_change_is_rejected(self):
         for name, data in ALTERNATES.items():
@@ -126,7 +158,7 @@ class CheckoutTests(unittest.TestCase):
         self.suite.mkdir()
         self.core = self.suite / "coaptic"
         self.core.mkdir()
-        (self.suite / ".gitignore").write_text("coaptic/\n")
+        (self.suite / ".gitignore").write_text("coaptic/\n__pycache__/\n")
         names = set(prepare.LOCKS) | {row[1] for row in locks.INPUTS} | {
             "fuzz/Cargo.lock", locks.NATIVE, "tools/prepare.py", "tools/macro_lock_selection.py", ".gitattributes",
             "tools/benchmark/native_lock.py", "tools/source_identity.py",
