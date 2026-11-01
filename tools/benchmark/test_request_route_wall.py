@@ -46,6 +46,22 @@ def native(identifier='default32_full', security='oscore', mode='measure', laten
 
 
 class ContractTests(unittest.TestCase):
+    def test_native_problem_literals_match_canonical_titles(self):
+        import ast
+        import re
+        source = (w.SUITE / r.SOURCE).read_text(encoding='utf-8')
+        for name, title, code in (
+                ('NOT_FOUND', 'Not Found', 132),
+                ('NOT_ALLOWED', 'Method Not Allowed', 133)):
+            literal = re.search(r'^const ' + name + r': &\[u8\] = (b"[^"]*");$',
+                                source, re.M)
+            self.assertIsNotNone(literal)
+            title_bytes = title.encode('utf-8')
+            self.assertLess(len(title_bytes), 24)
+            expected = bytes((0xa2, 0x20, 0x60 + len(title_bytes))) + title_bytes
+            expected += bytes((0x23, 0x18, code))
+            self.assertEqual(ast.literal_eval(literal[1]), expected)
+
     def test_exact_public_method(self):
         raw = Path(r.__file__).with_name('request_route_plan.json').read_bytes()
         self.assertEqual(len(raw), 24294)

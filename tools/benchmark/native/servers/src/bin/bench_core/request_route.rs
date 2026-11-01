@@ -18,7 +18,7 @@ const OWNER_CAP: usize = 262144;
 const OUTPUT_CAP: usize = 2097152;
 // RFC9290 map: title(-1), response-code(-4); independent frozen literals.
 const NOT_FOUND: &[u8] = b"\xa2\x20\x69Not Found\x23\x18\x84";
-const NOT_ALLOWED: &[u8] = b"\xa2\x20\x71Method Not Allowed\x23\x18\x85";
+const NOT_ALLOWED: &[u8] = b"\xa2\x20\x72Method Not Allowed\x23\x18\x85";
 const PATHS: [&str; 34] = [
     "r00",
     "r01",
@@ -925,6 +925,19 @@ mod tests {
     }
     #[test]
     fn metadata_and_body_refuse() {
+        for (payload, code, title) in [
+            (NOT_FOUND, Code::NOT_FOUND, "Not Found"),
+            (NOT_ALLOWED, Code::METHOD_NOT_ALLOWED, "Method Not Allowed"),
+        ] {
+            let problem = coaptic::message::ProblemDetails::decode(payload).unwrap();
+            assert_eq!(problem.response_code(), Some(code));
+            assert_eq!(problem.title_text(), Some(title));
+        }
+        // A short text length leaves an extra byte before the response-code key.
+        assert!(
+            coaptic::message::ProblemDetails::decode(b"\xa2\x20\x71Method Not Allowed\x23\x18\x85")
+                .is_err()
+        );
         for protected in [false, true] {
             for fault in 0..10 {
                 let (mut app, mut client, g) = fixture(protected);
