@@ -371,6 +371,7 @@ class CampaignTests(unittest.TestCase):
 
     def test_first_operational_failure_retains_incomplete_and_notrun(self):
         calls,saved=self.run_campaign(fail='sample-002')
+        self.assertEqual(saved['result.json']['measurements'],'ATTEMPTED')
         result=saved['result.json']
         self.assertEqual(len(calls),23)
         self.assertEqual(len(result['completed']),2)
@@ -381,6 +382,7 @@ class CampaignTests(unittest.TestCase):
 
     def test_qualification_failure_and_reporting_preserve_unresolved_error(self):
         calls,saved=self.run_campaign(fail='qualify-01')
+        self.assertEqual(saved['result.json']['measurements'],'NOT RUN')
         self.assertEqual(len(calls),2)
         self.assertEqual(len(saved['result.json']['qualification_not_run']),18)
         self.assertEqual(len(saved['result.json']['not_run']),160)

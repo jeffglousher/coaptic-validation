@@ -376,7 +376,7 @@ def measure_worker(m, spec, selected):
                     primary.add_note('routing final source check: ' + str(error)[:1024])
         m.report_preserving(primary, 'routing result receipt', lambda: m.save(root, 'result.json',
             m.bound(dict(passed=primary is None, purpose=purpose(args),
-                measurements='ATTEMPTED' if timing else 'NOT RUN',
+                measurements='ATTEMPTED' if attempted else 'NOT RUN',
                 qualification_completed=qualification, qualification_attempted=qual_attempted,
                 qualification_incomplete=[r for r in qual_attempted if r not in qualification],
                 qualification_not_run=qualification_schedule()[len(qual_attempted):],

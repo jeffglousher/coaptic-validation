@@ -218,16 +218,23 @@ macro_rules! register {
             g.registered
         };
         for (tag, path) in PATHS[..full].iter().enumerate() {
-            $builder.try_route(*path, get(handler::<$len>(tag)))?;
+            $builder
+                .try_route(*path, get(handler::<$len>(tag)))
+                .map_err(|error| format!("fixture route registration: {error:?}"))?;
         }
         if g.id == "default32_sparse" {
             for path in &PATHS[1..31] {
-                if !$builder.remove_route(*path)? {
+                if !$builder
+                    .remove_route(*path)
+                    .map_err(|error| format!("fixture route removal: {error:?}"))?
+                {
                     return Err("missing removal".into());
                 }
             }
             for tag in [32, 33] {
-                $builder.try_route(PATHS[tag], get(handler::<$len>(tag)))?;
+                $builder
+                    .try_route(PATHS[tag], get(handler::<$len>(tag)))
+                    .map_err(|error| format!("fixture route registration: {error:?}"))?;
             }
         }
     }};
