@@ -12,6 +12,9 @@ use std::hint::black_box;
 use std::io::{Read, Write};
 use std::time::Instant;
 
+#[path = "bench_core/incoming_rx.rs"]
+mod incoming_rx;
+
 #[path = "bench_core/live_c1.rs"]
 mod live_c1;
 
@@ -199,6 +202,9 @@ fn default_app(
 
 fn main() -> Result<(), Failure> {
     let args: Vec<_> = std::env::args().collect();
+    if args.get(1).is_some_and(|arg| arg == "--incoming-rx") {
+        return incoming_rx::dispatch(&args);
+    }
     let config = parse_args(&args)?;
     let (client_context, server_context) = match config.security {
         "unprotected" => (None, None),

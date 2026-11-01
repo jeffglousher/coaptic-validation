@@ -1,0 +1,643 @@
+{
+  "schema": "coaptic-incoming-rx-method/1",
+  "state": "source-frozen-before-execution; independent source review and hosted qualification still required",
+  "purpose": "independent true incoming full-App speedup and small-message regression screen",
+  "core": {
+    "repository": "jeffglousher/coaptic",
+    "A": {
+      "commit": "c655b3aac485c3b88d3811b4da836b56210fce5b",
+      "tree": "bca85f7b74b322a0f903005b18636d3a8414fe46"
+    },
+    "B": {
+      "commit": "13e2c32b82416b436f2fc24ede2bc86cdb82d23b",
+      "tree": "3538f474d634d63f3bc2247cd7f10d5c8b543d12"
+    }
+  },
+  "companion_start": {
+    "commit": "6b09d42ab79bfff5bba2643a73059a725ce521e6",
+    "tree": "50cea5ebce54d337b9fe6cba999468010805ed0b"
+  },
+  "cells_in_order": [
+    {
+      "id": "fixed_upload_unprotected",
+      "kind": "fixed_upload",
+      "security": "unprotected",
+      "body_bytes": 4096,
+      "receiving_polls_per_transfer": 4,
+      "measured_profile": "SmallDevice/Constrained with blockwise",
+      "upper_one_sided_95_ratio_max": 0.97
+    },
+    {
+      "id": "fixed_upload_oscore",
+      "kind": "fixed_upload",
+      "security": "oscore",
+      "body_bytes": 4096,
+      "receiving_polls_per_transfer": 4,
+      "measured_profile": "SmallDevice/Constrained with blockwise",
+      "upper_one_sided_95_ratio_max": 0.97
+    },
+    {
+      "id": "allocated_download_unprotected",
+      "kind": "allocated_download",
+      "security": "unprotected",
+      "body_bytes": 16384,
+      "receiving_polls_per_transfer": 16,
+      "measured_profile": "allocated Service client",
+      "upper_one_sided_95_ratio_max": 0.97
+    },
+    {
+      "id": "allocated_download_oscore",
+      "kind": "allocated_download",
+      "security": "oscore",
+      "body_bytes": 16384,
+      "receiving_polls_per_transfer": 16,
+      "measured_profile": "allocated Service client",
+      "upper_one_sided_95_ratio_max": 0.97
+    },
+    {
+      "id": "fixed_guard_unprotected",
+      "kind": "fixed_guard",
+      "security": "unprotected",
+      "body_bytes": 64,
+      "receiving_polls_per_transfer": 1,
+      "measured_profile": "same fixed upload App",
+      "upper_one_sided_95_ratio_max": 1.02
+    },
+    {
+      "id": "fixed_guard_oscore",
+      "kind": "fixed_guard",
+      "security": "oscore",
+      "body_bytes": 64,
+      "receiving_polls_per_transfer": 1,
+      "measured_profile": "same fixed upload App",
+      "upper_one_sided_95_ratio_max": 1.02
+    },
+    {
+      "id": "allocated_guard_unprotected",
+      "kind": "allocated_guard",
+      "security": "unprotected",
+      "body_bytes": 64,
+      "receiving_polls_per_transfer": 1,
+      "measured_profile": "same allocated client",
+      "upper_one_sided_95_ratio_max": 1.02
+    },
+    {
+      "id": "allocated_guard_oscore",
+      "kind": "allocated_guard",
+      "security": "oscore",
+      "body_bytes": 64,
+      "receiving_polls_per_transfer": 1,
+      "measured_profile": "same allocated client",
+      "upper_one_sided_95_ratio_max": 1.02
+    }
+  ],
+  "process_schedule": [
+    {
+      "pair": 0,
+      "order": "AB",
+      "arms": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "pair": 1,
+      "order": "BA",
+      "arms": [
+        "B",
+        "A"
+      ]
+    },
+    {
+      "pair": 2,
+      "order": "AB",
+      "arms": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "pair": 3,
+      "order": "BA",
+      "arms": [
+        "B",
+        "A"
+      ]
+    },
+    {
+      "pair": 4,
+      "order": "AB",
+      "arms": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "pair": 5,
+      "order": "BA",
+      "arms": [
+        "B",
+        "A"
+      ]
+    },
+    {
+      "pair": 6,
+      "order": "AB",
+      "arms": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "pair": 7,
+      "order": "BA",
+      "arms": [
+        "B",
+        "A"
+      ]
+    }
+  ],
+  "per_cell": {
+    "warm_transfers": 8,
+    "measured_transfers": 64,
+    "context_and_app": "one fresh App/context pair per cell, continuous through all72 transfers; no reset or replacement",
+    "transfer_base_ms": "1 + 300000*q, q=0..71",
+    "fragment_phases_ms": [
+      "base + 3*j",
+      "base + 3*j + 1",
+      "base + 3*j + 2"
+    ],
+    "request_deadline_ms": "base + 3000",
+    "fixed_upload_mid": "4*q+j, j=0..3; new fragment MID",
+    "fixed_guard_mid": "q",
+    "fixed_token": "eight-byte big-endian q+1, constant within a transfer",
+    "download_ids": "App-generated; audit exact fresh tokens and source-defined MID progression, no invented setter",
+    "security": "fresh process/cell OSCORE master material once; continuous contexts/PIV/replay/request bindings; cross255->256 where required",
+    "block_bytes": 1024,
+    "clock_scope": "only complete receiving App::poll; partner preparation, bridges, construction, authentication/assertions/collection outside, except fixed handler whole4096B comparison necessarily inside final upload poll"
+  },
+  "counts": {
+    "timing_processes": 16,
+    "cells_per_process": 8,
+    "warm_transfers_total": 1024,
+    "measured_transfer_totals": 8192,
+    "measured_reached_polls": 40960,
+    "measured_guard_polls": 4096,
+    "measured_all_receiving_polls": 45056,
+    "warm_all_receiving_polls": 5632,
+    "all_receiving_polls": 50688,
+    "all_datagram_sends": 101376,
+    "per_process_transfers": 576,
+    "per_process_exchanges": 3168,
+    "per_process_calibrations": 4096,
+    "all_calibrations": 65536
+  },
+  "statistics": {
+    "unit": "process mean of complete-transfer receiving-poll sums per cell; within-process blocks are not replicates",
+    "pair_difference": "d_i=log(mean_B/mean_A)",
+    "pairs": 8,
+    "estimate": "exp(mean(d))",
+    "upper_one_sided_95": "exp(mean(d)+1.894579*sample_sd(d)/sqrt(8))",
+    "lower_one_sided_95": "exp(mean(d)-1.894579*sample_sd(d)/sqrt(8))",
+    "all_required": true,
+    "prohibited": [
+      "pooling across cells",
+      "outlier exclusions",
+      "calibration subtraction",
+      "replacement samples",
+      "post-data source/method variants",
+      "relaxed gates/caps",
+      "resampling campaign"
+    ]
+  },
+  "qualification": {
+    "processes": 2,
+    "seconds_per_process": 20,
+    "state": "exact finite source traces frozen before any native execution; counts below are expectations, not observed successes",
+    "requirements": [
+      "same continuous72-transfer positive trace per each8cells, untimed",
+      "strict wrong/missing/extra packet/metadata/body/authentication rejection oracles",
+      "fresh-context tamper/replay/binding tests at appropriate protocol stage",
+      "partial transfer cancellation/expiry and explicit capacity refusal with preserved owner, followed by fresh complete recovery"
+    ],
+    "Q_block": "reuse source-matched broad core/Q tests and retained evidence; no new Q timing or Q speed claim; new driver limited to classic Block1/Block2",
+    "positive_traces": [
+      {
+        "id": "positive72.fixed_upload_unprotected",
+        "transfers": 72,
+        "requests": 288,
+        "responses": 288,
+        "receiving_polls": 288,
+        "handler_calls": 72,
+        "collections": 0,
+        "released_body_owners": 72,
+        "fresh_tokens": 72
+      },
+      {
+        "id": "positive72.fixed_upload_oscore",
+        "transfers": 72,
+        "requests": 288,
+        "responses": 288,
+        "receiving_polls": 288,
+        "handler_calls": 72,
+        "collections": 0,
+        "released_body_owners": 72,
+        "fresh_tokens": 72
+      },
+      {
+        "id": "positive72.allocated_download_unprotected",
+        "transfers": 72,
+        "requests": 1152,
+        "responses": 1152,
+        "receiving_polls": 1152,
+        "handler_calls": 1152,
+        "collections": 72,
+        "released_body_owners": 72,
+        "fresh_tokens": 72
+      },
+      {
+        "id": "positive72.allocated_download_oscore",
+        "transfers": 72,
+        "requests": 1152,
+        "responses": 1152,
+        "receiving_polls": 1152,
+        "handler_calls": 1152,
+        "collections": 72,
+        "released_body_owners": 72,
+        "fresh_tokens": 72
+      },
+      {
+        "id": "positive72.fixed_guard_unprotected",
+        "transfers": 72,
+        "requests": 72,
+        "responses": 72,
+        "receiving_polls": 72,
+        "handler_calls": 72,
+        "collections": 0,
+        "released_body_owners": 0,
+        "fresh_tokens": 72
+      },
+      {
+        "id": "positive72.fixed_guard_oscore",
+        "transfers": 72,
+        "requests": 72,
+        "responses": 72,
+        "receiving_polls": 72,
+        "handler_calls": 72,
+        "collections": 0,
+        "released_body_owners": 0,
+        "fresh_tokens": 72
+      },
+      {
+        "id": "positive72.allocated_guard_unprotected",
+        "transfers": 72,
+        "requests": 72,
+        "responses": 72,
+        "receiving_polls": 72,
+        "handler_calls": 72,
+        "collections": 72,
+        "released_body_owners": 0,
+        "fresh_tokens": 72
+      },
+      {
+        "id": "positive72.allocated_guard_oscore",
+        "transfers": 72,
+        "requests": 72,
+        "responses": 72,
+        "receiving_polls": 72,
+        "handler_calls": 72,
+        "collections": 72,
+        "released_body_owners": 0,
+        "fresh_tokens": 72
+      }
+    ],
+    "positive_census": {
+      "transfers": 576,
+      "requests": 3168,
+      "responses": 3168,
+      "receiving_polls": 3168,
+      "handler_calls": 2736,
+      "collections": 288,
+      "released_body_owners": 288,
+      "measured_receiving_polls": 0,
+      "datagram_sends": 6336
+    },
+    "negative_traces": [
+      {
+        "id": "oracle.code",
+        "datagram_sends": 0,
+        "receiving_polls": 0,
+        "handler_calls": 0,
+        "final": "oracle_refused"
+      },
+      {
+        "id": "oracle.format",
+        "datagram_sends": 0,
+        "receiving_polls": 0,
+        "handler_calls": 0,
+        "final": "oracle_refused"
+      },
+      {
+        "id": "oracle.etag",
+        "datagram_sends": 0,
+        "receiving_polls": 0,
+        "handler_calls": 0,
+        "final": "oracle_refused"
+      },
+      {
+        "id": "oracle.body",
+        "datagram_sends": 0,
+        "receiving_polls": 0,
+        "handler_calls": 0,
+        "final": "oracle_refused"
+      },
+      {
+        "id": "oracle.block_num",
+        "datagram_sends": 0,
+        "receiving_polls": 0,
+        "handler_calls": 0,
+        "final": "oracle_refused"
+      },
+      {
+        "id": "oracle.block_more",
+        "datagram_sends": 0,
+        "receiving_polls": 0,
+        "handler_calls": 0,
+        "final": "oracle_refused"
+      },
+      {
+        "id": "oracle.block_szx",
+        "datagram_sends": 0,
+        "receiving_polls": 0,
+        "handler_calls": 0,
+        "final": "oracle_refused"
+      },
+      {
+        "id": "oracle.missing_block",
+        "datagram_sends": 0,
+        "receiving_polls": 0,
+        "handler_calls": 0,
+        "final": "oracle_refused"
+      },
+      {
+        "id": "oracle.extra_etag",
+        "datagram_sends": 0,
+        "receiving_polls": 0,
+        "handler_calls": 0,
+        "final": "oracle_refused"
+      },
+      {
+        "id": "transport.extra_packet_and_occupied_bridge",
+        "datagram_sends": 1,
+        "receiving_polls": 0,
+        "handler_calls": 0,
+        "final": "first_packet_preserved_extra_refused"
+      },
+      {
+        "id": "crypto.tamper_replay_wrong_binding_then_authenticate",
+        "datagram_sends": 0,
+        "receiving_polls": 0,
+        "handler_calls": 0,
+        "request_seals": 2,
+        "request_open_attempts": 3,
+        "response_seals": 1,
+        "response_open_attempts": 2,
+        "final": "correct_binding_authenticated"
+      },
+      {
+        "id": "upload.capacity_preserve_finish_recover.unprotected",
+        "client_sends": 9,
+        "server_sends": 9,
+        "datagram_sends": 18,
+        "receiving_polls": 9,
+        "housekeeping_polls": 0,
+        "handler_calls": 2,
+        "collections": 0,
+        "final": "owners_released_fresh_recovery"
+      },
+      {
+        "id": "download.capacity_preserve_collect_recover.unprotected",
+        "client_sends": 33,
+        "server_sends": 33,
+        "datagram_sends": 66,
+        "receiving_polls": 33,
+        "housekeeping_polls": 0,
+        "handler_calls": 33,
+        "collections": 3,
+        "final": "owners_released_fresh_recovery"
+      },
+      {
+        "id": "download.cancel.unprotected",
+        "client_sends": 18,
+        "server_sends": 17,
+        "datagram_sends": 35,
+        "receiving_polls": 17,
+        "housekeeping_polls": 0,
+        "handler_calls": 17,
+        "collections": 2,
+        "final": "owners_released_fresh_recovery"
+      },
+      {
+        "id": "download.expire.unprotected",
+        "client_sends": 18,
+        "server_sends": 17,
+        "datagram_sends": 35,
+        "receiving_polls": 17,
+        "housekeeping_polls": 1,
+        "handler_calls": 17,
+        "collections": 2,
+        "final": "owners_released_fresh_recovery"
+      },
+      {
+        "id": "download.reject_body_or_tag.unprotected",
+        "client_sends": 18,
+        "server_sends": 17,
+        "datagram_sends": 35,
+        "receiving_polls": 17,
+        "housekeeping_polls": 1,
+        "handler_calls": 17,
+        "collections": 2,
+        "final": "owners_released_fresh_recovery"
+      },
+      {
+        "id": "download.reject_wrong_token.unprotected",
+        "client_sends": 17,
+        "server_sends": 17,
+        "datagram_sends": 34,
+        "receiving_polls": 17,
+        "housekeeping_polls": 1,
+        "handler_calls": 17,
+        "collections": 2,
+        "final": "owners_released_fresh_recovery"
+      },
+      {
+        "id": "download.reject_missing.unprotected",
+        "client_sends": 17,
+        "server_sends": 17,
+        "datagram_sends": 34,
+        "receiving_polls": 16,
+        "housekeeping_polls": 1,
+        "handler_calls": 17,
+        "collections": 2,
+        "final": "owners_released_fresh_recovery"
+      },
+      {
+        "id": "upload.capacity_preserve_finish_recover.oscore",
+        "client_sends": 9,
+        "server_sends": 9,
+        "datagram_sends": 18,
+        "receiving_polls": 9,
+        "housekeeping_polls": 0,
+        "handler_calls": 2,
+        "collections": 0,
+        "final": "owners_released_fresh_recovery"
+      },
+      {
+        "id": "download.capacity_preserve_collect_recover.oscore",
+        "client_sends": 33,
+        "server_sends": 33,
+        "datagram_sends": 66,
+        "receiving_polls": 33,
+        "housekeeping_polls": 0,
+        "handler_calls": 33,
+        "collections": 3,
+        "final": "owners_released_fresh_recovery"
+      },
+      {
+        "id": "download.cancel.oscore",
+        "client_sends": 18,
+        "server_sends": 17,
+        "datagram_sends": 35,
+        "receiving_polls": 17,
+        "housekeeping_polls": 0,
+        "handler_calls": 17,
+        "collections": 2,
+        "final": "owners_released_fresh_recovery"
+      },
+      {
+        "id": "download.expire.oscore",
+        "client_sends": 18,
+        "server_sends": 17,
+        "datagram_sends": 35,
+        "receiving_polls": 17,
+        "housekeeping_polls": 1,
+        "handler_calls": 17,
+        "collections": 2,
+        "final": "owners_released_fresh_recovery"
+      },
+      {
+        "id": "download.reject_body_or_tag.oscore",
+        "client_sends": 17,
+        "server_sends": 17,
+        "datagram_sends": 34,
+        "receiving_polls": 17,
+        "housekeeping_polls": 1,
+        "handler_calls": 17,
+        "collections": 2,
+        "final": "owners_released_fresh_recovery"
+      },
+      {
+        "id": "download.reject_wrong_token.oscore",
+        "client_sends": 17,
+        "server_sends": 17,
+        "datagram_sends": 34,
+        "receiving_polls": 17,
+        "housekeeping_polls": 1,
+        "handler_calls": 17,
+        "collections": 2,
+        "final": "owners_released_fresh_recovery"
+      },
+      {
+        "id": "download.reject_missing.oscore",
+        "client_sends": 17,
+        "server_sends": 17,
+        "datagram_sends": 34,
+        "receiving_polls": 16,
+        "housekeeping_polls": 1,
+        "handler_calls": 17,
+        "collections": 2,
+        "final": "owners_released_fresh_recovery"
+      },
+      {
+        "id": "upload.wrong_peer_preserves_partial_then_cancel_recover.oscore",
+        "client_sends": 6,
+        "server_sends": 6,
+        "datagram_sends": 12,
+        "receiving_polls": 6,
+        "housekeeping_polls": 0,
+        "handler_calls": 1,
+        "collections": 0,
+        "final": "owners_released_fresh_recovery"
+      },
+      {
+        "id": "upload.app_tamper_replay_preserves_partial_finish_recover.oscore",
+        "client_sends": 10,
+        "server_sends": 8,
+        "datagram_sends": 18,
+        "receiving_polls": 10,
+        "housekeeping_polls": 0,
+        "handler_calls": 2,
+        "collections": 0,
+        "final": "owners_released_fresh_recovery"
+      }
+    ],
+    "negative_totals": {
+      "datagram_sends": 544,
+      "receiving_polls": 268,
+      "housekeeping_polls": 8,
+      "handler_calls": 243,
+      "collections": 26
+    },
+    "all_protocol_totals": {
+      "datagram_sends": 6880,
+      "receiving_polls": 3436,
+      "housekeeping_polls": 8,
+      "handler_calls": 2979,
+      "collections": 314
+    },
+    "native_tests": [
+      "incoming_rx::tests::closed_cli_rejects_overrides_and_legacy_spelling",
+      "incoming_rx::tests::independent_wire_metadata_and_body_mismatches_are_refused",
+      "incoming_rx::tests::receiving_counts_sums_and_overflow_conserve_complete_transfers",
+      "incoming_rx::tests::genuine_oscore_tamper_replay_and_wrong_request_binding_refuse"
+    ]
+  },
+  "limits": {
+    "build_owner_seconds": 830,
+    "cargo_inner_seconds": 400,
+    "cargo_outer_seconds": 450,
+    "build_bytes": 8589934592,
+    "campaign_inner_seconds": 300,
+    "campaign_outer_seconds": 450,
+    "timing_process_seconds": 14,
+    "native_max_seconds": 30,
+    "workflow_minutes": 35,
+    "per_process_output_bytes": 1048576,
+    "existing_process_ceiling_bytes": 2097152,
+    "hosted_evidence_bytes": 67108864,
+    "hosted_failure_reserve_bytes": 4194304,
+    "evidence_allocation": {
+      "executables_and_pdb": 33554432,
+      "process_output": 18874368,
+      "manifests_and_proofs": 10485760,
+      "failure_reserve": 4194304
+    },
+    "completion_not_guaranteed": true,
+    "combined_stdout_stderr_failure_reserve_bytes": 4096
+  },
+  "custody": "full proof once into immutable worker-local expected bytes; pre/post runtime/config/input checks against fixed anchor, never metadata-only caching or mutable evidence reanchoring; source/lock restoration only after descendant settlement; endpoint hashes do not exclude transient edits",
+  "memory": "unchanged core pool/layout capacities and whole-App ceilings; report fixture static/heap/arrays/audit/context/calibration separately, no nested owner double count; no whole-memory/stack gain claim",
+  "disposition": "no native execution, performance claim or merge authorization from this draft; historical STOPs remain stopped",
+  "native_schemas": {
+    "measure": "coaptic-incoming-rx/1",
+    "qualification": "coaptic-incoming-rx-qualification/1",
+    "method_state": "source-frozen-before-execution",
+    "success_status": "PASS",
+    "failed_prefix": "nonzero exit; possibly incomplete JSON retained as failure evidence only; never gate input"
+  },
+  "protocol_codes": {
+    "upload_continue": "2.31 Continue with exact Block1 echo",
+    "upload_complete": "2.05 Content,64B BODY,application/octet-stream,fixture ETag",
+    "classic_block1_body_saturation": "4.08 Request Entity Incomplete; preserved original owner then finish/recovery"
+  }
+}
