@@ -1172,7 +1172,7 @@ class DedupPreparedEvidenceTests(TempTests):
         suite = dict(identity=dict(commit=args.expected_suite, tree='b'*40), files={})
         value.update(w.binding(selected), owner=contract, purpose=w.purpose(args),
                      plan=w.plan(selected),
-                     suite=w.bound(suite, selected) if selected == w.BORROWED_RETIREMENT else suite)
+                     suite=w.bound(suite, selected) if selected == w.OPTION_CEILING else suite)
         for arm, commit in selected.cores:
             value['records'][arm] = w.bound(dict(
                 source=w.bound(dict(identity=dict(commit=commit, tree=dict(selected.trees)[arm]),
@@ -1314,27 +1314,27 @@ class StagedSuiteTests(TempTests):
 
 
 
-class BorrowedRetirementTests(TempTests):
+class OptionCeilingTests(TempTests):
     def args(self, command='all'):
-        return argparse.Namespace(contract='borrowed-dedup-retirement', command=command,
+        return argparse.Namespace(contract='decoded-option-ceiling', command=command,
                                   output=str(self.root), core='core', expected_suite='a'*40)
 
     def test_frozen_descriptor_and_cell_boundaries(self):
-        selected = w.resolve_contract('borrowed-dedup-retirement')
-        self.assertIs(selected, w.BORROWED_RETIREMENT)
+        selected = w.resolve_contract('decoded-option-ceiling')
+        self.assertIs(selected, w.OPTION_CEILING)
         self.assertEqual(dict(selected.cores), {
             'A': 'c655b3aac485c3b88d3811b4da836b56210fce5b',
-            'B': '34d1af4511f8acaedbb8ad1556638646bf238fca'})
+            'B': 'ad54df714417a522a58a37ffb7f613a693673647'})
         self.assertEqual(dict(selected.trees), {
             'A': 'bca85f7b74b322a0f903005b18636d3a8414fe46',
-            'B': '2ca30249b3a3d15f979716d01c0215f2a00a4127'})
-        self.assertEqual(selected.root, 'coaptic-borrowed-dedup-retirement-wall')
-        self.assertEqual(selected.schema, 'coaptic-borrowed-dedup-retirement-wall/1')
-        self.assertEqual(selected.owner_schema, 'coaptic-borrowed-dedup-retirement-owner/1')
-        self.assertEqual(selected.artifact_prefix, 'borrowed-dedup-retirement-wall-screen')
+            'B': '984a76a42e532c81c176c6c067415a785f898574'})
+        self.assertEqual(selected.root, 'coaptic-decoded-option-ceiling-wall')
+        self.assertEqual(selected.schema, 'coaptic-decoded-option-ceiling-wall/1')
+        self.assertEqual(selected.owner_schema, 'coaptic-decoded-option-ceiling-owner/1')
+        self.assertEqual(selected.artifact_prefix, 'decoded-option-ceiling-wall-screen')
         self.assertEqual(w.purpose(self.args()), 'early-benefit-screen')
         expected = {p: {m: (dict(role='benefit', mean_max=.97, upper_exclusive=1.)
-                            if (p, m) == ('small-device', 'unprotected')
+                            if m == 'unprotected'
                             else dict(role='regression', upper_inclusive=1.02))
                         for m in w.wp.MODES} for p in ('small-device', 'default')}
         self.assertEqual(w.plan(selected)['gates'], expected)
@@ -1343,7 +1343,7 @@ class BorrowedRetirementTests(TempTests):
                          'a645fdc88dee2aba922013c7af6553d25461d2122a0884cd75c70afa2d472398')
         for profile in ('small-device', 'default'):
             for mode in w.wp.MODES:
-                benefit = (profile, mode) == ('small-device', 'unprotected')
+                benefit = mode == 'unprotected'
                 self.assertTrue(w.gate(.97, .999999, mode, selected, profile=profile))
                 self.assertEqual(w.gate(.98, .99, mode, selected, profile=profile), not benefit)
                 self.assertEqual(w.gate(.96, 1., mode, selected, profile=profile), not benefit)
@@ -1357,17 +1357,17 @@ class BorrowedRetirementTests(TempTests):
     def test_profile_required_and_never_selected_from_evidence(self):
         for profile in (None, '', 'SmallDevice', 'foreign'):
             with self.assertRaises(ValueError):
-                w.gate(.96, .99, 'unprotected', w.BORROWED_RETIREMENT, profile=profile)
+                w.gate(.96, .99, 'unprotected', w.OPTION_CEILING, profile=profile)
             with self.assertRaises(ValueError):
                 w.compare({'A': [100] * w.OPERATIONS, 'B': [98] * w.OPERATIONS},
-                          'unprotected', w.BORROWED_RETIREMENT, profile=profile)
+                          'unprotected', w.OPTION_CEILING, profile=profile)
         for mode in ('foreign', None):
             with self.assertRaises(ValueError):
-                w.gate(.96, .99, mode, w.BORROWED_RETIREMENT, profile='small-device')
+                w.gate(.96, .99, mode, w.OPTION_CEILING, profile='small-device')
 
     def test_unknown_and_proof_refuse_before_any_process(self):
-        for selector, command in [('borrowed-dedup-retirement', 'proof'),
-                                  ('validated-request-options', 'all'), ('generated-response-stream', 'all'),
+        for selector, command in [('decoded-option-ceiling', 'proof'),
+                                  ('validated-request-options', 'all'), ('generated-response-stream', 'all'), ('borrowed-dedup-retirement', 'all'),
                                   ('unknown', 'all')]:
             args = self.args(command)
             args.contract = selector
@@ -1380,7 +1380,7 @@ class BorrowedRetirementTests(TempTests):
                 child.assert_not_called()
 
     def measure(self, timing=96, fail_at=None):
-        selected = w.BORROWED_RETIREMENT
+        selected = w.OPTION_CEILING
         args = self.args()
         commands, gates = [], []
         real_compare = w.compare
@@ -1420,22 +1420,22 @@ class BorrowedRetirementTests(TempTests):
         self.assertEqual(len(gates), 8)
         self.assertTrue(result['passed'])
         self.assertEqual(len(result['completed']), 16)
-        for argv, row in zip(commands, w.schedule(w.BORROWED_RETIREMENT)):
+        for argv, row in zip(commands, w.schedule(w.OPTION_CEILING)):
             self.assertEqual(argv, [row['arm']+'.exe', '60000', row['security']] +
                              (['--small-device'] if row['profile'] == 'small-device' else []))
         for gate in gates:
             self.assertEqual(gate['mean_B_over_A'], .96)
             self.assertTrue(gate['passed'])
-            w.check_binding(gate, w.BORROWED_RETIREMENT)
+            w.check_binding(gate, w.OPTION_CEILING)
         for index in range(16):
             w.check_binding(w.load(self.root / ('evidence/sample-%02d.json' % index)),
-                            w.BORROWED_RETIREMENT)
+                            w.OPTION_CEILING)
 
-    def test_failed_fixed_benefit_is_stop_despite_six_guard_passes(self):
+    def test_failed_unprotected_benefits_stop_despite_four_oscore_guards(self):
         commands, gates, result = self.measure(timing=98)
         self.assertEqual(len(commands), 16)
         self.assertEqual(len(gates), 8)
-        self.assertEqual([c['passed'] for c in gates], [False, False, True, True, True, True, True, True])
+        self.assertEqual([c['passed'] for c in gates], [False, False, True, True, False, False, True, True])
         self.assertFalse(result['passed'])
         self.assertEqual(result['not_run'], [])
         self.assertEqual({c['security'] for c in result['comparisons']}, set(w.wp.MODES))
@@ -1451,7 +1451,7 @@ class BorrowedRetirementTests(TempTests):
     def test_foreign_worker_specs_refuse_before_launch_even_rehashed(self):
         import itertools
         for selected, foreign in itertools.permutations(
-                (w.ADMISSION, w.DEDUP, w.BORROWED_RETIREMENT), 2):
+                (w.ADMISSION, w.DEDUP, w.OPTION_CEILING), 2):
             spec = w.bound(dict(kind='cargo', args=vars(self.args())), foreign)
             spec['sha256'] = hashlib.sha256(w.ds.encoded(spec)).hexdigest()
             with patch.object(w, 'run_worker') as run, patch.object(w, 'child_command') as child:
@@ -1465,7 +1465,7 @@ class BorrowedRetirementTests(TempTests):
                 child.assert_not_called()
 
     def test_selected_baseline_source_transaction_and_restoration(self):
-        selected = w.BORROWED_RETIREMENT
+        selected = w.OPTION_CEILING
         events, record = [], {}
         def git(core, *args):
             if args[0] == 'rev-parse':
@@ -1489,7 +1489,7 @@ class BorrowedRetirementTests(TempTests):
 
     def test_prepared_cross_contract_and_self_described_edits_refuse_before_process(self):
         args, contract, source, suite, original = DedupPreparedEvidenceTests.prepared(
-            self, w.BORROWED_RETIREMENT)
+            self, w.OPTION_CEILING)
         def snapshot(path):
             return source if str(path) == args.core else suite
         mutations = [
@@ -1505,17 +1505,17 @@ class BorrowedRetirementTests(TempTests):
         with patch.object(w, 'source_gate') as gate, patch.object(w, 'snapshot', side_effect=snapshot), \
              patch.object(w, 'child_command') as child:
             self.assertEqual(w.verify_build(args, self.root, contract), original)
-            self.assertEqual(gate.call_args.args[2], w.baseline(w.BORROWED_RETIREMENT))
+            self.assertEqual(gate.call_args.args[2], w.baseline(w.OPTION_CEILING))
             for mutate in mutations:
                 value = copy.deepcopy(original)
                 mutate(value)
                 self.write('build.json', value)
                 self.write('build-complete.json', w.bound(dict(prepared_hashes={
-                    'build.json': w.ds.digest(self.root / 'evidence/build.json')}), w.BORROWED_RETIREMENT))
+                    'build.json': w.ds.digest(self.root / 'evidence/build.json')}), w.OPTION_CEILING))
                 with self.assertRaises(ValueError):
                     w.measure_worker(w.bound(dict(args=vars(args), prepared_hashes={
                         'build.json': w.ds.digest(self.root / 'evidence/build.json')}),
-                        w.BORROWED_RETIREMENT), w.BORROWED_RETIREMENT)
+                        w.OPTION_CEILING), w.OPTION_CEILING)
             self.write('build.json', original)
             for foreign in (w.ADMISSION, w.DEDUP):
                 self.write('A-cargo.json', w.bound(dict(purpose='early-benefit-screen',
@@ -1530,7 +1530,7 @@ class BorrowedRetirementTests(TempTests):
         expressions = w.re.findall(r'^    if: \$\{\{ (.+) \}\}$', ci.split('jobs:\n', 1)[1], w.re.M)
         self.assertEqual(len(expressions), 4)
         for screen, proof, stack in itertools.product((False, True), repeat=3):
-            inputs = dict(wall_screen_contract='borrowed-dedup-retirement',
+            inputs = dict(wall_screen_contract='decoded-option-ceiling',
                           admission_wall_screen=screen, admission_pressure_proof=proof,
                           stack_profile=stack, stack_profile_replay=False,
                           stack_profile_live=False, stack_profile_live_replay=False)
@@ -1544,9 +1544,9 @@ class BorrowedRetirementTests(TempTests):
             valid = screen and not proof and not stack
             self.assertEqual(routes, [not valid, False, False, valid])
         workflow = (w.SUITE / '.github/workflows/admission-wall-screen.yml').read_text()
-        self.assertIn("-ceq 'borrowed-dedup-retirement' -and $env:PROOF_ONLY -ceq 'true'", workflow)
+        self.assertIn("-ceq 'decoded-option-ceiling' -and $env:PROOF_ONLY -ceq 'true'", workflow)
         self.assertIn('ref: ${{ env.WALL_BASELINE }}', workflow)
-        for _, sha in w.BORROWED_RETIREMENT.cores + w.BORROWED_RETIREMENT.trees:
+        for _, sha in w.OPTION_CEILING.cores + w.OPTION_CEILING.trees:
             self.assertIn(sha, workflow)
 
 
@@ -1560,7 +1560,7 @@ class BorrowedRetirementTests(TempTests):
             self.assertEqual(hashlib.sha256(w.ds.encoded(value)).hexdigest(), expected)
 
     def test_selected_cargo_worker_full_exact_census_and_purpose(self):
-        selected = w.BORROWED_RETIREMENT
+        selected = w.OPTION_CEILING
         args, contract, source, suite, value = DedupPreparedEvidenceTests.prepared(self, selected)
         spec = w.bound(dict(root=str(self.root), args=vars(args), arm='B',
             source=value['records']['B']['source'], suite=value['records']['B']['suite'],
@@ -1589,7 +1589,7 @@ class BorrowedRetirementTests(TempTests):
             self.assertEqual(receipt['pressure_tests'], [])
 
     def test_execute_build_handoff_uses_selected_initial_and_final_baseline(self):
-        selected = w.BORROWED_RETIREMENT
+        selected = w.OPTION_CEILING
         args = self.args('build')
         args.output = str(self.root / selected.root)
         def build(args, root, contract):
@@ -1608,7 +1608,7 @@ class BorrowedRetirementTests(TempTests):
 
 
     def test_selected_source_gates_reject_old_baseline_and_wrong_trees(self):
-        selected = w.BORROWED_RETIREMENT
+        selected = w.OPTION_CEILING
         with patch.object(w.wp, 'source_identity', return_value={}), \
              patch.object(w.ds, 'identity') as identity:
             for arm, commit in selected.cores:
@@ -1623,7 +1623,7 @@ class BorrowedRetirementTests(TempTests):
                 w.source_gate('core', 'a'*40, w.BASELINE, selected)
 
     def test_foreign_build_complete_refuses_before_worker_even_rehashed(self):
-        selected = w.BORROWED_RETIREMENT
+        selected = w.OPTION_CEILING
         args = self.args('measure')
         args.output = str(self.root / selected.root)
         for foreign in (w.ADMISSION, w.DEDUP):

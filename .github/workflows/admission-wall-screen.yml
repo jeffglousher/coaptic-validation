@@ -16,7 +16,7 @@ on:
       contract:
         description: Explicit frozen wall screen contract
         type: choice
-        options: [admission, dedup-classified, borrowed-dedup-retirement, admission-stage-b]
+        options: [admission, dedup-classified, decoded-option-ceiling, admission-stage-b]
         default: admission
       proof_only:
         description: Run ownership proof with measurements NOT RUN
@@ -45,12 +45,12 @@ jobs:
       - name: Validate the fixed hosted source plan
         shell: pwsh
         run: |
-          if ($env:WALL_CONTRACT -cne 'borrowed-dedup-retirement' -and $env:WALL_CONTRACT -cne 'admission-stage-b' -and $env:WALL_CONTRACT -cnotin @('admission', 'dedup-classified')) { throw 'Unknown wall contract' }
-          if ($env:WALL_CONTRACT -ceq 'borrowed-dedup-retirement' -and $env:PROOF_ONLY -ceq 'true') { throw 'Borrowed dedup retirement refuses proof' }
+          if ($env:WALL_CONTRACT -cne 'decoded-option-ceiling' -and $env:WALL_CONTRACT -cne 'admission-stage-b' -and $env:WALL_CONTRACT -cnotin @('admission', 'dedup-classified')) { throw 'Unknown wall contract' }
+          if ($env:WALL_CONTRACT -ceq 'decoded-option-ceiling' -and $env:PROOF_ONLY -ceq 'true') { throw 'Decoded option ceiling refuses proof' }
           if ($env:WALL_CONTRACT -ceq 'dedup-classified' -and $env:PROOF_ONLY -ceq 'true') { throw 'Dedup refuses proof' }
-          $root = if ($env:WALL_CONTRACT -ceq 'borrowed-dedup-retirement') { 'coaptic-borrowed-dedup-retirement-wall' } elseif ($env:WALL_CONTRACT -ceq 'admission-stage-b') { 'coaptic-admission-stage-b' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { 'coaptic-dedup-classified-wall' } else { 'coaptic-admission-wall' }
-          $prefix = if ($env:WALL_CONTRACT -ceq 'borrowed-dedup-retirement') { 'borrowed-dedup-retirement-wall-screen' } elseif ($env:WALL_CONTRACT -ceq 'admission-stage-b') { 'admission-stage-b' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { 'dedup-classified-wall-screen' } else { 'admission-wall-screen' }
-          $baseline = if ($env:WALL_CONTRACT -ceq 'borrowed-dedup-retirement') { 'c655b3aac485c3b88d3811b4da836b56210fce5b' } else { '623c82db1a6606ec86cd56bb52009988b9f0d87e' }
+          $root = if ($env:WALL_CONTRACT -ceq 'decoded-option-ceiling') { 'coaptic-decoded-option-ceiling-wall' } elseif ($env:WALL_CONTRACT -ceq 'admission-stage-b') { 'coaptic-admission-stage-b' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { 'coaptic-dedup-classified-wall' } else { 'coaptic-admission-wall' }
+          $prefix = if ($env:WALL_CONTRACT -ceq 'decoded-option-ceiling') { 'decoded-option-ceiling-wall-screen' } elseif ($env:WALL_CONTRACT -ceq 'admission-stage-b') { 'admission-stage-b' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { 'dedup-classified-wall-screen' } else { 'admission-wall-screen' }
+          $baseline = if ($env:WALL_CONTRACT -ceq 'decoded-option-ceiling') { 'c655b3aac485c3b88d3811b4da836b56210fce5b' } else { '623c82db1a6606ec86cd56bb52009988b9f0d87e' }
           "WALL_BASELINE=$baseline" >> $env:GITHUB_ENV
           "WALL_ROOT=$root" >> $env:GITHUB_ENV
           "WALL_ARTIFACT=$prefix" >> $env:GITHUB_ENV
@@ -66,16 +66,16 @@ jobs:
       - name: Fetch only the immutable candidate
         shell: pwsh
         run: |
-          $expected = if ($env:WALL_CONTRACT -ceq 'borrowed-dedup-retirement') { '34d1af4511f8acaedbb8ad1556638646bf238fca' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { '8f1f138c825f431149ed8a0a7eefbb6be6cb1b6a' } else { '8782a6a0b0aef2facf51bec884cfe37f2a80f28d' }
+          $expected = if ($env:WALL_CONTRACT -ceq 'decoded-option-ceiling') { 'ad54df714417a522a58a37ffb7f613a693673647' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { '8f1f138c825f431149ed8a0a7eefbb6be6cb1b6a' } else { '8782a6a0b0aef2facf51bec884cfe37f2a80f28d' }
           git -C coaptic fetch --no-tags --depth=1 origin $expected
           if ($LASTEXITCODE) { throw 'Candidate fetch failed' }
           $candidate = git -C coaptic rev-parse FETCH_HEAD
           if ($candidate -cne $expected) { throw 'Candidate identity differs' }
-          if ($env:WALL_CONTRACT -ceq 'borrowed-dedup-retirement') {
+          if ($env:WALL_CONTRACT -ceq 'decoded-option-ceiling') {
             $baselineTree = git -C coaptic rev-parse 'HEAD^{tree}'
             if ($LASTEXITCODE -or $baselineTree -cne 'bca85f7b74b322a0f903005b18636d3a8414fe46') { throw 'Baseline tree differs' }
             $candidateTree = git -C coaptic rev-parse "$expected^{tree}"
-            if ($LASTEXITCODE -or $candidateTree -cne '2ca30249b3a3d15f979716d01c0215f2a00a4127') { throw 'Candidate tree differs' }
+            if ($LASTEXITCODE -or $candidateTree -cne '984a76a42e532c81c176c6c067415a785f898574') { throw 'Candidate tree differs' }
           }
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
