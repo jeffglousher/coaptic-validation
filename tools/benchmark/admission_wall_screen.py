@@ -25,6 +25,7 @@ import native_lock as locks
 from suite_process import run_worker, WorkerError
 import windows_profile as wp
 import admission_stage_b as stage_b
+import incoming_rx_wall as incoming_rx
 
 HERE, SUITE, NATIVE = ds.HERE, ds.SUITE, ds.NATIVE
 BASELINE = '623c82db1a6606ec86cd56bb52009988b9f0d87e'
@@ -65,6 +66,8 @@ UNIMPLEMENTED = []
 
 
 def purpose(args):
+    if getattr(args, 'contract', 'admission') == 'incoming-rx':
+        return incoming_rx.purpose(args)
     if getattr(args, 'contract', 'admission') == 'admission-stage-b':
         return stage_b.purpose(args)
     if getattr(args, 'contract', 'admission') == 'regular-option-parser':
@@ -195,6 +198,8 @@ def baseline(selected=ADMISSION):
 
 
 def resolve_contract(identifier='admission', proof=False):
+    if identifier == 'incoming-rx':
+        return incoming_rx.descriptor(sys.modules[__name__])
     if identifier == 'admission-stage-b':
         return stage_b.descriptor(sys.modules[__name__])
     for selected in (ADMISSION, DEDUP, REGULAR_OPTIONS):
@@ -214,6 +219,8 @@ def selection(args):
 
 
 def binding(selected=ADMISSION):
+    if selected.id == 'incoming-rx':
+        return incoming_rx.binding()
     if selected.id == 'admission-stage-b':
         return stage_b.binding()
     if selected == ADMISSION:
@@ -239,6 +246,8 @@ def tree_check(identity, commit, tree):
 
 
 def plan(selected=ADMISSION):
+    if selected.id == 'incoming-rx':
+        return incoming_rx.contract()
     if selected.id == 'admission-stage-b':
         return stage_b.contract()
     value = dict(schema=selected.schema, cores=dict(selected.cores),
@@ -505,6 +514,8 @@ def check_files(root, files):
 
 
 def source_gate(core, suite_sha, core_sha, selected=ADMISSION):
+    if selected.id == 'incoming-rx':
+        return incoming_rx.source_check(sys.modules[__name__], core, suite_sha, core_sha)
     value = wp.source_identity(core, core_sha, suite_sha)
     if selected.id == 'admission-stage-b':
         stage_b.source_check(sys.modules[__name__], core, suite_sha, core_sha)
@@ -565,7 +576,7 @@ def preflight(root):
                               'RSS/disk sampling is refusal monitoring, not a hard whole-RAM/quota claim')
 
 
-def child_command(command, budget, stem, *, env, seconds):
+def child_command(command, budget, stem, *, env, seconds, process_factory=None, on_launch=None, receipt_context=None):
     """Flush bounded pipe bytes while running, preserving logs even if worker is killed."""
     if wp.owned_size(budget.root / 'evidence') + LOG_LIMIT + RESERVE > EVIDENCE_LIMIT:
         raise ValueError('insufficient evidence allowance before child launch')
@@ -583,9 +594,12 @@ def child_command(command, budget, stem, *, env, seconds):
                 stream.flush()
                 offsets[i] += len(data)
     try:
-        child = wp.Process(command, budget, env=env, cwd=SUITE)
+        started = time.monotonic() if process_factory is not None else None
+        child = (process_factory or wp.Process)(command, budget, env=env, cwd=SUITE)
+        if on_launch is not None:
+            on_launch()
         child.p.stdin.close()
-        deadline = time.monotonic() + seconds
+        deadline = (started if started is not None else time.monotonic()) + seconds
         while child.p.poll() is None:
             flush()
             budget.check()
@@ -619,7 +633,7 @@ def child_command(command, budget, stem, *, env, seconds):
                  command=list(map(str, command)), passed=primary is None and not cleanup,
                  returncode=child.p.returncode if child else None,
                  primary=failure(primary) if primary else None,
-                 cleanup=[failure(error) for error in cleanup])))
+                 cleanup=[failure(error) for error in cleanup], **(receipt_context or {}))))
         if cleanup and primary is None:
             raise cleanup[0]
 
@@ -661,9 +675,11 @@ def launch(root, name, spec, env, *, timeout, build=False, selected=ADMISSION):
                 data = getattr(result if result is not None else error, key, b'')[:LOG_LIMIT + 1]
                 with (root / 'evidence' / (name + '-outer.' + key)).open('xb') as stream:
                     stream.write(data)
-            save(root, name + '-outer.json', failure(error) if error else
-                 dict(passed=True, descendants_settled=True, seconds=result.duration_seconds,
-                      reported_pre_settlement_auxiliaries=result.descendants_settled))
+            receipt = failure(error) if error else dict(passed=True, descendants_settled=True, seconds=result.duration_seconds,
+                      reported_pre_settlement_auxiliaries=result.descendants_settled)
+            if selected.id == 'incoming-rx':
+                receipt = incoming_rx.receipt(receipt, argparse.Namespace(**spec['args']))
+            save(root, name + '-outer.json', receipt)
         except BaseException as reporting:
             if error is not None:
                 error.add_note('outer receipt/log failure: ' + str(reporting)[:1024])
@@ -819,6 +835,8 @@ def verify_staged_suite(core, expected_commit, held, lock):
 
 
 def cargo_worker(spec, selected=ADMISSION):
+    if selected.id == 'incoming-rx':
+        return incoming_rx.cargo_worker(sys.modules[__name__], spec)
     check_binding(spec, selected)
     def verify_source():
         if selected in (DEDUP, REGULAR_OPTIONS):
@@ -889,6 +907,8 @@ def retain_pair(root, arm, selected_purpose='stage-a-screen', selected=ADMISSION
             raise ValueError('actual Cargo EXE/PDB missing')
         if source.stat().st_size + wp.owned_size(root / 'evidence') + RESERVE > EVIDENCE_LIMIT:
             raise ValueError('both owned pairs must fit 64 MiB evidence')
+        if selected.id == 'incoming-rx':
+            incoming_rx.pair_allowance(root, source.stat().st_size)
         retained[kind] = bound(wp.retain_file(root, source, root / 'evidence' / arm / source.name), selected)
     return retained
 
@@ -955,7 +975,9 @@ def build(args, root, contract):
                                                            cargo=tools['cargo']['path'], seconds=inner,
                                                            purpose=purpose(args), args=vars(args),
                                                            source=record['source'], suite=record['suite'],
-                                                           lock=lock, **binding(selected)),
+                                                           lock=lock, **(dict(tools=tools, inputs=inputs, flags=FLAGS, expected_suite=args.expected_suite,
+                                                                             core_commits=dict(selected.cores), core_trees=dict(selected.trees))
+                                                                       if selected.id == 'incoming-rx' else {}), **binding(selected)),
                                             env, timeout=outer, build=True, selected=selected), record, selected)
             artifacts[arm] = retain_pair(root, arm, purpose(args), selected)
             tool_check(tools)
@@ -997,6 +1019,8 @@ def build(args, root, contract):
 
 
 def verify_tests(root, arm, receipt, selected_purpose, selected=ADMISSION):
+    if selected.id == 'incoming-rx':
+        return incoming_rx.verify_tests(sys.modules[__name__], root, arm, receipt, selected_purpose)
     check_binding(receipt, selected)
     exact(receipt['purpose'], selected_purpose, 'prepared test purpose differs')
     exact(receipt['native_tests'], list(WALL_TESTS), 'prepared native census differs')
@@ -1013,6 +1037,8 @@ def verify_tests(root, arm, receipt, selected_purpose, selected=ADMISSION):
 
 
 def verify_build(args, root, contract):
+    if getattr(args, 'contract', 'admission') == 'incoming-rx':
+        return incoming_rx.verify_build(sys.modules[__name__], args, root, contract)
     selected = selection(args)
     exact(load(root / 'evidence/owner.json'), contract, 'owner/plan identity differs')
     value = load(root / 'evidence/build.json')
@@ -1178,6 +1204,8 @@ def measure_worker(spec, selected=ADMISSION):
 
 
 def execute(args):
+    if getattr(args, 'contract', 'admission') == 'incoming-rx':
+        return incoming_rx.execute(sys.modules[__name__], args)
     if getattr(args, 'contract', 'admission') == 'admission-stage-b':
         return stage_b.execute(sys.modules[__name__], args)
     selected = selection(args)
@@ -1260,7 +1288,9 @@ def main(argv=None):
         spec = load(argv[1])
         selected = resolve_contract(argv[2] if len(argv) > 2 else 'admission')
         check_binding(spec, selected)
-        if selected.id == 'admission-stage-b':
+        if selected.id == 'incoming-rx':
+            incoming_rx.worker(sys.modules[__name__], spec)
+        elif selected.id == 'admission-stage-b':
             stage_b.worker(sys.modules[__name__], spec)
         elif spec['kind'] == 'cargo':
             cargo_worker(spec, selected)
@@ -1271,7 +1301,7 @@ def main(argv=None):
         return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=('build', 'measure', 'all', 'proof'))
-    parser.add_argument('--contract', choices=('admission', 'dedup-classified', 'regular-option-parser', 'admission-stage-b'), default='admission')
+    parser.add_argument('--contract', choices=('admission', 'dedup-classified', 'regular-option-parser', 'admission-stage-b', 'incoming-rx'), default='admission')
     parser.add_argument('--core', required=True)
     parser.add_argument('--expected-suite', required=True)
     parser.add_argument('--output', required=True)
