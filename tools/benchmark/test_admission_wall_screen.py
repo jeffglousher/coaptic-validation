@@ -33,6 +33,12 @@ def census(listing=False):
             '\r\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 45 filtered out; finished in 0.01s\r\n').encode()
 
 
+def layout_census():
+    return ('running 1 test\r\ntest ' + w.LAYOUT_TEST + ' ... ok\r\n'
+            'test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1200 filtered out; '
+            'finished in 0.01s\r\n').encode()
+
+
 def worker_error(unsettled=False):
     return WorkerError(['python'], TimeoutError('worker killed'),
                        [RuntimeError('Job exit proof unavailable')] if unsettled else [],
@@ -1164,24 +1170,29 @@ class ContractSelectionTests(TempTests):
         self.assertIn('cancel-in-progress: false', workflow)
 
 class DedupPreparedEvidenceTests(TempTests):
-    def prepared(self):
+    def prepared(self, selected=w.DEDUP):
         args, _, source, value = BindingTests.prepared(self)
-        args.command, args.contract, args.output = 'all', 'dedup-classified', str(self.root)
+        args.command, args.contract, args.output = 'all', selected.id, str(self.root)
         contract = w.owner(args, self.root)
-        source = dict(identity=dict(commit=w.BASELINE, tree=dict(w.DEDUP.trees)['A']), files={})
+        source = dict(identity=dict(commit=w.baseline(selected), tree=dict(selected.trees)['A']), files={})
         suite = dict(identity=dict(commit=args.expected_suite, tree='b'*40), files={})
-        value.update(w.binding(w.DEDUP), owner=contract, purpose='rejection-screen',
-                     plan=w.plan(w.DEDUP), suite=suite)
-        for arm, commit in w.DEDUP.cores:
+        value.update(w.binding(selected), owner=contract, purpose=w.purpose(args),
+                     plan=w.plan(selected),
+                     suite=w.bound(suite, selected) if selected == w.LAZY_LOCATIONS else suite)
+        for arm, commit in selected.cores:
             value['records'][arm] = w.bound(dict(
-                source=w.bound(dict(identity=dict(commit=commit, tree=dict(w.DEDUP.trees)[arm]),
-                                    files={}), w.DEDUP),
-                suite=w.bound(suite, w.DEDUP), restoration='verified clean initial source'), w.DEDUP)
+                source=w.bound(dict(identity=dict(commit=commit, tree=dict(selected.trees)[arm]),
+                                    files={}), selected),
+                suite=w.bound(suite, selected), restoration='verified clean initial source'), selected)
             for kind in ('exe', 'pdb'):
-                value['artifacts'][arm][kind].update(w.binding(w.DEDUP))
+                value['artifacts'][arm][kind].update(w.binding(selected))
+            extra = {}
+            if selected == w.LAZY_LOCATIONS:
+                (self.root / 'evidence' / (arm + '-layout.stdout')).write_bytes(layout_census())
+                extra['layout_proof'] = w.layout_proof(layout_census(), arm)
             self.write(arm+'-cargo.json', w.bound(dict(
-                purpose='rejection-screen', pressure_tests=[], pressure_proof=None,
-                native_tests=list(w.WALL_TESTS)), w.DEDUP))
+                purpose=w.purpose(args), pressure_tests=[], pressure_proof=None,
+                native_tests=list(w.WALL_TESTS), **extra), selected))
         self.write('owner.json', contract)
         self.write('build.json', value)
         return args, contract, source, suite, value
@@ -1309,6 +1320,573 @@ class StagedSuiteTests(TempTests):
         self.lock['canonical_base_sha256'] = '0'*64
         with self.assertRaises(ValueError):
             self.verify(status)
+
+
+
+
+class LazyLocationsTests(TempTests):
+    def args(self, command='all'):
+        return argparse.Namespace(contract='lazy-response-locations', command=command,
+                                  output=str(self.root), core='core', expected_suite='a'*40)
+
+    def test_frozen_descriptor_and_cell_boundaries(self):
+        selected = w.resolve_contract('lazy-response-locations')
+        self.assertIs(selected, w.LAZY_LOCATIONS)
+        self.assertEqual(dict(selected.cores), {
+            'A': 'c655b3aac485c3b88d3811b4da836b56210fce5b',
+            'B': 'cbf8f871f59847dfdf14d5dd0cdc9e5070826f88'})
+        self.assertEqual(dict(selected.trees), {
+            'A': 'bca85f7b74b322a0f903005b18636d3a8414fe46',
+            'B': '0295f8ec540676d7cab332cd2a8bf94e0d61cdf1'})
+        self.assertEqual(selected.root, 'coaptic-lazy-response-locations-wall')
+        self.assertEqual(selected.schema, 'coaptic-lazy-response-locations-wall/1')
+        self.assertEqual(selected.owner_schema, 'coaptic-lazy-response-locations-owner/1')
+        self.assertEqual(selected.artifact_prefix, 'lazy-response-locations-wall-screen')
+        self.assertEqual(w.purpose(self.args()), 'replicated-benefit-screen')
+        expected = {p: {m: (dict(role='benefit', mean_max=.97, upper_exclusive=1.)
+                            if m == 'unprotected'
+                            else dict(role='regression', upper_inclusive=1.02))
+                        for m in w.wp.MODES} for p in ('small-device', 'default')}
+        self.assertEqual(w.plan(selected)['gates'], expected)
+        self.assertEqual(w.plan(selected)['native_tests'], list(w.WALL_TESTS))
+        self.assertEqual(w.plan(selected)['fixture_lf_sha256'],
+                         'a645fdc88dee2aba922013c7af6553d25461d2122a0884cd75c70afa2d472398')
+        for profile in ('small-device', 'default'):
+            for mode in w.wp.MODES:
+                benefit = mode == 'unprotected'
+                self.assertTrue(w.gate(.97, .999999, mode, selected, profile=profile))
+                self.assertEqual(w.gate(.98, .99, mode, selected, profile=profile), not benefit)
+                self.assertEqual(w.gate(.96, 1., mode, selected, profile=profile), not benefit)
+                if not benefit:
+                    self.assertTrue(w.gate(1.02, 1.02, mode, selected, profile=profile))
+                    self.assertFalse(w.gate(1., 1.0200001, mode, selected, profile=profile))
+        self.assertEqual(len(w.schedule(selected)), 64)
+        self.assertEqual({row['replicate'] for row in w.schedule(selected)}, set(range(4)))
+        self.assertEqual(w.plan(selected)['measured_total'], 3840000)
+        self.assertEqual(w.plan(selected)['warmup_total'], 8192)
+        self.assertEqual(w.plan(selected)['calibration_total'], 262144)
+        self.assertIn('performance unproven', w.plan(selected)['scope'])
+        self.assertIn('Location-bearing', w.plan(selected)['scope'])
+
+    def test_profile_required_and_never_selected_from_evidence(self):
+        for profile in (None, '', 'SmallDevice', 'foreign'):
+            with self.assertRaises(ValueError):
+                w.gate(.96, .99, 'unprotected', w.LAZY_LOCATIONS, profile=profile)
+            with self.assertRaises(ValueError):
+                w.compare({'A': [100] * w.OPERATIONS, 'B': [98] * w.OPERATIONS},
+                          'unprotected', w.LAZY_LOCATIONS, profile=profile)
+        for mode in ('foreign', None):
+            with self.assertRaises(ValueError):
+                w.gate(.96, .99, mode, w.LAZY_LOCATIONS, profile='small-device')
+
+    def test_unknown_and_proof_refuse_before_any_process(self):
+        for selector, command in [('lazy-response-locations', 'proof'),
+                                  ('validated-request-options', 'all'), ('generated-response-stream', 'all'), ('borrowed-dedup-retirement', 'all'),
+                                  ('unknown', 'all')]:
+            args = self.args(command)
+            args.contract = selector
+            with patch.object(w, 'preflight') as preflight, patch.object(w, 'source_gate') as source, \
+                 patch.object(w, 'child_command') as child:
+                with self.assertRaises(ValueError):
+                    w.execute(args)
+                preflight.assert_not_called()
+                source.assert_not_called()
+                child.assert_not_called()
+
+    def measure(self, timing=96, fail_at=None):
+        selected = w.LAZY_LOCATIONS
+        args = self.args()
+        commands, gates = [], []
+        real_compare = w.compare
+        def command(argv, *a, **kw):
+            self.assertEqual(gates, [])
+            commands.append(argv)
+            if len(commands) == fail_at:
+                raise RuntimeError('source/runtime/resource refusal')
+            profile = 'small-device' if '--small-device' in argv else 'default'
+            return w.ds.encoded(wall(profile, argv[2], 100 if argv[0] == 'A.exe' else timing))
+        def compare(arms, mode, contract, *, profile=None):
+            self.assertEqual(len(commands), 64)
+            self.assertIn(profile, ('small-device', 'default'))
+            self.assertEqual([pair['replicate'] for pair in arms], list(range(4)))
+            self.assertTrue(all(pair['arms']['A'][0] == 100 for pair in arms))
+            self.assertTrue(all(pair['arms']['B'][0] == timing for pair in arms))
+            result = real_compare(arms, mode, contract, profile=profile)
+            gates.append(result)
+            return result
+        prepared = dict(artifacts={a: {'exe': {'path': a+'.exe'}} for a in 'AB'})
+        context = Mock(__enter__=Mock(), __exit__=Mock(return_value=False))
+        with patch.object(w, 'owner', return_value={}), \
+             patch.object(w, 'verify_build', return_value=prepared), patch.object(w, 'check_files'), \
+             patch.object(w, 'Budget', return_value=Mock(observed_child_working_set_peak=0)), \
+             patch.object(w, 'affinity', return_value=context), \
+             patch.object(w, 'child_command', side_effect=command), \
+             patch.object(w, 'compare', side_effect=compare):
+            spec = w.bound(dict(args=vars(args), prepared_hashes={}), selected)
+            if timing > 97 or fail_at:
+                with self.assertRaises((ValueError, RuntimeError)):
+                    w.measure_worker(spec, selected)
+            else:
+                w.measure_worker(spec, selected)
+        return commands, gates, w.load(self.root / 'evidence/result.json')
+
+    def test_all_sixty_four_commands_before_all_eight_real_gates(self):
+        commands, gates, result = self.measure()
+        self.assertEqual(len(gates), 8)
+        self.assertTrue(result['passed'])
+        self.assertEqual(len(result['completed']), 64)
+        for argv, row in zip(commands, w.schedule(w.LAZY_LOCATIONS)):
+            self.assertEqual(argv, [row['arm']+'.exe', '60000', row['security']] +
+                             (['--small-device'] if row['profile'] == 'small-device' else []))
+        for gate in gates:
+            self.assertEqual(gate['mean_B_over_A'], .96)
+            self.assertTrue(gate['passed'])
+            w.check_binding(gate, w.LAZY_LOCATIONS)
+        for index in range(64):
+            w.check_binding(w.load(self.root / ('evidence/sample-%02d.json' % index)),
+                            w.LAZY_LOCATIONS)
+
+    def test_failed_unprotected_benefits_stop_despite_four_oscore_guards(self):
+        commands, gates, result = self.measure(timing=98)
+        self.assertEqual(len(commands), 64)
+        self.assertEqual(len(gates), 8)
+        self.assertEqual([c['passed'] for c in gates], [False, False, True, True, False, False, True, True])
+        self.assertFalse(result['passed'])
+        self.assertEqual(result['not_run'], [])
+        self.assertEqual({c['security'] for c in result['comparisons']}, set(w.wp.MODES))
+
+    def test_first_runtime_failure_retains_incomplete_and_notrun(self):
+        commands, gates, result = self.measure(fail_at=3)
+        self.assertEqual(len(commands), 3)
+        self.assertEqual(gates, [])
+        self.assertEqual(len(result['completed']), 2)
+        self.assertEqual(len(result['failed_or_incomplete']), 1)
+        self.assertEqual(len(result['not_run']), 61)
+
+    def test_foreign_worker_specs_refuse_before_launch_even_rehashed(self):
+        import itertools
+        for selected, foreign in itertools.permutations(
+                (w.ADMISSION, w.DEDUP, w.LAZY_LOCATIONS), 2):
+            spec = w.bound(dict(kind='cargo', args=vars(self.args())), foreign)
+            spec['sha256'] = hashlib.sha256(w.ds.encoded(spec)).hexdigest()
+            with patch.object(w, 'run_worker') as run, patch.object(w, 'child_command') as child:
+                with self.assertRaises(ValueError):
+                    w.launch(self.root, 'foreign', spec, {}, timeout=450, selected=selected)
+                with self.assertRaises(ValueError):
+                    w.cargo_worker(spec, selected)
+                with self.assertRaises(ValueError):
+                    w.measure_worker(spec, selected)
+                run.assert_not_called()
+                child.assert_not_called()
+
+    def test_selected_baseline_source_transaction_and_restoration(self):
+        selected = w.LAZY_LOCATIONS
+        events, record = [], {}
+        def git(core, *args):
+            if args[0] == 'rev-parse':
+                return 'HEAD'
+            events.append(args)
+        stage = Mock(stage=Mock(return_value={'selected_sha256': 'held'}))
+        with patch.object(w, 'source_gate') as gate, patch.object(w.ds, 'git', side_effect=git), \
+             patch.object(w, 'snapshot', return_value=dict(files={})), patch.object(w, 'check_files'), \
+             patch.object(w, 'NativeStage', return_value=stage):
+            for arm, commit in selected.cores:
+                events.clear()
+                w.transaction('core', 'suite', commit, lambda lock: None, record, selected)
+                self.assertEqual(gate.call_args_list[-3].args[2], w.baseline(selected))
+                if arm == 'A':
+                    self.assertEqual(events, [])
+                else:
+                    self.assertEqual(events, [('checkout', '--detach', commit),
+                                              ('checkout', '--detach', w.baseline(selected))])
+                self.assertEqual(record['restoration'], 'verified clean initial source')
+        self.assertNotEqual(w.baseline(selected), w.BASELINE)
+
+    def test_prepared_cross_contract_and_self_described_edits_refuse_before_process(self):
+        args, contract, source, suite, original = DedupPreparedEvidenceTests.prepared(
+            self, w.LAZY_LOCATIONS)
+        def snapshot(path):
+            return source if str(path) == args.core else suite
+        mutations = [
+            lambda v: v.update(plan=w.plan(w.DEDUP)),
+            lambda v: v.update(owner=dict(contract, purpose='rejection-screen')),
+            lambda v: v.update(w.binding(w.DEDUP)),
+            lambda v: v['records']['A']['source'].update(w.binding(w.DEDUP)),
+            lambda v: v['records']['B']['source']['identity'].update(tree='0'*40),
+            lambda v: v['records']['B']['suite'].update(w.binding(w.DEDUP)),
+            lambda v: v['artifacts']['A']['exe'].update(w.binding(w.DEDUP)),
+            lambda v: v['artifacts']['B']['pdb'].update(sha256='0'*64),
+        ]
+        with patch.object(w, 'source_gate') as gate, patch.object(w, 'snapshot', side_effect=snapshot), \
+             patch.object(w, 'child_command') as child:
+            self.assertEqual(w.verify_build(args, self.root, contract), original)
+            self.assertEqual(gate.call_args.args[2], w.baseline(w.LAZY_LOCATIONS))
+            for mutate in mutations:
+                value = copy.deepcopy(original)
+                mutate(value)
+                self.write('build.json', value)
+                self.write('build-complete.json', w.bound(dict(prepared_hashes={
+                    'build.json': w.ds.digest(self.root / 'evidence/build.json')}), w.LAZY_LOCATIONS))
+                with self.assertRaises(ValueError):
+                    w.measure_worker(w.bound(dict(args=vars(args), prepared_hashes={
+                        'build.json': w.ds.digest(self.root / 'evidence/build.json')}),
+                        w.LAZY_LOCATIONS), w.LAZY_LOCATIONS)
+            self.write('build.json', original)
+            for foreign in (w.ADMISSION, w.DEDUP):
+                self.write('A-cargo.json', w.bound(dict(purpose='replicated-benefit-screen',
+                    pressure_tests=[], pressure_proof=None, native_tests=list(w.WALL_TESTS)), foreign))
+                with self.assertRaises(ValueError):
+                    w.verify_build(args, self.root, contract)
+            child.assert_not_called()
+
+    def test_workflow_new_selector_routes_and_proof_refusal(self):
+        import itertools
+        ci = (w.SUITE / '.github/workflows/ci.yml').read_text()
+        expressions = w.re.findall(r'^    if: \$\{\{ (.+) \}\}$', ci.split('jobs:\n', 1)[1], w.re.M)
+        self.assertEqual(len(expressions), 4)
+        for screen, proof, stack in itertools.product((False, True), repeat=3):
+            inputs = dict(wall_screen_contract='lazy-response-locations',
+                          admission_wall_screen=screen, admission_pressure_proof=proof,
+                          stack_profile=stack, stack_profile_replay=False,
+                          stack_profile_live=False, stack_profile_live_replay=False)
+            def evaluate(expression):
+                expression = expression.replace('github.event_name', repr('workflow_dispatch'))
+                expression = w.re.sub(r'inputs\.(\w+)', lambda m: repr(inputs[m[1]]), expression)
+                expression = w.re.sub(r'!(?!=)', ' not ', expression)
+                return bool(eval(expression.replace('&&', ' and ').replace('||', ' or '),
+                                 {'__builtins__': {}}))
+            routes = list(map(evaluate, expressions))
+            valid = screen and not proof and not stack
+            self.assertEqual(routes, [not valid, False, False, valid])
+        workflow = (w.SUITE / '.github/workflows/admission-wall-screen.yml').read_text()
+        self.assertIn("-ceq 'lazy-response-locations' -and $env:PROOF_ONLY -ceq 'true'", workflow)
+        self.assertIn('ref: ${{ env.WALL_BASELINE }}', workflow)
+        for _, sha in w.LAZY_LOCATIONS.cores + w.LAZY_LOCATIONS.trees:
+            self.assertIn(sha, workflow)
+
+
+    def test_historical_dedup_and_stage_b_plan_bytes_unchanged(self):
+        for value, expected in (
+            (w.plan(w.DEDUP), '76db03001435e2e89db2a401107fb03d4513d9c1b49c482539a68a2614716df5'),
+            (w.DEDUP._asdict(), 'c79831702aa6c48bc21e80ba7648fea127a606bc4549443a8f6c4b1e3a05deed'),
+            (w.binding(w.DEDUP), 'e9f2641f6d7a35e8c4f4ed6a782184f1b27c0c69d29d721a653730a4b9719bb7'),
+            (w.plan(w.resolve_contract('admission-stage-b')),
+             '161b7fd033cd7c2cc37b203f878b4307de913e2da2b651bacdbe9e84c186a83c')):
+            self.assertEqual(hashlib.sha256(w.ds.encoded(value)).hexdigest(), expected)
+
+    def test_selected_cargo_worker_full_exact_census_and_purpose(self):
+        selected = w.LAZY_LOCATIONS
+        args, contract, source, suite, value = DedupPreparedEvidenceTests.prepared(self, selected)
+        spec = w.bound(dict(root=str(self.root), args=vars(args), arm='B',
+            source=value['records']['B']['source'], suite=value['records']['B']['suite'],
+            purpose='replicated-benefit-screen', cargo='cargo', seconds=400,
+            lock={'selected_sha256': 'held'}), selected)
+        identity = dict(commit=dict(selected.cores)['B'], tree=dict(selected.trees)['B'])
+        pair = (self.root / 'target/bench-core.exe', self.root / 'target/bench-core.pdb')
+        with patch.object(w.ds, 'identity', return_value=identity), \
+             patch.object(w, 'verify_staged_suite'), patch.object(w, 'check_files'), \
+             patch.object(w, 'Budget', return_value=Mock(observed_child_working_set_peak=1, peak=2)), \
+             patch.object(w.wp, 'native_artifact_pair', return_value=pair), \
+             patch.object(w, 'child_command', side_effect=[census(True), census(), layout_census(), b'cargo-json']) as child:
+            # Existing preparation wrote a receipt; remove only that test-owned mock receipt.
+            (self.root / 'evidence/B-cargo.json').unlink()
+            w.cargo_worker(spec, selected)
+            self.assertEqual(len(child.call_args_list), 4)
+            commands = [c.args[0] for c in child.call_args_list]
+            self.assertEqual(commands[0][-3:], ['wall_', '--', '--list'])
+            self.assertEqual(commands[1][-3:], ['wall_', '--', '--test-threads=1'])
+            self.assertEqual(commands[2], w.layout_command('cargo'))
+            self.assertEqual(child.call_args_list[2].kwargs['env'][w.LAYOUT_ROLE_ENV], 'candidate')
+            self.assertEqual(commands[3][1], 'build')
+            self.assertIn('--locked', commands[3])
+            receipt = w.load(self.root / 'evidence/B-cargo.json')
+            w.check_binding(receipt, selected)
+            self.assertEqual(receipt['purpose'], 'replicated-benefit-screen')
+            self.assertEqual(receipt['native_tests'], list(w.WALL_TESTS))
+            self.assertEqual(receipt['pressure_tests'], [])
+            self.assertEqual(receipt['layout_proof'], w.layout_proof(layout_census(), 'B'))
+
+    def test_windows_layout_test_exact_census_and_bound_metadata(self):
+        proof = w.layout_proof(layout_census(), 'B')
+        self.assertEqual(proof['test'], w.LAYOUT_TEST)
+        self.assertEqual(proof['target'], 'x86_64-pc-windows-msvc')
+        self.assertEqual(proof['library_features'], 'std,alloc,oscore')
+        self.assertFalse(proof['library_default_features'])
+        self.assertEqual(proof['stdout_sha256'], hashlib.sha256(layout_census()).hexdigest())
+        for bad in (b'running 0 tests\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0s',
+                    layout_census().replace(b' ... ok', b' ... ignored'),
+                    layout_census().replace(w.LAYOUT_TEST.encode(), b'foreign::test'),
+                    layout_census() + layout_census()):
+            with self.assertRaises(ValueError):
+                w.layout_proof(bad, 'B')
+
+    def test_missing_or_rewritten_layout_proof_refuses_prepared_build(self):
+        selected = w.LAZY_LOCATIONS
+        args, contract, source, suite, value = DedupPreparedEvidenceTests.prepared(self, selected)
+        def snapshot(path):
+            return source if str(path) == args.core else suite
+        original = w.load(self.root / 'evidence/B-cargo.json')
+        for mutate in (lambda r: r.pop('layout_proof'),
+                       lambda r: r['layout_proof'].update(target='foreign-target'),
+                       lambda r: r['layout_proof'].update(stdout_sha256='0'*64)):
+            receipt = copy.deepcopy(original)
+            mutate(receipt)
+            self.write('B-cargo.json', receipt)
+            with patch.object(w, 'source_gate'), patch.object(w, 'snapshot', side_effect=snapshot), \
+                 patch.object(w, 'child_command') as child:
+                with self.assertRaises(ValueError):
+                    w.verify_build(args, self.root, contract)
+                child.assert_not_called()
+        self.write('B-cargo.json', original)
+        (self.root / 'evidence/B-layout.stdout').unlink()
+        with patch.object(w, 'source_gate'), patch.object(w, 'snapshot', side_effect=snapshot):
+            with self.assertRaises(FileNotFoundError):
+                w.verify_build(args, self.root, contract)
+
+    def test_failed_windows_layout_stops_before_normal_binary_build(self):
+        selected = w.LAZY_LOCATIONS
+        args, _, _, _, value = DedupPreparedEvidenceTests.prepared(self, selected)
+        spec = w.bound(dict(root=str(self.root), args=vars(args), arm='B',
+            source=value['records']['B']['source'], suite=value['records']['B']['suite'],
+            purpose='replicated-benefit-screen', cargo='cargo', seconds=400,
+            lock={'selected_sha256': 'held'}), selected)
+        identity = dict(commit=dict(selected.cores)['B'], tree=dict(selected.trees)['B'])
+        with patch.object(w.ds, 'identity', return_value=identity), \
+             patch.object(w, 'verify_staged_suite'), patch.object(w, 'check_files'), \
+             patch.object(w, 'Budget', return_value=Mock()), \
+             patch.object(w, 'child_command', side_effect=[census(True), census(), b'running 0 tests']) as child:
+            (self.root / 'evidence/B-cargo.json').unlink()
+            with self.assertRaises(ValueError):
+                w.cargo_worker(spec, selected)
+            self.assertEqual(len(child.call_args_list), 3)
+            self.assertFalse((self.root / 'evidence/B-cargo.json').exists())
+
+    def test_layout_source_tampering_refuses_source_gate(self):
+        selected = w.LAZY_LOCATIONS
+        def identity(path):
+            return (dict(commit=w.baseline(selected), tree=dict(selected.trees)['A'])
+                    if str(path) == 'core' else dict(commit='a'*40, tree='b'*40))
+        with patch.object(w.wp, 'source_identity', return_value={}), \
+             patch.object(w.ds, 'identity', side_effect=identity), \
+             patch.object(Path, 'read_bytes', return_value=b'tampered layout source'):
+            with self.assertRaisesRegex(ValueError, 'native layout source pin differs'):
+                w.source_gate('core', 'a'*40, w.baseline(selected), selected)
+
+    def test_baseline_build_runs_bound_baseline_layout_test(self):
+        selected = w.LAZY_LOCATIONS
+        args, _, _, _, value = DedupPreparedEvidenceTests.prepared(self, selected)
+        spec = w.bound(dict(root=str(self.root), args=vars(args), arm='A',
+            source=value['records']['A']['source'], suite=value['records']['A']['suite'],
+            purpose='replicated-benefit-screen', cargo='cargo', seconds=400,
+            lock={'selected_sha256': 'held'}), selected)
+        identity = dict(commit=dict(selected.cores)['A'], tree=dict(selected.trees)['A'])
+        pair = (self.root / 'target/bench-core.exe', self.root / 'target/bench-core.pdb')
+        with patch.object(w.ds, 'identity', return_value=identity), \
+             patch.object(w, 'verify_staged_suite'), patch.object(w, 'check_files'), \
+             patch.object(w, 'Budget', return_value=Mock(observed_child_working_set_peak=1, peak=2)), \
+             patch.object(w.wp, 'native_artifact_pair', return_value=pair), \
+             patch.object(w, 'child_command', side_effect=[census(True), census(), layout_census(), b'cargo-json']) as child:
+            (self.root / 'evidence/A-cargo.json').unlink()
+            w.cargo_worker(spec, selected)
+            self.assertEqual(len(child.call_args_list), 4)
+            self.assertEqual(w.load(self.root / 'evidence/A-cargo.json')['layout_proof'],
+                             w.layout_proof(layout_census(), 'A'))
+            self.assertEqual(child.call_args_list[2].kwargs['env'][w.LAYOUT_ROLE_ENV], 'baseline')
+
+    def test_execute_build_handoff_uses_selected_initial_and_final_baseline(self):
+        selected = w.LAZY_LOCATIONS
+        args = self.args('build')
+        args.output = str(self.root / selected.root)
+        def build(args, root, contract):
+            w.save(root, 'build.json', w.bound(dict(owner=contract), selected))
+        with patch.dict(w.os.environ, RUNNER_ENVIRONMENT='github-hosted', RUNNER_TEMP=str(self.root)), \
+             patch.object(w.sys, 'platform', 'win32'), patch.object(w.shutil, 'which', return_value=None), \
+             patch.object(w, 'preflight', return_value={}), patch.object(w, 'source_gate') as source, \
+             patch.object(w, 'build', side_effect=build), patch.object(w, 'verify_build'):
+            w.execute(args)
+        self.assertEqual(len(source.call_args_list), 2)
+        self.assertTrue(all(c.args[2:] == (w.baseline(selected), selected)
+                            for c in source.call_args_list))
+        root = Path(args.output)
+        w.check_binding(w.load(root / 'evidence/build-complete.json'), selected)
+        w.check_binding(w.load(root / 'evidence/owner.json'), selected)
+
+
+    def test_selected_source_gates_reject_old_baseline_and_wrong_trees(self):
+        selected = w.LAZY_LOCATIONS
+        with patch.object(w.wp, 'source_identity', return_value={}), \
+             patch.object(w.ds, 'identity') as identity:
+            for arm, commit in selected.cores:
+                core = dict(commit=commit, tree=dict(selected.trees)[arm])
+                suite = dict(commit='a'*40, tree='b'*40)
+                identity.side_effect = lambda path: core if str(path) == 'core' else suite
+                w.source_gate('core', 'a'*40, commit, selected)
+                core['tree'] = '0'*40
+                with self.assertRaises(ValueError):
+                    w.source_gate('core', 'a'*40, commit, selected)
+            with self.assertRaises(ValueError):
+                w.source_gate('core', 'a'*40, w.BASELINE, selected)
+
+    def test_foreign_build_complete_refuses_before_worker_even_rehashed(self):
+        selected = w.LAZY_LOCATIONS
+        args = self.args('measure')
+        args.output = str(self.root / selected.root)
+        for foreign in (w.ADMISSION, w.DEDUP):
+            receipt = w.bound(dict(prepared_hashes={'build.json': '0'*64}), foreign)
+            with patch.dict(w.os.environ, RUNNER_ENVIRONMENT='github-hosted', RUNNER_TEMP=str(self.root)), \
+                 patch.object(w.sys, 'platform', 'win32'), patch.object(w.shutil, 'which', return_value=None), \
+                 patch.object(w, 'preflight', return_value={}), patch.object(w, 'source_gate'), \
+                 patch.object(w, 'load', return_value=receipt), patch.object(w, 'launch') as launch:
+                with self.assertRaises(ValueError):
+                    w.execute(args)
+                launch.assert_not_called()
+
+
+    def test_historical_proof_dedup_stage_b_owner_bytes(self):
+        for selector, command, expected in (
+            ('admission', 'proof', 'f852edb45a149f64ec30f9c6a24ef7b45b9341f5ecb953d95b8ddbe847e48fca'),
+            ('dedup-classified', 'all', '9da4f67f533e72fcb466018bd065d8220dc08e733f44551524cbf60fb82ef0f4'),
+            ('admission-stage-b', 'all', 'b38cdbba733565dc9f936b53cd86106c9300ee0558286897ccd68aa531b1611a')):
+            args = argparse.Namespace(contract=selector, command=command,
+                                      expected_suite='1'*40, core='C:/core')
+            with patch.dict(w.os.environ, GITHUB_RUN_ID='gold-run', GITHUB_RUN_ATTEMPT='2'):
+                value = w.owner(args, Path('C:/gold-root'))
+            value.update(root=str(PureWindowsPath('C:/gold-root')),
+                         core=str(PureWindowsPath('C:/core')))
+            if selector == 'admission':
+                value['plan_sha256'] = '6e6bcb2378ea7ea4034b75d0f7b25c29bd66730700894343d93cb81eea177296'
+            self.assertEqual(hashlib.sha256(w.ds.encoded(value)).hexdigest(), expected)
+
+
+class ReplicatedStatisticsTests(TempTests):
+    @staticmethod
+    def pairs(a=(90, 100, 125, 200), b=(85, 96, 115, 189)):
+        return [dict(replicate=i, arms={'A': [a[i]] * w.OPERATIONS,
+                                      'B': [b[i]] * w.OPERATIONS}) for i in range(4)]
+
+    def test_schedule_has_every_unique_adjacent_pair_in_frozen_order(self):
+        selected = w.LAZY_LOCATIONS
+        rows = w.schedule(selected)
+        expected = [(k, p, m, order, arm) for k in range(4)
+                    for p, m in w.plan(selected)['cells'] for order in ('AB', 'BA') for arm in order]
+        self.assertEqual([(r['replicate'], r['profile'], r['security'], r['round'], r['arm'])
+                          for r in rows], expected)
+        self.assertEqual([r['index'] for r in rows], list(range(64)))
+        self.assertEqual(len(set(expected)), 64)
+        for i in range(0, 64, 2):
+            x, y = rows[i:i + 2]
+            self.assertEqual({x['arm'], y['arm']}, {'A', 'B'})
+            self.assertEqual({k: v for k, v in x.items() if k not in ('index', 'arm')},
+                             {k: v for k, v in y.items() if k not in ('index', 'arm')})
+        self.assertEqual(64 * w.OPERATIONS, 3840000)
+        self.assertEqual(64 * w.WARMUP, 8192)
+        self.assertEqual(64 * w.CALIBRATION, 262144)
+
+    def test_paired_process_bootstrap_matches_independent_reference(self):
+        import math
+        import random
+        pairs = self.pairs()
+        actual = w.compare_process_pairs(pairs, 'unprotected', profile='small-device')
+        a, b = [90., 100., 125., 200.], [85., 96., 115., 189.]
+        expected_rng = random.Random(20261101)
+        ratios = []
+        for _ in range(10000):
+            indices = expected_rng.choices(range(4), k=4)
+            ratios.append(math.fsum(b[i] for i in indices) / math.fsum(a[i] for i in indices))
+        ratios.sort()
+        def percentile(q):
+            position = 9999 * q
+            low = int(position)
+            fraction = position - low
+            return ratios[low] * (1 - fraction) + ratios[min(low + 1, 9999)] * fraction
+        self.assertEqual(actual['process_means_ns'], dict(A=a, B=b))
+        self.assertEqual(actual['arm_mean_ns'], dict(A=math.fsum(a) / 4, B=math.fsum(b) / 4))
+        self.assertEqual(actual['mean_B_over_A'], math.fsum(b) / math.fsum(a))
+        self.assertEqual(actual['lower95'], percentile(.025))
+        self.assertEqual(actual['upper95'], percentile(.975))
+        self.assertEqual(actual, w.compare_process_pairs(pairs, 'unprotected', profile='small-device'))
+        for arm in 'AB':
+            for process, mean in zip(actual['block_means_ns'][arm], actual['process_means_ns'][arm]):
+                self.assertEqual(process, [mean] * 60)
+        self.assertEqual(actual['block_mean_role'], 'descriptive only')
+
+    def test_large_intervals_in_either_arm_are_never_excluded(self):
+        import math
+        pairs = self.pairs(a=(100, 100, 100, 100), b=(95, 95, 95, 95))
+        pairs[0]['arms']['A'][17] = 4000000
+        pairs[1]['arms']['B'][32] = 5000000
+        before = [(math.fsum(p['arms']['A']), math.fsum(p['arms']['B'])) for p in pairs]
+        result = w.compare_process_pairs(pairs, 'oscore', profile='default')
+        self.assertEqual(result['process_means_ns']['A'][0], before[0][0] / 60000)
+        self.assertEqual(result['process_means_ns']['B'][1], before[1][1] / 60000)
+        self.assertGreater(result['block_means_ns']['A'][0][0], 100)
+        self.assertGreater(result['block_means_ns']['B'][1][0], 95)
+        self.assertEqual(result['mean_B_over_A'],
+                         (math.fsum(y / 60000 for x, y in before) / 4) /
+                         (math.fsum(x / 60000 for x, y in before) / 4))
+        self.assertEqual([(math.fsum(p['arms']['A']), math.fsum(p['arms']['B'])) for p in pairs], before)
+
+    def test_pair_census_and_invalid_observations_refuse(self):
+        original = self.pairs()
+        mutations = [lambda p: p.pop(), lambda p: p.append(copy.deepcopy(p[0])),
+                     lambda p: p.reverse(), lambda p: p[1].update(replicate=0),
+                     lambda p: p[0].update(replicate=False),
+                     lambda p: p[0].update(profile='foreign'),
+                     lambda p: p[0]['arms'].pop('B'),
+                     lambda p: p[0]['arms'].update(C=p[0]['arms']['A']),
+                     lambda p: p[0]['arms']['A'].pop(),
+                     lambda p: p[0]['arms'].update(A=[0] * 60000),
+                     lambda p: p[0]['arms']['B'].__setitem__(0, float('nan'))]
+        for mutate in mutations:
+            pairs = copy.deepcopy(original)
+            mutate(pairs)
+            with self.subTest(mutation=mutate), self.assertRaises(ValueError):
+                w.compare_process_pairs(pairs, 'unprotected', profile='default')
+
+    def test_unfrozen_source_descriptor_refuses_before_tools_or_native(self):
+        frozen = w.LAZY_LOCATIONS
+        bad = frozen._replace(cores=(('A', w.baseline(frozen)), ('B', 'DRAFT_UNFROZEN')))
+        args = argparse.Namespace(contract='lazy-response-locations', command='all')
+        with patch.object(w, 'LAZY_LOCATIONS', bad), patch.object(w, 'preflight') as tools, \
+             patch.object(w, 'child_command') as child:
+            with self.assertRaisesRegex(ValueError, 'DRAFT_UNFROZEN'):
+                w.execute(args)
+            tools.assert_not_called()
+            child.assert_not_called()
+
+    def test_each_arm_layout_receipt_must_keep_its_bound_role(self):
+        selected = w.LAZY_LOCATIONS
+        args, contract, source, suite, value = DedupPreparedEvidenceTests.prepared(self, selected)
+        def snapshot(path):
+            return source if str(path) == args.core else suite
+        for arm in 'AB':
+            path = self.root / 'evidence' / (arm + '-cargo.json')
+            original = w.load(path)
+            self.assertEqual(original['layout_proof']['role'], dict(w.LAYOUT_ROLES)[arm])
+            for role in ('candidate' if arm == 'A' else 'baseline', '', None):
+                receipt = copy.deepcopy(original)
+                receipt['layout_proof']['role'] = role
+                self.write(arm + '-cargo.json', receipt)
+                with patch.object(w, 'source_gate'), patch.object(w, 'snapshot', side_effect=snapshot), \
+                     patch.object(w, 'child_command') as child:
+                    with self.assertRaises(ValueError):
+                        w.verify_build(args, self.root, contract)
+                    child.assert_not_called()
+            self.write(arm + '-cargo.json', original)
+        for arm in ('foreign', '', None):
+            with self.assertRaises(ValueError):
+                w.layout_proof(layout_census(), arm)
+        source = (w.SUITE / w.LAYOUT_SOURCE).read_text()
+        self.assertIn('Err(std::env::VarError::NotPresent) => "candidate".into()', source)
+        self.assertIn('"baseline" | "candidate"', source)
+        self.assertIn('unknown layout role', source)
+        self.assertNotIn('crate::message::', source)
+        self.assertIn("received_header: Option<ParsedMessage<'a, T>>", source)
+        self.assertEqual(source.count('#[test]'), 1)
+        self.assertIn('core::mem::size_of::<X>() <= core::mem::size_of::<Y>()', source)
+        self.assertIn('"baseline size for {}"', source)
+        self.assertEqual(w.plan(selected)['candidate_layout_qualification']['roles'],
+                         {'A': 'baseline', 'B': 'candidate'})
 
 
 if __name__ == '__main__':

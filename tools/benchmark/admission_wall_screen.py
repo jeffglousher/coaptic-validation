@@ -1,4 +1,4 @@
-"""Finite hosted Stage A screen or separate ownership proof. No Stage B promotion.
+"""Finite hosted wall screens or separate ownership proof. No automatic promotion.
 
 Only the outer process changes core checkout/native lock inputs. Cargo workers
 own processes and monitored output, never source restoration. Unresolved cleanup
@@ -39,6 +39,12 @@ RESERVE = 4 * 1024**2  # Keep room for failure and final source/settlement recei
 TARGET = 'x86_64-pc-windows-msvc'
 FIXTURE = 'tools/benchmark/native/servers/src/bin/bench-core.rs'
 FIXTURE_LF_SHA256 = 'a645fdc88dee2aba922013c7af6553d25461d2122a0884cd75c70afa2d472398'
+LAYOUT_TEST = ('response_location_layout::'
+               'response_and_wrappers_preserve_baseline_layout')
+LAYOUT_SOURCE = 'tools/benchmark/native/servers/tests/response-location-layout.rs'
+LAYOUT_LF_SHA256 = '7c62acfef7440267b33752dfde61fe810953a35c3e2dc337b7e4f417a54976f9'
+LAYOUT_ROLE_ENV = 'COAPTIC_RESPONSE_LAYOUT_ROLE'
+LAYOUT_ROLES = (('A', 'baseline'), ('B', 'candidate'))
 WALL_TESTS = tuple('batch_tests::' + name for name in (
     'wall_cli_bounds_and_mixed_flag_refusal',
     'wall_exact_presets_both_payloads_verify_without_growth',
@@ -67,6 +73,9 @@ UNIMPLEMENTED = []
 def purpose(args):
     if getattr(args, 'contract', 'admission') == 'admission-stage-b':
         return stage_b.purpose(args)
+    if getattr(args, 'contract', 'admission') == 'lazy-response-locations':
+        selection(args)
+        return 'replicated-benefit-screen'
     if getattr(args, 'contract', 'admission') == 'dedup-classified':
         selection(args)
         return 'rejection-screen'
@@ -149,13 +158,57 @@ DEDUP = Contract(
     ))
 
 
+PAIR_REPLICATES, PROCESS_SEED = 4, 20261101
+LAZY_LOCATIONS = Contract(
+    'lazy-response-locations', 'coaptic-lazy-response-locations-wall/1',
+    'coaptic-lazy-response-locations-owner/1', 'coaptic-lazy-response-locations-wall',
+    'lazy-response-locations-wall-screen',
+    (('A', 'c655b3aac485c3b88d3811b4da836b56210fce5b'), ('B', 'cbf8f871f59847dfdf14d5dd0cdc9e5070826f88')),
+    (('A', 'bca85f7b74b322a0f903005b18636d3a8414fe46'), ('B', '0295f8ec540676d7cab332cd2a8bf94e0d61cdf1')),
+    (
+        'FROZEN distinct lazy Response Location backing screen; performance unproven. '
+        'SCREEN-PREREGISTRATION.json 4168 bytes SHA256 '
+        'a607c83173f8a87de44eab7b1946d12c1d1809cce4210a9be2f0d900964aa364. '
+        'Two private optional inline arrays, same public API and fixed capacities, no unsafe or allocation. '
+        'Materialize backing only after a valid Location append. No decoded-option hint or stopped variant.',
+        'Exactly 64 fresh serial processes: replicate0..3 outermost, four fixed profile/security cells, '
+        'AB pair then BA pair per cell; each adjacent pair has both arms. '
+        '60000 measured +128 warmup +4096 separate calibrations/process:3840000/8192/262144 total. '
+        'All64 before all8 decisions; first source/runtime/resource failure stops unfinished work. '
+        'Unchanged one-segment bench GET, wall CLI, factories, capacities, authentication and four wall tests.',
+        'Four actual process pairs per profile/security/order. Process means use math.fsum of all60000 values; '
+        'arm means average four process means. Paired process-index resampling WITH replacement: '
+        '10000 draws, Random(20261101) reset each comparison, one choices(range(4),k=4), '
+        'same selected indices for A/B; B/A including BA. Linear equal-tail .025/.975 at(n-1)*q. '
+        '60 consecutive1000 blockmeans/process are descriptive only, never the resampling units. '
+        'Unprotected both profiles/orders: mean<=.97 AND upper95<1; OSCORE upper95<=1.02. '
+        'No pooling across cells/orders, exclusions, calibration subtraction, replacement, retry or cap increase.',
+        'Both arm releases must pass one exact Windows MSVC whole-Response/token/wrapper layout test '
+        'before normal binary build; no whole-App or peak-stack claim. Baseline mirror is source-exact. '
+        'Normal pass only admits full correctness/MSRV plus new-source Location-bearing and Stage B '
+        'pressure/Observe/Block2 regression validation; no promotion from this early screen.',
+        'Four pairs/order remain modest conditional host evidence, not independent-host or simultaneous95% '
+        'coverage, CPU/device/socket/whole-memory/50% proof. Arm-matched client outside clock may affect '
+        'cache and scheduling. Aggregate300s/64MiB and35minute job bounds dominate per-process maxima; '
+        'exhaustion refuses without changes. Preserve outer-only source/lock custody, foreign edits, '
+        'unresolved cleanup and all earlier STOP campaigns.',
+    ))
+
+
+def baseline(selected=ADMISSION):
+    return dict(selected.cores)['A']
+
+
 def resolve_contract(identifier='admission', proof=False):
     if identifier == 'admission-stage-b':
         return stage_b.descriptor(sys.modules[__name__])
-    for selected in (ADMISSION, DEDUP):
+    for selected in (ADMISSION, DEDUP, LAZY_LOCATIONS):
         if identifier == selected.id:
-            if proof and selected == DEDUP:
-                raise ValueError('dedup-classified refuses proof mode')
+            if proof and selected in (DEDUP, LAZY_LOCATIONS):
+                raise ValueError(selected.id + ' refuses proof mode')
+            if selected == LAZY_LOCATIONS and any(
+                    not re.fullmatch('[0-9a-f]{40}', sha) for _, sha in selected.cores + selected.trees):
+                raise ValueError('lazy response source pins are DRAFT_UNFROZEN')
             return selected
     raise ValueError('unknown contract selector')
 
@@ -211,16 +264,43 @@ def plan(selected=ADMISSION):
                              evidence_bytes=EVIDENCE_LIMIT),
                 scope='Conditional two-process comparisons, not CPU or general-host proof; '
                       'Stage B pressure/continuation required before any merge promotion')
-    if selected == DEDUP:
-        value.update(core_trees=dict(selected.trees), purpose='rejection-screen',
+    if selected in (DEDUP, LAZY_LOCATIONS):
+        value.update(core_trees=dict(selected.trees),
+                     purpose='replicated-benefit-screen' if selected == LAZY_LOCATIONS else 'rejection-screen',
                      preregistration=list(selected.preregistration),
                      scope=' '.join(selected.preregistration), sampling='all 16 before all eight gates',
                      fixture_lf_sha256=FIXTURE_LF_SHA256, pressure_lf_sha256=PRESSURE_LF_SHA256,
                      evidence_reserve_bytes=RESERVE, artifact_prefix=selected.artifact_prefix)
+    if selected == LAZY_LOCATIONS:
+        value['candidate_layout_qualification'] = dict(arms=['A', 'B'], test=LAYOUT_TEST, target=TARGET,
+            package='bench-rust-server', test_target='response-location-layout',
+            library_features='std,alloc,oscore', library_default_features=False, profile='release',
+            source=LAYOUT_SOURCE, source_lf_sha256=LAYOUT_LF_SHA256,
+            role_environment=LAYOUT_ROLE_ENV, roles=dict(LAYOUT_ROLES),
+            unset_role='candidate/no-growth for ordinary untargeted CI only',
+            scope='One exact public whole-Response/token/wrapper layout test per arm before timing; not whole App or peak stack')
+        value.update(processes=64, measured_total=3840000, warmup_total=8192,
+                     calibration_total=262144, process_pair_replicates=PAIR_REPLICATES,
+                     seed_reset_each_comparison=PROCESS_SEED,
+                     sampling='replicate outer, fixed cell order, AB then BA; all64 before all8 gates',
+                     resampling='paired process indices with replacement; same four indices for A/B',
+                     process_mean='math.fsum(all60000 latencies)/60000',
+                     block_mean_role='descriptive only; not gate inputs or process replication')
+        value['gates'] = {
+            profile: {mode: (dict(role='benefit', mean_max=.97, upper_exclusive=1.0)
+                             if mode == 'unprotected'
+                             else dict(role='regression', upper_inclusive=1.02))
+                      for mode in wp.MODES}
+            for profile in ('small-device', 'default')}
     return value
 
 
 def schedule(selected=ADMISSION):
+    if selected == LAZY_LOCATIONS:
+        return [dict(index=i, replicate=k, profile=p, security=s, round=r, arm=a)
+                for i, (k, p, s, r, a) in enumerate(
+                    (k, p, s, r, a) for k in range(PAIR_REPLICATES)
+                    for p, s in plan(selected)['cells'] for r in ('AB', 'BA') for a in r)]
     return [dict(index=i, profile=p, security=s, round=r, arm=a)
             for i, (p, s, r, a) in enumerate(
                 (p, s, r, a) for p, s in plan(selected)['cells'] for r in ('AB', 'BA') for a in r)]
@@ -305,17 +385,25 @@ def quantile(ordered, q):
     return ordered[lo] * (1 - fraction) + ordered[min(lo + 1, len(ordered) - 1)] * fraction
 
 
-def gate(mean, upper, security):
+def gate(mean, upper, security, selected=ADMISSION, *, profile=None):
+    if selected == LAZY_LOCATIONS:
+        if profile not in ('small-device', 'default') or security not in wp.MODES:
+            raise ValueError('selected cell profile/security required')
     if any(type(v) not in (int, float) or not math.isfinite(v) or v <= 0 for v in (mean, upper)):
         return False
+    if selected == LAZY_LOCATIONS:
+        if security == 'unprotected':
+            return mean <= .97 and upper < 1
+        return upper <= 1.02
     if security == 'unprotected':
         return mean <= .99 and upper < 1
     if security == 'oscore':
         return upper <= 1.02
     raise ValueError('unknown security')
 
-
-def compare(arms, security, selected=ADMISSION):
+def compare(arms, security, selected=ADMISSION, *, profile=None):
+    if selected == LAZY_LOCATIONS:
+        return compare_process_pairs(arms, security, profile=profile)
     if set(arms) != {'A', 'B'}:
         raise ValueError('comparison must name A and B, including BA')
     for values in arms.values():
@@ -337,8 +425,49 @@ def compare(arms, security, selected=ADMISSION):
     lower, upper = quantile(ratios, .025), quantile(ratios, .975)
     mean = means['B'] / means['A']
     return dict(block_means_ns=blocks, arm_mean_ns=means, mean_B_over_A=mean,
-                lower95=lower, upper95=upper, passed=gate(mean, upper, security),
+                lower95=lower, upper95=upper, passed=(gate(mean, upper, security, selected, profile=profile)
+                        if selected == LAZY_LOCATIONS else gate(mean, upper, security, selected)),
                 scope=plan(selected)['scope'], **binding(selected))
+
+
+def compare_process_pairs(pairs, security, *, profile):
+    gate(1., 1., security, LAZY_LOCATIONS, profile=profile)
+    if type(pairs) is not list or len(pairs) != PAIR_REPLICATES:
+        raise ValueError('exact four process pairs required')
+    means, blocks = {a: [] for a in 'AB'}, {a: [] for a in 'AB'}
+    for index, pair in enumerate(pairs):
+        if type(pair) is not dict or set(pair) != {'replicate', 'arms'}:
+            raise ValueError('process pair schema differs')
+        if type(pair['replicate']) is not int or pair['replicate'] != index:
+            raise ValueError('process pair order/identity differs')
+        arms = pair['arms']
+        if type(arms) is not dict or set(arms) != {'A', 'B'}:
+            raise ValueError('process pair must name both arms')
+        for arm in 'AB':
+            samples(arms[arm], OPERATIONS)
+            average = math.fsum(arms[arm]) / OPERATIONS
+            if not math.isfinite(average) or average <= 0:
+                raise ValueError('nonpositive process mean')
+            means[arm].append(average)
+            blocks[arm].append([math.fsum(arms[arm][i:i + BLOCK_SIZE]) / BLOCK_SIZE
+                                for i in range(0, OPERATIONS, BLOCK_SIZE)])
+    arm_means = {a: math.fsum(v) / PAIR_REPLICATES for a, v in means.items()}
+    rng, ratios = random.Random(PROCESS_SEED), []
+    for _ in range(REPLICATES):
+        indices = rng.choices(range(PAIR_REPLICATES), k=PAIR_REPLICATES)
+        a = math.fsum(means['A'][i] for i in indices)
+        b = math.fsum(means['B'][i] for i in indices)
+        if a <= 0 or not math.isfinite(b / a):
+            raise ValueError('inconclusive process bootstrap denominator')
+        ratios.append(b / a)
+    ratios.sort()
+    lower, upper = quantile(ratios, .025), quantile(ratios, .975)
+    mean = arm_means['B'] / arm_means['A']
+    return dict(process_means_ns=means, block_means_ns=blocks, block_mean_role='descriptive only',
+                arm_mean_ns=arm_means, mean_B_over_A=mean, lower95=lower, upper95=upper,
+                paired_process_replicates=PAIR_REPLICATES,
+                passed=gate(mean, upper, security, LAZY_LOCATIONS, profile=profile),
+                scope=plan(LAZY_LOCATIONS)['scope'], **binding(LAZY_LOCATIONS))
 
 
 def validate_census(raw, listing=False, expected=WALL_TESTS):
@@ -391,7 +520,7 @@ def source_gate(core, suite_sha, core_sha, selected=ADMISSION):
     value = wp.source_identity(core, core_sha, suite_sha)
     if selected.id == 'admission-stage-b':
         stage_b.source_check(sys.modules[__name__], core, suite_sha, core_sha)
-    if selected == DEDUP:
+    if selected in (DEDUP, LAZY_LOCATIONS):
         cores = dict(selected.cores)
         if core_sha not in cores.values():
             raise ValueError('foreign core revision')
@@ -400,6 +529,10 @@ def source_gate(core, suite_sha, core_sha, selected=ADMISSION):
         exact(ds.identity(SUITE)['commit'], suite_sha, 'companion revision differs')
         if not re.fullmatch('[0-9a-f]{40}', ds.identity(SUITE)['tree']):
             raise ValueError('companion tree required')
+    if selected == LAZY_LOCATIONS:
+        layout_source = (SUITE / LAYOUT_SOURCE).read_bytes().replace(b'\r\n', b'\n')
+        exact(hashlib.sha256(layout_source).hexdigest(), LAYOUT_LF_SHA256,
+              'native layout source pin differs')
     normalized = (SUITE / FIXTURE).read_bytes().replace(b'\r\n', b'\n')
     if hashlib.sha256(normalized).hexdigest() != FIXTURE_LF_SHA256:
         raise ValueError('native fixture pin differs')
@@ -597,13 +730,13 @@ class NativeStage:
 
 def transaction(core, suite_sha, selected, operation, record, contract_selection=ADMISSION):
     """Outer-owned source transaction; never restore into an unresolved worker."""
-    source_gate(core, suite_sha, BASELINE, contract_selection)
+    source_gate(core, suite_sha, baseline(contract_selection), contract_selection)
     initial_ref = ds.git(core, 'symbolic-ref', '--short', '-q', 'HEAD') if ds.git(core, 'rev-parse', '--abbrev-ref', 'HEAD') != 'HEAD' else None
     initial = snapshot(core)
     stage, settled, primary, current, suite = None, True, None, None, None
     record.update(restoration='unknown', cleanup_unresolved=False, **binding(contract_selection))
     try:
-        if selected != BASELINE:
+        if selected != baseline(contract_selection):
             ds.git(core, 'checkout', '--detach', selected)
         source_gate(core, suite_sha, selected, contract_selection)
         current, suite = snapshot(core), snapshot(SUITE)
@@ -654,8 +787,8 @@ def transaction(core, suite_sha, selected, operation, record, contract_selection
                 if suite is not None:
                     check_files(SUITE, suite['files'])
                 source_gate(core, suite_sha, selected, contract_selection)
-                if selected != BASELINE:
-                    ds.git(core, 'checkout', initial_ref or '--detach', *([] if initial_ref else [BASELINE]))
+                if selected != baseline(contract_selection):
+                    ds.git(core, 'checkout', initial_ref or '--detach', *([] if initial_ref else [baseline(contract_selection)]))
                 exact(snapshot(core), initial, 'restored core bytes/ref identity differ')
                 exact(ds.git(core, 'rev-parse', '--abbrev-ref', 'HEAD'), initial_ref or 'HEAD',
                       'initial symbolic/detached ref not restored')
@@ -704,7 +837,7 @@ def verify_staged_suite(core, expected_commit, held, lock):
 def cargo_worker(spec, selected=ADMISSION):
     check_binding(spec, selected)
     def verify_source():
-        if selected == DEDUP:
+        if selected in (DEDUP, LAZY_LOCATIONS):
             args = argparse.Namespace(**spec['args'])
             exact(selection(args), selected, 'worker selection differs')
             exact(load(Path(spec['root']) / 'evidence/owner.json'), owner(args, Path(spec['root'])),
@@ -719,10 +852,11 @@ def cargo_worker(spec, selected=ADMISSION):
             staged = dict(spec['suite']['files'])
             staged['tools/benchmark/native/Cargo.lock'] = spec['lock']['selected_sha256']
             check_files(SUITE, staged)
-            exact(spec['purpose'], 'rejection-screen', 'Cargo purpose differs')
+            exact(spec['purpose'], purpose(args), 'Cargo purpose differs')
     verify_source()
     selected_purpose = spec.get('purpose', 'stage-a-screen')
-    allowed = ('rejection-screen',) if selected == DEDUP else ('stage-a-screen', 'ownership-proof')
+    allowed = (('replicated-benefit-screen',) if selected == LAZY_LOCATIONS else
+               ('rejection-screen',) if selected == DEDUP else ('stage-a-screen', 'ownership-proof'))
     if selected_purpose not in allowed:
         raise ValueError('unknown build purpose for selected contract')
     root, arm = Path(spec['root']), spec['arm']
@@ -745,6 +879,14 @@ def cargo_worker(spec, selected=ADMISSION):
         tests = child_command(prefix + ['admission_pressure::', '--', '--test-threads=1'], budget,
                               arm + '-pressure', env=os.environ, seconds=spec['seconds'])
         validate_census(tests, expected=PRESSURE_TESTS)
+    layout = None
+    if selected == LAZY_LOCATIONS:
+        verify_source()
+        raw_layout = child_command(layout_command(spec['cargo']), budget,
+                                   arm + '-layout', env=dict(os.environ, **{LAYOUT_ROLE_ENV: dict(LAYOUT_ROLES)[arm]}),
+                                   seconds=spec['seconds'])
+        layout = layout_proof(raw_layout, arm)
+        verify_source()
     prefix[1] = 'build'
     verify_source()
     raw = child_command(prefix + ['--message-format=json-render-diagnostics'], budget, arm + '-build',
@@ -755,7 +897,8 @@ def cargo_worker(spec, selected=ADMISSION):
          pressure_proof=pressure_result(arm, selected_purpose),
          artifacts=list(map(str, pair)),
          sampled_direct_child_working_set_peak_bytes=budget.observed_child_working_set_peak,
-         sampled_owned_build_peak_bytes=budget.peak, **binding(selected)))
+         sampled_owned_build_peak_bytes=budget.peak,
+         **({'layout_proof': layout} if selected == LAZY_LOCATIONS else {}), **binding(selected)))
     budget.check(force=True)
 
 
@@ -844,7 +987,9 @@ def build(args, root, contract):
             exact(snapshot(SUITE), suite, 'suite changed after build')
         if time.monotonic() >= deadline:
             raise TimeoutError('830-second outer build owner deadline')
-        result = dict(owner=contract, purpose=purpose(args), plan=plan(selected), suite=suite, records=records, artifacts=artifacts,
+        result = dict(owner=contract, purpose=purpose(args), plan=plan(selected),
+                      suite=bound(suite, selected) if selected == LAZY_LOCATIONS else suite,
+                      records=records, artifacts=artifacts,
                       compiler=compiler, cargo=cargo, tools=tools, inputs=inputs, flags=FLAGS,
                       host=ds.host_identity())
         save(root, 'build.json', bound(result, selected))
@@ -858,7 +1003,7 @@ def build(args, root, contract):
             for check in (lambda: tool_check(tools), lambda: config_check(inputs),
                           lambda: artifact_check(root, artifacts),
                           lambda: exact(snapshot(SUITE), suite, 'suite changed in build finally'),
-                          lambda: source_gate(args.core, args.expected_suite, BASELINE, selected)):
+                          lambda: source_gate(args.core, args.expected_suite, baseline(selected), selected)):
                 try:
                     check()
                 except BaseException as error:
@@ -873,6 +1018,22 @@ def build(args, root, contract):
             raise check_error
 
 
+def layout_command(cargo):
+    return [cargo, 'test', '--release', '--locked', '--target', TARGET,
+            '--manifest-path', str(NATIVE / 'Cargo.toml'), '-p', 'bench-rust-server',
+            '--test', 'response-location-layout', LAYOUT_TEST,
+            '--', '--exact', '--test-threads=1']
+
+
+def layout_proof(raw, arm):
+    if arm not in ('A', 'B'):
+        raise ValueError('unknown layout arm')
+    validate_census(raw, expected=(LAYOUT_TEST,))
+    return dict(plan(LAZY_LOCATIONS)['candidate_layout_qualification'], arm=arm,
+                role=dict(LAYOUT_ROLES)[arm],
+                stdout_sha256=hashlib.sha256(raw).hexdigest())
+
+
 def verify_tests(root, arm, receipt, selected_purpose, selected=ADMISSION):
     check_binding(receipt, selected)
     exact(receipt['purpose'], selected_purpose, 'prepared test purpose differs')
@@ -882,6 +1043,9 @@ def verify_tests(root, arm, receipt, selected_purpose, selected=ADMISSION):
     exact(receipt['pressure_tests'], expected, 'prepared pressure census differs')
     validate_census((root / 'evidence' / (arm + '-tests-list.stdout')).read_bytes(), listing=True)
     validate_census((root / 'evidence' / (arm + '-tests.stdout')).read_bytes())
+    if selected == LAZY_LOCATIONS:
+        expected_layout = layout_proof((root / 'evidence' / (arm + '-layout.stdout')).read_bytes(), arm)
+        exact(receipt.get('layout_proof'), expected_layout, 'prepared native layout proof differs')
     if expected:
         validate_census((root / 'evidence' / (arm + '-pressure-list.stdout')).read_bytes(),
                         listing=True, expected=PRESSURE_TESTS)
@@ -898,15 +1062,16 @@ def verify_build(args, root, contract):
     exact(value['purpose'], purpose(args), 'prepared build purpose differs')
     exact(value['plan'], plan(selected), 'prepared plan differs')
     exact(value['flags'], FLAGS, 'prepared flags differ')
-    source_gate(args.core, args.expected_suite, BASELINE, selected)
-    exact(snapshot(SUITE), value['suite'], 'prepared suite/source bytes differ')
+    source_gate(args.core, args.expected_suite, baseline(selected), selected)
+    exact(bound(snapshot(SUITE), selected) if selected == LAZY_LOCATIONS else snapshot(SUITE),
+          value['suite'], 'prepared suite/source bytes differ')
     exact(bound(snapshot(args.core), selected), value['records']['A']['source'], 'prepared baseline source differs')
     tool_check(value['tools'])
     config_check(value['inputs'])
     exact(sorted(value['artifacts']), ['A', 'B'], 'prepared artifact arms differ')
     for arm, commit in selected.cores:
         record = value['records'][arm]
-        if selected == DEDUP:
+        if selected in (DEDUP, LAZY_LOCATIONS):
             check_binding(record, selected)
             check_binding(record['source'], selected)
             check_binding(record['suite'], selected)
@@ -958,7 +1123,7 @@ def measure_worker(spec, selected=ADMISSION):
     args = argparse.Namespace(**spec['args'])
     exact(selection(args), selected, 'measurement selection differs')
     check_binding(spec, selected)
-    if purpose(args) not in ('stage-a-screen', 'rejection-screen'):
+    if purpose(args) not in ('stage-a-screen', 'rejection-screen', 'replicated-benefit-screen'):
         raise ValueError('ownership proof cannot launch measurements')
     root = Path(args.output)
     budget = Budget(root, MEASURE_SECONDS)
@@ -968,6 +1133,7 @@ def measure_worker(spec, selected=ADMISSION):
         return verify_build(args, root, contract)
     comparisons, completed, attempted = [], [], []
     pending = []
+    replicated = {}
     primary = None
     try:
         prepared = verify()
@@ -991,6 +1157,11 @@ def measure_worker(spec, selected=ADMISSION):
                 completed.append(row)
                 arms[row['arm']] = value['latencies_ns']
                 if len(arms) == 2:
+                    if selected == LAZY_LOCATIONS:
+                        key = (row['profile'], row['security'], row['round'])
+                        replicated.setdefault(key, []).append(dict(replicate=row['replicate'], arms=arms))
+                        arms = {}
+                        continue
                     if selected == DEDUP:
                         pending.append((arms, dict(row)))
                         arms = {}
@@ -1002,19 +1173,28 @@ def measure_worker(spec, selected=ADMISSION):
                     arms = {}
                     if not comparison['passed']:
                         raise ValueError('Stage A gate failed; no further samples or replacement')
+        if selected == LAZY_LOCATIONS:
+            exact(len(completed), 64, 'incomplete replicated process cohort')
+            expected_keys = [(p, s, r) for p, s in plan(selected)['cells'] for r in ('AB', 'BA')]
+            exact(sorted(replicated), sorted(expected_keys), 'replicated cell census differs')
+            pending = [(replicated[(p, s, r)], dict(profile=p, security=s, round=r, index=i))
+                       for i, (p, s, r) in enumerate(expected_keys)]
         for arms, row in pending:
             budget.check(force=True)
             try:
-                comparison = compare(arms, row['security'], selected)
+                comparison = (compare(arms, row['security'], selected, profile=row['profile'])
+                              if selected == LAZY_LOCATIONS else
+                              compare(arms, row['security'], selected))
             except ValueError as error:
                 comparison = dict(passed=False, uncertain=True, failure=failure(error))
             comparison.update(profile=row['profile'], security=row['security'], round=row['round'],
                               **binding(selected))
             comparisons.append(comparison)
             save(root, 'sample-' + str(row['index']).zfill(2) + '-comparison.json', comparison)
-        if selected == DEDUP and not all(c['passed'] for c in comparisons):
-            raise ValueError('dedup rejection screen failed; no promotion')
-        if len(completed) != 16 or len(comparisons) != 8:
+        if selected in (DEDUP, LAZY_LOCATIONS) and not all(c['passed'] for c in comparisons):
+            raise ValueError('lazy-response-locations screen failed; no promotion'
+                             if selected == LAZY_LOCATIONS else 'dedup rejection screen failed; no promotion')
+        if len(completed) != (64 if selected == LAZY_LOCATIONS else 16) or len(comparisons) != 8:
             raise ValueError('incomplete fixed cohort')
         budget.check(force=True)
     except BaseException as error:
@@ -1053,7 +1233,7 @@ def execute(args):
         raise ValueError('output must be new RUNNER_TEMP/coaptic-admission-wall')
     args.output, args.core = str(root), str(Path(args.core).resolve())
     contract = owner(args, root)
-    source_gate(args.core, args.expected_suite, BASELINE, selected)
+    source_gate(args.core, args.expected_suite, baseline(selected), selected)
     observed = preflight(root)
     if args.command in ('build', 'all', 'proof'):
         root.mkdir()
@@ -1087,10 +1267,11 @@ def execute(args):
     finally:
         if not getattr(primary, 'cleanup_unresolved', False):
             try:
-                source_gate(args.core, args.expected_suite, BASELINE, selected)
+                source_gate(args.core, args.expected_suite, baseline(selected), selected)
                 if (root / 'evidence/build.json').exists():
                     verify_build(args, root, contract)
-                save(root, args.command + '-final-source-check.json', dict(passed=True))
+                save(root, args.command + '-final-source-check.json',
+                     bound(dict(passed=True), selected) if selected == LAZY_LOCATIONS else dict(passed=True))
             except BaseException as error:
                 report_preserving(primary or error, 'outer final-source receipt', lambda:
                                   save(root, args.command + '-final-source-check.json', failure(error)))
@@ -1131,7 +1312,7 @@ def main(argv=None):
         return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=('build', 'measure', 'all', 'proof'))
-    parser.add_argument('--contract', choices=('admission', 'dedup-classified', 'admission-stage-b'), default='admission')
+    parser.add_argument('--contract', choices=('admission', 'dedup-classified', 'lazy-response-locations', 'admission-stage-b'), default='admission')
     parser.add_argument('--core', required=True)
     parser.add_argument('--expected-suite', required=True)
     parser.add_argument('--output', required=True)
