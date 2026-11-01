@@ -1596,6 +1596,8 @@ class LazyLocationsTests(TempTests):
             self.assertEqual(commands[0][-3:], ['wall_', '--', '--list'])
             self.assertEqual(commands[1][-3:], ['wall_', '--', '--test-threads=1'])
             self.assertEqual(commands[2], w.layout_command('cargo'))
+            self.assertEqual(commands[2][commands[2].index('--bin') + 1], 'response-location-layout')
+            self.assertNotIn('--test', commands[2])
             self.assertEqual(child.call_args_list[2].kwargs['env'][w.LAYOUT_ROLE_ENV], 'candidate')
             self.assertEqual(commands[3][1], 'build')
             self.assertIn('--locked', commands[3])
@@ -1605,6 +1607,23 @@ class LazyLocationsTests(TempTests):
             self.assertEqual(receipt['native_tests'], list(w.WALL_TESTS))
             self.assertEqual(receipt['pressure_tests'], [])
             self.assertEqual(receipt['layout_proof'], w.layout_proof(layout_census(), 'B'))
+
+    def test_layout_qualification_selects_only_binary_unit_target(self):
+        command = w.layout_command('cargo')
+        self.assertEqual(command[command.index('--bin') + 1], 'response-location-layout')
+        self.assertEqual(command.count('--bin'), 1)
+        self.assertNotIn('--test', command)
+        self.assertNotIn('--bins', command)
+        self.assertNotIn('--all-targets', command)
+        self.assertEqual(command[-3:], ['--', '--exact', '--test-threads=1'])
+        qualification = w.plan(w.LAZY_LOCATIONS)['candidate_layout_qualification']
+        self.assertEqual(qualification['test_target_kind'], 'bin')
+        self.assertEqual(qualification['source'],
+                         'tools/benchmark/native/servers/src/bin/response-location-layout.rs')
+        self.assertFalse((w.SUITE / 'tools/benchmark/native/servers/tests/response-location-layout.rs').exists())
+        source = (w.SUITE / qualification['source']).read_text()
+        self.assertIn('#[cfg(not(test))]\nfn main() {}', source)
+        self.assertIn('#[cfg(test)]\nmod response_location_layout {', source)
 
     def test_windows_layout_test_exact_census_and_bound_metadata(self):
         proof = w.layout_proof(layout_census(), 'B')

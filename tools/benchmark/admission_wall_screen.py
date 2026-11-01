@@ -41,8 +41,8 @@ FIXTURE = 'tools/benchmark/native/servers/src/bin/bench-core.rs'
 FIXTURE_LF_SHA256 = 'a645fdc88dee2aba922013c7af6553d25461d2122a0884cd75c70afa2d472398'
 LAYOUT_TEST = ('response_location_layout::'
                'response_and_wrappers_preserve_baseline_layout')
-LAYOUT_SOURCE = 'tools/benchmark/native/servers/tests/response-location-layout.rs'
-LAYOUT_LF_SHA256 = '7c62acfef7440267b33752dfde61fe810953a35c3e2dc337b7e4f417a54976f9'
+LAYOUT_SOURCE = 'tools/benchmark/native/servers/src/bin/response-location-layout.rs'
+LAYOUT_LF_SHA256 = '2ccb0ff775cf6f47a28250484d680b9a74bebe9fa366cb00c63cf155cd602d9d'
 LAYOUT_ROLE_ENV = 'COAPTIC_RESPONSE_LAYOUT_ROLE'
 LAYOUT_ROLES = (('A', 'baseline'), ('B', 'candidate'))
 WALL_TESTS = tuple('batch_tests::' + name for name in (
@@ -273,7 +273,8 @@ def plan(selected=ADMISSION):
                      evidence_reserve_bytes=RESERVE, artifact_prefix=selected.artifact_prefix)
     if selected == LAZY_LOCATIONS:
         value['candidate_layout_qualification'] = dict(arms=['A', 'B'], test=LAYOUT_TEST, target=TARGET,
-            package='bench-rust-server', test_target='response-location-layout',
+            package='bench-rust-server', test_target='response-location-layout', test_target_kind='bin',
+            qualification_amendment_sha256='1f3add4e17386b80c5f201ecdfeab5b8080e3dc570d9cca79b52b7565c72fd25',
             library_features='std,alloc,oscore', library_default_features=False, profile='release',
             source=LAYOUT_SOURCE, source_lf_sha256=LAYOUT_LF_SHA256,
             role_environment=LAYOUT_ROLE_ENV, roles=dict(LAYOUT_ROLES),
@@ -1021,7 +1022,7 @@ def build(args, root, contract):
 def layout_command(cargo):
     return [cargo, 'test', '--release', '--locked', '--target', TARGET,
             '--manifest-path', str(NATIVE / 'Cargo.toml'), '-p', 'bench-rust-server',
-            '--test', 'response-location-layout', LAYOUT_TEST,
+            '--bin', 'response-location-layout', LAYOUT_TEST,
             '--', '--exact', '--test-threads=1']
 
 

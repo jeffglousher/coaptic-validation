@@ -1,4 +1,8 @@
 //! Target-native Response layouts only; no workload or performance timing.
+#[cfg(not(test))]
+fn main() {}
+
+#[cfg(test)]
 mod response_location_layout {
     use coaptic::app::{INLINE_PAYLOAD, LOCATION_MAX, ResponseError};
     use coaptic::message::{
