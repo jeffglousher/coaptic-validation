@@ -1,5 +1,6 @@
 """Portable mocks and tiny temporary files only: no native execution or ref changes."""
 import argparse
+from contextlib import contextmanager
 import copy
 import gc
 import hashlib
@@ -14,6 +15,36 @@ from unittest.mock import Mock, patch
 import admission_wall_screen as w
 from suite_process import WorkerError, WorkerResult
 from test_native_lock import BASE, SYN3, MANIFEST
+
+
+def historical_wall_fixture():
+    """Recover the exact historical fixture for tests of its closed contracts."""
+    source = (w.SUITE / w.FIXTURE).read_bytes().replace(b'\r\n', b'\n')
+    additions = (
+        b'#[path = "bench_core/incoming_rx.rs"]\nmod incoming_rx;\n\n',
+        b'    if args.get(1).is_some_and(|arg| arg == "--incoming-rx") {\n'
+        b'        return incoming_rx::dispatch(&args);\n    }\n',
+    )
+    counts = [source.count(addition) for addition in additions]
+    if counts not in ([0, 0], [1, 1]):
+        raise ValueError('unexpected incoming module integration')
+    for addition in additions:
+        source = source.replace(addition, b'', 1)
+    if hashlib.sha256(source).hexdigest() != w.FIXTURE_LF_SHA256:
+        raise ValueError('historical fixture bytes changed')
+    return source
+
+
+@contextmanager
+def historical_wall_fixture_view():
+    """Supply frozen bytes only to isolated tests; runtime guards stay strict."""
+    source = historical_wall_fixture()
+    read_bytes = Path.read_bytes
+    fixture = w.SUITE / w.FIXTURE
+    def read(path):
+        return source if path == fixture else read_bytes(path)
+    with patch.object(Path, 'read_bytes', read):
+        yield
 
 
 def wall(profile='default', security='unprotected', latency=100):
@@ -113,8 +144,14 @@ class ProtocolTests(unittest.TestCase):
                 w.read_json(raw)
 
     def test_exact_native_census_source_frozen(self):
-        source = (w.SUITE / w.FIXTURE).read_bytes().replace(b'\r\n', b'\n')
+        current = (w.SUITE / w.FIXTURE).read_bytes().replace(b'\r\n', b'\n')
+        source = historical_wall_fixture()
         self.assertEqual(hashlib.sha256(source).hexdigest(), w.FIXTURE_LF_SHA256)
+        if current != source:
+            # A new fixture cannot silently reopen a historical campaign.
+            with patch.object(w.wp, 'source_identity', return_value={}):
+                with self.assertRaisesRegex(ValueError, 'native fixture pin differs'):
+                    w.source_gate('core', 'a' * 40, w.BASELINE)
         names = w.re.findall(rb'#\[test\]\s+fn (wall_\w+)\(', source)
         for match in w.re.finditer(rb'#\[test\]\s+fn (wall_\w+)\(', source):
             modules = w.re.findall(rb'^mod (\w+) \{', source[:match.start()], w.re.M)
@@ -832,7 +869,7 @@ class ProofTests(TempTests):
     def test_pressure_source_hash_and_declared_census_guards(self):
         source = (w.SUITE / w.PRESSURE_SOURCE).read_bytes().replace(b'\r\n', b'\n')
         self.assertEqual(hashlib.sha256(source).hexdigest(), w.PRESSURE_LF_SHA256)
-        with patch.object(w.wp, 'source_identity', return_value={}):
+        with patch.object(w.wp, 'source_identity', return_value={}), historical_wall_fixture_view():
             w.source_gate('core', 'a' * 40, w.BASELINE)
             for field, value in (('PRESSURE_LF_SHA256', 'bad'),
                                  ('PRESSURE_TESTS', ('wrong::test',)),
@@ -1623,7 +1660,7 @@ class RegularOptionsTests(TempTests):
     def test_selected_source_gates_reject_old_baseline_and_wrong_trees(self):
         selected = w.REGULAR_OPTIONS
         with patch.object(w.wp, 'source_identity', return_value={}), \
-             patch.object(w.ds, 'identity') as identity:
+             patch.object(w.ds, 'identity') as identity, historical_wall_fixture_view():
             for arm, commit in selected.cores:
                 core = dict(commit=commit, tree=dict(selected.trees)[arm])
                 suite = dict(commit='a'*40, tree='b'*40)

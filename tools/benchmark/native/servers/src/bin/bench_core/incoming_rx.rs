@@ -1461,6 +1461,16 @@ fn download_cancel_trace(protected: bool, expire: bool) -> Result<Trace, Failure
 // Authenticated response corruption must leave the App's body absent. Outer
 // Token mismatches are rejected by App lookup before inner processing. A missing
 // response is bounded by the same absolute Call deadline, never a relative reset.
+fn require_expired_call<T>(
+    outcome: Option<Result<T, coaptic::CallFailure>>,
+) -> Result<(), Failure> {
+    if matches!(outcome, Some(Err(coaptic::CallFailure::DeadlineExceeded))) {
+        Ok(())
+    } else {
+        Err("rejection terminal reason is not deadline expiry".into())
+    }
+}
+
 fn download_rejection_trace(protected: bool, fault: usize) -> Result<Trace, Failure> {
     HANDLERS.store(0, Ordering::SeqCst);
     let (cc, sc) = pair(protected)?;
@@ -1504,9 +1514,13 @@ fn download_rejection_trace(protected: bool, fault: usize) -> Result<Trace, Fail
     }
     // Do not forward any followup emitted by a corrupted unprotected body.
     client.transport_mut().io.output_len = None;
+    if client.take_response(call).is_some() {
+        return Err("rejection completed before deadline".into());
+    }
     client.poll(3001).map_err(|_| "rejection expiry")?;
-    if client.take_response(call).is_none() || client.take_response(call).is_some() {
-        return Err("rejection terminal count".into());
+    require_expired_call(client.take_response(call))?;
+    if client.take_response(call).is_some() {
+        return Err("rejection terminal collected twice".into());
     }
     if client.engine().rx_body_transfer(id).is_some() {
         return Err("rejection leaked body".into());
@@ -1929,6 +1943,14 @@ mod tests {
         assert!(report.len <= FAILURE_RESERVE);
         assert!(std::str::from_utf8(&report.bytes[..report.len]).is_ok());
         assert!(report.bytes[..report.len].starts_with(b"incoming-rx validation failed: "));
+        require_expired_call::<()>(Some(Err(coaptic::CallFailure::DeadlineExceeded))).unwrap();
+        for wrong in [
+            None,
+            Some(Ok(())),
+            Some(Err(coaptic::CallFailure::Cancelled)),
+        ] {
+            assert!(require_expired_call(wrong).is_err());
+        }
     }
     #[test]
     fn genuine_oscore_tamper_replay_and_wrong_request_binding_refuse() {
