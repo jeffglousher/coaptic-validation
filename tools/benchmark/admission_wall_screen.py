@@ -67,7 +67,7 @@ UNIMPLEMENTED = []
 def purpose(args):
     if getattr(args, 'contract', 'admission') == 'admission-stage-b':
         return stage_b.purpose(args)
-    if getattr(args, 'contract', 'admission') == 'generated-response-stream':
+    if getattr(args, 'contract', 'admission') == 'borrowed-dedup-retirement':
         selection(args)
         return 'early-benefit-screen'
     if getattr(args, 'contract', 'admission') == 'dedup-classified':
@@ -152,32 +152,41 @@ DEDUP = Contract(
     ))
 
 
-RESPONSE_STREAM = Contract(
-    'generated-response-stream', 'coaptic-generated-response-stream-wall/1',
-    'coaptic-generated-response-stream-owner/1', 'coaptic-generated-response-stream-wall',
-    'generated-response-stream-wall-screen',
+BORROWED_RETIREMENT = Contract(
+    'borrowed-dedup-retirement', 'coaptic-borrowed-dedup-retirement-wall/1',
+    'coaptic-borrowed-dedup-retirement-owner/1', 'coaptic-borrowed-dedup-retirement-wall',
+    'borrowed-dedup-retirement-wall-screen',
     (('A', 'c655b3aac485c3b88d3811b4da836b56210fce5b'),
-     ('B', '03b8cd862b2054abb2e443c78f1b6bd6da839b98')),
+     ('B', '34d1af4511f8acaedbb8ad1556638646bf238fca')),
     (('A', 'bca85f7b74b322a0f903005b18636d3a8414fe46'),
-     ('B', 'c923741bce2a6422180ec47311e994205a3e06d9')),
+     ('B', '2ca30249b3a3d15f979716d01c0215f2a00a4127')),
     (
-        'FROZEN early normal benefit screen; performance unproven; proof unsupported. '
-        'SCREEN-PREREGISTRATION.json 3386 bytes SHA256 '
-        '1e9fa34199603374abc72241823e86fcaece41c9e76ce4fa23ec27c7b8992e25. '
-        'Core PR722 streams App-generated response options and the generated OSCORE outer view; '
-        'public arbitrary-slice and inbound paths preserved; independent source review NONE, '
-        'Clippy/allfeature1208/no-default712lib PASS at03b8cd8.',
+        'FROZEN early fixed-storage benefit screen; performance unproven; proof unsupported. '
+        'SCREEN-PREREGISTRATION.json 5010 bytes SHA256 '
+        'e77af152be57efe0d4cc120f70a8be79faa99a9d5cf04eecb86381af5aaac22f. '
+        'Existing borrowed-row metadata retirement only, no public API, buffers or capacities added. '
+        'Preserve pin-before-key-removal, duplicate-key behavior, ties, expiry and cursor. '
+        'Baseline Constrained has explicit payload memcpy calls; no memcpy calls found in '
+        'corresponding AllocMemory procedure does not exclude other emitted copies. '
+        'Static evidence and source reachability, not dynamic cost attribution.',
         'Exactly 16 fresh serial processes, SmallDevice/Default x unprotected/OSCORE x AB/BA; '
         'all 16 before all eight comparisons; first source/runtime/resource failure stops later work. '
         '60000 measured + 128 warmups + 4096 separate calibrations each; totals 960000/2048/65536. '
         'Unchanged native wall/default CLI, factories, capacities, four exact wall tests and authentication.',
-        'Both security modes, every profile/order: mean B/A<=.97 AND equal-tail upper95 B/A<1. '
+        'Fixed SmallDevice unprotected both orders: benefit mean B/A<=.97 AND equal-tail upper95<1. '
+        'The other six comparisons are regression guards: equal-tail upper95<=1.02. '
+        'Profile and security select the gate from this immutable contract, never receipt metadata. '
         '60 consecutive 1000 means using math.fsum; 10000 independent-arm resamples, '
         'Random(20261030) reset each comparison, A60 draws before B60, linear (n-1)*q .025/.975. '
         'BA remains B/A; no pooling, exclusion, calibration subtraction, replacements or caps raised. '
         'All eight gates required else campaign STOP.',
-        'Pass requires separate new-source Stage B pressure/Observe/Block2: 24 qualification '
-        'executions + 40 timing processes / 36 regression gates before promotion; not implemented here. '
+        'Fresh fixed-endpoint MID0..60127, inline replies fit 256B; warmup fills dedup4/8 and '
+        '247s exchange lifetime exceeds each 30s process. Measured fresh/full-table path reaches '
+        'oldest retirement. Spare capacity, existing-key, expiry and pinned-downgrade performance '
+        'not measured by this normal route.',
+        'Pass requires source-bound full correctness and separate Stage B pressure/Observe/Block2: '
+        '24 qualification executions + 40 timing processes / 36 regression gates before promotion; '
+        'not implemented here. Exact replay, expiry, duplicate and pin correctness also required. '
         'Not CPU share, device, socket, whole memory or 50% proof. '
         '300 seconds aggregate remains binding even though 16 x 30 seconds can exceed it: refuse. '
         'Only outer owner stages/restores after confirmed descendant settlement; preserve foreign edits '
@@ -192,9 +201,9 @@ def baseline(selected=ADMISSION):
 def resolve_contract(identifier='admission', proof=False):
     if identifier == 'admission-stage-b':
         return stage_b.descriptor(sys.modules[__name__])
-    for selected in (ADMISSION, DEDUP, RESPONSE_STREAM):
+    for selected in (ADMISSION, DEDUP, BORROWED_RETIREMENT):
         if identifier == selected.id:
-            if proof and selected in (DEDUP, RESPONSE_STREAM):
+            if proof and selected in (DEDUP, BORROWED_RETIREMENT):
                 raise ValueError(selected.id + ' refuses proof mode')
             return selected
     raise ValueError('unknown contract selector')
@@ -251,15 +260,20 @@ def plan(selected=ADMISSION):
                              evidence_bytes=EVIDENCE_LIMIT),
                 scope='Conditional two-process comparisons, not CPU or general-host proof; '
                       'Stage B pressure/continuation required before any merge promotion')
-    if selected in (DEDUP, RESPONSE_STREAM):
+    if selected in (DEDUP, BORROWED_RETIREMENT):
         value.update(core_trees=dict(selected.trees),
-                     purpose='early-benefit-screen' if selected == RESPONSE_STREAM else 'rejection-screen',
+                     purpose='early-benefit-screen' if selected == BORROWED_RETIREMENT else 'rejection-screen',
                      preregistration=list(selected.preregistration),
                      scope=' '.join(selected.preregistration), sampling='all 16 before all eight gates',
                      fixture_lf_sha256=FIXTURE_LF_SHA256, pressure_lf_sha256=PRESSURE_LF_SHA256,
                      evidence_reserve_bytes=RESERVE, artifact_prefix=selected.artifact_prefix)
-    if selected == RESPONSE_STREAM:
-        value['gates'] = {mode: dict(mean_max=.97, upper_exclusive=1.0) for mode in wp.MODES}
+    if selected == BORROWED_RETIREMENT:
+        value['gates'] = {
+            profile: {mode: (dict(role='benefit', mean_max=.97, upper_exclusive=1.0)
+                             if (profile, mode) == ('small-device', 'unprotected')
+                             else dict(role='regression', upper_inclusive=1.02))
+                      for mode in wp.MODES}
+            for profile in ('small-device', 'default')}
     return value
 
 
@@ -348,21 +362,25 @@ def quantile(ordered, q):
     return ordered[lo] * (1 - fraction) + ordered[min(lo + 1, len(ordered) - 1)] * fraction
 
 
-def gate(mean, upper, security, selected=ADMISSION):
+def gate(mean, upper, security, selected=ADMISSION, *, profile=None):
+    if selected == BORROWED_RETIREMENT:
+        if profile not in ('small-device', 'default') or security not in wp.MODES:
+            raise ValueError('selected cell profile/security required')
     if any(type(v) not in (int, float) or not math.isfinite(v) or v <= 0 for v in (mean, upper)):
         return False
-    if selected == RESPONSE_STREAM:
-        if security not in wp.MODES:
-            raise ValueError('unknown security')
-        return mean <= .97 and upper < 1
+    if selected == BORROWED_RETIREMENT:
+        if (profile, security) == ('small-device', 'unprotected'):
+            return mean <= .97 and upper < 1
+        return upper <= 1.02
     if security == 'unprotected':
         return mean <= .99 and upper < 1
     if security == 'oscore':
         return upper <= 1.02
     raise ValueError('unknown security')
 
-
-def compare(arms, security, selected=ADMISSION):
+def compare(arms, security, selected=ADMISSION, *, profile=None):
+    if selected == BORROWED_RETIREMENT:
+        gate(1., 1., security, selected, profile=profile)  # Refuse an unbound cell before analysis.
     if set(arms) != {'A', 'B'}:
         raise ValueError('comparison must name A and B, including BA')
     for values in arms.values():
@@ -384,7 +402,8 @@ def compare(arms, security, selected=ADMISSION):
     lower, upper = quantile(ratios, .025), quantile(ratios, .975)
     mean = means['B'] / means['A']
     return dict(block_means_ns=blocks, arm_mean_ns=means, mean_B_over_A=mean,
-                lower95=lower, upper95=upper, passed=gate(mean, upper, security, selected),
+                lower95=lower, upper95=upper, passed=(gate(mean, upper, security, selected, profile=profile)
+                        if selected == BORROWED_RETIREMENT else gate(mean, upper, security, selected)),
                 scope=plan(selected)['scope'], **binding(selected))
 
 
@@ -438,7 +457,7 @@ def source_gate(core, suite_sha, core_sha, selected=ADMISSION):
     value = wp.source_identity(core, core_sha, suite_sha)
     if selected.id == 'admission-stage-b':
         stage_b.source_check(sys.modules[__name__], core, suite_sha, core_sha)
-    if selected in (DEDUP, RESPONSE_STREAM):
+    if selected in (DEDUP, BORROWED_RETIREMENT):
         cores = dict(selected.cores)
         if core_sha not in cores.values():
             raise ValueError('foreign core revision')
@@ -751,7 +770,7 @@ def verify_staged_suite(core, expected_commit, held, lock):
 def cargo_worker(spec, selected=ADMISSION):
     check_binding(spec, selected)
     def verify_source():
-        if selected in (DEDUP, RESPONSE_STREAM):
+        if selected in (DEDUP, BORROWED_RETIREMENT):
             args = argparse.Namespace(**spec['args'])
             exact(selection(args), selected, 'worker selection differs')
             exact(load(Path(spec['root']) / 'evidence/owner.json'), owner(args, Path(spec['root'])),
@@ -769,7 +788,7 @@ def cargo_worker(spec, selected=ADMISSION):
             exact(spec['purpose'], purpose(args), 'Cargo purpose differs')
     verify_source()
     selected_purpose = spec.get('purpose', 'stage-a-screen')
-    allowed = (('early-benefit-screen',) if selected == RESPONSE_STREAM else
+    allowed = (('early-benefit-screen',) if selected == BORROWED_RETIREMENT else
                ('rejection-screen',) if selected == DEDUP else ('stage-a-screen', 'ownership-proof'))
     if selected_purpose not in allowed:
         raise ValueError('unknown build purpose for selected contract')
@@ -893,7 +912,7 @@ def build(args, root, contract):
         if time.monotonic() >= deadline:
             raise TimeoutError('830-second outer build owner deadline')
         result = dict(owner=contract, purpose=purpose(args), plan=plan(selected),
-                      suite=bound(suite, selected) if selected == RESPONSE_STREAM else suite,
+                      suite=bound(suite, selected) if selected == BORROWED_RETIREMENT else suite,
                       records=records, artifacts=artifacts,
                       compiler=compiler, cargo=cargo, tools=tools, inputs=inputs, flags=FLAGS,
                       host=ds.host_identity())
@@ -949,7 +968,7 @@ def verify_build(args, root, contract):
     exact(value['plan'], plan(selected), 'prepared plan differs')
     exact(value['flags'], FLAGS, 'prepared flags differ')
     source_gate(args.core, args.expected_suite, baseline(selected), selected)
-    exact(bound(snapshot(SUITE), selected) if selected == RESPONSE_STREAM else snapshot(SUITE),
+    exact(bound(snapshot(SUITE), selected) if selected == BORROWED_RETIREMENT else snapshot(SUITE),
           value['suite'], 'prepared suite/source bytes differ')
     exact(bound(snapshot(args.core), selected), value['records']['A']['source'], 'prepared baseline source differs')
     tool_check(value['tools'])
@@ -957,7 +976,7 @@ def verify_build(args, root, contract):
     exact(sorted(value['artifacts']), ['A', 'B'], 'prepared artifact arms differ')
     for arm, commit in selected.cores:
         record = value['records'][arm]
-        if selected in (DEDUP, RESPONSE_STREAM):
+        if selected in (DEDUP, BORROWED_RETIREMENT):
             check_binding(record, selected)
             check_binding(record['source'], selected)
             check_binding(record['suite'], selected)
@@ -1042,7 +1061,7 @@ def measure_worker(spec, selected=ADMISSION):
                 completed.append(row)
                 arms[row['arm']] = value['latencies_ns']
                 if len(arms) == 2:
-                    if selected in (DEDUP, RESPONSE_STREAM):
+                    if selected in (DEDUP, BORROWED_RETIREMENT):
                         pending.append((arms, dict(row)))
                         arms = {}
                         continue
@@ -1056,16 +1075,18 @@ def measure_worker(spec, selected=ADMISSION):
         for arms, row in pending:
             budget.check(force=True)
             try:
-                comparison = compare(arms, row['security'], selected)
+                comparison = (compare(arms, row['security'], selected, profile=row['profile'])
+                              if selected == BORROWED_RETIREMENT else
+                              compare(arms, row['security'], selected))
             except ValueError as error:
                 comparison = dict(passed=False, uncertain=True, failure=failure(error))
             comparison.update(profile=row['profile'], security=row['security'], round=row['round'],
                               **binding(selected))
             comparisons.append(comparison)
             save(root, 'sample-' + str(row['index']).zfill(2) + '-comparison.json', comparison)
-        if selected in (DEDUP, RESPONSE_STREAM) and not all(c['passed'] for c in comparisons):
-            raise ValueError('generated-response-stream screen failed; no promotion'
-                             if selected == RESPONSE_STREAM else 'dedup rejection screen failed; no promotion')
+        if selected in (DEDUP, BORROWED_RETIREMENT) and not all(c['passed'] for c in comparisons):
+            raise ValueError('borrowed-dedup-retirement screen failed; no promotion'
+                             if selected == BORROWED_RETIREMENT else 'dedup rejection screen failed; no promotion')
         if len(completed) != 16 or len(comparisons) != 8:
             raise ValueError('incomplete fixed cohort')
         budget.check(force=True)
@@ -1143,7 +1164,7 @@ def execute(args):
                 if (root / 'evidence/build.json').exists():
                     verify_build(args, root, contract)
                 save(root, args.command + '-final-source-check.json',
-                     bound(dict(passed=True), selected) if selected == RESPONSE_STREAM else dict(passed=True))
+                     bound(dict(passed=True), selected) if selected == BORROWED_RETIREMENT else dict(passed=True))
             except BaseException as error:
                 report_preserving(primary or error, 'outer final-source receipt', lambda:
                                   save(root, args.command + '-final-source-check.json', failure(error)))
@@ -1184,7 +1205,7 @@ def main(argv=None):
         return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=('build', 'measure', 'all', 'proof'))
-    parser.add_argument('--contract', choices=('admission', 'dedup-classified', 'generated-response-stream', 'admission-stage-b'), default='admission')
+    parser.add_argument('--contract', choices=('admission', 'dedup-classified', 'borrowed-dedup-retirement', 'admission-stage-b'), default='admission')
     parser.add_argument('--core', required=True)
     parser.add_argument('--expected-suite', required=True)
     parser.add_argument('--output', required=True)
