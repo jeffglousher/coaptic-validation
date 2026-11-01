@@ -67,7 +67,7 @@ UNIMPLEMENTED = []
 def purpose(args):
     if getattr(args, 'contract', 'admission') == 'admission-stage-b':
         return stage_b.purpose(args)
-    if getattr(args, 'contract', 'admission') == 'validated-request-options':
+    if getattr(args, 'contract', 'admission') == 'generated-response-stream':
         selection(args)
         return 'early-benefit-screen'
     if getattr(args, 'contract', 'admission') == 'dedup-classified':
@@ -152,20 +152,21 @@ DEDUP = Contract(
     ))
 
 
-VALIDATED_OPTIONS = Contract(
-    'validated-request-options', 'coaptic-validated-request-options-wall/1',
-    'coaptic-validated-request-options-owner/1', 'coaptic-validated-request-options-wall',
-    'validated-request-options-wall-screen',
+RESPONSE_STREAM = Contract(
+    'generated-response-stream', 'coaptic-generated-response-stream-wall/1',
+    'coaptic-generated-response-stream-owner/1', 'coaptic-generated-response-stream-wall',
+    'generated-response-stream-wall-screen',
     (('A', 'c655b3aac485c3b88d3811b4da836b56210fce5b'),
-     ('B', '11c6f8b1178328ec3865d2725fb65dc63f3f0834')),
+     ('B', '03b8cd862b2054abb2e443c78f1b6bd6da839b98')),
     (('A', 'bca85f7b74b322a0f903005b18636d3a8414fe46'),
-     ('B', '5184496ba394546f8bfd049a624cba80147d6002')),
+     ('B', 'c923741bce2a6422180ec47311e994205a3e06d9')),
     (
         'FROZEN early normal benefit screen; performance unproven; proof unsupported. '
-        'SCREEN-PREREGISTRATION.json 2988 bytes SHA256 '
-        '5271037da99e0b5a4ccf5585e7ea68a4fea75b476f4ed08d8c080e441e4f3229. '
-        'Core PR721 removes three repeated option scans using first validated Block1/Block2/QBlock2 '
-        'scalars; independent source review NONE, Clippy/allfeature1208/no-default714lib PASS.',
+        'SCREEN-PREREGISTRATION.json 3386 bytes SHA256 '
+        '1e9fa34199603374abc72241823e86fcaece41c9e76ce4fa23ec27c7b8992e25. '
+        'Core PR722 streams App-generated response options and the generated OSCORE outer view; '
+        'public arbitrary-slice and inbound paths preserved; independent source review NONE, '
+        'Clippy/allfeature1208/no-default712lib PASS at03b8cd8.',
         'Exactly 16 fresh serial processes, SmallDevice/Default x unprotected/OSCORE x AB/BA; '
         'all 16 before all eight comparisons; first source/runtime/resource failure stops later work. '
         '60000 measured + 128 warmups + 4096 separate calibrations each; totals 960000/2048/65536. '
@@ -191,9 +192,9 @@ def baseline(selected=ADMISSION):
 def resolve_contract(identifier='admission', proof=False):
     if identifier == 'admission-stage-b':
         return stage_b.descriptor(sys.modules[__name__])
-    for selected in (ADMISSION, DEDUP, VALIDATED_OPTIONS):
+    for selected in (ADMISSION, DEDUP, RESPONSE_STREAM):
         if identifier == selected.id:
-            if proof and selected in (DEDUP, VALIDATED_OPTIONS):
+            if proof and selected in (DEDUP, RESPONSE_STREAM):
                 raise ValueError(selected.id + ' refuses proof mode')
             return selected
     raise ValueError('unknown contract selector')
@@ -250,14 +251,14 @@ def plan(selected=ADMISSION):
                              evidence_bytes=EVIDENCE_LIMIT),
                 scope='Conditional two-process comparisons, not CPU or general-host proof; '
                       'Stage B pressure/continuation required before any merge promotion')
-    if selected in (DEDUP, VALIDATED_OPTIONS):
+    if selected in (DEDUP, RESPONSE_STREAM):
         value.update(core_trees=dict(selected.trees),
-                     purpose='early-benefit-screen' if selected == VALIDATED_OPTIONS else 'rejection-screen',
+                     purpose='early-benefit-screen' if selected == RESPONSE_STREAM else 'rejection-screen',
                      preregistration=list(selected.preregistration),
                      scope=' '.join(selected.preregistration), sampling='all 16 before all eight gates',
                      fixture_lf_sha256=FIXTURE_LF_SHA256, pressure_lf_sha256=PRESSURE_LF_SHA256,
                      evidence_reserve_bytes=RESERVE, artifact_prefix=selected.artifact_prefix)
-    if selected == VALIDATED_OPTIONS:
+    if selected == RESPONSE_STREAM:
         value['gates'] = {mode: dict(mean_max=.97, upper_exclusive=1.0) for mode in wp.MODES}
     return value
 
@@ -350,7 +351,7 @@ def quantile(ordered, q):
 def gate(mean, upper, security, selected=ADMISSION):
     if any(type(v) not in (int, float) or not math.isfinite(v) or v <= 0 for v in (mean, upper)):
         return False
-    if selected == VALIDATED_OPTIONS:
+    if selected == RESPONSE_STREAM:
         if security not in wp.MODES:
             raise ValueError('unknown security')
         return mean <= .97 and upper < 1
@@ -437,7 +438,7 @@ def source_gate(core, suite_sha, core_sha, selected=ADMISSION):
     value = wp.source_identity(core, core_sha, suite_sha)
     if selected.id == 'admission-stage-b':
         stage_b.source_check(sys.modules[__name__], core, suite_sha, core_sha)
-    if selected in (DEDUP, VALIDATED_OPTIONS):
+    if selected in (DEDUP, RESPONSE_STREAM):
         cores = dict(selected.cores)
         if core_sha not in cores.values():
             raise ValueError('foreign core revision')
@@ -750,7 +751,7 @@ def verify_staged_suite(core, expected_commit, held, lock):
 def cargo_worker(spec, selected=ADMISSION):
     check_binding(spec, selected)
     def verify_source():
-        if selected in (DEDUP, VALIDATED_OPTIONS):
+        if selected in (DEDUP, RESPONSE_STREAM):
             args = argparse.Namespace(**spec['args'])
             exact(selection(args), selected, 'worker selection differs')
             exact(load(Path(spec['root']) / 'evidence/owner.json'), owner(args, Path(spec['root'])),
@@ -768,7 +769,7 @@ def cargo_worker(spec, selected=ADMISSION):
             exact(spec['purpose'], purpose(args), 'Cargo purpose differs')
     verify_source()
     selected_purpose = spec.get('purpose', 'stage-a-screen')
-    allowed = (('early-benefit-screen',) if selected == VALIDATED_OPTIONS else
+    allowed = (('early-benefit-screen',) if selected == RESPONSE_STREAM else
                ('rejection-screen',) if selected == DEDUP else ('stage-a-screen', 'ownership-proof'))
     if selected_purpose not in allowed:
         raise ValueError('unknown build purpose for selected contract')
@@ -892,7 +893,7 @@ def build(args, root, contract):
         if time.monotonic() >= deadline:
             raise TimeoutError('830-second outer build owner deadline')
         result = dict(owner=contract, purpose=purpose(args), plan=plan(selected),
-                      suite=bound(suite, selected) if selected == VALIDATED_OPTIONS else suite,
+                      suite=bound(suite, selected) if selected == RESPONSE_STREAM else suite,
                       records=records, artifacts=artifacts,
                       compiler=compiler, cargo=cargo, tools=tools, inputs=inputs, flags=FLAGS,
                       host=ds.host_identity())
@@ -948,7 +949,7 @@ def verify_build(args, root, contract):
     exact(value['plan'], plan(selected), 'prepared plan differs')
     exact(value['flags'], FLAGS, 'prepared flags differ')
     source_gate(args.core, args.expected_suite, baseline(selected), selected)
-    exact(bound(snapshot(SUITE), selected) if selected == VALIDATED_OPTIONS else snapshot(SUITE),
+    exact(bound(snapshot(SUITE), selected) if selected == RESPONSE_STREAM else snapshot(SUITE),
           value['suite'], 'prepared suite/source bytes differ')
     exact(bound(snapshot(args.core), selected), value['records']['A']['source'], 'prepared baseline source differs')
     tool_check(value['tools'])
@@ -956,7 +957,7 @@ def verify_build(args, root, contract):
     exact(sorted(value['artifacts']), ['A', 'B'], 'prepared artifact arms differ')
     for arm, commit in selected.cores:
         record = value['records'][arm]
-        if selected in (DEDUP, VALIDATED_OPTIONS):
+        if selected in (DEDUP, RESPONSE_STREAM):
             check_binding(record, selected)
             check_binding(record['source'], selected)
             check_binding(record['suite'], selected)
@@ -1041,7 +1042,7 @@ def measure_worker(spec, selected=ADMISSION):
                 completed.append(row)
                 arms[row['arm']] = value['latencies_ns']
                 if len(arms) == 2:
-                    if selected in (DEDUP, VALIDATED_OPTIONS):
+                    if selected in (DEDUP, RESPONSE_STREAM):
                         pending.append((arms, dict(row)))
                         arms = {}
                         continue
@@ -1062,9 +1063,9 @@ def measure_worker(spec, selected=ADMISSION):
                               **binding(selected))
             comparisons.append(comparison)
             save(root, 'sample-' + str(row['index']).zfill(2) + '-comparison.json', comparison)
-        if selected in (DEDUP, VALIDATED_OPTIONS) and not all(c['passed'] for c in comparisons):
-            raise ValueError('validated-request-options screen failed; no promotion'
-                             if selected == VALIDATED_OPTIONS else 'dedup rejection screen failed; no promotion')
+        if selected in (DEDUP, RESPONSE_STREAM) and not all(c['passed'] for c in comparisons):
+            raise ValueError('generated-response-stream screen failed; no promotion'
+                             if selected == RESPONSE_STREAM else 'dedup rejection screen failed; no promotion')
         if len(completed) != 16 or len(comparisons) != 8:
             raise ValueError('incomplete fixed cohort')
         budget.check(force=True)
@@ -1142,7 +1143,7 @@ def execute(args):
                 if (root / 'evidence/build.json').exists():
                     verify_build(args, root, contract)
                 save(root, args.command + '-final-source-check.json',
-                     bound(dict(passed=True), selected) if selected == VALIDATED_OPTIONS else dict(passed=True))
+                     bound(dict(passed=True), selected) if selected == RESPONSE_STREAM else dict(passed=True))
             except BaseException as error:
                 report_preserving(primary or error, 'outer final-source receipt', lambda:
                                   save(root, args.command + '-final-source-check.json', failure(error)))
@@ -1183,7 +1184,7 @@ def main(argv=None):
         return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=('build', 'measure', 'all', 'proof'))
-    parser.add_argument('--contract', choices=('admission', 'dedup-classified', 'validated-request-options', 'admission-stage-b'), default='admission')
+    parser.add_argument('--contract', choices=('admission', 'dedup-classified', 'generated-response-stream', 'admission-stage-b'), default='admission')
     parser.add_argument('--core', required=True)
     parser.add_argument('--expected-suite', required=True)
     parser.add_argument('--output', required=True)

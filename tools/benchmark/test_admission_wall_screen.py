@@ -1172,7 +1172,7 @@ class DedupPreparedEvidenceTests(TempTests):
         suite = dict(identity=dict(commit=args.expected_suite, tree='b'*40), files={})
         value.update(w.binding(selected), owner=contract, purpose=w.purpose(args),
                      plan=w.plan(selected),
-                     suite=w.bound(suite, selected) if selected == w.VALIDATED_OPTIONS else suite)
+                     suite=w.bound(suite, selected) if selected == w.RESPONSE_STREAM else suite)
         for arm, commit in selected.cores:
             value['records'][arm] = w.bound(dict(
                 source=w.bound(dict(identity=dict(commit=commit, tree=dict(selected.trees)[arm]),
@@ -1314,24 +1314,24 @@ class StagedSuiteTests(TempTests):
 
 
 
-class ValidatedOptionsTests(TempTests):
+class ResponseStreamTests(TempTests):
     def args(self, command='all'):
-        return argparse.Namespace(contract='validated-request-options', command=command,
+        return argparse.Namespace(contract='generated-response-stream', command=command,
                                   output=str(self.root), core='core', expected_suite='a'*40)
 
     def test_frozen_descriptor_and_both_mode_boundaries(self):
-        selected = w.resolve_contract('validated-request-options')
-        self.assertIs(selected, w.VALIDATED_OPTIONS)
+        selected = w.resolve_contract('generated-response-stream')
+        self.assertIs(selected, w.RESPONSE_STREAM)
         self.assertEqual(dict(selected.cores), {
             'A': 'c655b3aac485c3b88d3811b4da836b56210fce5b',
-            'B': '11c6f8b1178328ec3865d2725fb65dc63f3f0834'})
+            'B': '03b8cd862b2054abb2e443c78f1b6bd6da839b98'})
         self.assertEqual(dict(selected.trees), {
             'A': 'bca85f7b74b322a0f903005b18636d3a8414fe46',
-            'B': '5184496ba394546f8bfd049a624cba80147d6002'})
-        self.assertEqual(selected.root, 'coaptic-validated-request-options-wall')
-        self.assertEqual(selected.schema, 'coaptic-validated-request-options-wall/1')
-        self.assertEqual(selected.owner_schema, 'coaptic-validated-request-options-owner/1')
-        self.assertEqual(selected.artifact_prefix, 'validated-request-options-wall-screen')
+            'B': 'c923741bce2a6422180ec47311e994205a3e06d9'})
+        self.assertEqual(selected.root, 'coaptic-generated-response-stream-wall')
+        self.assertEqual(selected.schema, 'coaptic-generated-response-stream-wall/1')
+        self.assertEqual(selected.owner_schema, 'coaptic-generated-response-stream-owner/1')
+        self.assertEqual(selected.artifact_prefix, 'generated-response-stream-wall-screen')
         self.assertEqual(w.purpose(self.args()), 'early-benefit-screen')
         self.assertEqual(w.plan(selected)['gates'], {
             mode: dict(mean_max=.97, upper_exclusive=1.) for mode in w.wp.MODES})
@@ -1347,7 +1347,8 @@ class ValidatedOptionsTests(TempTests):
         self.assertIn('24 qualification', w.plan(selected)['scope'])
 
     def test_unknown_and_proof_refuse_before_any_process(self):
-        for selector, command in [('validated-request-options', 'proof'), ('unknown', 'all')]:
+        for selector, command in [('generated-response-stream', 'proof'),
+                                  ('validated-request-options', 'all'), ('unknown', 'all')]:
             args = self.args(command)
             args.contract = selector
             with patch.object(w, 'preflight') as preflight, patch.object(w, 'source_gate') as source, \
@@ -1359,7 +1360,7 @@ class ValidatedOptionsTests(TempTests):
                 child.assert_not_called()
 
     def measure(self, timing=96, fail_at=None):
-        selected = w.VALIDATED_OPTIONS
+        selected = w.RESPONSE_STREAM
         args = self.args()
         commands, gates = [], []
         real_compare = w.compare
@@ -1398,16 +1399,16 @@ class ValidatedOptionsTests(TempTests):
         self.assertEqual(len(gates), 8)
         self.assertTrue(result['passed'])
         self.assertEqual(len(result['completed']), 16)
-        for argv, row in zip(commands, w.schedule(w.VALIDATED_OPTIONS)):
+        for argv, row in zip(commands, w.schedule(w.RESPONSE_STREAM)):
             self.assertEqual(argv, [row['arm']+'.exe', '60000', row['security']] +
                              (['--small-device'] if row['profile'] == 'small-device' else []))
         for gate in gates:
             self.assertEqual(gate['mean_B_over_A'], .96)
             self.assertTrue(gate['passed'])
-            w.check_binding(gate, w.VALIDATED_OPTIONS)
+            w.check_binding(gate, w.RESPONSE_STREAM)
         for index in range(16):
             w.check_binding(w.load(self.root / ('evidence/sample-%02d.json' % index)),
-                            w.VALIDATED_OPTIONS)
+                            w.RESPONSE_STREAM)
 
     def test_failed_benefit_in_either_mode_is_stop_without_replacement(self):
         commands, gates, result = self.measure(timing=98)
@@ -1429,7 +1430,7 @@ class ValidatedOptionsTests(TempTests):
     def test_foreign_worker_specs_refuse_before_launch_even_rehashed(self):
         import itertools
         for selected, foreign in itertools.permutations(
-                (w.ADMISSION, w.DEDUP, w.VALIDATED_OPTIONS), 2):
+                (w.ADMISSION, w.DEDUP, w.RESPONSE_STREAM), 2):
             spec = w.bound(dict(kind='cargo', args=vars(self.args())), foreign)
             spec['sha256'] = hashlib.sha256(w.ds.encoded(spec)).hexdigest()
             with patch.object(w, 'run_worker') as run, patch.object(w, 'child_command') as child:
@@ -1443,7 +1444,7 @@ class ValidatedOptionsTests(TempTests):
                 child.assert_not_called()
 
     def test_selected_baseline_source_transaction_and_restoration(self):
-        selected = w.VALIDATED_OPTIONS
+        selected = w.RESPONSE_STREAM
         events, record = [], {}
         def git(core, *args):
             if args[0] == 'rev-parse':
@@ -1467,7 +1468,7 @@ class ValidatedOptionsTests(TempTests):
 
     def test_prepared_cross_contract_and_self_described_edits_refuse_before_process(self):
         args, contract, source, suite, original = DedupPreparedEvidenceTests.prepared(
-            self, w.VALIDATED_OPTIONS)
+            self, w.RESPONSE_STREAM)
         def snapshot(path):
             return source if str(path) == args.core else suite
         mutations = [
@@ -1483,17 +1484,17 @@ class ValidatedOptionsTests(TempTests):
         with patch.object(w, 'source_gate') as gate, patch.object(w, 'snapshot', side_effect=snapshot), \
              patch.object(w, 'child_command') as child:
             self.assertEqual(w.verify_build(args, self.root, contract), original)
-            self.assertEqual(gate.call_args.args[2], w.baseline(w.VALIDATED_OPTIONS))
+            self.assertEqual(gate.call_args.args[2], w.baseline(w.RESPONSE_STREAM))
             for mutate in mutations:
                 value = copy.deepcopy(original)
                 mutate(value)
                 self.write('build.json', value)
                 self.write('build-complete.json', w.bound(dict(prepared_hashes={
-                    'build.json': w.ds.digest(self.root / 'evidence/build.json')}), w.VALIDATED_OPTIONS))
+                    'build.json': w.ds.digest(self.root / 'evidence/build.json')}), w.RESPONSE_STREAM))
                 with self.assertRaises(ValueError):
                     w.measure_worker(w.bound(dict(args=vars(args), prepared_hashes={
                         'build.json': w.ds.digest(self.root / 'evidence/build.json')}),
-                        w.VALIDATED_OPTIONS), w.VALIDATED_OPTIONS)
+                        w.RESPONSE_STREAM), w.RESPONSE_STREAM)
             self.write('build.json', original)
             for foreign in (w.ADMISSION, w.DEDUP):
                 self.write('A-cargo.json', w.bound(dict(purpose='early-benefit-screen',
@@ -1508,7 +1509,7 @@ class ValidatedOptionsTests(TempTests):
         expressions = w.re.findall(r'^    if: \$\{\{ (.+) \}\}$', ci.split('jobs:\n', 1)[1], w.re.M)
         self.assertEqual(len(expressions), 4)
         for screen, proof, stack in itertools.product((False, True), repeat=3):
-            inputs = dict(wall_screen_contract='validated-request-options',
+            inputs = dict(wall_screen_contract='generated-response-stream',
                           admission_wall_screen=screen, admission_pressure_proof=proof,
                           stack_profile=stack, stack_profile_replay=False,
                           stack_profile_live=False, stack_profile_live_replay=False)
@@ -1522,9 +1523,9 @@ class ValidatedOptionsTests(TempTests):
             valid = screen and not proof and not stack
             self.assertEqual(routes, [not valid, False, False, valid])
         workflow = (w.SUITE / '.github/workflows/admission-wall-screen.yml').read_text()
-        self.assertIn("-ceq 'validated-request-options' -and $env:PROOF_ONLY -ceq 'true'", workflow)
+        self.assertIn("-ceq 'generated-response-stream' -and $env:PROOF_ONLY -ceq 'true'", workflow)
         self.assertIn('ref: ${{ env.WALL_BASELINE }}', workflow)
-        for _, sha in w.VALIDATED_OPTIONS.cores + w.VALIDATED_OPTIONS.trees:
+        for _, sha in w.RESPONSE_STREAM.cores + w.RESPONSE_STREAM.trees:
             self.assertIn(sha, workflow)
 
 
@@ -1538,7 +1539,7 @@ class ValidatedOptionsTests(TempTests):
             self.assertEqual(hashlib.sha256(w.ds.encoded(value)).hexdigest(), expected)
 
     def test_selected_cargo_worker_full_exact_census_and_purpose(self):
-        selected = w.VALIDATED_OPTIONS
+        selected = w.RESPONSE_STREAM
         args, contract, source, suite, value = DedupPreparedEvidenceTests.prepared(self, selected)
         spec = w.bound(dict(root=str(self.root), args=vars(args), arm='B',
             source=value['records']['B']['source'], suite=value['records']['B']['suite'],
@@ -1567,7 +1568,7 @@ class ValidatedOptionsTests(TempTests):
             self.assertEqual(receipt['pressure_tests'], [])
 
     def test_execute_build_handoff_uses_selected_initial_and_final_baseline(self):
-        selected = w.VALIDATED_OPTIONS
+        selected = w.RESPONSE_STREAM
         args = self.args('build')
         args.output = str(self.root / selected.root)
         def build(args, root, contract):
@@ -1586,7 +1587,7 @@ class ValidatedOptionsTests(TempTests):
 
 
     def test_selected_source_gates_reject_old_baseline_and_wrong_trees(self):
-        selected = w.VALIDATED_OPTIONS
+        selected = w.RESPONSE_STREAM
         with patch.object(w.wp, 'source_identity', return_value={}), \
              patch.object(w.ds, 'identity') as identity:
             for arm, commit in selected.cores:
@@ -1601,7 +1602,7 @@ class ValidatedOptionsTests(TempTests):
                 w.source_gate('core', 'a'*40, w.BASELINE, selected)
 
     def test_foreign_build_complete_refuses_before_worker_even_rehashed(self):
-        selected = w.VALIDATED_OPTIONS
+        selected = w.RESPONSE_STREAM
         args = self.args('measure')
         args.output = str(self.root / selected.root)
         for foreign in (w.ADMISSION, w.DEDUP):
