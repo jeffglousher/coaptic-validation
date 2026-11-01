@@ -10,15 +10,15 @@ import math
 from pathlib import Path
 
 ID = 'request-route-permutation'
-METHOD_SHA256 = '257e273854141e69c63a33b071ec40844c2143db9792798fa576997b56af139c'
+METHOD_SHA256 = 'ab04a97d50ff7ed244614ef409f0abb2209cea0cae4c15b80e5d1fc49aa4aa98'
 METHOD_BYTES = 24294
 SOURCE = 'tools/benchmark/native/servers/src/bin/bench_core/request_route.rs'
 CORES = (
     ('A', 'c655b3aac485c3b88d3811b4da836b56210fce5b'),
-    ('B', 'c56c3c3b897acb828db51ee988787b2a493c52ea'))
+    ('B', 'd1295035dbcbe5c07337d596de6aed64e61f1533'))
 TREES = (
     ('A', 'bca85f7b74b322a0f903005b18636d3a8414fe46'),
-    ('B', '30aa7645f71eb59e3b2457c758eca7b6f86e6f0c'))
+    ('B', 'a2752c9f4cf1600809a3ed654701900e1e0c8584'))
 
 
 def contract():

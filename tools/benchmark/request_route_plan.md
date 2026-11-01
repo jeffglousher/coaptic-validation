@@ -59,3 +59,8 @@ object shape. Qualification omits timing arrays entirely; only successful full
 traces emit a complete result. Native and runner bind the full method-file hash
 including its final LF. Per-case counters, actual layout, fixture owner bytes,
 client sequence/PIV census and I/O totals reconcile before any gate is evaluated.
+
+The candidate accounts for its exact byte-index metadata separately in footprint
+checks. Independent whole-App ceilings and the body-pool omission/delta checks
+retain their prior values. The validation-only source-identity update changes no runtime
+production blob, workload, statistic, performance gate or resource cap.

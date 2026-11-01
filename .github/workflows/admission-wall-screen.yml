@@ -67,7 +67,7 @@ jobs:
       - name: Fetch only the immutable candidate
         shell: pwsh
         run: |
-          $expected = if ($env:WALL_CONTRACT -ceq 'request-route-permutation') { 'c56c3c3b897acb828db51ee988787b2a493c52ea' } elseif ($env:WALL_CONTRACT -ceq 'regular-option-parser') { 'ca78a33b2cbf04bf43325b71c103c939caf341e4' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { '8f1f138c825f431149ed8a0a7eefbb6be6cb1b6a' } else { '8782a6a0b0aef2facf51bec884cfe37f2a80f28d' }
+          $expected = if ($env:WALL_CONTRACT -ceq 'request-route-permutation') { 'd1295035dbcbe5c07337d596de6aed64e61f1533' } elseif ($env:WALL_CONTRACT -ceq 'regular-option-parser') { 'ca78a33b2cbf04bf43325b71c103c939caf341e4' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { '8f1f138c825f431149ed8a0a7eefbb6be6cb1b6a' } else { '8782a6a0b0aef2facf51bec884cfe37f2a80f28d' }
           git -C coaptic fetch --no-tags --depth=1 origin $expected
           if ($LASTEXITCODE) { throw 'Candidate fetch failed' }
           $candidate = git -C coaptic rev-parse FETCH_HEAD
@@ -76,7 +76,7 @@ jobs:
             $baselineTree = git -C coaptic rev-parse 'HEAD^{tree}'
             if ($LASTEXITCODE -or $baselineTree -cne 'bca85f7b74b322a0f903005b18636d3a8414fe46') { throw 'Routing baseline tree differs' }
             $candidateTree = git -C coaptic rev-parse "$expected^{tree}"
-            if ($LASTEXITCODE -or $candidateTree -cne '30aa7645f71eb59e3b2457c758eca7b6f86e6f0c') { throw 'Routing candidate tree differs' }
+            if ($LASTEXITCODE -or $candidateTree -cne 'a2752c9f4cf1600809a3ed654701900e1e0c8584') { throw 'Routing candidate tree differs' }
           }
           if ($env:WALL_CONTRACT -ceq 'regular-option-parser') {
             $baselineTree = git -C coaptic rev-parse 'HEAD^{tree}'
