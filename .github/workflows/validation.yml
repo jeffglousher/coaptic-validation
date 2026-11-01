@@ -91,7 +91,7 @@ jobs:
       - name: Verify source and prepare pinned path dependencies
         env:
           LIBRARY_REVISION: ${{ inputs.library_revision }}
-        run: python3 tools/prepare.py --select-macro-locks --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
+        run: python3 tools/prepare.py --expected-revision "$LIBRARY_REVISION" --output "$RUNNER_TEMP/validation-source.json"
       - run: python3 -m unittest discover -s tools/qualification -p 'test_container_host.py'
       - run: python3 tools/qualification/container_host.py --output "$RUNNER_TEMP/protected-container"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -349,7 +349,11 @@ jobs:
           components: rust-src
       - run: python3 -m unittest discover -s tools/qualification -p 'test_*.py'
       - run: cargo install cargo-fuzz --version 0.13.1 --locked
-      - run: python3 tools/qualification/fuzz.py --seconds 10 --output target/fuzz-evidence/fuzz.json
+      - name: Fuzz only the independently verified prepared checkpoint
+        env:
+          LIBRARY_REVISION: ${{ inputs.library_revision }}
+          SUITE_REVISION: ${{ inputs.suite_revision }}
+        run: python3 tools/qualification/fuzz.py --seconds 10 --output target/fuzz-evidence/fuzz.json --prepared-source "$RUNNER_TEMP/validation-source.json" --expected-revision "$LIBRARY_REVISION" --expected-suite-revision "$SUITE_REVISION"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:

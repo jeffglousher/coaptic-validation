@@ -23,6 +23,21 @@ def snapshot():
     return {**source_identity(), "fuzz_lock_sha256": hashlib.sha256((ROOT / "fuzz/Cargo.lock").read_bytes()).hexdigest()}
 
 
+def checked_snapshot(prepared_source=None, expected_revision=None, expected_suite_revision=None):
+    if prepared_source is None:
+        if expected_revision is not None or expected_suite_revision is not None:
+            raise ValueError("prepared source identity requires --prepared-source")
+        value = snapshot()
+        if value["dirty"] or value["suite_dirty"]:
+            raise ValueError("fuzz campaigns require clean library and suite source")
+        return value
+    if expected_revision is None or expected_suite_revision is None:
+        raise ValueError("prepared source requires both immutable repository identities")
+    from macro_lock_selection import verify_prepared
+    verify_prepared(ROOT, ROOT / "coaptic", expected_revision, expected_suite_revision, prepared_source)
+    return snapshot()
+
+
 def run_campaign(command, seconds, directory, execute=subprocess.run, *, env=None):
     row = {"command": command, "passed": False}
     paths = {name: directory / (name + ".log") for name in ("stdout", "stderr")}
@@ -54,13 +69,17 @@ def evidence(stderr):
     return {"coverage_points": coverage, "features": features, "executed_inputs": int(executions[-1])}
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--seconds", type=int, default=60)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--asan-runtime-directory", type=Path,
                         help="Windows directory containing clang_rt.asan_dynamic-x86_64.dll")
-    args = parser.parse_args()
+    parser.add_argument("--prepared-source", type=Path,
+                        help="Independently checked CI source-preparation receipt")
+    parser.add_argument("--expected-revision", help="Full library SHA for the prepared checkpoint")
+    parser.add_argument("--expected-suite-revision", help="Full suite SHA for the prepared checkpoint")
+    args = parser.parse_args(argv)
     if not 1 <= args.seconds <= 3600:
         parser.error("--seconds must be in 1..3600")
     env = os.environ.copy()
@@ -71,18 +90,20 @@ def main():
             parser.error("ASan runtime DLL is missing from the specified directory")
         env["PATH"] = str(dll.parent) + os.pathsep + env.get("PATH", "")
         runtime = {"path": str(dll), "sha256": hashlib.sha256(dll.read_bytes()).hexdigest()}
+    if args.prepared_source is not None:
+        args.prepared_source = args.prepared_source.resolve()
+    def capture():
+        return checked_snapshot(args.prepared_source, args.expected_revision, args.expected_suite_revision)
+    before = capture()
     args.output = args.output.resolve()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     os.chdir(ROOT)
     work = Path(tempfile.mkdtemp(prefix="coaptic-fuzz-", dir=args.output.parent))
-    before = snapshot()
-    if before["dirty"] or before["suite_dirty"]:
-        raise ValueError("fuzz campaigns require clean library and suite source")
     # cargo-fuzz has no --locked flag. Resolve with --locked first, then
     # refuse any source/lock change made during compilation or execution.
     subprocess.run(["cargo", "+" + TOOLCHAIN, "metadata", "--locked", "--format-version=1",
                     "--manifest-path", "fuzz/Cargo.toml"], check=True, stdout=subprocess.DEVNULL)
-    if snapshot() != before:
+    if capture() != before:
         raise ValueError("source or prepared lockfiles changed during preflight")
     report = {"schema": "coaptic-fuzz/1", "passed": False,
               **before, "work_directory": str(work), "asan_runtime": runtime,
@@ -102,10 +123,20 @@ def main():
                    "-rss_limit_mb=1024", "-malloc_limit_mb=64", "-seed=9177", "-print_final_stats=1",
                    "-artifact_prefix=" + str(directory) + os.sep]
         row = {"target": target, **run_campaign(command, args.seconds, directory, env=env)}
-        if snapshot() != before:
-            row.update(passed=False, error="source or prepared lockfiles changed during campaign")
+        source_failure = False
+        try:
+            if capture() != before:
+                raise ValueError("source or prepared lockfiles changed during campaign")
+        except Exception as error:
+            detail = "campaign source check: " + type(error).__name__ + ": " + str(error)[:1024]
+            row.update(passed=False, source_error=detail)
+            row.setdefault("error", detail)
+            source_failure = True
         report["campaigns"].append(row)
         print(("PASS " if row["passed"] else "FAIL ") + target, flush=True)
+        if source_failure:
+            break
+    report["not_run"] = list(TARGETS[len(report["campaigns"]):])
     report["passed"] = len(report["campaigns"]) == len(TARGETS) and all(row["passed"] for row in report["campaigns"])
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return 0 if report["passed"] else 1

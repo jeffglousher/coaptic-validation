@@ -438,15 +438,19 @@ class CheckoutTests(unittest.TestCase):
         text = (ROOT / ".github/workflows/validation.yml").read_text()
         lines = [line for line in text.splitlines() if "tools/prepare.py " in line]
         self.assertEqual(len(lines), 14)
-        self.assertTrue(all("tools/prepare.py --select-macro-locks --expected-revision" in line for line in lines))
+        self.assertEqual(sum("tools/prepare.py --select-macro-locks --expected-revision" in line for line in lines), 13)
         jobs = [job for job in re.split(r"(?m)(?=^  [a-zA-Z0-9_-]+:\n)", text)
                 if "tools/prepare.py --select-macro-locks" in job]
-        self.assertEqual(len(jobs), 14)
+        self.assertEqual(len(jobs), 13)
         for job in jobs:
             before = job.split("tools/prepare.py --select-macro-locks")[0]
             self.assertIn("uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1", before)
             self.assertIn("python-version: '3.13'", before)
             self.assertEqual(before.count("uses: actions/checkout@"), 2)
+        container = text.split("    name: protected Linux container", 1)[1].split("  host-platforms:", 1)[0]
+        self.assertNotIn("--select-macro-locks", container)
+        self.assertIn("--prepared-source \"$RUNNER_TEMP/validation-source.json\"", text)
+        self.assertIn("--expected-suite-revision \"$SUITE_REVISION\"", text)
         self.assertIn("--native-checks profile", text)
         self.assertIn("--native-checks fixtures", text)
         self.assertIn("CARGO_TARGET_DIR: target/benchmark-native", text)
