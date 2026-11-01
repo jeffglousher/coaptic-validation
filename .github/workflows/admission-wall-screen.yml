@@ -46,7 +46,7 @@ jobs:
         shell: pwsh
         run: |
           if ($env:WALL_CONTRACT -cne 'regular-option-parser' -and $env:WALL_CONTRACT -cne 'admission-stage-b' -and $env:WALL_CONTRACT -cnotin @('admission', 'dedup-classified')) { throw 'Unknown wall contract' }
-          if ($env:WALL_CONTRACT -ceq 'regular-option-parser' -and $env:PROOF_ONLY -ceq 'true') { throw 'Lazy response locations refuses proof' }
+          if ($env:WALL_CONTRACT -ceq 'regular-option-parser' -and $env:PROOF_ONLY -ceq 'true') { throw 'Regular option parser refuses proof' }
           if ($env:WALL_CONTRACT -ceq 'dedup-classified' -and $env:PROOF_ONLY -ceq 'true') { throw 'Dedup refuses proof' }
           $root = if ($env:WALL_CONTRACT -ceq 'regular-option-parser') { 'coaptic-regular-option-parser-wall' } elseif ($env:WALL_CONTRACT -ceq 'admission-stage-b') { 'coaptic-admission-stage-b' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { 'coaptic-dedup-classified-wall' } else { 'coaptic-admission-wall' }
           $prefix = if ($env:WALL_CONTRACT -ceq 'regular-option-parser') { 'regular-option-parser-wall-screen' } elseif ($env:WALL_CONTRACT -ceq 'admission-stage-b') { 'admission-stage-b' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { 'dedup-classified-wall-screen' } else { 'admission-wall-screen' }
