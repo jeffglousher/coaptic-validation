@@ -507,5 +507,98 @@
   },
   "verified_exchanges": 1300480,
   "warmup": 128,
-  "warmup_operations": 20480
+  "warmup_operations": 20480,
+  "wire": {
+    "binding_rules": "Python outer owner/build/worker/source/artifact/selection receipts bind exact suite revision/tree, core revision/tree, method full hash, selected contract/purpose, actual EXE/PDB/tool/lock/source hashes and immutable schedule before launch. Native result carries method/purpose/phase/group/security, not fabricated native knowledge of Git/compiler identity.",
+    "case_count_required": {
+      "handler_calls": "uint actual per-case handler increments across BOTH phases; equals handler_delta*(warmup_verified+work_verified). COMMON chooses tag31 iff floor(globaloperation/8)%10==9, otherwise tag0.",
+      "id": "exact corresponding group.cases[].id string",
+      "warmup_verified": "uint count of actual successfully checked prefix operations0..127 assigned round-robin to this case",
+      "work_verified": "uint count of actual successfully checked operations128..8127 assigned to this case"
+    },
+    "errors": "First missing/extra I/O, response/header/body/authentication/handler/state/source/layout/budget error fails process and cohort; retain failed stdout/stderr/process receipt and attempted/incomplete/NOTRUN selections. Never emit complete-success JSON for a prefix.",
+    "fixture_owner_keys": [
+      "latency_backing",
+      "calibration_backing",
+      "array_headers",
+      "client_context",
+      "request_scratch",
+      "verification_scratch",
+      "metadata",
+      "serialization_scratch",
+      "entropy_scratch",
+      "static_data",
+      "other_explicit"
+    ],
+    "fixture_owner_rules": "In measure, latency_backing exactly128000 and calibration_backing65536; qualifier backing may be0 if never allocated or same fixed backing if reserved, but observations/arrays omitted. Array headers separate. Count client Context/RequestRef and declared fixture objects once, no server context/CoreIo/Site already in App. metadata covers counters/route/case bookkeeping; other_explicit covers any further explicit source owners and must be explained by frozen fixture source. static_data is declared fixture static data backing, physical placement/dedup unknown. Compiler initialization/temporaries/futures/peak stack/runtime unknown, excluded from a whole-memory claim.",
+    "format": "Exactly one UTF-8 JSON object followed by LF on stdout, no other stdout and empty stderr on successful normal CLI; exit0. Unit libtest output separate. Refuse duplicate/unknown keys, wrong JSON types (bool never int), nonfinite/fractional/out-of-range integers. Failure exits nonzero and writes bounded stderr; never emit complete-success JSON for a failed prefix.",
+    "layout_required": {
+      "app_align_bytes": "positive power-of-two uint align_of same actual App",
+      "app_inline_bytes": "positive uint size_of actual concrete App, INCLUDING CoreIo and all nested inline owners",
+      "fixture_additional_bytes": "uint exact sum of every fixture_owners value, <=262144; this is explicit owner/requested backing sum, not peak stack/RSS/whole-memory",
+      "fixture_owners": "closed object of strict uint bytes using fixed owner keys below; report real backing even when logical contents absent; no nested double-counting",
+      "pointer_bytes": "uint size_of::<usize>(), targetx64=8",
+      "pool_heap_requested_bytes": "uint actual requested external pool heap; SmallDevice0, Default from pinned AllocMemory required_heap_bytes for exact capacities; count outside App inline only",
+      "site_inline_bytes": "positive uint size_of exact Site if accessible, otherwise null explicitly unknown; never estimate or use baseline layout for candidate"
+    },
+    "measure_only_required": {
+      "calibration_ns": "array exactly4096 uint128, all separate observed timer calibrations, never subtracted",
+      "latency_ns": "array exactly8000 uint128; every timed App.poll in original interleaved work-operation order; global operation=128+arrayindex, case=globaloperation%casecount"
+    },
+    "native_input": "--request-route qualify|measure GROUP unprotected|oscore, exactly ten group/security combinations from groups. No per-process arm/source/operation/gate overrides.",
+    "pair_layout_rules": "Before timing, validate both arm qualification shapes and actual layouts per group/security, unchanged pool heap, AppB<=AppA+N+2*max(alignA,alignB), pointer8. Existing compile-time core owner ceilings unchanged. Site null does not turn App layout unknown. Measurement layout must equal matching same-arm qualifier except explicit fixture timing backing/headers source-owned differences.",
+    "protocol_required": {
+      "authenticated_responses": "uint8128 for oscore, uint0 for unprotected",
+      "bindings_consumed": "uint8128 for oscore, uint0 for unprotected",
+      "client_sender_seq_end": "uint for oscore, null for unprotected; oscore end-start exactly8128",
+      "client_sender_seq_start": "uint for oscore, null for unprotected",
+      "first_mid": "uint0",
+      "input_datagrams": "uint8128",
+      "input_empty": "true after last verified exchange",
+      "internal_datagrams": "uint16256 equal input+output",
+      "last_mid": "uint8127",
+      "max_outstanding": "uint1",
+      "now_ms": "uint1, unchanged logical protocol time on every poll",
+      "output_datagrams": "uint8128",
+      "output_empty": "true after last response collected and verified",
+      "polled": "uint8128",
+      "prepared": "uint8128",
+      "request_piv_bytes_histogram": "array six uint counters indexed wire PIV width0..5 for oscore, sum8128, widths3..5zero; null for unprotected. Observe actual encoded request widths and verify every request sequence progresses monotonically without reset, never infer an unobserved histogram from totals.",
+      "responded": "uint8128",
+      "token_bytes": "uint8",
+      "udp_datagrams": "uint0",
+      "verified": "uint8128 equal rootverified"
+    },
+    "purpose": {
+      "measure": "request-route-benefit",
+      "qualify": "request-route-qualification"
+    },
+    "qualification_omission": "latency_ns and calibration_ns MUST be ABSENT, not null/empty/zero placeholders. Qualification runs identical full8128 request trace without timer observations; work_verified still8000.",
+    "root_required": {
+      "calibration_samples": "uint0 qualify, uint4096 measure",
+      "capacities": "closed object exactly equal selected group.capacities; strict integer and boolean types",
+      "case_counts": "ordered array of closed case_count objects, exactly selected group.cases order",
+      "contract": "id exact string",
+      "group": "groups[].id matching CLI",
+      "handler_calls": "uint equal actual cumulative handler counter and group.expected_handler_calls",
+      "layout": "closed layout object below",
+      "measured_polls": "uint0 qualify, uint8000 measure",
+      "method_sha256": "SHA256 of all UTF-8 bytes of this plan including final LF, lowercase64hex; no self-hash field in this plan",
+      "operations": "uint8000 work operations, verified in BOTH phases",
+      "payload_bytes": "uint equal group.payload_bytes",
+      "phase": "qualify or measure, matching CLI",
+      "profile": "selected group.profile exact string",
+      "protocol": "closed protocol object below",
+      "purpose": "wire.purpose[phase] exact string",
+      "registered_routes": "uint equal actual successful registrations minus successful removals and group.registered_routes",
+      "route_capacity": "uint equal selected group.route_capacity",
+      "schema": "native_schemas[phase] exact string",
+      "security": "unprotected or oscore matching CLI",
+      "terminal": "complete",
+      "trace_id": "round-robin/1",
+      "verified": "uint8128",
+      "warmup": "uint128 verified warmup operations in BOTH phases"
+    },
+    "state_rules": "Every successful response must already have passed exact ACK/MID/8byteToken/code/complete metadata/body/authentication and actual handler-delta checks. One request is outstanding; binding consumed before next prepared request. No representative or scalar-only substitute for per-exchange checks. Root/case/protocol totals reconcile. Keep saturated dedup history; final dedup need not be empty. No empty final poll or per-operation JSON."
+  }
 }

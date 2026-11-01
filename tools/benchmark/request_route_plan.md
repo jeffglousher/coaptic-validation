@@ -53,3 +53,9 @@ Final candidate and suite source, tools, locks, flags, executable/PDB hashes,
 process purpose/configuration, affinity and outer-owned restore/settlement must
 be frozen and checked. This is conditional Windows release-binary App wall
 comparison, not CPU, socket, device, host-independent or simultaneous-95% proof.
+
+The JSON wire section fixes every successful native field, strict type and closed
+object shape. Qualification omits timing arrays entirely; only successful full
+traces emit a complete result. Native and runner bind the full method-file hash
+including its final LF. Per-case counters, actual layout, fixture owner bytes,
+client sequence/PIV census and I/O totals reconcile before any gate is evaluated.
