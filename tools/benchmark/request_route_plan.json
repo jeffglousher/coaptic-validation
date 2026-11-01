@@ -1,0 +1,511 @@
+{
+  "binary_profile_test": false,
+  "binary_target": "bench-core",
+  "binding": "Exact immutablecoreA/B above, finalsuiteSHA/tree/tool/flags/locks/EXEPDB/methodSHA/purpose/workerconfig/schedule/owner allbindbeforelaunch. No arbitrarysource/gate overrides.",
+  "budgets": {
+    "build_bytes": 8589934592,
+    "build_seconds": 830,
+    "cargo_outer_seconds": 450,
+    "cargo_seconds": 400,
+    "combined_process_output_bytes": 2097152,
+    "evidence_bytes": 67108864,
+    "failure_reserve_bytes": 4194304,
+    "measure_outer_seconds": 450,
+    "measure_seconds": 300,
+    "native_process_seconds": 30,
+    "private_phase_cap_bytes": 16777216,
+    "workflow_minutes": 35
+  },
+  "calibration_samples": 4096,
+  "calibrations": 655360,
+  "clock_scope": "Only black_box completeApp.poll includingingress/auth/admission/routing/encoding/serverprotection. Allstartup/requestprep/protection/expectedresponseprep/clientverification/counterreads andcalibrationsoutsideinterval.",
+  "common_selector": "Only common case uses its own occurrence ordinal floor(global_operation/8), last=r31/tag31 iff ordinal%10==9, otherwise first=r00/tag0. Continuous through warmup; measuredcommon1000 includes900first100last.",
+  "comparisons": 84,
+  "cores": {
+    "A": {
+      "commit": "c655b3aac485c3b88d3811b4da836b56210fce5b",
+      "tree": "bca85f7b74b322a0f903005b18636d3a8414fe46"
+    },
+    "B": {
+      "commit": "93623ecce5b7581714b60d093c6a5ca4b9446c60",
+      "tree": "9de690e479a40b3ef3cc04da7b30552aa26bd173"
+    }
+  },
+  "groups": [
+    {
+      "capacities": {
+        "associations": 1,
+        "block_wise": false,
+        "calls": 1,
+        "dedup": 4,
+        "deferred": 0,
+        "observe": 2,
+        "routes": 4,
+        "rx": {
+          "bytes": 1152,
+          "slots": 2
+        },
+        "rx_body": {
+          "bytes": 0,
+          "slots": 0
+        },
+        "security_requests": 4,
+        "tx": {
+          "bytes": 1152,
+          "slots": 2
+        },
+        "tx_body": {
+          "bytes": 0,
+          "slots": 0
+        }
+      },
+      "cases": [
+        {
+          "body_tag": 0,
+          "handler_delta": 1,
+          "id": "first",
+          "method": "GET",
+          "path": "r00",
+          "response_code": "2.05"
+        }
+      ],
+      "expected_handler_calls": 8128,
+      "id": "small_one",
+      "payload_bytes": 32,
+      "profile": "SmallDevice/Constrained",
+      "registered_routes": 1,
+      "route_capacity": 4
+    },
+    {
+      "capacities": {
+        "associations": 1,
+        "block_wise": false,
+        "calls": 1,
+        "dedup": 4,
+        "deferred": 0,
+        "observe": 2,
+        "routes": 4,
+        "rx": {
+          "bytes": 1152,
+          "slots": 2
+        },
+        "rx_body": {
+          "bytes": 0,
+          "slots": 0
+        },
+        "security_requests": 4,
+        "tx": {
+          "bytes": 1152,
+          "slots": 2
+        },
+        "tx_body": {
+          "bytes": 0,
+          "slots": 0
+        }
+      },
+      "cases": [
+        {
+          "body_tag": 0,
+          "handler_delta": 1,
+          "id": "first",
+          "method": "GET",
+          "path": "r00",
+          "response_code": "2.05"
+        },
+        {
+          "body_tag": 2,
+          "handler_delta": 1,
+          "id": "middle",
+          "method": "GET",
+          "path": "r02",
+          "response_code": "2.05"
+        },
+        {
+          "body_tag": 3,
+          "handler_delta": 1,
+          "id": "last",
+          "method": "GET",
+          "path": "r03",
+          "response_code": "2.05"
+        },
+        {
+          "body_tag": null,
+          "handler_delta": 0,
+          "id": "miss",
+          "method": "GET",
+          "path": "r99",
+          "response_code": "4.04"
+        }
+      ],
+      "expected_handler_calls": 6096,
+      "id": "small_full",
+      "payload_bytes": 32,
+      "profile": "SmallDevice/Constrained",
+      "registered_routes": 4,
+      "route_capacity": 4
+    },
+    {
+      "capacities": {
+        "associations": 1,
+        "block_wise": true,
+        "calls": 4,
+        "dedup": 8,
+        "deferred": 0,
+        "observe": 4,
+        "routes": 8,
+        "rx": {
+          "bytes": 1472,
+          "slots": 4
+        },
+        "rx_body": {
+          "bytes": 1024,
+          "slots": 1
+        },
+        "security_requests": 4,
+        "tx": {
+          "bytes": 1472,
+          "slots": 4
+        },
+        "tx_body": {
+          "bytes": 1024,
+          "slots": 2
+        }
+      },
+      "cases": [
+        {
+          "body_tag": 0,
+          "handler_delta": 1,
+          "id": "first",
+          "method": "GET",
+          "path": "r00",
+          "response_code": "2.05"
+        },
+        {
+          "body_tag": 4,
+          "handler_delta": 1,
+          "id": "middle",
+          "method": "GET",
+          "path": "r04",
+          "response_code": "2.05"
+        },
+        {
+          "body_tag": 7,
+          "handler_delta": 1,
+          "id": "last",
+          "method": "GET",
+          "path": "r07",
+          "response_code": "2.05"
+        },
+        {
+          "body_tag": null,
+          "handler_delta": 0,
+          "id": "miss",
+          "method": "GET",
+          "path": "r99",
+          "response_code": "4.04"
+        }
+      ],
+      "expected_handler_calls": 6096,
+      "id": "default8_full",
+      "payload_bytes": 64,
+      "profile": "Default pools/routes8",
+      "registered_routes": 8,
+      "route_capacity": 8
+    },
+    {
+      "capacities": {
+        "associations": 1,
+        "block_wise": true,
+        "calls": 4,
+        "dedup": 8,
+        "deferred": 0,
+        "observe": 4,
+        "routes": 32,
+        "rx": {
+          "bytes": 1472,
+          "slots": 4
+        },
+        "rx_body": {
+          "bytes": 1024,
+          "slots": 1
+        },
+        "security_requests": 4,
+        "tx": {
+          "bytes": 1472,
+          "slots": 4
+        },
+        "tx_body": {
+          "bytes": 1024,
+          "slots": 2
+        }
+      },
+      "cases": [
+        {
+          "body_tag": 0,
+          "handler_delta": 1,
+          "id": "first",
+          "method": "GET",
+          "path": "r00",
+          "response_code": "2.05"
+        },
+        {
+          "body_tag": 16,
+          "handler_delta": 1,
+          "id": "middle",
+          "method": "GET",
+          "path": "common/prefix/p16",
+          "response_code": "2.05"
+        },
+        {
+          "body_tag": 31,
+          "handler_delta": 1,
+          "id": "last",
+          "method": "GET",
+          "path": "r31",
+          "response_code": "2.05"
+        },
+        {
+          "body_tag": null,
+          "handler_delta": 0,
+          "id": "miss",
+          "method": "GET",
+          "path": "r99",
+          "response_code": "4.04"
+        },
+        {
+          "body_tag": 30,
+          "handler_delta": 1,
+          "id": "shared_prefix_hit",
+          "method": "GET",
+          "path": "common/prefix/p30",
+          "response_code": "2.05"
+        },
+        {
+          "body_tag": null,
+          "handler_delta": 0,
+          "id": "shared_prefix_miss",
+          "method": "GET",
+          "path": "common/prefix/p99",
+          "response_code": "4.04"
+        },
+        {
+          "body_tag": null,
+          "handler_delta": 0,
+          "id": "method_405",
+          "method": "PUT",
+          "path": "r31",
+          "response_code": "4.05"
+        },
+        {
+          "body_tag": "first-or-last",
+          "handler_delta": 1,
+          "id": "common",
+          "method": "GET",
+          "path": null,
+          "response_code": "2.05"
+        }
+      ],
+      "expected_handler_calls": 5080,
+      "id": "default32_full",
+      "payload_bytes": 64,
+      "profile": "Default pools/routes32",
+      "registered_routes": 32,
+      "route_capacity": 32
+    },
+    {
+      "capacities": {
+        "associations": 1,
+        "block_wise": true,
+        "calls": 4,
+        "dedup": 8,
+        "deferred": 0,
+        "observe": 4,
+        "routes": 32,
+        "rx": {
+          "bytes": 1472,
+          "slots": 4
+        },
+        "rx_body": {
+          "bytes": 1024,
+          "slots": 1
+        },
+        "security_requests": 4,
+        "tx": {
+          "bytes": 1472,
+          "slots": 4
+        },
+        "tx_body": {
+          "bytes": 1024,
+          "slots": 2
+        }
+      },
+      "cases": [
+        {
+          "body_tag": 0,
+          "handler_delta": 1,
+          "id": "first",
+          "method": "GET",
+          "path": "r00",
+          "response_code": "2.05"
+        },
+        {
+          "body_tag": 31,
+          "handler_delta": 1,
+          "id": "last",
+          "method": "GET",
+          "path": "r31",
+          "response_code": "2.05"
+        },
+        {
+          "body_tag": 33,
+          "handler_delta": 1,
+          "id": "reused",
+          "method": "GET",
+          "path": "new/b",
+          "response_code": "2.05"
+        },
+        {
+          "body_tag": null,
+          "handler_delta": 0,
+          "id": "miss",
+          "method": "GET",
+          "path": "r99",
+          "response_code": "4.04"
+        }
+      ],
+      "expected_handler_calls": 6096,
+      "id": "default32_sparse",
+      "payload_bytes": 64,
+      "profile": "Default pools/routes32",
+      "registered_routes": 4,
+      "route_capacity": 32
+    }
+  ],
+  "id": "request-route-permutation",
+  "ignored_timing_tests": 0,
+  "internal_datagrams": 2600960,
+  "latencies": 1280000,
+  "layout": {
+    "actual": "Qualify actualAppinline/alignment andrequestedpoolheap pergroup/mode botharms. Siteinline ifpubliclyaccessible; otherwiseexplicitunknown, no privateAPI shim.",
+    "array_payload_sum_over_160_executions": 30965760,
+    "arrays_bytes_per_process": 193536,
+    "candidate_policy": "N<=8originallinear; N>8directslot0hit thenindexedlower_bound. StableEntry slots/catalogorder; no newAPI/heap/requestallocation.",
+    "fixture_additional_owner_cap": 262144,
+    "growth_guard": "CandidateAppinline<=baselineAppinline+N*pointer_bytes+2*max(AppalignA,AppalignB); poolheapunchanged. Existingcorewholeownerceilingsmustpassunchanged; no memoryimprovementclaim.",
+    "ledger": "Report arrays/header/backing/clientcontext/request+authscratch/metadata/serializer/statics/init separately; AppincludesCoreIo/Site/engine/security/Call/deferred, poolsadditional. Compilerinitialization/stack/futures/runtime/wholeprocessunknown.",
+    "source_index_model": "N*sizeusize newinlinebacking atallN includinglinear-small; donotdoublecount inAppinline"
+  },
+  "limits": [
+    "Conditionalmixed-trace Windows releasebinary completeAppwall only",
+    "Fourpairs/order notindependenthosts or simultaneous95coverage",
+    "Sharedcases correlate and clientprep/cache/schedulingoutsideclock canaffectresults",
+    "No CPU/socket/device/wholememory/emittedstack claim"
+  ],
+  "native_cli": [
+    "bench-core",
+    "--request-route",
+    "qualify|measure",
+    "GROUP",
+    "unprotected|oscore"
+  ],
+  "native_qualification_executions": 20,
+  "native_schemas": {
+    "measure": "coaptic-request-route-wall/1",
+    "qualify": "coaptic-request-route-qualification/1"
+  },
+  "native_unit_test_executions": 16,
+  "operations": 8000,
+  "orders": [
+    "AB",
+    "BA"
+  ],
+  "processes": 160,
+  "protocol": {
+    "clock_semantics": "Fixedlogicalprotocoltime, nondecreasing; no expiry/retransmission transitions. This is not RTT/socket time.",
+    "history": "Warmup fillsdedup4/8; freshkeys in saturatedtable and equal-timeevictionties are intentional commonfullAppwork, no isolatedroutingclaim.",
+    "mids": "0..8127 uniqueperprocess; all8128 include128warmup. No wrap/aliases.",
+    "now_ms": 1,
+    "outstanding_max": 1,
+    "security": "Fresh24byteentropy/process, one contextpair, reciprocalexistingbenchIDs; no key/sequence/replay resets; consume eachbindingafterauthenticatedresponse; recordactualfreshsequence/PIVdeltas.",
+    "tokens": "All8bytes globaloperation u64 big-endian"
+  },
+  "qualification_commands_per_arm": 10,
+  "qualification_policy": "One proof-only campaign, then later sole all campaign rebuilding/requalifying exact timed artifacts; qualification prints no latency/calibration observations. Timing unavailable until all source/layout/semantic checks pass.",
+  "registration": "Small groups r00..r03 as needed; default8 r00..r07. Full32 slots0..15 r00..r15;16..30 common/prefix/p16..p30;31 r31. AllGET-only. Sparse createsfull32, removes paths atslots1..30 beforetraffic, thennew/a tag32 andnew/b tag33. Keeporiginalslots0/31; no scope substitution.",
+  "replicates": 4,
+  "representation": {
+    "all": "ACK/MID/token, exactcode/options/body, noBlock2/Observe/extraoptions; authenticateOSCOREbefore checkinginnerresponse.",
+    "body": "Base0x5a bytes, finalbyte unique matchedresource tag0..33. Source-specific32/64length. Do not derive tagfrom request; eachregisteredhandler hasitsown static response identity.",
+    "content_format": 42,
+    "error_body": "Validate exact canonical currentRFC9290 CBOR bytes/code/title from pinnedcore; freeze expected literals in fixture beforequalification. Do not accept absent/empty body or call serverencoder asverificationoracle.",
+    "error_content_format": 257,
+    "error_titles": {
+      "4.04": "Not Found",
+      "4.05": "Method Not Allowed"
+    },
+    "etag_hex": "66697874757265",
+    "handler_counts": "Verify actualcounterdelta aftereachpoll outsideclock (onehit,zeromiss/405) plus tag; perlabel andtotal. Counter instrumentation insidehandlerisdeclaredsameA/B fixturecost.",
+    "hit_code": "2.05"
+  },
+  "schedule": "replicate outermost0..3, groups in listed order, security unprotected then oscore, orders AB then BA, arms in selected order; pair replicate within eachgroup/security/order; B/A orientation always",
+  "schema": "coaptic-request-route-plan/1",
+  "security": [
+    "unprotected",
+    "oscore"
+  ],
+  "statistics": {
+    "all_required": true,
+    "benefit": {
+      "cases": [
+        "last",
+        "miss",
+        "shared_prefix_hit",
+        "shared_prefix_miss"
+      ],
+      "count": 8,
+      "group": "default32_full",
+      "orders": [
+        "AB",
+        "BA"
+      ],
+      "point_max_inclusive": 0.97,
+      "security": "unprotected",
+      "upper_max_exclusive": 1.0
+    },
+    "calibration_subtraction": false,
+    "decisions_after_all_processes": true,
+    "diagnostic_blocks_only": true,
+    "outlier_exclusion": false,
+    "pairing": "FouradjacentA/Bprocesspairs indexedbyreplicate, separatelyforeachgroup/security/order",
+    "point": "math.fsum(B_process_means)/math.fsum(A_process_means)",
+    "pooling": false,
+    "quantile_formula": "position=(n-1)*0.95; lo=floor(position),hi=ceil(position),frac=position-lo; ordered[lo]*(1-frac)+ordered[hi]*frac",
+    "ratio_per_tuple": "math.fsum(Bmeans[i] for i in tuple)/math.fsum(Ameans[i] for i in tuple)",
+    "regression": {
+      "all_other_cases": true,
+      "count": 76,
+      "upper_max_inclusive": 1.02
+    },
+    "replacement_processes": 0,
+    "resamples": "All256 tuples itertools.product(range(4),repeat=4), same tupleindexes AandB",
+    "unit": "Process/case mean, usingeverylabelledinterval. Casescorrelatedwithinprocess; no crosscasepooling.",
+    "upper_quantile": 0.95
+  },
+  "stop": "Any source/operational/auth/state/layout/count/budgetfailure stopsunfinished selections, retains prefixandNOTRUN, never smaller-successfulcohort. Afterall160, anyof84failed/inconclusive/missinggatesSTOP. No post-data variant/resample/threshold/capchange/pooling.",
+  "trace": "Round-robin groupcases for all128warmups+8000measurements. Preserve one App/context pair and counter through process. No App/context resets between cases.",
+  "udp_datagrams": 0,
+  "unit_test_filters": {
+    "legacy": "batch_tests::wall_",
+    "legacy_count": 4,
+    "route": "request_route::tests::",
+    "route_names": [
+      "metadata_and_body_refuse",
+      "authentication_and_replay_refuse",
+      "missing_and_extra_io_refuse",
+      "count_and_state_refuse"
+    ]
+  },
+  "verified_exchanges": 1300480,
+  "warmup": 128,
+  "warmup_operations": 20480
+}
