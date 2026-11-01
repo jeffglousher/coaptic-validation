@@ -33,3 +33,8 @@ tools/benchmark/evidence/dedup-classified-20261030/** -text
 # Stable compile-time Stage B contract on Windows and Unix checkouts.
 tools/benchmark/admission_stage_b_contract.json text eol=lf
 tools/benchmark/evidence/admission-stage-b-20261030/** -text
+
+# Source-matched CI macro lock alternatives are byte-pinned.
+/Cargo.syn3.lock text eol=lf
+/tools/durable-host/Cargo.syn3.lock text eol=lf
+/fuzz/Cargo.syn3.lock text eol=lf

@@ -1,8 +1,11 @@
 """Source-matched native benchmark lock inputs; no Cargo resolution or updates.
 
-The caller must require a clean suite/core BEFORE entry, exclusively own the
-native build lane and these files through exit, and run Cargo with --locked
-inside the context. Exit (including restoration/verification) must succeed
+The caller must require a clean suite/core OR independently verify a declared
+prepared checkpoint against immutable sources before entry. A prepared suite is
+not clean: every changed lock must have independently derived expected bytes,
+with no foreign tracked, indexed or untracked source edits. The caller must
+exclusively own the native build lane and these files through exit, and run Cargo
+with --locked inside the context. Exit (including restoration/verification) must succeed
 BEFORE clean-suite identity capture or measurement. Abrupt process death may
 leave Cargo.lock dirty: the next caller's clean-source gate must refuse it.
 This is not a lock, a concurrent-writer protocol, or crash recovery.
