@@ -824,6 +824,37 @@ fn cell(index: usize, mode: Mode, start: Instant, result: &mut Cell) -> Result<(
     Ok(())
 }
 
+struct FailureReport {
+    bytes: [u8; FAILURE_RESERVE],
+    len: usize,
+}
+impl std::fmt::Write for FailureReport {
+    fn write_str(&mut self, text: &str) -> std::fmt::Result {
+        let mut n = text.len().min(self.bytes.len() - self.len);
+        while !text.is_char_boundary(n) {
+            n -= 1;
+        }
+        self.bytes[self.len..self.len + n].copy_from_slice(&text.as_bytes()[..n]);
+        self.len += n;
+        if n == text.len() {
+            Ok(())
+        } else {
+            Err(std::fmt::Error)
+        }
+    }
+}
+fn failure_report(error: impl std::fmt::Display) -> FailureReport {
+    let mut report = FailureReport {
+        bytes: [0; FAILURE_RESERVE],
+        len: 0,
+    };
+    let _ = std::fmt::write(
+        &mut report,
+        format_args!("incoming-rx validation failed: {error}\n"),
+    );
+    report
+}
+
 pub(super) fn dispatch(args: &[String]) -> Result<(), Failure> {
     let mode = match mode(args) {
         Ok(m) => m,
@@ -834,13 +865,11 @@ pub(super) fn dispatch(args: &[String]) -> Result<(), Failure> {
     };
     let _lock = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut json = Json::new();
-    let result = run(mode, &mut json);
-    if result.is_err() {
+    if let Err(error) = run(mode, &mut json) {
         // The bounded prefix is evidence only, never a success document.
         let _ = std::io::stdout().write_all(&json.bytes);
-        eprintln!(
-            "incoming-rx validation failed; bounded stdout prefix is evidence only; no success profile"
-        );
+        let report = failure_report(&error);
+        let _ = std::io::stderr().write_all(&report.bytes[..report.len]);
         std::process::exit(1);
     }
     if std::io::stdout().write_all(&json.bytes).is_err() {
@@ -863,12 +892,13 @@ fn run(mode: Mode, out: &mut Json) -> Result<(), Failure> {
     let mut census = [0u64; 8];
     write!(
         out,
-        "{{\"schema\":\"{schema}\",\"method_sha256\":\"{METHOD_SHA}\",\"method_state\":\"source-frozen-before-execution\",\"measurement\":\"complete receiving App::poll only; input/output copies and final upload handler whole-body comparison inside; partner/preparation/bridge/verification/collection outside; synthetic fresh-transfer-after-idle logical time; no throughput or Q speed claim\",\"memory\":{{\"bounded_json_requested_heap_bytes\":{},\"json_vec_inline_bytes\":{},\"calibration_retention\":\"JSON values; one scalar scratch, no subtraction\",\"calibration_scalar_bytes\":{},\"audit_inline_nested_in_cell_bytes\":{},\"raw_master_material_temporary_bytes\":24,\"qualification_extra_wire_scratch_peak_bytes\":{},\"unknown\":\"allocator, initialization and generated stack/runtime costs\"}},\"cells\":[",
+        "{{\"schema\":\"{schema}\",\"method_sha256\":\"{METHOD_SHA}\",\"method_state\":\"source-frozen-before-execution\",\"measurement\":\"complete receiving App::poll only; input/output copies and final upload handler whole-body comparison inside; partner/preparation/bridge/verification/collection outside; synthetic fresh-transfer-after-idle logical time; no throughput or Q speed claim\",\"memory\":{{\"bounded_json_requested_heap_bytes\":{},\"json_vec_inline_bytes\":{},\"calibration_retention\":\"JSON values; one scalar scratch, no subtraction\",\"calibration_scalar_bytes\":{},\"audit_inline_nested_in_cell_bytes\":{},\"raw_master_material_temporary_bytes\":24,\"qualification_extra_wire_scratch_peak_bytes\":{},\"failure_report_temporary_bytes\":{},\"unknown\":\"allocator, initialization and generated stack/runtime costs\"}},\"cells\":[",
         output_capacity,
         std::mem::size_of::<Vec<u8>>(),
         std::mem::size_of::<u128>(),
         std::mem::size_of::<Audit>(),
-        if mode == Mode::Qualify { 2 * WIRE } else { 0 }
+        if mode == Mode::Qualify { 2 * WIRE } else { 0 },
+        std::mem::size_of::<FailureReport>()
     )?;
     for (i, name) in CELLS.iter().enumerate() {
         let mut c = Cell {
@@ -879,7 +909,7 @@ fn run(mode: Mode, out: &mut Json) -> Result<(), Failure> {
             partner_bytes: 0,
             raw_context_bytes: 0,
         };
-        if cell(i, mode, start, &mut c).is_err() {
+        if let Err(error) = cell(i, mode, start, &mut c) {
             let completed = c.audit.releases;
             write!(
                 out,
@@ -918,7 +948,7 @@ fn run(mode: Mode, out: &mut Json) -> Result<(), Failure> {
                 }
             }
             write!(out, "}}")?;
-            return Err("cell validation failed".into());
+            return Err(error);
         }
         if i != 0 {
             write!(out, ",")?;
@@ -1890,6 +1920,15 @@ mod tests {
         }
         assert!(s.add(None).is_err());
         s.validate(16, false).unwrap();
+        let report = failure_report("original transfer error");
+        assert_eq!(
+            std::str::from_utf8(&report.bytes[..report.len]).unwrap(),
+            "incoming-rx validation failed: original transfer error\n"
+        );
+        let report = failure_report("?".repeat(FAILURE_RESERVE));
+        assert!(report.len <= FAILURE_RESERVE);
+        assert!(std::str::from_utf8(&report.bytes[..report.len]).is_ok());
+        assert!(report.bytes[..report.len].starts_with(b"incoming-rx validation failed: "));
     }
     #[test]
     fn genuine_oscore_tamper_replay_and_wrong_request_binding_refuse() {
