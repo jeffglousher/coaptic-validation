@@ -16,7 +16,7 @@ on:
       contract:
         description: Explicit frozen wall screen contract
         type: choice
-        options: [admission, dedup-classified, regular-option-parser, admission-stage-b]
+        options: [admission, dedup-classified, regular-option-parser, admission-stage-b, request-route-permutation]
         default: admission
       proof_only:
         description: Run ownership proof with measurements NOT RUN
@@ -42,15 +42,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Validate the fixed hosted source plan
         shell: pwsh
         run: |
-          if ($env:WALL_CONTRACT -cne 'regular-option-parser' -and $env:WALL_CONTRACT -cne 'admission-stage-b' -and $env:WALL_CONTRACT -cnotin @('admission', 'dedup-classified')) { throw 'Unknown wall contract' }
+          if ($env:WALL_CONTRACT -cne 'regular-option-parser' -and $env:WALL_CONTRACT -cne 'admission-stage-b' -and $env:WALL_CONTRACT -cnotin @('admission', 'dedup-classified', 'request-route-permutation')) { throw 'Unknown wall contract' }
           if ($env:WALL_CONTRACT -ceq 'regular-option-parser' -and $env:PROOF_ONLY -ceq 'true') { throw 'Regular option parser refuses proof' }
           if ($env:WALL_CONTRACT -ceq 'dedup-classified' -and $env:PROOF_ONLY -ceq 'true') { throw 'Dedup refuses proof' }
-          $root = if ($env:WALL_CONTRACT -ceq 'regular-option-parser') { 'coaptic-regular-option-parser-wall' } elseif ($env:WALL_CONTRACT -ceq 'admission-stage-b') { 'coaptic-admission-stage-b' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { 'coaptic-dedup-classified-wall' } else { 'coaptic-admission-wall' }
-          $prefix = if ($env:WALL_CONTRACT -ceq 'regular-option-parser') { 'regular-option-parser-wall-screen' } elseif ($env:WALL_CONTRACT -ceq 'admission-stage-b') { 'admission-stage-b' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { 'dedup-classified-wall-screen' } else { 'admission-wall-screen' }
-          $baseline = if ($env:WALL_CONTRACT -ceq 'regular-option-parser') { 'c655b3aac485c3b88d3811b4da836b56210fce5b' } else { '623c82db1a6606ec86cd56bb52009988b9f0d87e' }
+          $root = if ($env:WALL_CONTRACT -ceq 'request-route-permutation') { 'coaptic-request-route-wall' } elseif ($env:WALL_CONTRACT -ceq 'regular-option-parser') { 'coaptic-regular-option-parser-wall' } elseif ($env:WALL_CONTRACT -ceq 'admission-stage-b') { 'coaptic-admission-stage-b' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { 'coaptic-dedup-classified-wall' } else { 'coaptic-admission-wall' }
+          $prefix = if ($env:WALL_CONTRACT -ceq 'request-route-permutation') { 'request-route-wall-screen' } elseif ($env:WALL_CONTRACT -ceq 'regular-option-parser') { 'regular-option-parser-wall-screen' } elseif ($env:WALL_CONTRACT -ceq 'admission-stage-b') { 'admission-stage-b' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { 'dedup-classified-wall-screen' } else { 'admission-wall-screen' }
+          $baseline = if ($env:WALL_CONTRACT -cin @('regular-option-parser', 'request-route-permutation')) { 'c655b3aac485c3b88d3811b4da836b56210fce5b' } else { '623c82db1a6606ec86cd56bb52009988b9f0d87e' }
           "WALL_BASELINE=$baseline" >> $env:GITHUB_ENV
           "WALL_ROOT=$root" >> $env:GITHUB_ENV
           "WALL_ARTIFACT=$prefix" >> $env:GITHUB_ENV
@@ -66,11 +67,17 @@ jobs:
       - name: Fetch only the immutable candidate
         shell: pwsh
         run: |
-          $expected = if ($env:WALL_CONTRACT -ceq 'regular-option-parser') { 'ca78a33b2cbf04bf43325b71c103c939caf341e4' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { '8f1f138c825f431149ed8a0a7eefbb6be6cb1b6a' } else { '8782a6a0b0aef2facf51bec884cfe37f2a80f28d' }
+          $expected = if ($env:WALL_CONTRACT -ceq 'request-route-permutation') { 'c56c3c3b897acb828db51ee988787b2a493c52ea' } elseif ($env:WALL_CONTRACT -ceq 'regular-option-parser') { 'ca78a33b2cbf04bf43325b71c103c939caf341e4' } elseif ($env:WALL_CONTRACT -ceq 'dedup-classified') { '8f1f138c825f431149ed8a0a7eefbb6be6cb1b6a' } else { '8782a6a0b0aef2facf51bec884cfe37f2a80f28d' }
           git -C coaptic fetch --no-tags --depth=1 origin $expected
           if ($LASTEXITCODE) { throw 'Candidate fetch failed' }
           $candidate = git -C coaptic rev-parse FETCH_HEAD
           if ($candidate -cne $expected) { throw 'Candidate identity differs' }
+          if ($env:WALL_CONTRACT -ceq 'request-route-permutation') {
+            $baselineTree = git -C coaptic rev-parse 'HEAD^{tree}'
+            if ($LASTEXITCODE -or $baselineTree -cne 'bca85f7b74b322a0f903005b18636d3a8414fe46') { throw 'Routing baseline tree differs' }
+            $candidateTree = git -C coaptic rev-parse "$expected^{tree}"
+            if ($LASTEXITCODE -or $candidateTree -cne '30aa7645f71eb59e3b2457c758eca7b6f86e6f0c') { throw 'Routing candidate tree differs' }
+          }
           if ($env:WALL_CONTRACT -ceq 'regular-option-parser') {
             $baselineTree = git -C coaptic rev-parse 'HEAD^{tree}'
             if ($LASTEXITCODE -or $baselineTree -cne 'bca85f7b74b322a0f903005b18636d3a8414fe46') { throw 'Baseline tree differs' }
@@ -92,7 +99,7 @@ jobs:
         shell: pwsh
         run: |
           Push-Location tools/benchmark
-          python -B -m unittest -v test_admission_wall_screen test_admission_stage_b
+          python -B -m unittest -v test_admission_wall_screen test_admission_stage_b test_request_route_wall
           if ($LASTEXITCODE) { throw 'Portable screen checks failed' }
           Pop-Location
       - name: Build the pair and run the fixed wall-only screen

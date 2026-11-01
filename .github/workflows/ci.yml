@@ -9,7 +9,7 @@ on:
         description: Explicit frozen wall screen contract; requires admission_wall_screen
         default: admission
         type: choice
-        options: [admission, dedup-classified, regular-option-parser, admission-stage-b]
+        options: [admission, dedup-classified, regular-option-parser, admission-stage-b, request-route-permutation]
       admission_wall_screen:
         description: Run only the frozen normal-headroom App wall comparison
         default: false
@@ -45,7 +45,7 @@ concurrency:
   cancel-in-progress: ${{ !inputs.stack_profile && !inputs.admission_wall_screen && !inputs.admission_pressure_proof && (inputs.wall_screen_contract == '' || inputs.wall_screen_contract == 'admission') }}
 jobs:
   reject-mixed-manual-modes:
-    if: ${{ github.event_name == 'workflow_dispatch' && ((inputs.wall_screen_contract && inputs.wall_screen_contract != 'admission' && inputs.wall_screen_contract != 'dedup-classified' && inputs.wall_screen_contract != 'regular-option-parser' && inputs.wall_screen_contract != 'admission-stage-b') || ((inputs.wall_screen_contract == 'dedup-classified' || inputs.wall_screen_contract == 'regular-option-parser') && (!inputs.admission_wall_screen || inputs.admission_pressure_proof)) || (inputs.wall_screen_contract == 'admission-stage-b' && !inputs.admission_wall_screen) || (inputs.admission_wall_screen && (inputs.stack_profile || inputs.stack_profile_replay || inputs.stack_profile_live || inputs.stack_profile_live_replay)) || (inputs.admission_pressure_proof && (!inputs.admission_wall_screen || inputs.stack_profile))) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && ((inputs.wall_screen_contract && inputs.wall_screen_contract != 'admission' && inputs.wall_screen_contract != 'dedup-classified' && inputs.wall_screen_contract != 'regular-option-parser' && inputs.wall_screen_contract != 'admission-stage-b' && inputs.wall_screen_contract != 'request-route-permutation') || ((inputs.wall_screen_contract == 'dedup-classified' || inputs.wall_screen_contract == 'regular-option-parser') && (!inputs.admission_wall_screen || inputs.admission_pressure_proof)) || ((inputs.wall_screen_contract == 'admission-stage-b' || inputs.wall_screen_contract == 'request-route-permutation') && !inputs.admission_wall_screen) || (inputs.admission_wall_screen && (inputs.stack_profile || inputs.stack_profile_replay || inputs.stack_profile_live || inputs.stack_profile_live_replay)) || (inputs.admission_pressure_proof && (!inputs.admission_wall_screen || inputs.stack_profile))) }}
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
@@ -68,10 +68,24 @@ jobs:
       live: ${{ inputs.stack_profile_live }}
       live_replay: ${{ inputs.stack_profile_live_replay }}
   admission-wall-screen:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.admission_wall_screen && !inputs.stack_profile && !inputs.stack_profile_replay && !inputs.stack_profile_live && !inputs.stack_profile_live_replay && (inputs.wall_screen_contract == 'admission' || inputs.wall_screen_contract == 'admission-stage-b' || ((inputs.wall_screen_contract == 'dedup-classified' || inputs.wall_screen_contract == 'regular-option-parser') && !inputs.admission_pressure_proof)) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.admission_wall_screen && !inputs.stack_profile && !inputs.stack_profile_replay && !inputs.stack_profile_live && !inputs.stack_profile_live_replay && (inputs.wall_screen_contract == 'admission' || inputs.wall_screen_contract == 'admission-stage-b' || inputs.wall_screen_contract == 'request-route-permutation' || ((inputs.wall_screen_contract == 'dedup-classified' || inputs.wall_screen_contract == 'regular-option-parser') && !inputs.admission_pressure_proof)) }}
     uses: ./.github/workflows/admission-wall-screen.yml
     permissions:
       contents: read
     with:
       proof_only: ${{ inputs.admission_pressure_proof }}
       contract: ${{ inputs.wall_screen_contract }}
+
+  portable-request-route:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.14.4'
+      - run: python -m pip install --no-cache-dir --disable-pip-version-check psutil==7.0.0
+      - run: python -B -m unittest test_request_route_wall test_admission_wall_screen test_admission_stage_b
+        working-directory: tools/benchmark

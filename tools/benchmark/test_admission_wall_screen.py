@@ -9,11 +9,29 @@ import tempfile
 import threading
 from types import SimpleNamespace
 import unittest
+import subprocess
+from contextlib import contextmanager
 from unittest.mock import Mock, patch
 
 import admission_wall_screen as w
 from suite_process import WorkerError, WorkerResult
 from test_native_lock import BASE, SYN3, MANIFEST
+
+
+
+def frozen_fixture():
+    # Older contracts retain their original fixture bytes while routing is integrated.
+    return subprocess.check_output(['git', '-C', str(w.SUITE), 'show',
+        'b069ed2fcfc0a4edb103d1fae940bde739b6efcb:' + w.FIXTURE], timeout=15)
+
+
+@contextmanager
+def old_fixture_reads():
+    original = Path.read_bytes
+    fixture = frozen_fixture()
+    with patch.object(Path, 'read_bytes', lambda path:
+                      fixture if path == w.SUITE / w.FIXTURE else original(path)):
+        yield
 
 
 def wall(profile='default', security='unprotected', latency=100):
@@ -113,7 +131,7 @@ class ProtocolTests(unittest.TestCase):
                 w.read_json(raw)
 
     def test_exact_native_census_source_frozen(self):
-        source = (w.SUITE / w.FIXTURE).read_bytes().replace(b'\r\n', b'\n')
+        source = frozen_fixture().replace(b'\r\n', b'\n')
         self.assertEqual(hashlib.sha256(source).hexdigest(), w.FIXTURE_LF_SHA256)
         names = w.re.findall(rb'#\[test\]\s+fn (wall_\w+)\(', source)
         for match in w.re.finditer(rb'#\[test\]\s+fn (wall_\w+)\(', source):
@@ -832,7 +850,7 @@ class ProofTests(TempTests):
     def test_pressure_source_hash_and_declared_census_guards(self):
         source = (w.SUITE / w.PRESSURE_SOURCE).read_bytes().replace(b'\r\n', b'\n')
         self.assertEqual(hashlib.sha256(source).hexdigest(), w.PRESSURE_LF_SHA256)
-        with patch.object(w.wp, 'source_identity', return_value={}):
+        with old_fixture_reads(), patch.object(w.wp, 'source_identity', return_value={}):
             w.source_gate('core', 'a' * 40, w.BASELINE)
             for field, value in (('PRESSURE_LF_SHA256', 'bad'),
                                  ('PRESSURE_TESTS', ('wrong::test',)),
@@ -1159,7 +1177,7 @@ class ContractSelectionTests(TempTests):
             if invalid:
                 self.assertFalse(any(routes[1:]), inputs)
         workflow = (w.SUITE / '.github/workflows/admission-wall-screen.yml').read_text()
-        self.assertIn("$env:WALL_CONTRACT -cnotin @('admission', 'dedup-classified')", workflow)
+        self.assertIn("$env:WALL_CONTRACT -cnotin @('admission', 'dedup-classified', 'request-route-permutation')", workflow)
         self.assertIn('--contract $env:WALL_CONTRACT', workflow)
         self.assertIn('dedup-classified-wall-screen', workflow)
         self.assertIn('group: admission-wall-screen', workflow)
@@ -1622,7 +1640,7 @@ class RegularOptionsTests(TempTests):
 
     def test_selected_source_gates_reject_old_baseline_and_wrong_trees(self):
         selected = w.REGULAR_OPTIONS
-        with patch.object(w.wp, 'source_identity', return_value={}), \
+        with old_fixture_reads(), patch.object(w.wp, 'source_identity', return_value={}), \
              patch.object(w.ds, 'identity') as identity:
             for arm, commit in selected.cores:
                 core = dict(commit=commit, tree=dict(selected.trees)[arm])

@@ -25,6 +25,7 @@ import native_lock as locks
 from suite_process import run_worker, WorkerError
 import windows_profile as wp
 import admission_stage_b as stage_b
+import request_route_wall as route
 
 HERE, SUITE, NATIVE = ds.HERE, ds.SUITE, ds.NATIVE
 BASELINE = '623c82db1a6606ec86cd56bb52009988b9f0d87e'
@@ -65,6 +66,8 @@ UNIMPLEMENTED = []
 
 
 def purpose(args):
+    if getattr(args, 'contract', 'admission') == route.ID:
+        return route.purpose(args)
     if getattr(args, 'contract', 'admission') == 'admission-stage-b':
         return stage_b.purpose(args)
     if getattr(args, 'contract', 'admission') == 'regular-option-parser':
@@ -195,6 +198,8 @@ def baseline(selected=ADMISSION):
 
 
 def resolve_contract(identifier='admission', proof=False):
+    if identifier == route.ID:
+        return route.descriptor(sys.modules[__name__])
     if identifier == 'admission-stage-b':
         return stage_b.descriptor(sys.modules[__name__])
     for selected in (ADMISSION, DEDUP, REGULAR_OPTIONS):
@@ -214,6 +219,8 @@ def selection(args):
 
 
 def binding(selected=ADMISSION):
+    if selected.id == route.ID:
+        return route.binding()
     if selected.id == 'admission-stage-b':
         return stage_b.binding()
     if selected == ADMISSION:
@@ -239,6 +246,8 @@ def tree_check(identity, commit, tree):
 
 
 def plan(selected=ADMISSION):
+    if selected.id == route.ID:
+        return route.contract()
     if selected.id == 'admission-stage-b':
         return stage_b.contract()
     value = dict(schema=selected.schema, cores=dict(selected.cores),
@@ -284,6 +293,8 @@ def plan(selected=ADMISSION):
 
 
 def schedule(selected=ADMISSION):
+    if selected.id == route.ID:
+        return route.schedule()
     if selected == REGULAR_OPTIONS:
         return [dict(index=i, replicate=k, profile=p, security=s, round=r, arm=a)
                 for i, (k, p, s, r, a) in enumerate(
@@ -508,7 +519,7 @@ def source_gate(core, suite_sha, core_sha, selected=ADMISSION):
     value = wp.source_identity(core, core_sha, suite_sha)
     if selected.id == 'admission-stage-b':
         stage_b.source_check(sys.modules[__name__], core, suite_sha, core_sha)
-    if selected in (DEDUP, REGULAR_OPTIONS):
+    if selected in (DEDUP, REGULAR_OPTIONS) or selected.id == route.ID:
         cores = dict(selected.cores)
         if core_sha not in cores.values():
             raise ValueError('foreign core revision')
@@ -517,6 +528,9 @@ def source_gate(core, suite_sha, core_sha, selected=ADMISSION):
         exact(ds.identity(SUITE)['commit'], suite_sha, 'companion revision differs')
         if not re.fullmatch('[0-9a-f]{40}', ds.identity(SUITE)['tree']):
             raise ValueError('companion tree required')
+    if selected.id == route.ID:
+        route.source_check(sys.modules[__name__], suite_sha)
+        return value
     normalized = (SUITE / FIXTURE).read_bytes().replace(b'\r\n', b'\n')
     if hashlib.sha256(normalized).hexdigest() != FIXTURE_LF_SHA256:
         raise ValueError('native fixture pin differs')
@@ -819,6 +833,8 @@ def verify_staged_suite(core, expected_commit, held, lock):
 
 
 def cargo_worker(spec, selected=ADMISSION):
+    if selected.id == route.ID:
+        return route.cargo_worker(sys.modules[__name__], spec, selected)
     check_binding(spec, selected)
     def verify_source():
         if selected in (DEDUP, REGULAR_OPTIONS):
@@ -939,6 +955,9 @@ def build(args, root, contract):
     tools['python'] = dict(path=str(Path(sys._base_executable).resolve()), sha256=ds.digest(sys._base_executable))
     env = environment(root, tools)
     suite = snapshot(SUITE)
+    if selected.id == route.ID:
+        save(root, 'build-inputs.json', bound(dict(owner=contract, tools=tools, inputs=inputs,
+             flags=FLAGS, suite=suite, compiler=compiler, cargo=cargo), selected))
     records, artifacts = {}, {}
     primary = None
     try:
@@ -955,7 +974,9 @@ def build(args, root, contract):
                                                            cargo=tools['cargo']['path'], seconds=inner,
                                                            purpose=purpose(args), args=vars(args),
                                                            source=record['source'], suite=record['suite'],
-                                                           lock=lock, **binding(selected)),
+                                                           lock=lock, **(dict(tools=tools, inputs=inputs, flags=FLAGS)
+                                                               if selected.id == route.ID else {}),
+                                                           **binding(selected)),
                                             env, timeout=outer, build=True, selected=selected), record, selected)
             artifacts[arm] = retain_pair(root, arm, purpose(args), selected)
             tool_check(tools)
@@ -997,6 +1018,8 @@ def build(args, root, contract):
 
 
 def verify_tests(root, arm, receipt, selected_purpose, selected=ADMISSION):
+    if selected.id == route.ID:
+        return route.verify_tests(sys.modules[__name__], root, arm, receipt, selected_purpose, selected)
     check_binding(receipt, selected)
     exact(receipt['purpose'], selected_purpose, 'prepared test purpose differs')
     exact(receipt['native_tests'], list(WALL_TESTS), 'prepared native census differs')
@@ -1030,7 +1053,7 @@ def verify_build(args, root, contract):
     exact(sorted(value['artifacts']), ['A', 'B'], 'prepared artifact arms differ')
     for arm, commit in selected.cores:
         record = value['records'][arm]
-        if selected in (DEDUP, REGULAR_OPTIONS):
+        if selected in (DEDUP, REGULAR_OPTIONS) or selected.id == route.ID:
             check_binding(record, selected)
             check_binding(record['source'], selected)
             check_binding(record['suite'], selected)
@@ -1079,6 +1102,8 @@ def affinity(root):
 
 
 def measure_worker(spec, selected=ADMISSION):
+    if selected.id == route.ID:
+        return route.measure_worker(sys.modules[__name__], spec, selected)
     args = argparse.Namespace(**spec['args'])
     exact(selection(args), selected, 'measurement selection differs')
     check_binding(spec, selected)
@@ -1178,6 +1203,8 @@ def measure_worker(spec, selected=ADMISSION):
 
 
 def execute(args):
+    if getattr(args, 'contract', 'admission') == route.ID:
+        return route.execute(sys.modules[__name__], args)
     if getattr(args, 'contract', 'admission') == 'admission-stage-b':
         return stage_b.execute(sys.modules[__name__], args)
     selected = selection(args)
@@ -1271,7 +1298,7 @@ def main(argv=None):
         return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=('build', 'measure', 'all', 'proof'))
-    parser.add_argument('--contract', choices=('admission', 'dedup-classified', 'regular-option-parser', 'admission-stage-b'), default='admission')
+    parser.add_argument('--contract', choices=('admission', 'dedup-classified', 'regular-option-parser', 'admission-stage-b', route.ID), default='admission')
     parser.add_argument('--core', required=True)
     parser.add_argument('--expected-suite', required=True)
     parser.add_argument('--output', required=True)
