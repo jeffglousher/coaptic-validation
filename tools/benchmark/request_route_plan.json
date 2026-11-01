@@ -27,8 +27,8 @@
       "tree": "bca85f7b74b322a0f903005b18636d3a8414fe46"
     },
     "B": {
-      "commit": "93623ecce5b7581714b60d093c6a5ca4b9446c60",
-      "tree": "9de690e479a40b3ef3cc04da7b30552aa26bd173"
+      "commit": "c56c3c3b897acb828db51ee988787b2a493c52ea",
+      "tree": "30aa7645f71eb59e3b2457c758eca7b6f86e6f0c"
     }
   },
   "groups": [
@@ -389,11 +389,11 @@
     "actual": "Qualify actualAppinline/alignment andrequestedpoolheap pergroup/mode botharms. Siteinline ifpubliclyaccessible; otherwiseexplicitunknown, no privateAPI shim.",
     "array_payload_sum_over_160_executions": 30965760,
     "arrays_bytes_per_process": 193536,
-    "candidate_policy": "N<=8originallinear; N>8directslot0hit thenindexedlower_bound. StableEntry slots/catalogorder; no newAPI/heap/requestallocation.",
+    "candidate_policy": "N<=8orN>256originallinear; 9<=N<=256directslot0hit thenindexedlower_bound. StableEntry slots/catalogorder; no newAPI/heap/requestallocation.",
     "fixture_additional_owner_cap": 262144,
-    "growth_guard": "CandidateAppinline<=baselineAppinline+N*pointer_bytes+2*max(AppalignA,AppalignB); poolheapunchanged. Existingcorewholeownerceilingsmustpassunchanged; no memoryimprovementclaim.",
+    "growth_guard": "CandidateAppinline<=baselineAppinline+N+2*max(AppalignA,AppalignB); poolheapunchanged. Existingcorewholeownerceilingsmustpassunchanged; no memoryimprovementclaim.",
     "ledger": "Report arrays/header/backing/clientcontext/request+authscratch/metadata/serializer/statics/init separately; AppincludesCoreIo/Site/engine/security/Call/deferred, poolsadditional. Compilerinitialization/stack/futures/runtime/wholeprocessunknown.",
-    "source_index_model": "N*sizeusize newinlinebacking atallN includinglinear-small; donotdoublecount inAppinline"
+    "source_index_model": "Nbytes newinlinebacking atallN includinglinear-small/large; byteindex representablethroughslot255, largerSite fallsbacklinear; donotdoublecount inAppinline"
   },
   "limits": [
     "Conditionalmixed-trace Windows releasebinary completeAppwall only",

@@ -40,8 +40,8 @@ Keep existing 830-second build, 300-second measurement, 30-second native process
 controls despite 160 times 30 seconds exceeding 300 seconds. Failure preserves
 completed prefixes and NOTRUN rows, not a smaller successful experiment.
 
-Layout qualification precedes timing. Count N machine words of index backing
-at every capacity, actual App layout and unchanged pool requests. Preserve core
+Layout qualification precedes timing. Count N bytes of index backing
+at every capacity (linear lookup above256), actual App layout and unchanged pool requests. Preserve core
 owner ceilings; the new growth guard is explicit in JSON. The 193,536 bytes of
 timing/calibration backing per process are additional fixture cost. App already
 contains CoreIo and Site. Report headers, verification/context/static/scratch and
