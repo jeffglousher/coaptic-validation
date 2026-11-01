@@ -1620,9 +1620,11 @@ fn upload_peer_trace() -> Result<Trace, Failure> {
     app.transport_mut().peer = PEER;
     // Public explicit cancellation of the partial incoming owner, then recovery.
     app.engine_mut().release_rx_body(id)?;
-    let mut recovery = Audit::default();
-    recovery.pivs = 2;
-    recovery.last_piv = Some(1);
+    let mut recovery = Audit {
+        pivs: 2,
+        last_piv: Some(1),
+        ..Audit::default()
+    };
     upload_transfer(&mut app, &mut cc, id, 1, false, false, &mut recovery)?;
     if HANDLERS.load(Ordering::SeqCst) != 1 {
         return Err("peer recovery handler".into());
