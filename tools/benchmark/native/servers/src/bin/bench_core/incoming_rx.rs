@@ -1356,6 +1356,9 @@ fn upload_capacity_trace(protected: bool) -> Result<Trace, Failure> {
         .rx_body_transfer(id)
         .ok_or("capacity owner missing")?;
     let (mid, token) = prepare_upload(&mut app, &mut context, 1, 0, false)?;
+    // A new Token on the same resource/peer is an allowed untagged restart.
+    // A distinct peer needs its own body slot and must preserve this owner.
+    app.transport_mut().peer = Endpoint::v4([127, 0, 0, 2], 30000);
     app.poll(2).map_err(|_| "capacity refusal poll")?;
     let io = &mut app.transport_mut().io;
     let n = io.output_len.take().ok_or("capacity refusal missing")?;
@@ -1376,6 +1379,7 @@ fn upload_capacity_trace(protected: bool) -> Result<Trace, Failure> {
     {
         return Err("capacity refusal changed existing owner".into());
     }
+    app.transport_mut().peer = PEER;
     for j in 1..4 {
         let (mid, token) = prepare_upload(&mut app, &mut context, 0, j, false)?;
         app.poll(3 + j as u64)
