@@ -540,7 +540,10 @@ fn with_partner<R>(
     } else {
         b.allow_unprotected()
     };
-    let mut app = b.bind(service_io())?;
+    // Borrow the App inside its Result: `?` would move this large fixed value
+    // into a second local while the builder return slot is still in the frame.
+    let mut bound = b.bind(service_io());
+    let app = bound.as_mut().map_err(|error| *error)?;
     let caps = app.engine().capacities();
     let expected = Capacities {
         rx_datagram_slots: 32,
@@ -557,7 +560,7 @@ fn with_partner<R>(
     if caps != expected {
         return Err("partner actual capacities differ from method".into());
     }
-    use_partner(&mut app)
+    use_partner(app)
 }
 fn download_id(client: &mut ServiceClient) -> Result<SlotId, Failure> {
     if client.engine().capacities() != service_client_capacities() {
