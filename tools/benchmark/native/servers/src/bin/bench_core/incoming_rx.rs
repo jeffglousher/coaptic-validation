@@ -519,10 +519,14 @@ fn download_guard_handler(req: Request<'_>) -> Response<'static> {
     service64(req)
 }
 type Partner = ServiceServer<<coaptic::profiles::Service as MemoryLayout<true>>::Store>;
-fn partner(
+// Keep fixed storage in this frame; returning the App duplicates large caller
+// temporaries. Match the existing Service driver without enlarging its stack.
+#[inline(never)]
+fn with_partner<R>(
     context: Option<coaptic::oscore::SecurityContext>,
     guard: bool,
-) -> Result<Partner, Failure> {
+    use_partner: impl FnOnce(&mut Partner) -> Result<R, Failure>,
+) -> Result<R, Failure> {
     let handler: fn(Request<'_>) -> Response<'static> = if guard {
         download_guard_handler
     } else {
@@ -536,7 +540,7 @@ fn partner(
     } else {
         b.allow_unprotected()
     };
-    let app = b.bind(service_io())?;
+    let mut app = b.bind(service_io())?;
     let caps = app.engine().capacities();
     let expected = Capacities {
         rx_datagram_slots: 32,
@@ -553,7 +557,7 @@ fn partner(
     if caps != expected {
         return Err("partner actual capacities differ from method".into());
     }
-    Ok(app)
+    use_partner(&mut app)
 }
 fn download_id(client: &mut ServiceClient) -> Result<SlotId, Failure> {
     if client.engine().capacities() != service_client_capacities() {
@@ -760,6 +764,7 @@ struct Cell {
     partner_bytes: usize,
     raw_context_bytes: usize,
 }
+#[inline(never)]
 fn cell(index: usize, mode: Mode, start: Instant, result: &mut Cell) -> Result<(), Failure> {
     HANDLERS.store(0, Ordering::SeqCst);
     BAD_HANDLERS.store(0, Ordering::SeqCst);
@@ -796,36 +801,38 @@ fn cell(index: usize, mode: Mode, start: Instant, result: &mut Cell) -> Result<(
         }
     } else {
         let mut client = service_client(cc)?;
-        let mut server = partner(sc, guard)?;
-        let id = download_id(&mut client)?;
-        result.app_bytes = std::mem::size_of_val(&client);
-        result.partner_bytes = std::mem::size_of_val(&server);
-        result.heap = coaptic::storage::AllocMemory::<Token>::required_heap_bytes(
-            service_client_capacities(),
-        )?;
-        let mut output = [0; 16384];
-        for q in 0..TRANSFERS {
-            deadline(start, if mode == Mode::Measure { 14 } else { 20 })?;
-            let s = download_transfer(
-                &mut client,
-                &mut server,
-                id,
-                q,
-                guard,
-                mode == Mode::Measure && q >= WARM,
-                &mut result.audit,
-                &mut output,
+        with_partner(sc, guard, |server| {
+            let id = download_id(&mut client)?;
+            result.app_bytes = std::mem::size_of_val(&client);
+            result.partner_bytes = std::mem::size_of_val(server);
+            result.heap = coaptic::storage::AllocMemory::<Token>::required_heap_bytes(
+                service_client_capacities(),
             )?;
-            if q >= WARM && mode == Mode::Measure {
-                result.samples[q - WARM] = s;
+            let mut output = [0; 16384];
+            for q in 0..TRANSFERS {
+                deadline(start, if mode == Mode::Measure { 14 } else { 20 })?;
+                let s = download_transfer(
+                    &mut client,
+                    server,
+                    id,
+                    q,
+                    guard,
+                    mode == Mode::Measure && q >= WARM,
+                    &mut result.audit,
+                    &mut output,
+                )?;
+                if q >= WARM && mode == Mode::Measure {
+                    result.samples[q - WARM] = s;
+                }
             }
-        }
-        if client
-            .oscore()
-            .is_some_and(|c| c.sender_seq() != result.audit.requests)
-        {
-            return Err("download sender sequence census".into());
-        }
+            if client
+                .oscore()
+                .is_some_and(|c| c.sender_seq() != result.audit.requests)
+            {
+                return Err("download sender sequence census".into());
+            }
+            Ok(())
+        })?;
     }
     let polls = if guard {
         1
@@ -877,6 +884,7 @@ fn failure_report(error: impl std::fmt::Display) -> FailureReport {
     report
 }
 
+#[inline(never)]
 pub(super) fn dispatch(args: &[String]) -> Result<(), Failure> {
     let mode = match mode(args) {
         Ok(m) => m,
@@ -1399,84 +1407,85 @@ fn download_cancel_trace(protected: bool, expire: bool) -> Result<Trace, Failure
     BAD_HANDLERS.store(0, Ordering::SeqCst);
     let (cc, sc) = pair(protected)?;
     let mut client = service_client(cc)?;
-    let mut server = partner(sc, false)?;
-    let id = download_id(&mut client)?;
-    let call = begin(&mut client, 0, false)?;
-    let mut sample = Sample::default();
-    let mut audit = Audit::default();
-    download_turn(
-        &mut client,
-        &mut server,
-        call,
-        0,
-        0,
-        false,
-        false,
-        &mut sample,
-        &mut audit,
-    )?;
-    if client.engine().rx_body_payload(id) != Some(&SERVICE_BODY[..1024]) {
-        return Err("cancel trace partial body".into());
-    }
-    // The already emitted second request is deliberately undelivered. Its send
-    // and PIV remain counted. This is cancellation of a partial real transfer.
-    if client.transport_mut().io.output_len.take().is_none() {
-        return Err("cancel pending followup".into());
-    }
-    if expire {
-        client.poll(3001).map_err(|_| "expiry poll")?;
-    } else if !client.cancel(call) {
-        return Err("partial cancel refusal".into());
-    }
-    let terminal = client
-        .take_response(call)
-        .ok_or("cancel terminal missing")?;
-    let expected = if expire {
-        coaptic::app::CallFailure::DeadlineExceeded
-    } else {
-        coaptic::app::CallFailure::Cancelled
-    };
-    if terminal.err() != Some(expected)
-        || client.take_response(call).is_some()
-        || client.engine().rx_body_transfer(id).is_some()
-        || client
-            .storage_usage()
-            .rx_body
-            .is_none_or(|p| p.occupied != 0)
-    {
-        return Err("partial cancellation/expiry ownership".into());
-    }
-    // A fresh q=1 call follows the idle interval, on the same contexts. Account
-    // for the undelivered request in the continuous nonce and MID progression.
-    let mut recovery = Audit::default();
-    if protected {
-        recovery.pivs = 2;
-        recovery.last_piv = Some(1);
-    }
-    let mut output = [0; 16384];
-    download_transfer(
-        &mut client,
-        &mut server,
-        id,
-        1,
-        false,
-        false,
-        &mut recovery,
-        &mut output,
-    )?;
-    if client.transport().sent != 18
-        || server.transport().sent != 17
-        || HANDLERS.load(Ordering::SeqCst) != 17
-    {
-        return Err("partial recovery census".into());
-    }
-    Ok(Trace {
-        client_sends: client.transport().sent as u64,
-        server_sends: server.transport().sent as u64,
-        receiving: sample.count as u64 + recovery.receiving,
-        housekeeping: u64::from(expire),
-        handlers: HANDLERS.load(Ordering::SeqCst),
-        collections: 1 + recovery.collections,
+    with_partner(sc, false, |server| {
+        let id = download_id(&mut client)?;
+        let call = begin(&mut client, 0, false)?;
+        let mut sample = Sample::default();
+        let mut audit = Audit::default();
+        download_turn(
+            &mut client,
+            server,
+            call,
+            0,
+            0,
+            false,
+            false,
+            &mut sample,
+            &mut audit,
+        )?;
+        if client.engine().rx_body_payload(id) != Some(&SERVICE_BODY[..1024]) {
+            return Err("cancel trace partial body".into());
+        }
+        // The already emitted second request is deliberately undelivered. Its send
+        // and PIV remain counted. This is cancellation of a partial real transfer.
+        if client.transport_mut().io.output_len.take().is_none() {
+            return Err("cancel pending followup".into());
+        }
+        if expire {
+            client.poll(3001).map_err(|_| "expiry poll")?;
+        } else if !client.cancel(call) {
+            return Err("partial cancel refusal".into());
+        }
+        let terminal = client
+            .take_response(call)
+            .ok_or("cancel terminal missing")?;
+        let expected = if expire {
+            coaptic::app::CallFailure::DeadlineExceeded
+        } else {
+            coaptic::app::CallFailure::Cancelled
+        };
+        if terminal.err() != Some(expected)
+            || client.take_response(call).is_some()
+            || client.engine().rx_body_transfer(id).is_some()
+            || client
+                .storage_usage()
+                .rx_body
+                .is_none_or(|p| p.occupied != 0)
+        {
+            return Err("partial cancellation/expiry ownership".into());
+        }
+        // A fresh q=1 call follows the idle interval, on the same contexts. Account
+        // for the undelivered request in the continuous nonce and MID progression.
+        let mut recovery = Audit::default();
+        if protected {
+            recovery.pivs = 2;
+            recovery.last_piv = Some(1);
+        }
+        let mut output = [0; 16384];
+        download_transfer(
+            &mut client,
+            server,
+            id,
+            1,
+            false,
+            false,
+            &mut recovery,
+            &mut output,
+        )?;
+        if client.transport().sent != 18
+            || server.transport().sent != 17
+            || HANDLERS.load(Ordering::SeqCst) != 17
+        {
+            return Err("partial recovery census".into());
+        }
+        Ok(Trace {
+            client_sends: client.transport().sent as u64,
+            server_sends: server.transport().sent as u64,
+            receiving: sample.count as u64 + recovery.receiving,
+            housekeeping: u64::from(expire),
+            handlers: HANDLERS.load(Ordering::SeqCst),
+            collections: 1 + recovery.collections,
+        })
     })
 }
 
@@ -1497,85 +1506,86 @@ fn download_rejection_trace(protected: bool, fault: usize) -> Result<Trace, Fail
     HANDLERS.store(0, Ordering::SeqCst);
     let (cc, sc) = pair(protected)?;
     let mut client = service_client(cc)?;
-    let mut server = partner(sc, false)?;
-    let id = download_id(&mut client)?;
-    let call = begin(&mut client, 0, false)?;
-    service_bridge(client.transport_mut(), server.transport_mut())?;
-    server.poll(2).map_err(|_| "rejection partner poll")?;
-    let io = &mut server.transport_mut().io;
-    let n = io.output_len.ok_or("rejection response")?;
-    match fault {
-        0 => {
-            io.output[n - 1] ^= 1;
-        }
-        1 => {
-            if io.output[0] & 15 == 0 {
-                return Err("rejection token absent".into());
+    with_partner(sc, false, |server| {
+        let id = download_id(&mut client)?;
+        let call = begin(&mut client, 0, false)?;
+        service_bridge(client.transport_mut(), server.transport_mut())?;
+        server.poll(2).map_err(|_| "rejection partner poll")?;
+        let io = &mut server.transport_mut().io;
+        let n = io.output_len.ok_or("rejection response")?;
+        match fault {
+            0 => {
+                io.output[n - 1] ^= 1;
             }
-            io.output[4] ^= 1;
-        }
-        2 => {
-            io.output_len = None;
-        }
-        _ => return Err("unknown rejection trace".into()),
-    }
-    let mut receives = 0;
-    if fault != 2 {
-        service_bridge(server.transport_mut(), client.transport_mut())?;
-        let _ = client.poll(3);
-        receives += 1;
-        // Plain body corruption is detected by the independent full-byte oracle,
-        // not by CoAP authentication. Do not claim protocol rejection for it.
-        if !protected && fault == 0 {
-            if client.engine().rx_body_payload(id) == Some(&SERVICE_BODY[..1024]) {
-                return Err("corrupt body oracle accepted".into());
+            1 => {
+                if io.output[0] & 15 == 0 {
+                    return Err("rejection token absent".into());
+                }
+                io.output[4] ^= 1;
             }
-        } else if client.engine().rx_body_transfer(id).is_some() {
-            return Err("rejected response acquired body owner".into());
+            2 => {
+                io.output_len = None;
+            }
+            _ => return Err("unknown rejection trace".into()),
         }
-    }
-    // Do not forward any followup emitted by a corrupted unprotected body.
-    client.transport_mut().io.output_len = None;
-    if client.take_response(call).is_some() {
-        return Err("rejection completed before deadline".into());
-    }
-    client.poll(3001).map_err(|_| "rejection expiry")?;
-    require_expired_call(client.take_response(call))?;
-    if client.take_response(call).is_some() {
-        return Err("rejection terminal collected twice".into());
-    }
-    if client.engine().rx_body_transfer(id).is_some() {
-        return Err("rejection leaked body".into());
-    }
-    let mut recovery = Audit::default();
-    if protected {
-        recovery.pivs = client.oscore().ok_or("rejection context")?.sender_seq();
-        recovery.last_piv = recovery.pivs.checked_sub(1);
-    }
-    let mut output = [0; 16384];
-    download_transfer(
-        &mut client,
-        &mut server,
-        id,
-        1,
-        false,
-        false,
-        &mut recovery,
-        &mut output,
-    )?;
-    if HANDLERS.load(Ordering::SeqCst) != 17
-        || server.transport().sent != 17
-        || receives != usize::from(fault != 2)
-    {
-        return Err("rejection recovery census".into());
-    }
-    Ok(Trace {
-        client_sends: client.transport().sent as u64,
-        server_sends: server.transport().sent as u64,
-        receiving: receives as u64 + recovery.receiving,
-        housekeeping: 1,
-        handlers: HANDLERS.load(Ordering::SeqCst),
-        collections: 1 + recovery.collections,
+        let mut receives = 0;
+        if fault != 2 {
+            service_bridge(server.transport_mut(), client.transport_mut())?;
+            let _ = client.poll(3);
+            receives += 1;
+            // Plain body corruption is detected by the independent full-byte oracle,
+            // not by CoAP authentication. Do not claim protocol rejection for it.
+            if !protected && fault == 0 {
+                if client.engine().rx_body_payload(id) == Some(&SERVICE_BODY[..1024]) {
+                    return Err("corrupt body oracle accepted".into());
+                }
+            } else if client.engine().rx_body_transfer(id).is_some() {
+                return Err("rejected response acquired body owner".into());
+            }
+        }
+        // Do not forward any followup emitted by a corrupted unprotected body.
+        client.transport_mut().io.output_len = None;
+        if client.take_response(call).is_some() {
+            return Err("rejection completed before deadline".into());
+        }
+        client.poll(3001).map_err(|_| "rejection expiry")?;
+        require_expired_call(client.take_response(call))?;
+        if client.take_response(call).is_some() {
+            return Err("rejection terminal collected twice".into());
+        }
+        if client.engine().rx_body_transfer(id).is_some() {
+            return Err("rejection leaked body".into());
+        }
+        let mut recovery = Audit::default();
+        if protected {
+            recovery.pivs = client.oscore().ok_or("rejection context")?.sender_seq();
+            recovery.last_piv = recovery.pivs.checked_sub(1);
+        }
+        let mut output = [0; 16384];
+        download_transfer(
+            &mut client,
+            server,
+            id,
+            1,
+            false,
+            false,
+            &mut recovery,
+            &mut output,
+        )?;
+        if HANDLERS.load(Ordering::SeqCst) != 17
+            || server.transport().sent != 17
+            || receives != usize::from(fault != 2)
+        {
+            return Err("rejection recovery census".into());
+        }
+        Ok(Trace {
+            client_sends: client.transport().sent as u64,
+            server_sends: server.transport().sent as u64,
+            receiving: receives as u64 + recovery.receiving,
+            housekeeping: 1,
+            handlers: HANDLERS.load(Ordering::SeqCst),
+            collections: 1 + recovery.collections,
+        })
     })
 }
 
@@ -1716,104 +1726,105 @@ fn download_capacity_trace(protected: bool) -> Result<Trace, Failure> {
     HANDLERS.store(0, Ordering::SeqCst);
     let (cc, sc) = pair(protected)?;
     let mut client = service_client(cc)?;
-    let mut server = partner(sc, false)?;
-    let id = download_id(&mut client)?;
-    let first = begin(&mut client, 0, false)?;
-    let first_mid = service_wire(client.transport())?.message_id();
-    let mut sample = Sample::default();
-    let mut audit = Audit::default();
-    for j in 0..16 {
+    with_partner(sc, false, |server| {
+        let id = download_id(&mut client)?;
+        let first = begin(&mut client, 0, false)?;
+        let first_mid = service_wire(client.transport())?.message_id();
+        let mut sample = Sample::default();
+        let mut audit = Audit::default();
+        for j in 0..16 {
+            download_turn(
+                &mut client,
+                server,
+                first,
+                0,
+                j,
+                false,
+                false,
+                &mut sample,
+                &mut audit,
+            )?;
+        }
+        let before = client
+            .engine()
+            .rx_body_transfer(id)
+            .ok_or("retained capacity owner")?;
+        if !before.is_complete() || client.engine().rx_body_payload(id) != Some(&SERVICE_BODY[..]) {
+            return Err("capacity retained complete bytes".into());
+        }
+        // Completed, uncollected real Call owns this body. A different real Call
+        // must fail explicit body admission without replacing the retained owner.
+        let second = begin(&mut client, 1, false)?;
+        let mut refusal = Sample::default();
         download_turn(
             &mut client,
-            &mut server,
-            first,
+            server,
+            second,
+            1,
             0,
-            j,
             false,
             false,
-            &mut sample,
+            &mut refusal,
             &mut audit,
         )?;
-    }
-    let before = client
-        .engine()
-        .rx_body_transfer(id)
-        .ok_or("retained capacity owner")?;
-    if !before.is_complete() || client.engine().rx_body_payload(id) != Some(&SERVICE_BODY[..]) {
-        return Err("capacity retained complete bytes".into());
-    }
-    // Completed, uncollected real Call owns this body. A different real Call
-    // must fail explicit body admission without replacing the retained owner.
-    let second = begin(&mut client, 1, false)?;
-    let mut refusal = Sample::default();
-    download_turn(
-        &mut client,
-        &mut server,
-        second,
-        1,
-        0,
-        false,
-        false,
-        &mut refusal,
-        &mut audit,
-    )?;
-    if !matches!(
-        client.take_response(second),
-        Some(Err(coaptic::app::CallFailure::BlockTransfer(
-            coaptic::error::BlockTransferError::Saturated
-        )))
-    ) || client.take_response(second).is_some()
-        || client.engine().rx_body_transfer(id) != Some(before)
-        || client.engine().rx_body_payload(id) != Some(&SERVICE_BODY[..])
-    {
-        return Err("allocated capacity refusal changed retained owner".into());
-    }
-    let mut output = [0; 16384];
-    let pending = ServicePending {
-        call: first,
-        first_mid,
-        started: Instant::now(),
-        polls: 16,
-        wall_sum: 0,
-    };
-    {
-        let reply = client
-            .take_response_into(first, &mut output)?
-            .ok_or("capacity retained collection")?
-            .map_err(|_| "capacity retained Call failure")?;
-        service_verify(&reply, &pending, 16384)?;
-    }
-    if client.take_response(first).is_some() || client.engine().rx_body_transfer(id).is_some() {
-        return Err("capacity original collection once".into());
-    }
-    let mut recovery = Audit::default();
-    if protected {
-        recovery.pivs = 17;
-        recovery.last_piv = Some(16);
-    }
-    download_transfer(
-        &mut client,
-        &mut server,
-        id,
-        2,
-        false,
-        false,
-        &mut recovery,
-        &mut output,
-    )?;
-    if client.transport().sent != 33
-        || server.transport().sent != 33
-        || HANDLERS.load(Ordering::SeqCst) != 33
-    {
-        return Err("allocated capacity census".into());
-    }
-    Ok(Trace {
-        client_sends: client.transport().sent as u64,
-        server_sends: server.transport().sent as u64,
-        receiving: sample.count as u64 + refusal.count as u64 + recovery.receiving,
-        housekeeping: 0,
-        handlers: HANDLERS.load(Ordering::SeqCst),
-        collections: 2 + recovery.collections,
+        if !matches!(
+            client.take_response(second),
+            Some(Err(coaptic::app::CallFailure::BlockTransfer(
+                coaptic::error::BlockTransferError::Saturated
+            )))
+        ) || client.take_response(second).is_some()
+            || client.engine().rx_body_transfer(id) != Some(before)
+            || client.engine().rx_body_payload(id) != Some(&SERVICE_BODY[..])
+        {
+            return Err("allocated capacity refusal changed retained owner".into());
+        }
+        let mut output = [0; 16384];
+        let pending = ServicePending {
+            call: first,
+            first_mid,
+            started: Instant::now(),
+            polls: 16,
+            wall_sum: 0,
+        };
+        {
+            let reply = client
+                .take_response_into(first, &mut output)?
+                .ok_or("capacity retained collection")?
+                .map_err(|_| "capacity retained Call failure")?;
+            service_verify(&reply, &pending, 16384)?;
+        }
+        if client.take_response(first).is_some() || client.engine().rx_body_transfer(id).is_some() {
+            return Err("capacity original collection once".into());
+        }
+        let mut recovery = Audit::default();
+        if protected {
+            recovery.pivs = 17;
+            recovery.last_piv = Some(16);
+        }
+        download_transfer(
+            &mut client,
+            server,
+            id,
+            2,
+            false,
+            false,
+            &mut recovery,
+            &mut output,
+        )?;
+        if client.transport().sent != 33
+            || server.transport().sent != 33
+            || HANDLERS.load(Ordering::SeqCst) != 33
+        {
+            return Err("allocated capacity census".into());
+        }
+        Ok(Trace {
+            client_sends: client.transport().sent as u64,
+            server_sends: server.transport().sent as u64,
+            receiving: sample.count as u64 + refusal.count as u64 + recovery.receiving,
+            housekeeping: 0,
+            handlers: HANDLERS.load(Ordering::SeqCst),
+            collections: 2 + recovery.collections,
+        })
     })
 }
 
