@@ -308,14 +308,15 @@ checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 
 [[package]]
 name = "coap"
-version = "0.28.1"
+version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "285987a185119925a75fdcc04c626820eec3e2427c6f70baae7841a34f5d4273"
+checksum = "62a1cfa0a389055ce9440b2ab40c77463c22f49c4b5354f319aa36e9e4777e11"
 dependencies = [
  "async-trait",
  "coap-lite",
  "futures",
  "log",
+ "percent-encoding",
  "rand 0.9.5",
  "regex",
  "tokio",

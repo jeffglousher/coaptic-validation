@@ -18,15 +18,15 @@ import tomllib
 
 MANIFEST = "crates/coaptic-io/Cargo.toml"
 NATIVE = "tools/benchmark/native/Cargo.syn3.lock"
-NATIVE_HASH = "cb9a96e1bd6cd3507c1970b2ac4a0688b1f6e450b8285537da67808c1284da01"
+NATIVE_HASH = "3c25aa2229363f18f89f58783f431dafcd769a110fdb23c1b81ca343eb95f2c4"
 # Canonical Git bytes, not a hash supplied by the checkout being prepared.
 INPUTS = (
     ("Cargo.lock", "Cargo.syn3.lock",
      "f711ce82fa0c978951b004095f37ad2cc4b05c1ceabbff406646ba6c87ed934b",
      "b26481d282ef0c3355dd4c520079135c87107b359216dd19c0cb3a8856b85589"),
     ("tools/durable-host/Cargo.lock", "tools/durable-host/Cargo.syn3.lock",
-     "866705a2fe507954a882e22e7d35a28036a011f7cae3d6e0a30aadeb14312f05",
-     "5a73ed0d47b66608676cf8c344ab0e321583c01328684800ff9c0f3274a5e9e5"),
+     "201a985ddbb079b851b734371217185a62b8260710c5686a1f772655eb07643b",
+     "011e7e4c565a0f6a8db6b0f7a62ab58c74525b0bc621d4b3117269fd3f9387fe"),
     ("fuzz/Cargo.lock", "fuzz/Cargo.syn3.lock",
      "a463590ec3555d76ad4a3b8996ca8cbc18b2c9f97502b7ba87f32d7dbc7386ee",
      "cb4fc3fda0fe9cda1db44985002e8ea5981a488172faf9c2ed4e308b71906513"),
