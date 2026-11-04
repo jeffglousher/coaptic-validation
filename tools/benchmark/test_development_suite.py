@@ -67,7 +67,7 @@ def profile_reliability(profile):
                  ledger=suite.dimensions(profile,size)) for mode in suite.SECURITY]
 
 
-def socket_fixture(profile, security):
+def socket_fixture(profile, security, server_kind="coaptic-mio"):
     size = dict(suite.PROFILES)[profile]
     options = suite.socket_options(profile)
     concurrency = options["concurrency"]
@@ -96,8 +96,8 @@ def socket_fixture(profile, security):
             overlapping_completions=[32//concurrency]*concurrency,
             verified_completions=[32//concurrency]*concurrency,
             window_metadata_bytes=100, lane_counter_snapshot_bytes=64, peer_keys_bytes=64)
-    return dict(report=report, server_resources=suite.dimensions(profile, size) |
-        dict(app_including_adapter_bytes=16000,
+    return dict(server_kind=server_kind, report=report, server_resources=suite.dimensions(profile, size) |
+        dict(server_kind=server_kind, loop_future_borrowing_app_bytes=12000, app_including_adapter_bytes=16000,
              app_requested_heap_bytes=282640 if profile=="service-allocated" else 0))
 
 
@@ -123,6 +123,8 @@ class ExpandedCoverage(unittest.TestCase):
         self.assertEqual(rows["service-datagram"]["rx_body_slots"], 0)
         self.assertEqual(rows["small-observe"]["observe"], 1)
         self.assertEqual([rows[p]["concurrency"] for p in ("device-fixed","gateway-fixed","service-fixed")], [2,2,4])
+        self.assertEqual(config["server_kinds"], ["coaptic-mio", "coaptic-async"])
+        self.assertEqual(config["core_server_kind"], "coaptic-mio")
         self.assertEqual(config["core_concurrency"], 1)
         self.assertEqual(len(config["unsupported_core_profiles"]), 5)
 
@@ -242,6 +244,50 @@ class PreparedInputs(unittest.TestCase):
 
 
 class RunFailure(unittest.TestCase):
+    def test_run_executes_both_modes_with_separate_sync_supporting_probes(self):
+        bundle = dict(harness={}, host={}, compiler="x", cargo="x", flags={}, sources=dict(suite=dict(tree="same")))
+        specs = []
+        def work(spec, **kwargs):
+            specs.append(spec)
+            kind = spec["kind"]
+            if kind == "core":
+                value = core_report(spec["profile"], spec["security"])
+            elif kind == "socket":
+                value = socket_fixture(spec["profile"], spec["security"], spec["server_kind"])
+            elif kind == "observe":
+                value = observe_report(spec["security"])
+            elif kind == "reliability-profile":
+                raw = b'\n'.join(json.dumps(r).encode() for r in profile_reliability(spec["profile"]))
+                return SimpleNamespace(stdout=raw, duration_seconds=.01)
+            else:
+                value = {}
+            return SimpleNamespace(stdout=json.dumps(value).encode(), duration_seconds=.01)
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(suite, "verify_prepared", return_value=(bundle, {"client": "unused"})), \
+                patch.object(suite, "task", side_effect=work):
+            result = suite.run_suite("unused", Path(d) / "run.json")
+        self.assertTrue(result["passed"])
+        sockets = [s for s in specs if s["kind"] == "socket"]
+        self.assertEqual([(s["profile"], s["security"], s["server_kind"]) for s in sockets],
+                         [(p, s, k) for p, _ in suite.PROFILES for s in suite.SECURITY for k in suite.SERVER_KINDS])
+        self.assertEqual(sum(s["kind"] == "core" for s in specs), 6)
+        self.assertEqual(sum(c["core"]["status"] == "passed" for c in result["cells"]), 6)
+        self.assertTrue(all(c["core"]["status"] == "unsupported" for c in result["cells"]
+                            if c["server_kind"] == "coaptic-async"))
+        self.assertTrue(all(r["server_kind"] == "coaptic-mio" for r in result["reliability"]))
+
+    def test_socket_worker_forwards_selected_mode_to_measurement(self):
+        import contextlib
+        import io
+        for server_kind in suite.SERVER_KINDS:
+            with self.subTest(server_kind=server_kind), patch("native_diagnostic.measure", return_value={}) as measure, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(suite.worker(dict(kind="socket", server="server", client="client",
+                    profile="service-fixed", size=16384, security="oscore", server_kind=server_kind)), 0)
+            self.assertEqual(measure.call_args.kwargs["server_kind"], server_kind)
+            self.assertEqual(measure.call_args.kwargs["resource_profile"], "service-fixed")
+            self.assertEqual(measure.call_args.kwargs["concurrency"], 4)
+
     def test_core_failure_preserves_completed_socket_and_later_not_run(self):
         bundle = dict(harness={}, host={}, compiler="x", cargo="x", flags={}, sources=dict(suite=dict(tree="same")))
         def work(spec, **kwargs):
@@ -253,7 +299,7 @@ class RunFailure(unittest.TestCase):
             elif kind == "observe":
                 raw = json.dumps(observe_report(spec["security"])).encode()
             elif kind == "socket":
-                raw = json.dumps(socket_fixture(spec["profile"], spec["security"])).encode()
+                raw = json.dumps(socket_fixture(spec["profile"], spec["security"], spec["server_kind"])).encode()
             else:
                 raw = b"independent proof"
             return SimpleNamespace(stdout=raw, duration_seconds=.01)
@@ -264,7 +310,7 @@ class RunFailure(unittest.TestCase):
             with self.assertRaisesRegex(TimeoutError, "core timeout"):
                 suite.run_suite("unused", p)
             result = suite.load(p)
-            self.assertEqual(len(result["not_run"]), 15)
+            self.assertEqual(len(result["not_run"]), 31)
             self.assertEqual(result["cells"][0]["status"], "failed")
             self.assertIn("socket", result["cells"][0])
             self.assertIn("core:", result["failed_phase"])
@@ -279,7 +325,7 @@ class RunFailure(unittest.TestCase):
                 suite.run_suite("unused", p)
             report = suite.load(p)
             self.assertFalse(report["passed"])
-            self.assertEqual(len(report["not_run"]), 16)
+            self.assertEqual(len(report["not_run"]), 32)
             self.assertEqual(report["error"]["type"], "TimeoutError")
 
     def test_comparison_does_not_rescue_failed_run(self):
@@ -306,8 +352,9 @@ class ComparisonTests(unittest.TestCase):
                 contextlib.redirect_stdout(stream):
             self.assertEqual(suite.main(), 0)
         summary = json.loads(stream.getvalue())
+        self.assertEqual(summary["socket_cells_by_server_kind"], {k: 16 for k in suite.SERVER_KINDS})
         self.assertEqual((summary["socket_cells"], summary["core_cells"], summary["unsupported_core_cells"],
-                          summary["observe_lifecycle_cells"]), (16, 6, 10, 2))
+                          summary["observe_lifecycle_cells"]), (32, 6, 26, 2))
 
     @staticmethod
     def observation():
@@ -318,20 +365,21 @@ class ComparisonTests(unittest.TestCase):
         rows = []
         for profile, size in suite.PROFILES:
             for security in suite.SECURITY:
-                socket_value = socket_fixture(profile, security)
-                core = dict(status="unsupported")
-                if profile in suite.CORE_PROFILES:
-                    raw = core_report(profile, security)
-                    core = dict(status="passed", concurrency=1, report=raw,
-                                summary=suite.validate_core(raw, profile, security))
-                rows.append(dict(profile=profile, security=security, status="passed", core=core,
-                                 socket=socket_value))
+                for server_kind in suite.SERVER_KINDS:
+                    socket_value = socket_fixture(profile, security, server_kind)
+                    core = dict(status="unsupported")
+                    if profile in suite.CORE_PROFILES and server_kind == "coaptic-mio":
+                        raw = core_report(profile, security)
+                        core = dict(status="passed", server_kind="coaptic-mio", concurrency=1, report=raw,
+                                    summary=suite.validate_core(raw, profile, security))
+                    rows.append(dict(profile=profile, security=security, server_kind=server_kind, status="passed", core=core,
+                                     socket=socket_value))
         return dict(schema=suite.SCHEMA, kind="run", passed=True,
                     configuration=suite.configuration(), configuration_sha256=suite.fingerprint(suite.configuration()),
-                    cells=rows, reliability=[dict(kind="independent-body-corruption-and-security-recovery",passed=True)] +
-                        [dict(profile=p,passed=True,cells=profile_reliability(p)) for p,_ in suite.PROFILES],
+                    cells=rows, reliability=[dict(kind="independent-body-corruption-and-security-recovery",server_kind="coaptic-mio",passed=True)] +
+                        [dict(profile=p,server_kind="coaptic-mio",passed=True,cells=profile_reliability(p)) for p,_ in suite.PROFILES],
                     not_run=[], host={"host": "same"},
-                    observe=[dict(security=mode, passed=True, report=observe_report(mode)) for mode in suite.SECURITY],
+                    observe=[dict(security=mode, execution_mode="sync", passed=True, report=observe_report(mode)) for mode in suite.SECURITY],
                     preparation=prep, client_preparation=client)
 
     def compare(self, a, b):
@@ -344,8 +392,11 @@ class ComparisonTests(unittest.TestCase):
         a, b = self.observation(), self.observation()
         b["preparation"]["sources"]["core"]["commit"] = "b" * 40
         out = self.compare(a, b)
-        self.assertEqual(len(out["rows"]), 16)
+        self.assertEqual(len(out["rows"]), 32)
         self.assertIn("not a gain", out["interpretation"])
+        self.assertEqual([r["server_kind"] for r in out["rows"]], list(suite.SERVER_KINDS) * 16)
+        self.assertEqual(sum("core_poll_median_ns_before" in r for r in out["rows"]), 6)
+        self.assertEqual(sum("loop_future_borrowing_app_bytes_before" in r for r in out["rows"]), 16)
 
     def test_host_client_harness_capacity_and_missing_rows_refused(self):
         def host(r): r["host"]["host"] = "other"
@@ -353,12 +404,16 @@ class ComparisonTests(unittest.TestCase):
         def harness(r): r["preparation"]["harness"] = {"changed": "yes"}
         def capacity(r): r["cells"][0]["socket"]["server_resources"]["calls"] = 2
         def missing(r): r["cells"].pop()
+        def mode(r): r["cells"][1]["server_kind"] = "coaptic-mio"
+        def ledger_mode(r): r["cells"][1]["socket"]["server_resources"]["server_kind"] = "coaptic-mio"
+        def async_core(r): r["cells"][1]["core"] = r["cells"][0]["core"]
+        def future(r): r["cells"][1]["socket"]["server_resources"]["loop_future_borrowing_app_bytes"] = True
         def failure(r): r["cells"][0]["socket"]["report"]["failed"] = 1
         def duplicate(r): r["cells"][1] = r["cells"][0]
         def reliability(r): r["reliability"][0]["passed"] = False
         def proof_identity(r): r["reliability"][2] = r["reliability"][1]
         def fixture(r): r["preparation"]["sources"]["suite"]["tree"] = "changed native server"
-        for change in (host, client, harness, capacity, missing, failure, duplicate, reliability, proof_identity, fixture):
+        for change in (host, client, harness, capacity, missing, mode, ledger_mode, async_core, future, failure, duplicate, reliability, proof_identity, fixture):
             a, b = self.observation(), self.observation(); change(b)
             with self.subTest(change=change.__name__), self.assertRaises(ValueError):
                 self.compare(a, b)

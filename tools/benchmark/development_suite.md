@@ -5,8 +5,8 @@ before timing: independent exact/corrupt response checks, security refusal and
 fresh recovery, then each profile's oversize/refusal/recovery checks. The native
 client authenticates OSCORE and verifies complete bodies before completion.
 
-Eight versioned configurations run GET/CON in unprotected and established volatile
-OSCORE modes, with one populated route and one security association/four bindings:
+Eight versioned configurations run GET/CON in both synchronous and asynchronous
+App modes, each unprotected and established volatile OSCORE, with one populated route and one security association/four bindings:
 
 - SmallDevice: fixed Constrained, 32 bytes, blockwise off, C1.
 - SmallDevice blockwise: fixed Constrained, 4,096 bytes, one RX/TX body, C1.
@@ -31,13 +31,13 @@ reserving an Observe table is not evidence of Observe behavior.
 
 Allocated Service requested core pools have a 282,640-byte ceiling; automatic
 expansion is off. App sizes are observed separately. Six existing socket-free
-`black_box` C1 core cells accompany sixteen native loopback cells. These core
+`black_box` C1 core cells accompany thirty-two native loopback cells. These synchronous core
 probes remain separately scoped C1 supporting evidence even for Service rows
 whose socket workload is C4. The ten core cells for other exact configurations
 are explicitly unsupported; there is no substitution with a differently sized App.
 
-Configuration/schema version 2 intentionally refuses comparisons with the
-historical four-profile version 1. Its committed evidence remains unchanged.
+Configuration/schema version 3 requires explicit sync/async coverage and refuses
+comparisons with historical versions 1 and 2. Its committed evidence remains unchanged.
 
 ## Prepare once per source/build
 

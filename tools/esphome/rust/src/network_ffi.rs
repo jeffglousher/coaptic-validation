@@ -1,5 +1,4 @@
 //! Synchronous borrowed-buffer boundary to ESPHome's owned lwIP socket.
-#[cfg(not(feature = "async-network"))]
 use coaptic::Endpoint;
 #[cfg(not(feature = "async-network"))]
 use coaptic::storage::DatagramIo;
@@ -35,13 +34,10 @@ unsafe extern "C" {
     fn coaptic_socket_random(bytes: *mut u8, length: u32) -> bool;
     fn coaptic_entropy_bind(owner: *mut c_void) -> bool;
     fn coaptic_entropy_unbind();
-    #[cfg(not(feature = "async-network"))]
     fn coaptic_read_campaign_config(context: *mut c_void, bytes: *mut u8, length: u32) -> bool;
-    #[cfg(not(feature = "async-network"))]
     fn coaptic_read_campaign_clock_ns(context: *mut c_void) -> u64;
     #[cfg(not(feature = "async-network"))]
     fn coaptic_read_campaign_wait(milliseconds: u32) -> bool;
-    #[cfg(not(feature = "async-network"))]
     fn coaptic_read_campaign_record(context: *mut c_void, words: *const u64, count: u32);
     fn coaptic_enter_critical();
     fn coaptic_leave_critical();
@@ -296,15 +292,12 @@ pub extern "C" fn coaptic_entropy_requirement(index: u32) -> u64 {
 unsafe fn run_seeded(context: *mut c_void, id: *const u8) -> i32 {
     let mode = unsafe { coaptic_security_mode(context) };
     if mode == 7 {
-        #[cfg(not(feature = "async-network"))]
         return unsafe { run_read_campaign(context, id, mode) };
-        #[cfg(feature = "async-network")]
-        return -12;
     }
     if mode == 6 {
-        #[cfg(all(feature = "oscore", not(feature = "async-network")))]
+        #[cfg(feature = "oscore")]
         return unsafe { run_read_campaign(context, id, mode) };
-        #[cfg(any(not(feature = "oscore"), feature = "async-network"))]
+        #[cfg(not(feature = "oscore"))]
         return -12;
     }
     #[cfg(feature = "pairing")]
@@ -318,17 +311,18 @@ unsafe fn run_seeded(context: *mut c_void, id: *const u8) -> i32 {
     unsafe { run_legacy(context, id, mode) }
 }
 
-// This selected synchronous owner has no lifetime overlap with service or
+// This selected owner has no lifetime overlap with service or
 // pairing App construction. Keep its large frame on a separate call path.
-#[cfg(not(feature = "async-network"))]
 #[inline(never)]
 unsafe fn run_read_campaign(context: *mut c_void, id: *const u8, mode: u32) -> i32 {
     use super::read_campaign_device::{self, Selection};
+    #[cfg(not(feature = "async-network"))]
     use core::cell::Cell;
     let mut config = [0; 6];
     if !unsafe { coaptic_read_campaign_config(context, config.as_mut_ptr(), 6) } {
         return -12;
     }
+    #[cfg(not(feature = "async-network"))]
     let failed_wait = Cell::new(false);
     // The ABI guarantees these run-ID bytes remain valid while this sole task
     // runs. Borrow the existing ID instead of creating another identity buffer.
@@ -339,17 +333,19 @@ unsafe fn run_read_campaign(context: *mut c_void, id: *const u8, mode: u32) -> i
             u16::from_be_bytes(config[4..].try_into().unwrap()),
         ),
         expected_identity: identity,
-        async_network: false,
+        async_network: cfg!(feature = "async-network"),
     };
     let random =
         |bytes: &mut [u8]| unsafe { coaptic_socket_random(bytes.as_mut_ptr(), bytes.len() as u32) };
     let clock = || {
+        #[cfg(not(feature = "async-network"))]
         if failed_wait.get() {
             return None;
         }
         let now = unsafe { coaptic_read_campaign_clock_ns(context) };
         (now != u64::MAX).then_some(now)
     };
+    #[cfg(not(feature = "async-network"))]
     let wait = || {
         if !unsafe { coaptic_read_campaign_wait(1) } {
             failed_wait.set(true);
@@ -359,8 +355,38 @@ unsafe fn run_read_campaign(context: *mut c_void, id: *const u8, mode: u32) -> i
         unsafe { coaptic_read_campaign_record(context, record.words.as_ptr(), 16) };
         true
     };
+    #[cfg(feature = "async-network")]
+    let mut runtime = match unsafe { crate::async_network::Runtime::new(context) } {
+        Ok(runtime) => runtime,
+        Err(_) => return -12,
+    };
+    #[cfg(feature = "async-network")]
+    let (io, mut protocol_timer, mut local_timer, mut driver) = runtime.split();
     let result = if mode == 7 {
-        read_campaign_device::run_unprotected(Socket(context), random, selection, clock, wait, emit)
+        #[cfg(not(feature = "async-network"))]
+        let result = read_campaign_device::run_unprotected(
+            Socket(context),
+            random,
+            selection,
+            clock,
+            wait,
+            emit,
+        );
+        #[cfg(feature = "async-network")]
+        let result = match driver.run(core::pin::pin!(
+            read_campaign_device::run_unprotected_async(
+                io,
+                random,
+                selection,
+                clock,
+                (&mut protocol_timer, &mut local_timer),
+                emit
+            )
+        )) {
+            Ok(result) => result,
+            Err(_) => return -13,
+        };
+        result
     } else {
         #[cfg(feature = "oscore")]
         {
@@ -376,6 +402,7 @@ unsafe fn run_read_campaign(context: *mut c_void, id: *const u8, mode: u32) -> i
                 recipient: bytes[65],
             };
             bytes.fill(0);
+            #[cfg(not(feature = "async-network"))]
             let result = read_campaign_device::run(
                 Socket(context),
                 random,
@@ -386,6 +413,22 @@ unsafe fn run_read_campaign(context: *mut c_void, id: *const u8, mode: u32) -> i
                 wait,
                 emit,
             );
+            #[cfg(feature = "async-network")]
+            let result = match driver.run(core::pin::pin!(read_campaign_device::run_async(
+                io,
+                random,
+                &credentials,
+                Nvs(context),
+                selection,
+                clock,
+                (&mut protocol_timer, &mut local_timer),
+                emit
+            ))) {
+                Ok(result) => result,
+                Err(_) => Err(read_campaign_device::Error::Campaign(
+                    "campaign async driver",
+                )),
+            };
             credentials.secret.fill(0);
             credentials.salt.fill(0);
             credentials.context.fill(0);

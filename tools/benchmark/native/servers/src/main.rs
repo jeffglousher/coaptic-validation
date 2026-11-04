@@ -121,8 +121,8 @@ impl ResourceProfile {
         if self == Self::HostControl {
             return Ok(());
         }
-        if kind != "coaptic-mio" || rx_bytes != self.rx_bytes() {
-            return Err("representative resource profiles require Mio and exact RX capacity");
+        if !matches!(kind, "coaptic-mio" | "coaptic-async") || rx_bytes != self.rx_bytes() {
+            return Err("representative resource profiles require Mio/async and exact RX capacity");
         }
         let sizes: &[usize] = match self {
             Self::SmallDevice => &[32],
@@ -514,10 +514,14 @@ impl coaptic::storage::AsyncDatagramIo for ReadyUdp {
 
 type AsyncUdpApp = App<coaptic::profiles::Default, ReadyUdp, 1, true, AllocMemory>;
 
-async fn async_udp_loop(
-    app: &mut AsyncUdpApp,
+async fn async_udp_loop<P, S, const N: usize, const B: bool, const D: usize, const C: usize>(
+    app: &mut App<P, ReadyUdp, N, B, S, D, C>,
     epoch: Instant,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    P: MemoryLayout<B> + AppAssembled<B>,
+    S: AppStorage<Token = P::Token>,
+{
     let now = || epoch.elapsed().as_millis() as u64;
     let mut clock = || Ok::<u64, std::io::Error>(now());
     let mut timer = AppTimer(epoch);
@@ -525,8 +529,18 @@ async fn async_udp_loop(
         for _ in 0..32 {
             // App races local work/deadlines before ingress and retains a winning
             // receive in its RX pool. This static fixture has no local signals.
-            app.wait_async(now(), &mut timer, std::future::pending::<()>())
-                .await?;
+            match app
+                .wait_async(now(), &mut timer, std::future::pending::<()>())
+                .await
+            {
+                Ok(_) => {}
+                Err(coaptic::app::Error::Io(coaptic::storage::DatagramIoError::Io(error)))
+                    if error.kind() == std::io::ErrorKind::InvalidData =>
+                {
+                    continue;
+                }
+                Err(error) => return Err(error.into()),
+            }
             let now_ms = now();
             // App further limits this send budget to its next protocol deadline.
             match app
@@ -566,6 +580,157 @@ async fn async_udp_server(
     );
     std::io::stdout().flush()?;
     run.await
+}
+
+// Concrete synchronous setup frames keep fixed pools out of an enclosing enum
+// or async setup future. Only the loop future borrows the separately owned App.
+macro_rules! async_profile_driver {
+    ($name:ident, $profile:ident, $resources:expr) => {
+        #[inline(never)]
+        fn $name(
+            io: ReadyUdp,
+            runtime: &tokio::runtime::Runtime,
+            bytes: usize,
+            context: Option<SecurityContext>,
+            security: &str,
+        ) -> Result<(), Box<dyn std::error::Error>> {
+            let app = bind_resources!($resources, io, context)?;
+            drive_async_profile(app, runtime, ResourceProfile::$profile, bytes, security)
+        }
+    };
+}
+
+async_profile_driver!(
+    small_device_async,
+    SmallDevice,
+    coaptic::resources::SmallDevice::new()
+);
+async_profile_driver!(
+    small_blockwise_async,
+    SmallBlockwise,
+    coaptic::resources::SmallDevice::new().block_wise::<true>()
+);
+async_profile_driver!(
+    small_observe_async,
+    SmallObserve,
+    coaptic::resources::SmallDevice::new()
+        .block_wise::<true>()
+        .observe_entries::<1>()
+);
+async_profile_driver!(
+    device_fixed_async,
+    DeviceFixed,
+    coaptic::resources::Device::new()
+);
+async_profile_driver!(
+    gateway_fixed_async,
+    GatewayFixed,
+    coaptic::resources::Gateway::new()
+);
+async_profile_driver!(
+    service_datagram_async,
+    ServiceDatagram,
+    coaptic::resources::Service::new().block_wise::<false>()
+);
+async_profile_driver!(
+    service_fixed_async,
+    ServiceFixed,
+    coaptic::resources::Service::new()
+);
+async_profile_driver!(service_allocated_async, ServiceAllocated, {
+    let resources = coaptic::resources::Service::new();
+    let required =
+        AllocMemory::<coaptic::message::Token>::required_heap_bytes(resources.pool_capacities())?;
+    resources.allocated(required)
+});
+
+fn async_profile_server(
+    address: &str,
+    bytes: usize,
+    context: Option<SecurityContext>,
+    profile: ResourceProfile,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let socket = UdpSocket::bind(address)?;
+    socket.set_nonblocking(true)?;
+    let io = {
+        let _entered = runtime.enter();
+        ReadyUdp {
+            socket: tokio::net::UdpSocket::from_std(socket)?,
+            scratch: [0; 2049],
+            received: false,
+            #[cfg(test)]
+            counts: None,
+        }
+    };
+    let security = if context.is_some() {
+        "oscore"
+    } else {
+        "unprotected"
+    };
+    let driver = match profile {
+        ResourceProfile::SmallDevice => small_device_async,
+        ResourceProfile::SmallBlockwise => small_blockwise_async,
+        ResourceProfile::SmallObserve => small_observe_async,
+        ResourceProfile::DeviceFixed => device_fixed_async,
+        ResourceProfile::GatewayFixed => gateway_fixed_async,
+        ResourceProfile::ServiceDatagram => service_datagram_async,
+        ResourceProfile::ServiceFixed => service_fixed_async,
+        ResourceProfile::ServiceAllocated => service_allocated_async,
+        ResourceProfile::HostControl => return Err("async representative profile required".into()),
+    };
+    driver(io, &runtime, bytes, context, security)
+}
+
+fn drive_async_profile<P, S, const N: usize, const B: bool, const D: usize, const C: usize>(
+    mut app: App<P, ReadyUdp, N, B, S, D, C>,
+    runtime: &tokio::runtime::Runtime,
+    profile: ResourceProfile,
+    bytes: usize,
+    security: &str,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    P: MemoryLayout<B> + AppAssembled<B>,
+    S: AppStorage<Token = P::Token>,
+{
+    let adapter_bytes = std::mem::size_of_val(app.transport());
+    let app_bytes = std::mem::size_of_val(&app);
+    let capacities = app.engine().capacities();
+    let requested_heap = if profile.allocated() {
+        AllocMemory::<P::Token>::required_heap_bytes(capacities)?
+    } else {
+        0
+    };
+    let representation_heap = if profile == ResourceProfile::SmallDevice {
+        0
+    } else {
+        bytes
+    };
+    let run = async_udp_loop(&mut app, Instant::now());
+    println!(
+        "{{\"schema\":\"coaptic-native-server-resources/2\",\"server_kind\":\"coaptic-async\",\"udp_scratch_bytes\":2049,\"adapter_inline_bytes\":{adapter_bytes},\"app_including_adapter_bytes\":{app_bytes},\"loop_future_borrowing_app_bytes\":{},\"runtime_heap_bytes\":null,\"runtime_stack_bytes\":null,\"kernel_bytes\":null,\"allocator_overhead_bytes\":null,\"initialization_stack_bytes\":null,\"resource_profile\":\"{}\",\"storage\":\"{}\",\"routes\":{N},\"populated_routes\":1,\"calls\":{C},\"deferred\":{D},\"associations\":1,\"security_requests\":4,\"blockwise\":{B},\"rx_slots\":{},\"tx_slots\":{},\"rx_datagram_bytes\":{},\"tx_datagram_bytes\":{},\"dedup\":{},\"observe\":{},\"rx_body_slots\":{},\"tx_body_slots\":{},\"rx_body_bytes\":{},\"tx_body_bytes\":{},\"representation_bytes\":{bytes},\"representation_heap_bytes\":{representation_heap},\"app_requested_heap_bytes\":{requested_heap},\"security\":\"{security}\",\"nesting\":\"scratch inside adapter inside App; fixed pools inside App; allocated pools inside requested heap; loop future borrows separate App; representation and runtime separate\",\"limits\":\"inline and requested owners only; runtime, allocator, initialization and peak stacks, kernel and static representation backing excluded or unknown; no whole-memory acceptance\"}}",
+        std::mem::size_of_val(&run),
+        profile.name(),
+        if profile.allocated() {
+            "allocated"
+        } else {
+            "fixed"
+        },
+        capacities.rx_datagram_slots,
+        capacities.tx_datagram_slots,
+        capacities.rx_datagram_bytes,
+        capacities.tx_datagram_bytes,
+        capacities.dedup_entries,
+        capacities.observe_entries,
+        capacities.rx_body_slots.unwrap_or(0),
+        capacities.tx_body_slots.unwrap_or(0),
+        capacities.rx_body_bytes.unwrap_or(0),
+        capacities.tx_body_bytes.unwrap_or(0),
+    );
+    std::io::stdout().flush()?;
+    runtime.block_on(run)
 }
 
 struct MioUdp<const SCRATCH: usize = 2049> {
@@ -1195,6 +1360,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .enable_all()
             .build()?
             .block_on(staged_ready::serve(&address, size, rx_bytes, context)),
+        "coaptic-async" if profile != ResourceProfile::HostControl => {
+            async_profile_server(&address, size, context, profile)
+        }
         "coaptic-async" => tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?
@@ -1245,7 +1413,8 @@ mod tests {
             );
             for &size in sizes {
                 assert!(profile.validate("coaptic-mio", size, rx).is_ok());
-                for kind in ["coaptic-mio-direct", "coaptic-small", "coaptic-async"] {
+                assert!(profile.validate("coaptic-async", size, rx).is_ok());
+                for kind in ["coaptic-mio-direct", "coaptic-small", "coaptic-ready"] {
                     assert!(profile.validate(kind, size, rx).is_err());
                 }
                 assert!(profile.validate("coaptic-mio", size, rx + 1).is_err());
@@ -1471,6 +1640,61 @@ mod tests {
             received: false,
             counts: None,
         }
+    }
+
+    #[test]
+    fn async_small_profile_loop_recovers_oversize_and_releases_cancelled_wait() {
+        async_runtime().block_on(async {
+            let io = async_test_io("127.0.0.1:0").await;
+            let local = io.socket.local_addr().unwrap();
+            let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+            let expected = coaptic::resources::SmallDevice::new().pool_capacities();
+            let mut app = bind_resources!(coaptic::resources::SmallDevice::new(), io, None).unwrap();
+            assert_eq!(app.engine().capacities(), expected);
+            assert_eq!(app.client_capacity(), 1);
+            sender.send_to(&[0xff; 1153], local).await.unwrap();
+            // An empty CON needs only a Reset, without global route/body state.
+            sender.send_to(&[0x40, 0, 0, 23], local).await.unwrap();
+            let mut packet = [0; 8];
+            tokio::select! {
+                result = async_udp_loop(&mut app, Instant::now()) =>
+                    panic!("async profile loop exited instead of recovering: {result:?}"),
+                result = tokio::time::timeout(Duration::from_secs(1), sender.recv_from(&mut packet)) => {
+                    let (n, from) = result.unwrap().unwrap();
+                    assert_eq!(from, local);
+                    assert_eq!(&packet[..n], &[0x70, 0, 0, 23]);
+                }
+            }
+            assert_eq!(app.engine_mut().rx_occupied(), 0);
+            assert_eq!(app.engine().capacities(), expected);
+        });
+    }
+
+    #[test]
+    fn async_allocated_service_uses_exact_same_requested_pool_budget() {
+        async_runtime().block_on(async {
+            let resources = coaptic::resources::Service::new();
+            let expected = resources.pool_capacities();
+            let required =
+                AllocMemory::<coaptic::message::Token>::required_heap_bytes(expected).unwrap();
+            let io = async_test_io("127.0.0.1:0").await;
+            let mut app = bind_resources!(resources.allocated(required), io, None).unwrap();
+            assert_eq!(app.engine().capacities(), expected);
+            assert_eq!(app.client_capacity(), 4);
+            assert_eq!(app.resource_usage().deferred.capacity, 8);
+            assert_eq!(app.security_request_capacity(), 4);
+            assert_eq!(app.association_capacity(), 1);
+            assert!(
+                tokio::time::timeout(
+                    Duration::from_millis(5),
+                    async_udp_loop(&mut app, Instant::now())
+                )
+                .await
+                .is_err()
+            );
+            assert_eq!(app.engine_mut().rx_occupied(), 0);
+            assert_eq!(app.engine().capacities(), expected);
+        });
     }
 
     #[test]

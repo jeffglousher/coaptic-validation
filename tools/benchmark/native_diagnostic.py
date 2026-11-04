@@ -31,6 +31,28 @@ SERVER_KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready", "coaptic-asy
                 "coaptic-blocking", "coaptic-staged-ready", "coaptic-staged-mio", "coaptic-mio-direct")
 
 
+def validate_profile_resources(record, server_kind, profile, size, security, rx_bytes):
+    if size is None or server_kind not in ("coaptic-mio", "coaptic-mio-direct", "coaptic-async"):
+        raise ValueError("profile ledger requires selected representation and Mio/async")
+    for key, expected in dimensions(profile, size, rx_bytes).items():
+        if type(record.get(key)) is not type(expected) or record[key] != expected:
+            raise ValueError("mismatched profile ledger: " + key)
+    heap = record.get("app_requested_heap_bytes")
+    payloads = sum(record[n] * record[b] for n, b in
+                   (("rx_slots", "rx_datagram_bytes"), ("tx_slots", "tx_datagram_bytes"),
+                    ("rx_body_slots", "rx_body_bytes"), ("tx_body_slots", "tx_body_bytes")))
+    unknown = ("kernel_bytes", "allocator_overhead_bytes", "initialization_stack_bytes")
+    if server_kind != "coaptic-async":
+        unknown += ("events_heap_bytes",)
+    if (type(heap) is not int or heap < 0
+            or (record["storage"] == "fixed" and heap != 0)
+            or (record["storage"] == "allocated" and heap < payloads)
+            or record.get("security") not in ("unprotected", "oscore")
+            or (security is not None and record["security"] != security)
+            or any(key not in record or record[key] is not None for key in unknown)):
+        raise ValueError("invalid profile owner ledger")
+
+
 def server_resources(log_path, server_kind, *, deadline, server,
                      resource_profile="host-control", size=None, security=None, rx_bytes=1472):
     """Await one bounded startup line before resource gates, without touching writer offsets.
@@ -82,23 +104,9 @@ def server_resources(log_path, server_kind, *, deadline, server,
         # Old retained host ledgers remain readable. New profile windows must
         # identify every actual configured dimension before the CPU gate opens.
         if "resource_profile" in record or resource_profile != "host-control":
-            if size is None or (resource_profile != "host-control" and server_kind != "coaptic-mio"):
-                raise ValueError("profile ledger requires selected representation and Mio")
-            for key, expected in dimensions(resource_profile, size, rx_bytes).items():
-                if type(record.get(key)) is not type(expected) or record[key] != expected:
-                    raise ValueError("mismatched Mio profile ledger: " + key)
-            heap = record.get("app_requested_heap_bytes")
-            payloads = sum(record[n] * record[b] for n, b in
-                           (("rx_slots", "rx_datagram_bytes"), ("tx_slots", "tx_datagram_bytes"),
-                            ("rx_body_slots", "rx_body_bytes"), ("tx_body_slots", "tx_body_bytes")))
-            if (type(heap) is not int or heap < 0
-                    or (record["storage"] == "fixed" and heap != 0)
-                    or (record["storage"] == "allocated" and heap < payloads)
-                    or record.get("security") not in ("unprotected", "oscore")
-                    or (security is not None and record["security"] != security)
-                    or any(key not in record or record[key] is not None for key in
-                           ("allocator_overhead_bytes", "initialization_stack_bytes", "events_heap_bytes"))):
-                raise ValueError("invalid Mio profile owner ledger")
+            if resource_profile != "host-control" and server_kind != "coaptic-mio":
+                raise ValueError("direct receive profile ledger is unsupported")
+            validate_profile_resources(record, server_kind, resource_profile, size, security, rx_bytes)
         return record
     if server_kind == "coaptic-blocking":
         fields = ("udp_scratch_bytes", "staged_datagram_capacity", "stage_cache_metadata_bytes", "adapter_inline_bytes",
@@ -170,6 +178,8 @@ def server_resources(log_path, server_kind, *, deadline, server,
                 or any(key in record for key in ("stage_cache_metadata_bytes", "read_timeout_max_us",
                                                  "send_timeout_us", "timeouts_soft"))):
             raise ValueError("invalid staged ready server startup ledger")
+    if "resource_profile" in record or resource_profile != "host-control":
+        validate_profile_resources(record, server_kind, resource_profile, size, security, rx_bytes)
     return record
 
 
@@ -538,9 +548,9 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                          message_type=message_type, security=security,
                          admission_diagnostics=admission_diagnostics,
                          independent_endpoints=independent_endpoints)
-    if independent_endpoints and (server_kind != "coaptic-mio" or
+    if independent_endpoints and (server_kind not in ("coaptic-mio", "coaptic-async") or
                                  (resource_profile == "host-control" and size > 1024 and concurrency > 2)):
-        raise ValueError("host diagnostic independent CON requires Mio and at most two concurrent bodies")
+        raise ValueError("host diagnostic independent CON requires Mio/async and at most two concurrent bodies")
     if not (1 <= size <= 65536 and 1 <= operations <= 60_000 and 0 <= warmup <= 1000
             and (operations + warmup) * ((size + 1023) // 1024) <= 60_000
             and 1 <= timeout_ms <= 60000 and policy in ("spin", "sleep1")

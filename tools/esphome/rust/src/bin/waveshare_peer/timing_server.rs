@@ -1,6 +1,6 @@
 //! Same constrained fixed-storage service with explicit security and address scope. Read/commit
 //! and UDP intervals are nested in ready-poll intervals, as on the device.
-//! This diagnostic spin-polls; it is not a recommended host scheduling policy.
+//! The build selects synchronous polling or native async readiness explicitly.
 use super::*;
 use coaptic_esphome_probe::security_state::{Error, RECORD_BYTES, Store};
 use std::cell::{Cell, RefCell};
@@ -49,6 +49,7 @@ impl Trace {
         }
     }
 }
+#[cfg(any(not(feature = "async-network"), test))]
 struct Io<'a> {
     socket: UdpSocketIo<[u8; 1153]>,
     clock: &'a Instant,
@@ -56,9 +57,11 @@ struct Io<'a> {
     remote: Option<Ipv4Addr>,
     refused_sources: &'a Cell<u64>,
 }
+#[cfg(any(not(feature = "async-network"), test))]
 impl coaptic::storage::DatagramTransport for Io<'_> {
     type Error = std::io::Error;
 }
+#[cfg(any(not(feature = "async-network"), test))]
 impl DatagramIo for Io<'_> {
     fn recv(&mut self, bytes: &mut [u8]) -> std::io::Result<Option<(usize, Endpoint)>> {
         let start = self.clock.elapsed().as_nanos() as u64;
@@ -95,6 +98,92 @@ impl DatagramIo for Io<'_> {
             .borrow_mut()
             .push([2, start, duration, bytes.len() as u64, mid]);
         result
+    }
+}
+
+#[cfg(feature = "async-network")]
+struct AsyncIo<'a> {
+    socket: coaptic_async_host::Udp<[u8; 1153]>,
+    clock: &'a Instant,
+    trace: &'a RefCell<Trace>,
+    remote: Option<Ipv4Addr>,
+    refused_sources: &'a Cell<u64>,
+}
+
+#[cfg(feature = "async-network")]
+impl coaptic::storage::DatagramTransport for AsyncIo<'_> {
+    type Error = std::io::Error;
+}
+
+#[cfg(feature = "async-network")]
+impl coaptic::storage::AsyncDatagramIo for AsyncIo<'_> {
+    async fn recv(&mut self, bytes: &mut [u8]) -> std::io::Result<(usize, Endpoint)> {
+        use coaptic::storage::AsyncDatagramIo;
+        loop {
+            let start = self.clock.elapsed().as_nanos() as u64;
+            let (n, peer) = self.socket.recv(bytes).await?;
+            if !allowed(peer, self.remote) {
+                self.refused_sources.set(self.refused_sources.get() + 1);
+                // A continuously readable excluded source must not prevent the
+                // App's independent local deadline from being polled.
+                let mut yielded = false;
+                core::future::poll_fn(|context| {
+                    if yielded {
+                        core::task::Poll::Ready(())
+                    } else {
+                        yielded = true;
+                        context.waker().wake_by_ref();
+                        core::task::Poll::Pending
+                    }
+                })
+                .await;
+                continue;
+            }
+            let duration = self.clock.elapsed().as_nanos() as u64 - start;
+            let mid = bytes
+                .get(2..4)
+                .map_or(65536, |b| u64::from(u16::from_be_bytes([b[0], b[1]])));
+            let mut trace = self.trace.borrow_mut();
+            trace.rx += 1;
+            trace.push([1, start, duration, n as u64, mid]);
+            return Ok((n, peer));
+        }
+    }
+
+    async fn send(&mut self, peer: Endpoint, bytes: &[u8]) -> std::io::Result<usize> {
+        use coaptic::storage::AsyncDatagramIo;
+        if !allowed(peer, self.remote) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "timing peer scope",
+            ));
+        }
+        let start = self.clock.elapsed().as_nanos() as u64;
+        let result = self.socket.send(peer, bytes).await;
+        let duration = self.clock.elapsed().as_nanos() as u64 - start;
+        let mid = bytes
+            .get(2..4)
+            .map_or(65536, |b| u64::from(u16::from_be_bytes([b[0], b[1]])));
+        self.trace
+            .borrow_mut()
+            .push([2, start, duration, bytes.len() as u64, mid]);
+        result
+    }
+}
+
+// Share the exact epoch used for service timestamps, including the finite stop
+// policy. Protocol and local timers are separate owners of that same epoch.
+#[cfg(feature = "async-network")]
+struct Timer<'a>(&'a Instant);
+
+#[cfg(feature = "async-network")]
+impl coaptic::platform::AsyncTimer for Timer<'_> {
+    async fn wait_until(&mut self, deadline_ms: u64) {
+        if let Some(deadline) = self.0.checked_add(Duration::from_millis(deadline_ms)) {
+            async_io::Timer::at(deadline).await;
+        } else {
+            core::future::pending::<()>().await;
+        }
     }
 }
 struct Durable<'a> {
@@ -184,8 +273,18 @@ fn run_bound(
         rx: 0,
     });
     let refused_sources = Cell::new(0);
+    #[cfg(not(feature = "async-network"))]
     let io = Io {
         socket: UdpSocketIo::new(socket, [0; 1153]).map_err(|_| "timing server scratch")?,
+        clock: &started,
+        trace: &trace,
+        remote,
+        refused_sources: &refused_sources,
+    };
+    #[cfg(feature = "async-network")]
+    let io = AsyncIo {
+        socket: coaptic_async_host::Udp::new(socket, [0; 1153])
+            .map_err(|_| "timing server async scratch/reactor")?,
         clock: &started,
         trace: &trace,
         remote,
@@ -216,6 +315,7 @@ fn run_bound(
         }
     };
     let random = |bytes: &mut [u8]| getrandom::fill(bytes).is_ok();
+    #[cfg(not(feature = "async-network"))]
     let result = if let Some((credentials, state)) = protection {
         let store = Durable {
             store: FileStore::open(state, false)?,
@@ -226,6 +326,35 @@ fn run_bound(
     } else {
         coaptic_esphome_probe::network::run(io, random, clock, id)
     };
+    #[cfg(feature = "async-network")]
+    let result = {
+        let mut protocol_timer = Timer(&started);
+        let mut local_timer = Timer(&started);
+        if let Some((credentials, state)) = protection {
+            let store = Durable {
+                store: FileStore::open(state, false)?,
+                clock: &started,
+                trace: &trace,
+            };
+            async_io::block_on(coaptic_esphome_probe::network::run_protected_async(
+                io,
+                random,
+                clock,
+                id,
+                (&mut protocol_timer, &mut local_timer),
+                credentials,
+                store,
+            ))
+        } else {
+            async_io::block_on(coaptic_esphome_probe::network::run_async(
+                io,
+                random,
+                clock,
+                id,
+                (&mut protocol_timer, &mut local_timer),
+            ))
+        }
+    };
     let trace = trace.borrow();
     let passed = result.is_ok() && !trace.overflow && trace.rx >= 32;
     let (security, storage) = if protection.is_some() {
@@ -233,7 +362,15 @@ fn run_bound(
     } else {
         ("unprotected", "no credential or security-state file")
     };
-    writeln!(report, "{{\"passed\":{passed},\"case\":\"timing_host_server\",\"run_id\":\"{run_id}\",\"security\":\"{security}\",\"refused_sources\":{},\"event_bound\":{LIMIT},\"trace_heap_bytes\":{},\"received\":{},\"overflow\":{},\"events\":{:?},\"method\":\"same constrained service; fixed core storage; {storage}; spin-poll diagnostic; nested intervals; no throughput or CPU efficiency claim\"}}", refused_sources.get(), trace.rows.capacity() * std::mem::size_of::<Event>(), trace.rx, trace.overflow, trace.rows).map_err(|_| "timing server report")?;
+    let (io_mode, scheduling) = if cfg!(feature = "async-network") {
+        (
+            "async",
+            "native async App service; host readiness reactor; awaited I/O and service clock intervals include suspension",
+        )
+    } else {
+        ("sync", "synchronous App service; spin-poll diagnostic")
+    };
+    writeln!(report, "{{\"passed\":{passed},\"case\":\"timing_host_server\",\"run_id\":\"{run_id}\",\"security\":\"{security}\",\"io_mode\":\"{io_mode}\",\"refused_sources\":{},\"event_bound\":{LIMIT},\"trace_heap_bytes\":{},\"received\":{},\"overflow\":{},\"events\":{:?},\"method\":\"same constrained service; fixed core storage; {storage}; {scheduling}; nested intervals; no throughput or CPU efficiency claim\"}}", refused_sources.get(), trace.rows.capacity() * std::mem::size_of::<Event>(), trace.rx, trace.overflow, trace.rows).map_err(|_| "timing server report")?;
     report.sync_all().map_err(|_| "timing server report sync")?;
     if passed {
         Ok(())
@@ -317,6 +454,12 @@ mod tests {
         assert_eq!(completed, 24);
         assert!(report.contains("\"security\":\"unprotected\""));
         assert!(report.contains("\"passed\":true"));
+        let mode = if cfg!(feature = "async-network") {
+            "async"
+        } else {
+            "sync"
+        };
+        assert!(report.contains(&format!("\"io_mode\":\"{mode}\"")));
         assert!(report.contains("\"received\":32,"));
         assert!(!report.contains("[3,"));
         assert!(!report.contains("[4,"));

@@ -96,7 +96,7 @@ class ConfigurationRefusalTests(unittest.TestCase):
                 path.write_text(json.dumps(config), encoding="utf-8")
                 result = subprocess.run([sys.executable, "-m", "esphome", "compile", str(path), "--only-generate"],
                                         capture_output=True, text=True, timeout=60)
-                accepted = change in {"source", "bundled", "external", "unprotected", "unprotected-bundled", "unprotected-external"}
+                accepted = change in {"source", "bundled", "external", "unprotected", "unprotected-bundled", "unprotected-external", "async", "unprotected-async"}
                 self.assertEqual(result.returncode == 0, accepted, result.stdout + result.stderr)
                 if accepted:
                     generated = (root / "build/src/main.cpp").read_text()
@@ -107,8 +107,8 @@ class ConfigurationRefusalTests(unittest.TestCase):
                     if runtime == "source":
                         cmake = (root / "build/CMakeLists.txt").read_text()
                         self.assertIn('set(COAPTIC_OSCORE "' + ("ON" if protected else "OFF") + '")', cmake)
-                elif change in {"provision", "telemetry", "async", "unprotected-async", "pairing"}:
-                    self.assertIn("read_campaign requires synchronous driving", result.stdout + result.stderr)
+                elif change in {"provision", "telemetry", "pairing"}:
+                    self.assertIn("read_campaign requires existing OSCORE state", result.stdout + result.stderr)
 
     def test_network_requires_started_rf_without_power_save_for_entropy(self):
         for change in ["default", "light", "disabled", "ready"]:
