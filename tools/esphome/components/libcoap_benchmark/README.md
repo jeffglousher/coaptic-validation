@@ -1,4 +1,4 @@
-# Finite ESP32-S3 libcoap client
+# Finite ESP32-S3 libcoap benchmark
 
 This source fixture uses `espressif/coap ==4.3.5~8` in the existing native
 ESPHome 2026.9.1 / ESP-IDF 5.5.5 shell. Compilation and physical execution are
@@ -9,8 +9,9 @@ Do not erase, provision or migrate state for this fixture.
 Replace the `coaptic_network` benchmark component selection with this component
 in a separately reviewed application image; keep the shell configuration.
 The components conflict to avoid a second CoAP implementation consuming CPU
-and memory during the comparison. This component opens only an outbound UDP
-client session and never starts a CoAP listener or writes security state.
+and memory during the comparison. The default client role opens only an outbound UDP session. The optional
+server role accepts the explicitly configured Windows peer for a finite window.
+Neither role writes security state.
 
 ```yaml
 external_components:
@@ -80,6 +81,53 @@ Keep the generated dependency lock, component source identity, image hash,
 host source/binary identity, all 24 operation rows and terminal result together.
 This is an initial unprotected shared workload, not an OSCORE/DTLS, firmware
 attestation, commissioning, maximum-throughput or certification result.
+
+## Optional server role for Windows-initiated reads
+
+The default `role: client` retains the 24-read client and its complete
+`SINGLE_BODY` assembly/verification. To have Windows initiate outbound requests
+and receive stateful UDP replies, select the optional server in the same shell:
+
+```yaml
+libcoap_benchmark:
+  qualification_only: true
+  allow_unprotected: true
+  role: server
+  run_id: 0123456789abcdef0123456789abcdef
+  peer_address: 192.168.1.134
+  listen_port: 5683
+  start_delay_ms: 30000
+```
+
+`server_run_id` is required only for the client role. The server's `/identity`
+returns its own 32-byte `run_id`, matching readiness/terminal records and the
+source-bound image marker. `/test` returns `coaptic`; `/large` returns 2000
+`0x5a` bytes. The Windows complete-operation client must verify that image
+identity, 2.05 status, complete bytes and representation metadata for every
+operation. Peer filtering checks the requesting IPv4 address against
+`peer_address`; a different peer receives 4.01 without representation data.
+Peer source ports may be ephemeral. `peer_port` applies only to the client;
+`listen_port` applies only to the server.
+
+The server uses public `coap_get_block_b`, `coap_write_block_b_opt` and
+`coap_add_block_b_data` helpers for Block2 negotiation, encoding and payload
+selection. It borrows static read-only representation data, with no retained
+whole-body copy and a handler invocation for each block GET. This matches the
+ordinary borrowed Coaptic GET fixture; Windows owns full-response assembly.
+Content-Format is absent and no ETag is emitted. The high-level
+`coap_add_data_large_response` helper always inserts Content-Format in this
+version, so it is not used. No internal option mutation or custom wire encoder
+is used.
+
+`LIBCOAP_BENCH_SERVER_READY` is logged before any request dispatch. The same
+16384-byte task owns the context and three resources for a finite 30-second
+window, then releases the context. `SERVER_MEMORY` and `SERVER_TERMINAL` record
+whole-platform heap samples and task stack high-water. The terminal `passed`
+means the service window ended without an internal failure and at least one
+allowed handler invocation; it does not certify 24 completed operations.
+Handler calls include block GETs and are not logical completion counts. Use
+the separate Windows client's exact completion/verification report for the
+comparison. There is no timed handler instrumentation or automatic restart.
 
 Primary API/build references:
 

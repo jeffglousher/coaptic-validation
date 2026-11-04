@@ -32,6 +32,12 @@ def fixture():
 
 
 class HopAnalysisTests(unittest.TestCase):
+    def test_awaited_server_receive_spans_refuse_synchronous_decomposition(self):
+        client, server = fixture()
+        server["io_mode"] = "async"
+        with self.assertRaisesRegex(ValueError, "awaited receive spans"):
+            analyze(client, server)
+
     def test_complete_trace_and_independent_epoch_shift_preserve_durations(self):
         client, server = fixture()
         baseline = analyze(client, server)

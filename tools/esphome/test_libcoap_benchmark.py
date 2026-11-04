@@ -62,6 +62,8 @@ class LibcoapBenchmarkConfigurationTests(unittest.TestCase):
             self.assertIn("#define USE_OTA\n", defines)
             self.assertIn("#define USE_OTA_ENCRYPTION\n", defines)
             self.assertIn("USE_WIFI", defines)
+            self.assertIn("set_server(false)", generated)
+            self.assertNotIn("#define LIBCOAP_BENCH_SERVER", defines)
             self.assertNotIn("coaptic_network", generated)
             self.assertTrue((build / "src/esphome/components/libcoap_benchmark/libcoap_benchmark.cpp").is_file())
             sdkconfig = (build / "sdkconfig.libcoap-codegen").read_text()
@@ -83,10 +85,33 @@ class LibcoapBenchmarkConfigurationTests(unittest.TestCase):
             self.assertIn('version: "==4.3.5~8"', manifest)
             self.assertIn("REQUIRES espressif__coap", (COMPONENTS / "libcoap_benchmark/idf_component/CMakeLists.txt").read_text())
 
+    def test_optional_server_generates_public_block_helpers_and_own_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = configuration(root)
+            config["libcoap_benchmark"].update(role="server", listen_port=5685)
+            del config["libcoap_benchmark"]["server_run_id"]
+            result = invoke(root, config, generate=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            build = root / "build"
+            main = (build / "src/main.cpp").read_text()
+            self.assertIn("set_server(true)", main)
+            self.assertIn("set_listen_port(5685)", main)
+            self.assertIn('set_run_id("' + "a" * 32, main)
+            self.assertNotIn("set_server_run_id(", main)
+            defines = (build / "src/esphome/core/defines.h").read_text()
+            self.assertIn("#define LIBCOAP_BENCH_SERVER\n", defines)
+            for macro in ("USE_API", "USE_API_NOISE", "USE_OTA", "USE_WIFI"):
+                self.assertIn("#define " + macro + "\n", defines)
+            sdkconfig = (build / "sdkconfig.libcoap-codegen").read_text()
+            self.assertIn("CONFIG_COAP_SERVER_SUPPORT=y", sdkconfig)
+            self.assertIn("CONFIG_COAP_CLIENT_SUPPORT=y", sdkconfig)
+            self.assertIn("CONFIG_COAP_OSCORE_SUPPORT=n", sdkconfig)
+
     def test_explicit_unprotected_qualification_and_identity_are_required(self):
         changes = [("qualification_only", None), ("qualification_only", False),
                    ("allow_unprotected", None), ("allow_unprotected", False),
-                   ("run_id", "A" * 32), ("server_run_id", "b" * 31)]
+                   ("run_id", "A" * 32), ("server_run_id", "b" * 31), ("server_run_id", None)]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for key, value in changes:
@@ -101,7 +126,8 @@ class LibcoapBenchmarkConfigurationTests(unittest.TestCase):
 
     def test_peer_and_campaign_bounds_refuse_unscoped_or_unbounded_values(self):
         changes = [("peer_address", value) for value in ["0.0.0.0", "127.0.0.1", "8.8.8.8", "224.0.0.1", "::1"]]
-        changes += [("peer_port", 0), ("peer_port", 65536), ("start_delay_ms", -1), ("start_delay_ms", 120001)]
+        changes += [("peer_port", 0), ("peer_port", 65536), ("listen_port", 0), ("listen_port", 65536),
+                    ("start_delay_ms", -1), ("start_delay_ms", 120001), ("role", "proxy")]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for key, value in changes:

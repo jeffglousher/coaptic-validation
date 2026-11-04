@@ -1,4 +1,4 @@
-"""Finite unprotected libcoap client using the existing ESPHome/IDF shell."""
+"""Finite unprotected libcoap benchmark using the existing ESPHome/IDF shell."""
 import ipaddress
 from pathlib import Path
 import re
@@ -42,21 +42,30 @@ def native_toolchain(config):
     return config
 
 
+def validate_role(config):
+    if config["role"] == "client" and "server_run_id" not in config:
+        raise cv.Invalid("client role requires server_run_id")
+    return config
+
+
 CONFIG_SCHEMA = cv.All(
     cv.Schema({
         cv.GenerateID(): cv.declare_id(LibcoapBenchmark),
         cv.Required("qualification_only"): cv.All(cv.boolean, cv.one_of(True)),
         cv.Required("allow_unprotected"): cv.All(cv.boolean, cv.one_of(True)),
+        cv.Optional("role", default="client"): cv.one_of("client", "server", lower=True),
         cv.Required("run_id"): identity,
-        cv.Required("server_run_id"): identity,
+        cv.Optional("server_run_id"): identity,
         cv.Required("peer_address"): private_peer,
         cv.Optional("peer_port", default=5683): cv.int_range(min=1, max=65535),
+        cv.Optional("listen_port", default=5683): cv.int_range(min=1, max=65535),
         cv.Optional("start_delay_ms", default=30000): cv.int_range(min=0, max=120000),
     }).extend(cv.COMPONENT_SCHEMA),
     cv.only_on_esp32,
     cv.only_with_framework("esp-idf"),
     esp32.only_on_variant(supported=[VARIANT_ESP32S3]),
     native_toolchain,
+    validate_role,
 )
 
 
@@ -64,9 +73,12 @@ async def to_code(config):
     component = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(component, config)
     cg.add(component.set_run_id(config["run_id"]))
-    cg.add(component.set_server_run_id(config["server_run_id"]))
+    if "server_run_id" in config:
+        cg.add(component.set_server_run_id(config["server_run_id"]))
+    cg.add(component.set_server(config["role"] == "server"))
     cg.add(component.set_peer_address(int(ipaddress.IPv4Address(config["peer_address"]))))
     cg.add(component.set_peer_port(config["peer_port"]))
+    cg.add(component.set_listen_port(config["listen_port"]))
     cg.add(component.set_start_delay_ms(config["start_delay_ms"]))
     # Public REQUIRES on the local manifest component exposes libcoap's headers
     # to ESPHome's main component without replacing EXTRA_COMPONENT_DIRS.
@@ -74,7 +86,7 @@ async def to_code(config):
                             path=str(Path(__file__).resolve().parent / "idf_component"))
     for name, value in {
         "CONFIG_COAP_CLIENT_SUPPORT": True,
-        "CONFIG_COAP_SERVER_SUPPORT": False,
+        "CONFIG_COAP_SERVER_SUPPORT": config["role"] == "server",
         "CONFIG_COAP_MBEDTLS_PSK": False,
         "CONFIG_COAP_MBEDTLS_PKI": False,
         "CONFIG_COAP_OSCORE_SUPPORT": False,
@@ -83,3 +95,5 @@ async def to_code(config):
         "CONFIG_COAP_DEBUGGING": False,
     }.items():
         esp32.add_idf_sdkconfig_option(name, value)
+    if config["role"] == "server":
+        cg.add_define("LIBCOAP_BENCH_SERVER")

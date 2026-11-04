@@ -9,9 +9,11 @@ The prepared development suite now has 32 socket cells: eight resource profiles,
 unprotected/OSCORE, and synchronous Mio/native async. Schema 3 comparison refuses
 missing mode rows. The six socket-free core probes and separate reliability and
 Observe lifecycle proofs remain synchronous supporting checks; they do not
-supply asynchronous performance evidence. The older nested host-initiator
-diagnostic also remains synchronous; compiling its binary with async support
-does not turn that diagnostic into an async comparison. The async server uses awaited I/O and
+supply asynchronous performance evidence. Both Windows initiator and listener
+diagnostics now select the actual driving API and report their mode. Awaited
+receive spans include pre-arrival waiting, so the synchronous hop-decomposition
+analyzer rejects those server traces; compare complete operation durations
+instead of treating waits as CPU service. The async server uses awaited I/O and
 App readiness/progress, with a future borrowing the selected concrete App.
 
 The ESPHome normal paired application already uses async networking. Its finite

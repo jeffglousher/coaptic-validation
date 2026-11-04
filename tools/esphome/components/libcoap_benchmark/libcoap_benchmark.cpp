@@ -10,6 +10,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lwip/inet.h"
+#include <array>
 #include <cinttypes>
 
 namespace esphome::libcoap_benchmark {
@@ -143,6 +144,79 @@ bool perform(coap_session_t *session, Operation &operation) {
   }
   return true;
 }
+
+#ifdef LIBCOAP_BENCH_SERVER
+// BEGIN HOST-TESTABLE SERVER HANDLERS
+constexpr auto LARGE_REPRESENTATION = [] {
+  std::array<uint8_t, 2000> bytes{};
+  for (auto &byte : bytes)
+    byte = 0x5a;
+  return bytes;
+}();
+
+struct ServerState {
+  uint32_t peer_address{};
+  uint32_t handler_calls{};
+  uint32_t refused_peers{};
+  const char *error{};
+};
+
+struct Representation {
+  ServerState *state{};
+  const uint8_t *data{};
+  size_t length{};
+};
+
+void server_get(coap_resource_t *resource, coap_session_t *session,
+                const coap_pdu_t *request, const coap_string_t *,
+                coap_pdu_t *reply) {
+  auto *representation =
+      static_cast<Representation *>(coap_resource_get_userdata(resource));
+  const auto *remote = coap_session_get_addr_remote(session);
+  if (representation == nullptr || representation->state == nullptr) {
+    coap_pdu_set_code(reply, COAP_RESPONSE_CODE_INTERNAL_ERROR);
+    return;
+  }
+  auto &state = *representation->state;
+  if (remote == nullptr || remote->addr.sin.sin_family != AF_INET ||
+      ntohl(remote->addr.sin.sin_addr.s_addr) != state.peer_address) {
+    ++state.refused_peers;
+    coap_pdu_set_code(reply, COAP_RESPONSE_CODE_UNAUTHORIZED);
+    return;
+  }
+  ++state.handler_calls;
+  coap_pdu_set_code(reply, COAP_RESPONSE_CODE_CONTENT);
+  coap_block_b_t block{};
+  const bool requested =
+      coap_get_block_b(session, request, COAP_OPTION_BLOCK2, &block) != 0;
+  if (!requested && representation->length <= 1024) {
+    if (!coap_add_data(reply, representation->length, representation->data)) {
+      state.error = "response_allocation";
+      coap_pdu_set_code(reply, COAP_RESPONSE_CODE_INTERNAL_ERROR);
+    }
+    return;
+  }
+  if (!requested) {
+    block.szx = 6;
+    block.aszx = 6;
+  }
+  // Public helpers choose SZX/M/NUM and the exact payload window. The static
+  // representation is borrowed again on each GET, as in the Coaptic fixture.
+  // No Content-Format, retained whole-body copy or custom wire encoder is used.
+  const int encoded = coap_write_block_b_opt(
+      session, &block, COAP_OPTION_BLOCK2, reply, representation->length);
+  if (encoded == -2) {
+    coap_pdu_set_code(reply, COAP_RESPONSE_CODE_BAD_REQUEST);
+    return;
+  }
+  if (encoded <= 0 || !coap_add_block_b_data(reply, representation->length,
+                                             representation->data, &block)) {
+    state.error = "response_block_allocation";
+    coap_pdu_set_code(reply, COAP_RESPONSE_CODE_INTERNAL_ERROR);
+  }
+}
+// END HOST-TESTABLE SERVER HANDLERS
+#endif
 } // namespace
 
 void LibcoapBenchmark::setup() { setup_us_ = esp_timer_get_time(); }
@@ -199,6 +273,12 @@ void LibcoapBenchmark::task_(void *argument) {
 }
 
 void LibcoapBenchmark::run_() {
+#ifdef LIBCOAP_BENCH_SERVER
+  if (server_) {
+    run_server_();
+    return;
+  }
+#endif
   const int64_t preparation_start_us = esp_timer_get_time();
   const size_t heap_before = heap_caps_get_free_size(MALLOC_CAP_8BIT);
   const size_t internal_before =
@@ -316,5 +396,108 @@ void LibcoapBenchmark::run_() {
       static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT)),
       static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)), STACK_BYTES);
 }
+
+#ifdef LIBCOAP_BENCH_SERVER
+void LibcoapBenchmark::run_server_() {
+  const int64_t preparation_start_us = esp_timer_get_time();
+  const size_t heap_before = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+  coap_startup();
+  coap_set_log_level(COAP_LOG_EMERG);
+  auto *context = coap_new_context(nullptr);
+  const char *error = nullptr;
+  ServerState state{};
+  state.peer_address = peer_address_;
+  Representation representations[3] = {
+      {&state, reinterpret_cast<const uint8_t *>(run_id_), 32},
+      {&state, reinterpret_cast<const uint8_t *>("coaptic"), 7},
+      {&state, LARGE_REPRESENTATION.data(), LARGE_REPRESENTATION.size()}};
+  if (context == nullptr) {
+    error = "context_allocation";
+  } else {
+    coap_context_set_block_mode(context, COAP_BLOCK_USE_LIBCOAP |
+                                             COAP_BLOCK_STLESS_BLOCK2);
+    coap_context_set_max_idle_sessions(context, 4);
+    coap_address_t address;
+    coap_address_init(&address);
+    address.addr.sin.sin_family = AF_INET;
+    address.addr.sin.sin_port = htons(listen_port_);
+    address.addr.sin.sin_addr.s_addr = htonl(INADDR_ANY);
+    address.size = sizeof(address.addr.sin);
+    auto *endpoint = coap_new_endpoint(context, &address, COAP_PROTO_UDP);
+    if (endpoint == nullptr) {
+      error = "server_bind";
+    } else {
+      coap_endpoint_set_default_mtu(endpoint, 1152);
+      for (unsigned index = 0; index < 3 && error == nullptr; ++index) {
+        auto *resource =
+            coap_resource_init(coap_make_str_const(path(index)), 0);
+        if (resource == nullptr) {
+          error = "resource_allocation";
+          break;
+        }
+        coap_resource_set_userdata(resource, &representations[index]);
+        coap_register_handler(resource, COAP_REQUEST_GET, server_get);
+        coap_add_resource(context, resource);
+      }
+    }
+  }
+  const int64_t preparation_end_us = esp_timer_get_time();
+  ESP_LOGI(
+      TAG,
+      "LIBCOAP_BENCH_SERVER_MEMORY {\"run_id\":\"%s\",\"prepare_ns\":%" PRId64
+      ",\"heap_before_bytes\":%u,\"heap_ready_bytes\":%u,\"stack_reserved_"
+      "bytes\":%u}",
+      run_id_, (preparation_end_us - preparation_start_us) * 1000,
+      static_cast<unsigned>(heap_before),
+      static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_8BIT)),
+      STACK_BYTES);
+  uint32_t polls = 0;
+  if (error == nullptr) {
+    // No request is dispatched until this readiness record has been emitted.
+    ESP_LOGI(
+        TAG,
+        "LIBCOAP_BENCH_SERVER_READY {\"run_id\":\"%s\",\"role\":\"server\","
+        "\"security\":\"unprotected\",\"listen_port\":%u,\"service_ms\":30000,"
+        "\"representation\":\"static-borrowed-handler-per-block\"}",
+        run_id_, listen_port_);
+    const int64_t service_start_us = esp_timer_get_time();
+    while (esp_timer_get_time() - service_start_us < 30000000 &&
+           state.error == nullptr) {
+      if (polls == POLL_LIMIT) {
+        error = "server_poll_bound";
+        break;
+      }
+      ++polls;
+      if (coap_io_process(context, 10) < 0) {
+        error = "server_io_process";
+        break;
+      }
+      if ((polls % 32) == 0)
+        vTaskDelay(1);
+    }
+    if (error == nullptr)
+      error = state.error;
+  }
+  const size_t heap_before_cleanup = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+  if (context != nullptr)
+    coap_free_context(context);
+  coap_cleanup();
+  ESP_LOGI(
+      TAG,
+      "LIBCOAP_BENCH_SERVER_TERMINAL {\"passed\":%s,\"run_id\":\"%s\","
+      "\"role\":\"server\",\"handler_calls\":%u,\"refused_peers\":%u,\"polls\":"
+      "%u,"
+      "\"error\":\"%s\",\"heap_before_cleanup_bytes\":%u,\"heap_after_cleanup_"
+      "bytes\":%u,"
+      "\"global_min_heap_since_boot_bytes\":%u,\"task_stack_high_water_free_"
+      "bytes\":%u}",
+      error == nullptr && state.handler_calls > 0 ? "true" : "false", run_id_,
+      state.handler_calls, state.refused_peers, polls,
+      error != nullptr ? error : "", static_cast<unsigned>(heap_before_cleanup),
+      static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_8BIT)),
+      static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT)),
+      static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+}
+#endif
 
 } // namespace esphome::libcoap_benchmark
