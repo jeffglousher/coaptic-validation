@@ -31,14 +31,14 @@ def validate_profile(profile, kind, size, *, concurrency=1, message_type="con",
     if type(size) is not int or size not in PROFILE_SIZES[profile]:
         raise ValueError("unsupported resource profile representation")
     if independent_endpoints:
-        if (kind != "coaptic-mio" or admission_diagnostics or profile.startswith("small-")
+        if (kind not in ("coaptic-mio", "coaptic-async") or admission_diagnostics or profile.startswith("small-")
                 or (profile in ("device-fixed", "gateway-fixed") and concurrency > 2)
                 or (profile == "host-control" and size > 1024 and concurrency > 2)):
-            raise ValueError("independent CON requires Mio and actual server capacity (device2/gateway2/host2/service4)")
+            raise ValueError("independent CON requires Mio/async and actual server capacity (device2/gateway2/host2/service4)")
     if profile != "host-control":
-        if (kind != "coaptic-mio" or (concurrency != 1 and not independent_endpoints)
+        if (kind not in ("coaptic-mio", "coaptic-async") or (concurrency != 1 and not independent_endpoints)
                 or message_type != "con" or admission_diagnostics):
-            raise ValueError("representative profiles require same Mio, bounded independent CON and no admission diagnostics")
+            raise ValueError("representative profiles require Mio/async, bounded independent CON and no admission diagnostics")
 
 
 def dimensions(profile, size, rx_bytes=None):

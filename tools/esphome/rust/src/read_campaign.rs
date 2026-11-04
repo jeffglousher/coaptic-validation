@@ -12,6 +12,13 @@ use crate::security_state::{Credentials, State, Store};
 use coaptic::storage::DatagramIo;
 use coaptic::{App, Code, Endpoint, profiles};
 
+#[cfg(feature = "async-network")]
+mod async_service;
+#[cfg(all(feature = "async-network", feature = "oscore"))]
+pub use async_service::run_async;
+#[cfg(feature = "async-network")]
+pub use async_service::run_unprotected_async;
+
 pub const OPERATIONS: u32 = 24;
 pub const TIMEOUT_NS: u64 = 5_000_000_000;
 pub const POLL_LIMIT: u32 = 100_000;
@@ -56,14 +63,14 @@ impl<F: FnMut() -> Option<u64>> Clock<F> {
 
 type CampaignApp<T> = App<profiles::Constrained, T, { coaptic::app::DEFAULT_ROUTES }, true>;
 
-trait SecurityPolicy<T: DatagramIo> {
+trait SecurityPolicy<T> {
     fn needs_refill(&self, app: &CampaignApp<T>) -> Result<bool, &'static str>;
     fn refill(&mut self, app: &mut CampaignApp<T>) -> Result<(), &'static str>;
     fn checkpoint(&mut self, app: &CampaignApp<T>) -> Result<(), &'static str>;
 }
 
 #[cfg(feature = "oscore")]
-impl<T: DatagramIo, S: Store> SecurityPolicy<T> for State<'_, S> {
+impl<T, S: Store> SecurityPolicy<T> for State<'_, S> {
     fn needs_refill(&self, app: &CampaignApp<T>) -> Result<bool, &'static str> {
         let context = app.oscore().ok_or("campaign context")?;
         Ok(context
@@ -85,7 +92,7 @@ impl<T: DatagramIo, S: Store> SecurityPolicy<T> for State<'_, S> {
     }
 }
 
-impl<T: DatagramIo> SecurityPolicy<T> for () {
+impl<T> SecurityPolicy<T> for () {
     fn needs_refill(&self, _: &CampaignApp<T>) -> Result<bool, &'static str> {
         Ok(false)
     }

@@ -84,7 +84,7 @@ network-I/O runtime regression; use a patched toolchain, as required by go.mod
 
 ```sh
 python -m venv target/benchmark-venv
-target/benchmark-venv/bin/python -m pip install aiocoap==0.4.16 psutil==7.0.0
+target/benchmark-venv/bin/python -m pip install aiocoap==0.4.17 psutil==7.0.0
 git init target/benchmark-libcoap-source
 git -C target/benchmark-libcoap-source fetch --depth 1 https://github.com/obgm/libcoap.git 851533c3cf63d16984d370ce39d586ecb3694971
 git -C target/benchmark-libcoap-source checkout --detach FETCH_HEAD

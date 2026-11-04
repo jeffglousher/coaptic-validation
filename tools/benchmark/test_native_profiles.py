@@ -104,6 +104,7 @@ class NativeProfileTests(unittest.TestCase):
                 selected = dict(kind="coaptic-mio") | changes
                 with self.subTest(profile=profile, changes=changes), self.assertRaises(ValueError):
                     validate_profile(profile, size=sizes[0], **selected)
+
         for concurrency in (True, 0, 5, 2.0, "2"):
             with self.subTest(concurrency=concurrency), self.assertRaises(ValueError):
                 validate_concurrency(concurrency, "con", True)
@@ -117,6 +118,22 @@ class NativeProfileTests(unittest.TestCase):
                                (validate_profile, ("unknown", "coaptic-mio", 64))):
             with self.assertRaises(ValueError):
                 function(*args)
+
+    def test_async_matches_mio_representations_and_endpoint_capacity(self):
+        for profile, sizes in PROFILE_SIZES.items():
+            for size in sizes:
+                for concurrency in (1, 2, 3, 4):
+                    selected = dict(concurrency=concurrency, independent_endpoints=concurrency > 1)
+                    outcomes = []
+                    for kind in ("coaptic-mio", "coaptic-async"):
+                        try:
+                            validate_profile(profile, kind, size, **selected)
+                        except ValueError:
+                            outcomes.append(False)
+                        else:
+                            outcomes.append(True)
+                    with self.subTest(profile=profile, size=size, **selected):
+                        self.assertEqual(outcomes[0], outcomes[1])
 
 
 if __name__ == "__main__":

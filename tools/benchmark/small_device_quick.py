@@ -178,7 +178,7 @@ def main():
     report = {'schema': 'coaptic-small-quick/1', 'sources': sources, 'platform': platform.platform(),
         'python': sys.version, 'host': host_identity(),
         'native_lock_sha256': digest(HERE / 'native/Cargo.lock'),
-        'native_versions': {'coap-rs': '0.28.1', 'coap-lite': '0.13.3'}, 'versions': {n: importlib.metadata.version(n) for n in ['aiocoap','cryptography','psutil']},
+        'native_versions': {'coap-rs': '0.29.0', 'coap-lite': '0.13.3'}, 'versions': {n: importlib.metadata.version(n) for n in ['aiocoap','cryptography','psutil']},
         'server_sha256': digest(args.server), 'driver_sha256': digest(HERE / 'protected/load.py'),
         'runner_sha256': digest(__file__), 'cells': [],
         'limits': 'One short serial closed-loop window/cell, 32B complete GET/CON, concurrency1. Python/GIL and independent authentication/byte validation included. No saturation or significance claim. Server scheduling differs: Coaptic spin, coap-rs two Tokio workers, aiocoap asyncio, codec narrower endpoint. CPU is quantized; client resource window includes context/socket setup+warmup, server window also includes driver process startup. Server CPU includes launcher+worker process tree; RSS sum includes shared pages more than once and per-process peak RSS covers lifetime. Client RSS and server tree RSS include runtime/dependencies, not core memory. OSCORE volatile only; no provisioning/persistence. No device involvement.'}

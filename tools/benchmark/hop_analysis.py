@@ -58,6 +58,8 @@ def server_events(report):
         if any(r["run_id"] != end["run_id"] for r in rows):
             raise ValueError("device run mismatch")
         return [event(r, True) for r in rows]
+    if report.get("io_mode") == "async":
+        raise ValueError("awaited receive spans cannot use synchronous hop decomposition; compare complete operations")
     if report.get("passed") is not True or report.get("overflow") is not False:
         raise ValueError("loopback server refused")
     if len(report["events"]) > 512:

@@ -3209,12 +3209,14 @@ class IndependentEndpointsTests(unittest.TestCase):
                 args = options(resource_profile=profile, sizes=sizes, rates="10", seconds=2, repeats=2,
                                perf=False, server_kind="coaptic-mio", concurrency=count, independent_endpoints=True)
                 self.assertTrue(cpu.configuration(args))
+                args.server_kind = "coaptic-async"
+                self.assertTrue(cpu.configuration(args))
                 args.independent_endpoints=False
                 with self.assertRaises(ValueError): cpu.configuration(args)
         for changes in (dict(resource_profile="small-device", sizes="32"),
                         dict(resource_profile="small-blockwise", sizes="4096"),
                         dict(sizes="65536", concurrency=4), dict(message_type="non"),
-                        dict(concurrency=1), dict(server_kind="coaptic-async")):
+                        dict(concurrency=1), dict(server_kind="coaptic-ready")):
             args=options(server_kind="coaptic-mio", independent_endpoints=True, concurrency=2, perf=False,
                          **{k:v for k,v in changes.items() if k not in ("server_kind", "concurrency")})
             for key in ("server_kind", "concurrency"):

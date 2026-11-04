@@ -155,12 +155,13 @@ class ProcessMemoryTests(unittest.TestCase):
 
 class ReportTests(unittest.TestCase):
     def run_profile_fixture(self, profile, size, *, security="unprotected", cpu_gated=False,
-                            concurrency=1, independent_endpoints=False, ledger_changes=None):
+                            concurrency=1, independent_endpoints=False, ledger_changes=None,
+                            server_kind="coaptic-mio"):
         """Exercise the real command/startup/gate/cleanup path with no native processes."""
         expected = dimensions(profile, size)
-        record = self.mio_record() | expected | dict(
+        record = (self.startup_record() if server_kind == "coaptic-async" else self.mio_record()) | expected | dict(
             security=security, app_requested_heap_bytes=0 if expected["storage"] == "fixed" else 1_000_000,
-            allocator_overhead_bytes=None, initialization_stack_bytes=None, events_heap_bytes=None)
+            kernel_bytes=None, allocator_overhead_bytes=None, initialization_stack_bytes=None, events_heap_bytes=None)
         record.update(ledger_changes or {})
         clock, commands = [0], []
         sut, child = Mock(pid=123), Mock(pid=124)
@@ -218,13 +219,13 @@ class ReportTests(unittest.TestCase):
             if ledger_changes:
                 with self.assertRaisesRegex(ValueError, "profile ledger"):
                     measure("server", "client", size, 2, 3, 1000, "spin", security,
-                            server_kind="coaptic-mio", resource_profile=profile)
+                            server_kind=server_kind, resource_profile=profile)
                 snapshots.assert_not_called()
                 self.assertEqual(child.stdin.getvalue(), "")
                 result = None
             else:
                 result = measure("server", "client", size, 2, 3, 1000, "spin", security,
-                                 server_kind="coaptic-mio", resource_profile=profile, cpu_gated=cpu_gated,
+                                 server_kind=server_kind, resource_profile=profile, cpu_gated=cpu_gated,
                                  concurrency=concurrency, independent_endpoints=independent_endpoints)
                 self.assertEqual(child.stdin.getvalue(), "run\nreport\nexit\n" if cpu_gated else "run\nexit\n")
                 self.assertEqual(snapshots.call_count, 4)
@@ -281,6 +282,25 @@ class ReportTests(unittest.TestCase):
                     boundary.assert_not_called()
         result, _ = self.run_profile_fixture("service-fixed", 16384, concurrency=4, independent_endpoints=True)
         self.assertEqual(result["server_resources"]["tx_body_slots"], 4)
+
+    def test_async_profiles_reach_matching_commands_ledgers_and_concurrency(self):
+        for profile, sizes in PROFILE_SIZES.items():
+            if profile == "host-control":
+                continue
+            for security in ("unprotected", "oscore"):
+                concurrency = 1 if profile.startswith("small-") else 2 if profile in ("device-fixed", "gateway-fixed") else 4
+                with self.subTest(profile=profile, security=security):
+                    result, commands = self.run_profile_fixture(
+                        profile, sizes[-1], security=security, server_kind="coaptic-async",
+                        concurrency=concurrency, independent_endpoints=concurrency > 1)
+                    self.assertEqual(commands[0][1], "coaptic-async")
+                    self.assertEqual(commands[0][-2:], ["--resource-profile", profile])
+                    self.assertEqual(result["server_kind"], "coaptic-async")
+                    self.assertGreater(result["server_resources"]["loop_future_borrowing_app_bytes"], 0)
+        for changes in (dict(resource_profile="host-control"), dict(rx_datagram_bytes=1472),
+                        dict(calls=4), dict(tx_body_slots=2)):
+            with self.subTest(changes=changes):
+                self.run_profile_fixture("small-blockwise", 4096, server_kind="coaptic-async", ledger_changes=changes)
 
     def test_wrong_profile_or_capacity_startup_refuses_before_cpu_gate_and_cleans_up(self):
         for changes in (dict(resource_profile="host-control"), dict(rx_datagram_bytes=1472),

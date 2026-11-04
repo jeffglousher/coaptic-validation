@@ -27,12 +27,13 @@ CORE_PROFILES = ("small-device", "service-fixed", "service-allocated")
 BINARIES = {"server": "bench-rust-server", "client": "bench-native-client",
             "core": "bench-core", "observe": "bench-observe-proof"}
 SECURITY = ("unprotected", "oscore")
+SERVER_KINDS = ("coaptic-mio", "coaptic-async")
 OPERATIONS, WARMUP = 32, 4
 JSON_LIMIT = 2 * 1024 * 1024
 BUILD_LIMIT = 16 * 1024 * 1024
 BINARY_LIMIT = 32 * 1024 * 1024
 PREPARED_LIMIT = 32 * 1024 * 1024
-SCHEMA = "coaptic-development-suite/2"
+SCHEMA = "coaptic-development-suite/3"
 SOURCES = ("development_suite.py", "suite_process.py", "native_profiles.py",
            "native_diagnostic.py", "native_check.py", "native_lock.py", "linux_cpu.py")
 
@@ -97,10 +98,12 @@ def socket_options(profile):
 
 
 def configuration():
-    return dict(version=2, profiles=[dimensions(p, n) | socket_options(p) for p, n in PROFILES],
-                security=list(SECURITY), server_kind="coaptic-mio", operations=OPERATIONS,
+    return dict(version=3, profiles=[dimensions(p, n) | socket_options(p) for p, n in PROFILES],
+                security=list(SECURITY), server_kinds=list(SERVER_KINDS), operations=OPERATIONS,
                 warmup=WARMUP, core_operations=16, core_warmup=128, core_calibrations=4096,
-                core_concurrency=1, core_scope="separate C1 supporting probes; not concurrent socket workload",
+                core_concurrency=1, core_server_kind="coaptic-mio",
+                core_scope="sync-only separate C1 supporting probes; not concurrent socket workload",
+                reliability_server_kind="coaptic-mio", observe_execution_mode="sync",
                 client_timeout_ms=1000, policy="spin",
                 observe_profile="small-observe", observe_payload_bytes=4096,
                 observe_client_requested_pool_ceiling_bytes=32768,
@@ -360,9 +363,16 @@ def validate_core(value, profile, security):
     return dict(median_ns=statistics.median(samples), maximum_ns=max(samples))
 
 
-def validate_socket(value, profile, security):
+def validate_socket(value, profile, security, server_kind="coaptic-mio"):
     from native_diagnostic import validate_report, validate_endpoint_report
     options = socket_options(profile)
+    if (server_kind not in SERVER_KINDS or value.get("server_kind") != server_kind
+            or value.get("server_resources", {}).get("server_kind") != server_kind):
+        raise ValueError("suite socket execution mode differs")
+    if server_kind == "coaptic-async":
+        future = value["server_resources"].get("loop_future_borrowing_app_bytes")
+        if type(future) is not int or future <= 0:
+            raise ValueError("async borrowing future ledger missing")
     validate_report(value["report"], dict(PROFILES)[profile], OPERATIONS, "spin", security,
                     **options)
     if value["report"]["warmup"] != WARMUP:
@@ -459,12 +469,13 @@ def run_suite(prepared, output, client_from=None):
                   configuration_sha256=fingerprint(config), host=host, preparation=bundle,
                   client_preparation=client_bundle, cells=[], reliability=[], observe=[],
                   not_run=[], limitation="development wall-time/owner regression signals only; no qualified CPU, extreme-tail, throughput, device timing or whole-memory claims")
-    pending = [(p, s) for p, _ in PROFILES for s in SECURITY]
+    pending = [(p, s, k) for p, _ in PROFILES for s in SECURITY for k in SERVER_KINDS]
     active_phase = "independent reliability"
     try:
         # Reliability must complete before any performance interpretation.
         proof = task(dict(kind="reliability-common", **bins), timeout=10)
         result["reliability"].append(dict(kind="independent-body-corruption-and-security-recovery",
+                                           server_kind="coaptic-mio",
                                            passed=True, seconds=proof.duration_seconds,
                                            output=proof.stdout.decode(errors="replace")))
         for profile, size in PROFILES:
@@ -472,42 +483,43 @@ def run_suite(prepared, output, client_from=None):
             proof = task(dict(kind="reliability-profile", profile=profile, size=size, **bins), timeout=10)
             ledgers = [json.loads(line) for line in proof.stdout.splitlines()]
             validate_profile_reliability(ledgers, profile)
-            result["reliability"].append(dict(profile=profile, passed=True,
+            result["reliability"].append(dict(profile=profile, server_kind="coaptic-mio", passed=True,
                                               seconds=proof.duration_seconds, cells=ledgers))
         for security in SECURITY:
             active_phase = "Observe lifecycle: " + security
             proof = task(dict(kind="observe", security=security, **bins), timeout=10)
             observed = json.loads(proof.stdout)
             validate_observe(observed, security)
-            result["observe"].append(dict(security=security, passed=True, report=observed,
+            result["observe"].append(dict(security=security, execution_mode="sync", passed=True, report=observed,
                                           worker_seconds=proof.duration_seconds))
         for profile, size in PROFILES:
             for security in SECURITY:
-                elapsed = time.perf_counter() - started
-                if elapsed >= 55:
-                    raise TimeoutError("development suite budget exhausted before next cell")
-                active_phase = "socket: " + profile + "/" + security
-                cell = dict(profile=profile, security=security, status="running")
-                result["cells"].append(cell)
-                pending.remove((profile, security))
-                spec = dict(kind="socket", profile=profile, size=size, security=security, **bins)
-                observed = task(spec, timeout=min(10, 60 - elapsed))
-                socket_value = json.loads(observed.stdout)
-                cell.update(socket=socket_value, socket_worker_seconds=observed.duration_seconds)
-                validate_socket(socket_value, profile, security)
-                if profile not in CORE_PROFILES:
-                    cell["core"] = dict(status="unsupported", reason="no existing core probe for this exact configured profile")
-                else:
-                    active_phase = "core: " + profile + "/" + security
+                for server_kind in SERVER_KINDS:
                     elapsed = time.perf_counter() - started
                     if elapsed >= 55:
-                        raise TimeoutError("development suite budget exhausted before core cell")
-                    core = task(dict(kind="core", profile=profile, security=security, **bins), timeout=min(10, 60 - elapsed))
-                    raw = json.loads(core.stdout)
-                    cell["core"] = dict(status="passed", concurrency=1, report=raw,
-                                        summary=validate_core(raw, profile, security),
-                                        worker_seconds=core.duration_seconds)
-                cell["status"] = "passed"
+                        raise TimeoutError("development suite budget exhausted before next cell")
+                    active_phase = "socket: " + server_kind + "/" + profile + "/" + security
+                    cell = dict(profile=profile, security=security, server_kind=server_kind, status="running")
+                    result["cells"].append(cell)
+                    pending.remove((profile, security, server_kind))
+                    spec = dict(kind="socket", profile=profile, size=size, security=security, server_kind=server_kind, **bins)
+                    observed = task(spec, timeout=min(10, 60 - elapsed))
+                    socket_value = json.loads(observed.stdout)
+                    cell.update(socket=socket_value, socket_worker_seconds=observed.duration_seconds)
+                    validate_socket(socket_value, profile, security, server_kind)
+                    if server_kind != "coaptic-mio" or profile not in CORE_PROFILES:
+                        cell["core"] = dict(status="unsupported", reason="core supporting probe is sync-only and limited to three configured profiles")
+                    else:
+                        active_phase = "core: " + profile + "/" + security
+                        elapsed = time.perf_counter() - started
+                        if elapsed >= 55:
+                            raise TimeoutError("development suite budget exhausted before core cell")
+                        core = task(dict(kind="core", profile=profile, security=security, **bins), timeout=min(10, 60 - elapsed))
+                        raw = json.loads(core.stdout)
+                        cell["core"] = dict(status="passed", server_kind="coaptic-mio", concurrency=1, report=raw,
+                                            summary=validate_core(raw, profile, security),
+                                            worker_seconds=core.duration_seconds)
+                    cell["status"] = "passed"
         verify_prepared(prepared)
         verify_prepared(client_from or prepared)
         result["passed"] = True
@@ -521,7 +533,7 @@ def run_suite(prepared, output, client_from=None):
                                stderr=getattr(error, "stderr", b"")[:65536].decode(errors="replace"))
         raise
     finally:
-        result["not_run"] = [dict(profile=p, security=s) for p, s in pending]
+        result["not_run"] = [dict(profile=p, security=s, server_kind=k) for p, s, k in pending]
         result["total_seconds"] = time.perf_counter() - started
         result["within_minute"] = result["total_seconds"] <= 60
         result["core_warmup_limit"] = "128 verified warmups per core process; startup/warmup/calibration durations not separately instrumented"
@@ -536,15 +548,15 @@ def compare(before, after):
             raise ValueError("comparison requires two complete successful runs")
         if r.get("configuration") != configuration() or r.get("configuration_sha256") != fingerprint(configuration()):
             raise ValueError("configuration mismatch")
-        if len(r.get("cells", [])) != len(PROFILES) * len(SECURITY) or r.get("not_run"):
+        if len(r.get("cells", [])) != len(PROFILES) * len(SECURITY) * len(SERVER_KINDS) or r.get("not_run"):
             raise ValueError("incomplete comparison rows")
-        wanted = [(p, s) for p, _ in PROFILES for s in SECURITY]
-        if [(c.get("profile"), c.get("security")) for c in r["cells"]] != wanted:
-            raise ValueError("comparison must include every exact profile/security row")
+        wanted = [(p, s, k) for p, _ in PROFILES for s in SECURITY for k in SERVER_KINDS]
+        if [(c.get("profile"), c.get("security"), c.get("server_kind")) for c in r["cells"]] != wanted:
+            raise ValueError("comparison must include every exact profile/security/execution-mode row")
         if any(c.get("status") != "passed" for c in r["cells"]):
             raise ValueError("comparison includes an unfinished cell")
         if (len(r.get("reliability", [])) != len(PROFILES) + 1
-                or any(v.get("passed") is not True for v in r["reliability"])):
+                or any(v.get("passed") is not True or v.get("server_kind") != "coaptic-mio" for v in r["reliability"])):
             raise ValueError("comparison requires completed reliability checks")
         if (r["reliability"][0].get("kind") != "independent-body-corruption-and-security-recovery"
                 or [v.get("profile") for v in r["reliability"][1:]] != [p for p, _ in PROFILES]):
@@ -554,22 +566,23 @@ def compare(before, after):
         if [x.get("security") for x in r.get("observe", [])] != list(SECURITY):
             raise ValueError("Observe proof cohort incomplete")
         for observed in r["observe"]:
-            if observed.get("passed") is not True:
+            if observed.get("passed") is not True or observed.get("execution_mode") != "sync":
                 raise ValueError("Observe lifecycle proof failed")
             validate_observe(observed["report"], observed["security"])
         for cell in r["cells"]:
             size = dict(PROFILES)[cell["profile"]]
-            validate_socket(cell["socket"], cell["profile"], cell["security"])
+            validate_socket(cell["socket"], cell["profile"], cell["security"], cell["server_kind"])
             if cell["socket"]["report"]["warmup"] != WARMUP:
                 raise ValueError("comparison warmup differs")
             ledger = cell["socket"]["server_resources"]
             for k, expected in dimensions(cell["profile"], size).items():
                 if ledger.get(k) != expected:
                     raise ValueError("comparison capacities differ: " + k)
-            if cell["profile"] not in CORE_PROFILES:
+            if cell["server_kind"] != "coaptic-mio" or cell["profile"] not in CORE_PROFILES:
                 if cell["core"].get("status") != "unsupported":
                     raise ValueError("unsupported core cell misrepresented")
-            elif (cell["core"].get("status") != "passed" or cell["core"].get("concurrency") != 1
+            elif (cell["core"].get("status") != "passed" or cell["core"].get("server_kind") != "coaptic-mio"
+                    or cell["core"].get("concurrency") != 1
                     or cell["core"].get("summary") != validate_core(cell["core"]["report"], cell["profile"], cell["security"])):
                 raise ValueError("comparison core verification differs")
     for key in ("host", "configuration_sha256"):
@@ -591,13 +604,16 @@ def compare(before, after):
         x, y = (v["socket"]["report"]["latencies_ns"] for v in (left, right))
         old, new = statistics.median(x), statistics.median(y)
         ledger_a, ledger_b = (v["socket"]["server_resources"] for v in (left, right))
-        row = dict(profile=left["profile"], security=left["security"],
+        row = dict(profile=left["profile"], security=left["security"], server_kind=left["server_kind"],
                    socket_median_ns_before=old, socket_median_ns_after=new,
                    socket_median_change_ns=new - old,
                    app_inline_bytes_before=ledger_a["app_including_adapter_bytes"],
                    app_inline_bytes_after=ledger_b["app_including_adapter_bytes"],
                    app_requested_pool_heap_bytes_before=ledger_a["app_requested_heap_bytes"],
                    app_requested_pool_heap_bytes_after=ledger_b["app_requested_heap_bytes"])
+        if left["server_kind"] == "coaptic-async":
+            row.update(loop_future_borrowing_app_bytes_before=ledger_a["loop_future_borrowing_app_bytes"],
+                       loop_future_borrowing_app_bytes_after=ledger_b["loop_future_borrowing_app_bytes"])
         if left["core"]["status"] == right["core"]["status"] == "passed":
             row.update(core_poll_median_ns_before=left["core"]["summary"]["median_ns"],
                        core_poll_median_ns_after=right["core"]["summary"]["median_ns"])
@@ -629,7 +645,7 @@ def worker(spec):
         return 0
     from native_diagnostic import measure
     report = measure(spec["server"], spec["client"], spec["size"], OPERATIONS, WARMUP,
-                     1000, "spin", spec["security"], server_kind="coaptic-mio",
+                     1000, "spin", spec["security"], server_kind=spec["server_kind"],
                      resource_profile=spec["profile"], phase_timeout_seconds=3,
                      **socket_options(spec["profile"]))
     print(json.dumps(report, allow_nan=False))
@@ -672,6 +688,7 @@ def main():
         result = run_suite(a.prepared, a.output, a.client_from)
         print(json.dumps(dict(passed=result["passed"], seconds=result["total_seconds"],
                               within_minute=result["within_minute"], socket_cells=len(result["cells"]),
+                              socket_cells_by_server_kind={k: sum(c["server_kind"] == k for c in result["cells"]) for k in SERVER_KINDS},
                               core_cells=sum(c["core"]["status"] == "passed" for c in result["cells"]),
                               unsupported_core_cells=sum(c["core"]["status"] == "unsupported" for c in result["cells"]),
                               observe_lifecycle_cells=len(result["observe"]), result=str(a.output))))
