@@ -547,13 +547,18 @@ uint64_t CoapticNetwork::read_campaign_clock_ns() const {
 }
 
 void CoapticNetwork::read_campaign_record(const uint64_t *words, uint32_t count) const {
+#ifdef COAPTIC_ASYNC_NETWORK
+  constexpr const char *io_mode = "async";
+#else
+  constexpr const char *io_mode = "sync";
+#endif
   if ((security_mode_ != 6 && security_mode_ != 7) || words == nullptr || count != 16) return;
   // Stream one fixed metadata record after each measured operation. No trace
   // queue, payload copy or formatting string allocation is retained here.
   ESP_LOGI(TAG, "COAPTIC_READ_RECORD {\"run_id\":\"%s\",\"mode\":%lu,\"protected\":%s,\"io_mode\":\"%s\",\"words\":["
            "%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu]}",
            run_id_.c_str(), static_cast<unsigned long>(security_mode_), security_mode_ == 6 ? "true" : "false",
-           async_network_ ? "async" : "sync",
+           io_mode,
            static_cast<unsigned long long>(words[0]), static_cast<unsigned long long>(words[1]),
            static_cast<unsigned long long>(words[2]), static_cast<unsigned long long>(words[3]),
            static_cast<unsigned long long>(words[4]), static_cast<unsigned long long>(words[5]),
