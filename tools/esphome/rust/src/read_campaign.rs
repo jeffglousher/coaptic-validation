@@ -277,6 +277,34 @@ fn verify(reply: &coaptic::Response<'_>, expected: &[u8]) -> Result<(), &'static
     if reply.code() != Code::CONTENT || reply.payload_truncated() || reply.payload() != expected {
         return Err("campaign representation/identity");
     }
+    // These handlers intentionally return neither Content-Format nor Observe.
+    // Match the independent libcoap oracle, including malformed elective values
+    // which the typed getters can omit from a received response.
+    if reply.format().is_some() || reply.observe_seq().is_some() {
+        return Err("campaign response metadata");
+    }
+    verify_options(reply.received_options())
+}
+
+fn verify_options<'a>(
+    options: impl Iterator<Item = coaptic::message::Opt<'a>>,
+) -> Result<(), &'static str> {
+    let mut etags = 0;
+    for option in options {
+        use coaptic::message::OptionNumber;
+        match option.number() {
+            OptionNumber::CONTENT_FORMAT | OptionNumber::OBSERVE => {
+                return Err("campaign response metadata");
+            }
+            OptionNumber::ETAG => {
+                etags += 1;
+                if etags > 1 || option.value().is_empty() || option.value().len() > 8 {
+                    return Err("campaign response etag");
+                }
+            }
+            _ => {}
+        }
+    }
     Ok(())
 }
 
@@ -302,6 +330,31 @@ mod tests {
         assert!(verify(&valid.payload_borrowed(b"coaptix"), b"coaptic").is_err());
         assert!(verify(&valid.payload_borrowed(b"coap"), b"coaptic").is_err());
         assert!(verify(&coaptic::Response::not_found(), b"coaptic").is_err());
+        assert!(
+            verify(
+                &valid.content_format(coaptic::ContentFormat::TEXT_PLAIN),
+                b"coaptic"
+            )
+            .is_err()
+        );
+        assert!(verify(&valid.observe(1), b"coaptic").is_err());
         assert!(verify(&valid, b"coaptic").is_ok());
+    }
+
+    #[test]
+    fn received_metadata_refuses_malformed_elective_values_and_duplicate_etags() {
+        use coaptic::message::{Opt, OptionNumber};
+        for option in [
+            Opt::new(OptionNumber::CONTENT_FORMAT, &[0xff; 3]),
+            Opt::new(OptionNumber::OBSERVE, &[0xff; 4]),
+            Opt::new(OptionNumber::ETAG, &[]),
+            Opt::new(OptionNumber::ETAG, &[0; 9]),
+        ] {
+            assert!(verify_options([option].into_iter()).is_err());
+        }
+        let tag = Opt::new(OptionNumber::ETAG, b"one");
+        assert!(verify_options([tag, tag].into_iter()).is_err());
+        assert!(verify_options([tag].into_iter()).is_ok());
+        assert!(verify_options(core::iter::empty()).is_ok());
     }
 }

@@ -27,25 +27,24 @@ fn reject_clock_failure<R, E, C>(
 pub async fn run_async<T: AsyncDatagramIo>(
     io: T,
     random: fn(&mut [u8]) -> bool,
-    mut clock: impl FnMut() -> Option<u64>,
+    clock: impl FnMut() -> Option<u64>,
     id: &[u8; 32],
     timers: (&mut impl AsyncTimer, &mut impl AsyncTimer),
 ) -> Result<(), &'static str> {
+    // Preserve the public future's lazy claim, entropy and construction behavior.
+    let mut service = prepare_unprotected(io, random, id)?;
+    serve_prepared_async(&mut service, clock, timers).await
+}
+
+// The platform owns preparation and teardown; cancellation drops this borrow,
+// while its PreparedService continues to own the App and single-service guard.
+pub(crate) async fn serve_prepared_async<T: AsyncDatagramIo>(
+    service: &mut PreparedService<T>,
+    mut clock: impl FnMut() -> Option<u64>,
+    timers: (&mut impl AsyncTimer, &mut impl AsyncTimer),
+) -> Result<(), &'static str> {
     let (protocol_timer, local_timer) = timers;
-    let _owner = claim(id)?;
-    let mut app = App::profile::<profiles::Constrained>()
-        .randomness(random)
-        .allow_unprotected()
-        .block_wise::<true>()
-        .route("identity", get(identity))
-        .route("test", get(test))
-        .route("echo", post(echo))
-        .route("upload", post(upload))
-        .route("large", get(large))
-        .route("ticks", get(ticks))
-        .well_known_core()
-        .bind(io)
-        .map_err(|_| "bind")?;
+    let app = &mut service.app;
     let mut next = 0;
     let mut confirm_at = 0;
     let mut errors = 0;

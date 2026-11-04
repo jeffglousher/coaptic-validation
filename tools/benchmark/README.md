@@ -11,7 +11,12 @@ endpoint, not a complete competing server stack. HTTP/3 uses quic-go with a
 verified fixture certificate and TLS 1.3. These are pinned candidates, not a
 claim that each is its language's fastest library.
 
-Current rankings and complete cell receipts:
+For an offline, mode-separated view of widened host/device receipts, use the
+[comparison explorer](comparison_report.md). It recomputes complete planned
+host cells, keeps failed/missing rounds visible, and separates latency/goodput
+from memory, lifecycle and source volume. Busy spin is excluded by default.
+
+Historical rankings and complete cell receipts:
 [October 23 Windows comparison](evidence/current-windows-20261023/README.md).
 The [October 22 sitrep](evidence/comprehensive-windows-20261022/README.md) retains
 the earlier campaign and methodology.

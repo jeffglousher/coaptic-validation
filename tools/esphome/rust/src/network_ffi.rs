@@ -550,11 +550,15 @@ fn run_unprotected_async(
     let mut runtime =
         unsafe { crate::async_network::Runtime::new(context) }.map_err(|_| "async driver")?;
     let (socket, mut protocol, mut local, mut driver) = runtime.split();
-    match driver.run(core::pin::pin!(crate::network::run_async(
-        socket,
-        random,
+    // Construct before pinning the serving future: construction and serving
+    // need not share the driver's large coroutine polling frame.
+    // Borrow the returned owner in place. Moving a large App out of Result can
+    // keep a second construction slot live in this platform stack frame.
+    let mut prepared = crate::network::prepare_unprotected(socket, random, id);
+    let service = prepared.as_mut().map_err(|error| *error)?;
+    match driver.run(core::pin::pin!(crate::network::serve_prepared_async(
+        service,
         || async_clock(context),
-        id,
         (&mut protocol, &mut local),
     ))) {
         Ok(result) => result,
