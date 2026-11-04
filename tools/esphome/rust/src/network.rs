@@ -26,6 +26,8 @@ mod async_service;
 pub use async_service::run_async;
 #[cfg(all(feature = "async-network", feature = "oscore"))]
 pub use async_service::run_protected_async;
+#[cfg(all(feature = "async-network", any(target_os = "none", test)))]
+pub(crate) use async_service::serve_prepared_async;
 
 use core::cell::Cell;
 use core::sync::atomic::{AtomicU8, AtomicU32, Ordering};
@@ -111,6 +113,40 @@ where
         Err(ClockError::Source(())) => Ok(None),
         Err(ClockError::Regressed { .. }) => Err("clock regression"),
     }
+}
+
+// The platform can prepare this owner before creating its serving future.
+// App drops before the guard, so transport teardown still has sole ownership.
+#[cfg(feature = "async-network")]
+pub(crate) struct PreparedService<T> {
+    app: App<profiles::Constrained, T, { coaptic::app::DEFAULT_ROUTES }, true>,
+    _owner: Owner,
+}
+
+// Keep initialization out of the platform driver's retained polling frame.
+// This boundary changes neither capacities nor allocation policy.
+#[cfg(feature = "async-network")]
+#[inline(never)]
+pub(crate) fn prepare_unprotected<T>(
+    io: T,
+    random: fn(&mut [u8]) -> bool,
+    id: &[u8; 32],
+) -> Result<PreparedService<T>, &'static str> {
+    let owner = claim(id)?;
+    let app = App::profile::<profiles::Constrained>()
+        .randomness(random)
+        .allow_unprotected()
+        .block_wise::<true>()
+        .route("identity", get(identity))
+        .route("test", get(test))
+        .route("echo", post(echo))
+        .route("upload", post(upload))
+        .route("large", get(large))
+        .route("ticks", get(ticks))
+        .well_known_core()
+        .bind(io)
+        .map_err(|_| "bind")?;
+    Ok(PreparedService { app, _owner: owner })
 }
 
 /// Runs until the owning platform returns `None` from its scheduling clock.
@@ -535,6 +571,121 @@ mod tests {
         let mut bytes = [0; 1152];
         let len = encode(&message, &mut bytes).unwrap();
         bytes[..len].to_vec()
+    }
+
+    #[cfg(feature = "async-network")]
+    #[test]
+    fn public_async_service_preparation_is_lazy_and_cancellation_releases_owner() {
+        use async_tests::{NativeOnly, Timer, drive};
+        use core::{future::Future, task::Context, task::Waker};
+
+        let _test = TEST_LOCK.lock().unwrap();
+        static FILLS: AtomicU32 = AtomicU32::new(0);
+        FILLS.store(0, Ordering::Relaxed);
+        let active = || critical_section::with(|section| ACTIVE.borrow(section).get());
+        let idle = || {
+            NativeOnly(Scripted {
+                incoming: VecDeque::new(),
+                outgoing: Rc::new(RefCell::new(Vec::new())),
+                fail: false,
+            })
+        };
+        let now = Rc::new(Cell::new(0));
+        let mut protocol = Timer(now.clone());
+        let mut local = Timer(now.clone());
+        {
+            let future = run_async(
+                idle(),
+                |bytes| {
+                    FILLS.fetch_add(1, Ordering::Relaxed);
+                    bytes.fill(42);
+                    true
+                },
+                || Some(0),
+                &[1; 32],
+                (&mut protocol, &mut local),
+            );
+            assert!(!active());
+            assert_eq!(FILLS.load(Ordering::Relaxed), 0);
+            let mut future = core::pin::pin!(future);
+            let mut context = Context::from_waker(Waker::noop());
+            assert!(future.as_mut().poll(&mut context).is_pending());
+            assert!(active());
+            assert!(FILLS.load(Ordering::Relaxed) > 0);
+        }
+        assert!(!active(), "cancelling the public future releases its owner");
+        assert_eq!(
+            drive(
+                run_async(
+                    idle(),
+                    |_| false,
+                    || None,
+                    &[2; 32],
+                    (&mut protocol, &mut local),
+                ),
+                &now,
+            ),
+            Err("bind"),
+        );
+        assert!(!active(), "failed preparation releases its owner");
+    }
+
+    #[cfg(feature = "async-network")]
+    #[test]
+    fn prepared_async_service_keeps_owner_and_echoes_through_borrowed_loop() {
+        use async_tests::{NativeOnly, Timer, drive};
+        use core::{future::Future, task::Context, task::Waker};
+
+        let _test = TEST_LOCK.lock().unwrap();
+        let now = Rc::new(Cell::new(0));
+        let outgoing = Rc::new(RefCell::new(Vec::new()));
+        let io = NativeOnly(Scripted {
+            incoming: [request(9, coaptic::Code::POST, "echo", b"prepared async")].into(),
+            outgoing: outgoing.clone(),
+            fail: false,
+        });
+        let mut service = prepare_unprotected(
+            io,
+            |bytes| {
+                bytes.fill(42);
+                true
+            },
+            &[3; 32],
+        )
+        .unwrap_or_else(|error| panic!("preparation: {error}"));
+        let mut protocol = Timer(now.clone());
+        let mut local = Timer(now.clone());
+        {
+            let mut future = core::pin::pin!(serve_prepared_async(
+                &mut service,
+                || Some(0),
+                (&mut protocol, &mut local),
+            ));
+            let mut context = Context::from_waker(Waker::noop());
+            assert!(future.as_mut().poll(&mut context).is_pending());
+        }
+        assert!(outgoing.borrow().is_empty());
+        assert!(matches!(claim(&[4; 32]), Err("already running")));
+        assert_eq!(
+            drive(
+                serve_prepared_async(
+                    &mut service,
+                    || (now.get() < 500).then_some(now.get()),
+                    (&mut protocol, &mut local),
+                ),
+                &now,
+            ),
+            Ok(()),
+        );
+        let packets = outgoing.borrow();
+        assert_eq!(packets.len(), 1);
+        let reply = decode(&packets[0]).unwrap();
+        assert_eq!(reply.code(), coaptic::Code::CONTENT);
+        assert_eq!(reply.payload(), b"prepared async");
+        assert_eq!(reply.message_id(), MessageId::new(9));
+        assert!(matches!(claim(&[4; 32]), Err("already running")));
+        drop(service);
+        assert!(claim(&[4; 32]).is_ok());
     }
 
     #[test]
