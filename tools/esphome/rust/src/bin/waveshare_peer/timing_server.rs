@@ -118,7 +118,6 @@ impl coaptic::storage::DatagramTransport for AsyncIo<'_> {
 #[cfg(feature = "async-network")]
 impl coaptic::storage::AsyncDatagramIo for AsyncIo<'_> {
     async fn recv(&mut self, bytes: &mut [u8]) -> std::io::Result<(usize, Endpoint)> {
-        use coaptic::storage::AsyncDatagramIo;
         loop {
             let start = self.clock.elapsed().as_nanos() as u64;
             let (n, peer) = self.socket.recv(bytes).await?;
@@ -151,7 +150,6 @@ impl coaptic::storage::AsyncDatagramIo for AsyncIo<'_> {
     }
 
     async fn send(&mut self, peer: Endpoint, bytes: &[u8]) -> std::io::Result<usize> {
-        use coaptic::storage::AsyncDatagramIo;
         if !allowed(peer, self.remote) {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,

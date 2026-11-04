@@ -1,5 +1,7 @@
 # Fixed development suite
 
+See [execution mode and platform coverage](mode_coverage.md).
+
 Use this prepared-run screen during library iteration. Reliability checks run
 before timing: independent exact/corrupt response checks, security refusal and
 fresh recovery, then each profile's oversize/refusal/recovery checks. The native

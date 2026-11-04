@@ -80,10 +80,9 @@ coap_response_t response(coap_session_t *session, const coap_pdu_t *,
       return COAP_RESPONSE_FAIL;
     }
   }
-  if (iterator.bad) {
-    operation->error = "response_options";
-    return COAP_RESPONSE_FAIL;
-  }
+  // libcoap marks normal iterator exhaustion (including a payload marker)
+  // as bad. PDU parsing validates wire options before this callback; only
+  // the application metadata and duplicate checks above belong here.
   size_t length = 0, offset = 0, total = 0;
   const uint8_t *data = nullptr;
   const size_t expected = expected_length(operation->resource);

@@ -141,7 +141,7 @@ def main():
             server = [binary, "server", protocol, "{host}", "{port}", "{bytes}", "{certificate}"]
             client = driver if protocol == "coap" else [binary, "load", "{host}", "{port}", "{bytes}", "{concurrency}", "{operations}", "{warmup}", "{timeout_ms}", "{mode}", "{certificate}"]
             peers.append({"id": name, "protocol": protocol, "server": server, "driver": client,
-                          "identity": {"compiler": version, "library": "plgd/go-coap v3.5.4" if protocol == "coap" else "quic-go v0.63.0; HTTP3 only; TLS1.3 certificate verified", "GOMAXPROCS": os.environ.get("GOMAXPROCS", "runtime default")}})
+                          "identity": {"compiler": version, "library": "plgd/go-coap v3.6.0" if protocol == "coap" else "quic-go v0.63.0; HTTP3 only; TLS1.3 certificate verified", "GOMAXPROCS": os.environ.get("GOMAXPROCS", "runtime default")}})
     if "libcoap" in selected:
         if args.libcoap_source is None:
             parser.error("--libcoap-source must name clean pinned 851533c3 source")
