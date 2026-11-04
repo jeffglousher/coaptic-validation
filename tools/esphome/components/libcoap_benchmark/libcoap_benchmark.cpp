@@ -314,15 +314,18 @@ void LibcoapBenchmark::run_() {
     }
   }
   const int64_t preparation_end_us = esp_timer_get_time();
-  ESP_LOGI(
-      TAG,
-      "LIBCOAP_BENCH_PREPARATION "
-      "{\"run_id\":\"%s\",\"server_run_id\":\"%s\",\"component\":\"espressif/"
-      "coap4.3.5~8\",\"libcoap_version\":\"%s\",\"security\":\"unprotected\","
-      "\"io_mode\":\"libcoap-event-loop\",\"operations\":24,\"concurrency\":1,"
-      "\"single_body\":true,\"prepare_ns\":%" PRId64 "}",
-      run_id_, server_run_id_, coap_package_version(),
-      (preparation_end_us - preparation_start_us) * 1000);
+  // Keep each record below the installed logger's per-message limit.
+  ESP_LOGI(TAG,
+           "LIBCOAP_BENCH_BUILD {\"run_id\":\"%s\",\"server_run_id\":\"%s\",\"component\":"
+           "\"espressif/coap4.3.5~8\",\"libcoap_version\":\"%s\"}",
+           run_id_, server_run_id_, coap_package_version());
+  ESP_LOGI(TAG,
+           "LIBCOAP_BENCH_PREPARATION {\"run_id\":\"%s\","
+           "\"security\":\"unprotected\","
+           "\"io_mode\":\"libcoap-event-loop\",\"operations\":24,"
+           "\"single_body\":true,\"prepare_ns\":%" PRId64 "}",
+           run_id_,
+           (preparation_end_us - preparation_start_us) * 1000);
   ESP_LOGI(TAG,
            "LIBCOAP_BENCH_MEMORY {\"run_id\":\"%s\","
            "\"heap_before_bytes\":%u,\"heap_ready_bytes\":%u,\"internal_before_"
@@ -382,19 +385,20 @@ void LibcoapBenchmark::run_() {
   if (context != nullptr)
     coap_free_context(context);
   coap_cleanup();
-  ESP_LOGI(
-      TAG,
-      "LIBCOAP_BENCH_TERMINAL "
-      "{\"passed\":%s,\"run_id\":\"%s\",\"security\":\"unprotected\","
-      "\"completed\":%u,\"error\":\"%s\",\"heap_before_cleanup_bytes\":%u,"
-      "\"heap_after_cleanup_bytes\":%u,\"global_min_heap_since_boot_bytes\":%u,"
-      "\"task_stack_high_water_free_bytes\":%u,\"stack_reserved_bytes\":%u}",
-      completed == OPERATIONS && error == nullptr ? "true" : "false", run_id_,
-      completed, error != nullptr ? error : "",
-      static_cast<unsigned>(heap_before_cleanup),
-      static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_8BIT)),
-      static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT)),
-      static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)), STACK_BYTES);
+  // Stack is already part of the task heap allocation; report it separately.
+  ESP_LOGI(TAG,
+           "LIBCOAP_BENCH_CLEANUP {\"run_id\":\"%s\",\"free_before_b\":%u,"
+           "\"free_after_b\":%u,\"min_b\":%u,\"stack_free_b\":%u,"
+           "\"stack_b\":%u}",
+           run_id_, static_cast<unsigned>(heap_before_cleanup),
+           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_8BIT)),
+           static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT)),
+           static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)), STACK_BYTES);
+  ESP_LOGI(TAG,
+           "LIBCOAP_BENCH_TERMINAL {\"passed\":%s,\"run_id\":\"%s\","
+           "\"completed\":%u,\"error\":\"%s\"}",
+           completed == OPERATIONS && error == nullptr ? "true" : "false", run_id_,
+           completed, error != nullptr ? error : "");
 }
 
 #ifdef LIBCOAP_BENCH_SERVER
@@ -482,21 +486,21 @@ void LibcoapBenchmark::run_server_() {
   if (context != nullptr)
     coap_free_context(context);
   coap_cleanup();
-  ESP_LOGI(
-      TAG,
-      "LIBCOAP_BENCH_SERVER_TERMINAL {\"passed\":%s,\"run_id\":\"%s\","
-      "\"role\":\"server\",\"handler_calls\":%u,\"refused_peers\":%u,\"polls\":"
-      "%u,"
-      "\"error\":\"%s\",\"heap_before_cleanup_bytes\":%u,\"heap_after_cleanup_"
-      "bytes\":%u,"
-      "\"global_min_heap_since_boot_bytes\":%u,\"task_stack_high_water_free_"
-      "bytes\":%u}",
-      error == nullptr && state.handler_calls > 0 ? "true" : "false", run_id_,
-      state.handler_calls, state.refused_peers, polls,
-      error != nullptr ? error : "", static_cast<unsigned>(heap_before_cleanup),
-      static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_8BIT)),
-      static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT)),
-      static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+  // Stack is already part of the task heap allocation; report it separately.
+  ESP_LOGI(TAG,
+           "LIBCOAP_BENCH_CLEANUP {\"run_id\":\"%s\",\"free_before_b\":%u,"
+           "\"free_after_b\":%u,\"min_b\":%u,\"stack_free_b\":%u,"
+           "\"stack_b\":%u}",
+           run_id_, static_cast<unsigned>(heap_before_cleanup),
+           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_8BIT)),
+           static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT)),
+           static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)), STACK_BYTES);
+  ESP_LOGI(TAG,
+           "LIBCOAP_BENCH_SERVER_TERMINAL {\"passed\":%s,\"run_id\":\"%s\","
+           "\"calls\":%u,\"refused\":%u,\"polls\":%u,\"error\":\"%s\"}",
+           error == nullptr && state.handler_calls > 0 ? "true" : "false", run_id_,
+           state.handler_calls, state.refused_peers, polls,
+           error != nullptr ? error : "");
 }
 #endif
 
