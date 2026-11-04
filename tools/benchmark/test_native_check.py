@@ -169,7 +169,7 @@ class CommonProofTests(unittest.TestCase):
         record = json.loads(self.line)
         record["calls"] = 1
         self.line = json.dumps(record).encode() + b"\n"
-        with self.assertRaisesRegex(ValueError, "mismatched Mio profile ledger: calls"):
+        with self.assertRaisesRegex(ValueError, "mismatched profile ledger: calls"):
             self.check()
         self.client.assert_not_called()
         self.assert_waited()
