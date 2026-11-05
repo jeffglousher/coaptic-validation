@@ -71,11 +71,14 @@ fields equal, owned App/heap bytes cannot grow, ordinary server owners strictly
 shrink, retained fixed App strictly shrinks. No runtime gates changed.
 
 Run `python verify.py shared` and `python verify.py owned-scan` to verify every
-archive hash, all 448 timing outputs, response assertions, capacity/memory ledgers
+archive hash, all 448 timing outputs, response assertions and reported capacity/memory fields
 and independently recompute both rejections. Each invocation checks its 224 timing
 outputs and all archive hashes. The first offline verifier mistakenly expected
 the 64-row Service saving in the distinct 16-row retained fixture; its expected
 delta was corrected to256. Measurement acceptance and raw samples were unchanged.
+The later evidence review added explicit SmallDevice pool-field comparisons.
+Retained outputs omit a capacity ledger; their capacities are preserved by the
+pinned fixture/source, not checked through absent output fields.
 
 Run `python prepare.py CORE_REPO NEW_OUTPUT baseline`, `shared` or `owned-scan`
 to materialize source without modifying a checkout. Build with the recorded Rust

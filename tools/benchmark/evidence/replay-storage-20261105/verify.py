@@ -55,7 +55,9 @@ with zipfile.ZipFile(ROOT / "observations.zip") as archive:
         label = "-".join(map(str, cell))
         qualifier = [read(f"qualify-{arm}-{label}.json") for arm in "AB"]
         for key in ("server_capacities", "client_capacities", "routes",
-                    "calls", "deferred", "security_requests", "associations"):
+                    "calls", "deferred", "security_requests", "associations",
+                    "rx_slots", "rx_datagram_bytes", "tx_slots", "tx_datagram_bytes",
+                    "dedup", "observe", "rx_body_slots", "tx_body_slots", "blockwise"):
             if key in qualifier[0]:
                 assert qualifier[0][key] == qualifier[1][key], (cell, key)
         a, b = qualifier
