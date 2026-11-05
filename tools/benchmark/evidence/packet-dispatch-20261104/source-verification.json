@@ -1,0 +1,10 @@
+{
+  "baseline_production_identical_to_prior_binary_source": true,
+  "measured_fixture_tracked_files_verified": 372,
+  "normalization": "Windows CRLF only",
+  "postmeasurement_source_changes": [
+    "src/app/option_validation_tests.rs"
+  ],
+  "reverse_patch_check": "pass",
+  "fixture_hashes": "pass"
+}

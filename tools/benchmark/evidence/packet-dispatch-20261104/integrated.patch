@@ -1,0 +1,586 @@
+diff --git a/src/app/mod.rs b/src/app/mod.rs
+index 93ffca3..fd103fa 100644
+--- a/src/app/mod.rs
++++ b/src/app/mod.rs
+@@ -3002,6 +3002,8 @@ fn assemble_inbound_body<Mem>(
+     now_ms: u64,
+     parsed: &ParsedMessage<'_, Mem::Token>,
+     oscore_request: oscore::Request,
++    has_block1: bool,
++    has_q_block1: bool,
+ ) -> InboundBody
+ where
+     Mem: Storage + DatagramSlots + BodySlots,
+@@ -3010,7 +3012,7 @@ where
+     let _ = oscore_request;
+     // Classify from the first decode. Plain GET must not enter apply_*
+     // (each stacks profile-sized Block IO scratch, then MissingBlock).
+-    if parsed.block1().is_some() {
++    if has_block1 {
+         return match engine.apply_block1_rx(rx) {
+             Ok(progress) if progress.complete() => InboundBody::Complete(progress.id()),
+             Ok(_) => InboundBody::Continue,
+@@ -3026,7 +3028,7 @@ where
+             Err(_) => InboundBody::Refused(Code::REQUEST_ENTITY_INCOMPLETE),
+         };
+     }
+-    if parsed.q_block1().is_some() {
++    if has_q_block1 {
+         return match engine.apply_q_block1_rx(rx) {
+             Ok(progress) if progress.complete() => {
+                 let _ = engine.note_q_receive(progress.id(), now_ms);
+@@ -3233,78 +3235,101 @@ where
+     }
+ }
+ 
+-/// 4.02 before [`Site::dispatch`]: unknown critical, OSCORE with no
+-/// attached context, or a malformed Block / Q-Block2 value.
+-fn bad_option_request<K: OwnedToken, const REQUESTS: usize>(
++/// Results already decoded during critical-option validation. Keep the first
++/// singleton value and the original later 4.00 decisions distinct from 4.02.
++#[derive(Default)]
++struct RequestOptions {
++    block1: Option<BlockValue>,
++    block2: Option<BlockValue>,
++    q_block2: Option<BlockValue>,
++    q_block1: bool,
++    observe: bool,
++    missing_q1_metadata: bool,
++    missing_fetch_format: bool,
++    valid_q_selections: bool,
++}
++
++/// None means 4.02 before dispatch: unknown critical, OSCORE without a context,
++/// malformed Block/Q-Block2, or an unsupported option combination.
++fn request_options<K: OwnedToken, const REQUESTS: usize>(
+     parsed: &ParsedMessage<'_, K>,
+     oscore: &oscore::Field<REQUESTS, K>,
+-) -> bool {
++) -> Option<RequestOptions> {
+     use crate::message::OptionNumber;
+-
+     let fetch = parsed.code() == Code::FETCH;
++    let mut result = RequestOptions {
++        valid_q_selections: true,
++        ..RequestOptions::default()
++    };
+     let mut tag = false;
+     let mut format = false;
+-    let mut observe = false;
+-    let mut block1 = false;
+-    let mut block2 = false;
+-    let mut q_block1 = false;
+-    let mut q_block2 = false;
+-    let mut repeated_q_block2 = false;
+-    let mut q_block2_start = false;
+-    // Decode validated wire options once; values continue to borrow the packet.
++    let mut size1 = None;
++    let mut previous_q: Option<BlockValue> = None;
++    let mut repeated_q = false;
++    let mut q_start = false;
+     for option in parsed.options() {
+         match option.number() {
+             OptionNumber::REQUEST_TAG => {
+                 if tag || option.value().len() > 8 {
+-                    return true;
++                    return None;
+                 }
+                 tag = true;
+             }
+-            OptionNumber::CONTENT_FORMAT if fetch => {
+-                if format || option.as_uint16().is_err() {
+-                    return true;
++            OptionNumber::CONTENT_FORMAT => {
++                if fetch && (format || option.as_uint16().is_err()) {
++                    return None;
+                 }
+                 format = true;
+             }
+-            OptionNumber::OBSERVE => observe = true,
+-            OptionNumber::OSCORE if !oscore::is_active(oscore) => return true,
+-            OptionNumber::BLOCK1 => {
+-                // Existing singleton accessors validate only the first value.
+-                if !block1 && option.as_block().is_err() {
+-                    return true;
+-                }
+-                block1 = true;
++            OptionNumber::SIZE1 if size1.is_none() => size1 = Some(option.as_uint().is_ok()),
++            OptionNumber::OBSERVE => result.observe = true,
++            OptionNumber::OSCORE if !oscore::is_active(oscore) => return None,
++            OptionNumber::BLOCK1 if result.block1.is_none() => {
++                result.block1 = Some(option.as_block().ok()?)
+             }
+-            OptionNumber::BLOCK2 => {
+-                if !block2 && option.as_block().is_err() {
+-                    return true;
+-                }
+-                block2 = true;
++            OptionNumber::BLOCK2 if result.block2.is_none() => {
++                result.block2 = Some(option.as_block().ok()?)
+             }
+             OptionNumber::Q_BLOCK1 => {
+-                if q_block1 {
+-                    return true;
++                if result.q_block1 {
++                    return None;
+                 }
+-                q_block1 = true;
++                result.q_block1 = true;
+             }
+             OptionNumber::Q_BLOCK2 => {
+-                let Ok(value) = option.as_block() else {
+-                    return true;
+-                };
++                let value = option.as_block().ok()?;
+                 if value.is_bert() {
+-                    return true;
++                    return None;
+                 }
+-                repeated_q_block2 |= q_block2;
+-                q_block2 = true;
+-                q_block2_start |= value.more()
++                result.valid_q_selections &= previous_q
++                    .is_none_or(|last| value.num() > last.num() && value.szx() == last.szx());
++                previous_q = Some(value);
++                repeated_q |= result.q_block2.is_some();
++                result.q_block2.get_or_insert(value);
++                q_start |= value.more()
+                     && value.num() % u32::from(crate::storage::BlockTransfer::MAX_PAYLOADS) == 0;
+             }
+-            number if number.is_critical() && !number.is_known() => return true,
++            number if number.is_critical() && !number.is_known() => return None,
+             _ => {}
+         }
+     }
+-    ((block1 || block2) && (q_block1 || q_block2))
+-        || (repeated_q_block2 && (observe || q_block2_start))
++    if ((result.block1.is_some() || result.block2.is_some())
++        && (result.q_block1 || result.q_block2.is_some()))
++        || (repeated_q && (result.observe || q_start))
++    {
++        return None;
++    }
++    result.missing_q1_metadata = result.q_block1 && (!tag || size1 != Some(true));
++    result.missing_fetch_format = fetch && !format;
++    Some(result)
++}
++
++#[cfg(test)]
++fn bad_option_request<K: OwnedToken, const REQUESTS: usize>(
++    parsed: &ParsedMessage<'_, K>,
++    oscore: &oscore::Field<REQUESTS, K>,
++) -> bool {
++    request_options(parsed, oscore).is_none()
+ }
+ 
+ fn mixes_block_and_qblock(parsed: &ParsedMessage<'_, impl OwnedToken>) -> bool {
+@@ -3314,6 +3339,7 @@ fn mixes_block_and_qblock(parsed: &ParsedMessage<'_, impl OwnedToken>) -> bool {
+         && (parsed.q_block1().is_some() || parsed.q_block2().next().is_some())
+ }
+ 
++#[cfg(test)]
+ fn valid_q_selections(parsed: &ParsedMessage<'_, impl OwnedToken>) -> bool {
+     let mut previous: Option<BlockValue> = None;
+     for value in parsed.q_block2() {
+@@ -3743,7 +3769,7 @@ where
+     // Known-stack critical check and OSCORE-without-context run here,
+     // before Site::dispatch. `knowledge/rfcs/rfc7252.txt` §5.4.1;
+     // `knowledge/rfcs/rfc8613.txt` §8.2 (option 9 with no context).
+-    if bad_option_request(&parsed, oscore) {
++    let Some(options) = request_options(&parsed, oscore) else {
+         let meta = SendResponse {
+             dest: peer,
+             ty: parsed.ty(),
+@@ -3777,10 +3803,10 @@ where
+         );
+         let _ = engine.release_rx(rx);
+         return outcome;
+-    }
+-    let block2 = parsed.block2().and_then(Result::ok);
+-    let q_block2 = parsed.q_block2().next().and_then(Result::ok);
+-    let block1 = parsed.block1().and_then(Result::ok).map(|value| BlockOpt {
++    };
++    let block2 = options.block2;
++    let q_block2 = options.q_block2;
++    let block1 = options.block1.map(|value| BlockOpt {
+         value,
+         q_block: false,
+         size2: None,
+@@ -3801,12 +3827,9 @@ where
+ 
+     // RFC 9177 section 4.3 requires 4.00 for missing Request-Tag or Size1.
+     // Reject before admission/dispatch, preserving any existing partial body.
+-    let missing_q1_metadata = parsed.q_block1().is_some()
+-        && (parsed.request_tag().next().is_none() || !matches!(parsed.size1(), Some(Ok(_))));
+-    // RFC 8132 section 2.3.1 requires FETCH Content-Format, even for an
+-    // empty selection. Do not allocate partial bodies or call a handler.
+-    let missing_fetch_format = parsed.code() == Code::FETCH && parsed.content_format().is_none();
+-    if missing_q1_metadata || missing_fetch_format || !valid_q_selections(&parsed) {
++    // FETCH likewise requires Content-Format even for an empty selection
++    // (RFC 8132 section 2.3.1). These remain later 4.00 decisions, not 4.02.
++    if options.missing_q1_metadata || options.missing_fetch_format || !options.valid_q_selections {
+         let outcome = send_response(
+             engine,
+             io,
+@@ -3872,7 +3895,15 @@ where
+         }
+     }
+ 
+-    let assembled = assemble_inbound_body(engine, rx, now_ms, &parsed, oscore_req);
++    let assembled = assemble_inbound_body(
++        engine,
++        rx,
++        now_ms,
++        &parsed,
++        oscore_req,
++        options.block1.is_some(),
++        options.q_block1,
++    );
+     let body_owner = async_server::BodyOwner::incoming(
+         engine,
+         match assembled {
+@@ -3968,7 +3999,7 @@ where
+     }
+ 
+     // Follow-up blocks belong to the retained selection, not merely its Token.
+-    if (block2.is_some() || q_block2.is_some()) && parsed.observe().is_none() {
++    if (block2.is_some() || q_block2.is_some()) && !options.observe {
+         let selection = engine
+             .lookup_observe(ObserveKey::new(parsed.token(), peer))
+             .and_then(|id| engine.observe_interest(id))
+@@ -4013,7 +4044,7 @@ where
+     // A terminal notification has no observer row, but its body still owns the
+     // exact selection and response metadata until the last requested block.
+     if (meta.block2.is_some() || meta.q_block2.is_some())
+-        && parsed.observe().is_none()
++        && !options.observe
+         && let Some(body) = response_body_for(engine, BlockKey::new(meta.token, peer))
+     {
+         let transfer = engine.tx_body_transfer(body).expect("located body");
+@@ -4118,7 +4149,7 @@ where
+                 row.completed
+                     && row.meta.token == meta.token
+                     && row.meta.dest == peer
+-                    && (row.observe.is_none() || parsed.observe().is_none())
++                    && (row.observe.is_none() || !options.observe)
+             })
+         })
+     {
+@@ -4340,7 +4371,7 @@ where
+     let can_defer = DEFERRED != 0
+         && dispatch.is_some()
+         && deferred_lifetime_ms != 0
+-        && (parsed.observe().is_none() || deferred_observe.is_some());
++        && (!options.observe || deferred_observe.is_some());
+     let selection_supported = can_defer
+         && selection
+             .get_or_encode(engine, &parsed, assembled)
+@@ -4351,7 +4382,7 @@ where
+     let deferred_handle = if selection_supported
+         && dispatch.is_some()
+         && deferred_lifetime_ms != 0
+-        && (parsed.observe().is_none() || deferred_observe.is_some())
++        && (!options.observe || deferred_observe.is_some())
+         && q_selectors.is_some()
+     {
+         match deferred.candidate(ids, io) {
+diff --git a/src/app/option_validation_tests.rs b/src/app/option_validation_tests.rs
+index f196639..9e568ba 100644
+--- a/src/app/option_validation_tests.rs
++++ b/src/app/option_validation_tests.rs
+@@ -59,6 +59,30 @@ fn compare_case(code: Code, extra: &[Opt<'_>], oscore: &oscore::Field<4>) {
+         "{code:?}, {extra:?}, security active={}",
+         oscore::is_active(oscore)
+     );
++    if let Some(cached) = super::request_options(&parsed, oscore) {
++        assert_eq!(cached.block1, parsed.block1().and_then(Result::ok));
++        assert_eq!(cached.block2, parsed.block2().and_then(Result::ok));
++        assert_eq!(
++            cached.q_block2,
++            parsed.q_block2().next().and_then(Result::ok)
++        );
++        assert_eq!(cached.q_block1, parsed.q_block1().is_some());
++        assert_eq!(cached.observe, parsed.observe().is_some());
++        assert_eq!(
++            cached.valid_q_selections,
++            super::valid_q_selections(&parsed)
++        );
++        assert_eq!(
++            cached.missing_q1_metadata,
++            parsed.q_block1().is_some()
++                && (parsed.request_tag().next().is_none()
++                    || !matches!(parsed.size1(), Some(Ok(_))))
++        );
++        assert_eq!(
++            cached.missing_fetch_format,
++            parsed.code() == Code::FETCH && parsed.content_format().is_none()
++        );
++    }
+ }
+ 
+ fn compare_cases(oscore: &oscore::Field<4>) {
+@@ -92,6 +116,8 @@ fn compare_cases(oscore: &oscore::Field<4>) {
+         Opt::new(OptionNumber::REQUEST_TAG, &[]),
+         Opt::new(OptionNumber::REQUEST_TAG, b"12345678"),
+         Opt::new(OptionNumber::REQUEST_TAG, b"123456789"),
++        Opt::new(OptionNumber::SIZE1, &[]),
++        Opt::new(OptionNumber::SIZE1, &[1; 5]),
+         Opt::uri_query("a=1"),
+     ];
+     for code in [Code::GET, Code::FETCH] {
+diff --git a/src/oscore/protect.rs b/src/oscore/protect.rs
+index 79ada29..5da70d1 100644
+--- a/src/oscore/protect.rs
++++ b/src/oscore/protect.rs
+@@ -150,30 +150,19 @@ pub fn protect_request<const REQUESTS: usize, T: OwnedToken>(
+     let request = ctx.request_ref(piv);
+     let nonce = ctx.request_nonce(piv);
+     let aad = Aad::new(request.kid(), piv.as_bytes())?;
+-    let mut ciphertext = [0u8; INNER];
+-    let pt_len = encode_plaintext(plain, &mut ciphertext)?;
+-    let ct_len = aead::seal_in_place(
+-        ctx.sender_key(),
+-        &nonce,
+-        aad.as_bytes(),
+-        pt_len,
+-        &mut ciphertext,
+-    )?;
+     let kid_ctx = if ctx.id_context().is_empty() {
+         None
+     } else {
+         Some(ctx.id_context())
+     };
+-    let n = encode_outer(
+-        plain.ty(),
+-        outer_code(plain.code(), plain.options()),
+-        plain.message_id(),
+-        plain.token(),
+-        plain.options(),
++    let n = seal_message(
++        plain,
++        ctx.sender_key(),
++        &nonce,
++        aad.as_bytes(),
+         Some(piv),
+         kid_ctx,
+         Some(ctx.sender_id()),
+-        &ciphertext[..ct_len],
+         out,
+     )?;
+     let observe = plain.options().iter().any(is_observe);
+@@ -262,25 +251,14 @@ pub fn protect_response<const REQUESTS: usize, T: OwnedToken>(
+     }
+     let aad = Aad::new(request.kid(), request.piv().as_bytes())?;
+     let nonce = aead::nonce(ctx.common_iv(), request.kid(), request.piv());
+-    let mut ciphertext = [0u8; INNER];
+-    let pt_len = encode_plaintext(plain, &mut ciphertext)?;
+-    let ct_len = aead::seal_in_place(
++    seal_message(
++        plain,
+         ctx.sender_key(),
+         &nonce,
+         aad.as_bytes(),
+-        pt_len,
+-        &mut ciphertext,
+-    )?;
+-    encode_outer(
+-        plain.ty(),
+-        outer_code(plain.code(), plain.options()),
+-        plain.message_id(),
+-        plain.token(),
+-        plain.options(),
+         None,
+         None,
+         None,
+-        &ciphertext[..ct_len],
+         out,
+     )
+ }
+@@ -298,25 +276,14 @@ pub fn protect_response_piv<const REQUESTS: usize, T: OwnedToken>(
+     let piv = ctx.take_sender_piv()?;
+     let aad = Aad::new(request.kid(), request.piv().as_bytes())?;
+     let nonce = ctx.request_nonce(piv);
+-    let mut ciphertext = [0u8; INNER];
+-    let pt_len = encode_plaintext(plain, &mut ciphertext)?;
+-    let ct_len = aead::seal_in_place(
++    seal_message(
++        plain,
+         ctx.sender_key(),
+         &nonce,
+         aad.as_bytes(),
+-        pt_len,
+-        &mut ciphertext,
+-    )?;
+-    encode_outer(
+-        plain.ty(),
+-        outer_code(plain.code(), plain.options()),
+-        plain.message_id(),
+-        plain.token(),
+-        plain.options(),
+         Some(piv),
+         None,
+         None,
+-        &ciphertext[..ct_len],
+         out,
+     )
+ }
+@@ -489,6 +456,79 @@ fn encode_plaintext<T: OwnedToken>(plain: &Message<'_, T>, out: &mut [u8]) -> Re
+     Ok(i)
+ }
+ 
++// Successful packets use the final output tail as the AEAD buffer. The old
++// staging path remains cold so capacity/error precedence stays unchanged when
++// the final output cannot hold the message or either option domain is invalid.
++#[allow(clippy::too_many_arguments)]
++fn seal_message<T: OwnedToken>(
++    plain: &Message<'_, T>,
++    key: &[u8; super::KEY_LEN],
++    nonce: &[u8; super::NONCE_LEN],
++    aad: &[u8],
++    piv: Option<PartialIv>,
++    kid_context: Option<&[u8]>,
++    kid: Option<&[u8]>,
++    out: &mut [u8],
++) -> Result<usize, Error> {
++    let direct: Result<usize, Error> = (|| {
++        let prefix = encode_outer(
++            plain.ty(),
++            outer_code(plain.code(), plain.options()),
++            plain.message_id(),
++            plain.token(),
++            plain.options(),
++            piv,
++            kid_context,
++            kid,
++            &[],
++            out,
++        )?;
++        let tail = out.get_mut(prefix..).ok_or(Error::BufferTooSmall)?;
++        let (marker, ciphertext) = tail.split_first_mut().ok_or(Error::BufferTooSmall)?;
++        *marker = 0xff;
++        // INNER includes the authentication tag, exactly as in the staging path.
++        let capacity = ciphertext.len().min(INNER);
++        let ciphertext = &mut ciphertext[..capacity];
++        let pt_len = encode_plaintext(plain, ciphertext)?;
++        let ct_len = aead::seal_in_place(key, nonce, aad, pt_len, ciphertext)?;
++        Ok(prefix + 1 + ct_len)
++    })();
++    match direct {
++        Ok(n) => Ok(n),
++        Err(_) => seal_message_staged(plain, key, nonce, aad, piv, kid_context, kid, out),
++    }
++}
++
++#[cold]
++#[inline(never)]
++#[allow(clippy::too_many_arguments)]
++fn seal_message_staged<T: OwnedToken>(
++    plain: &Message<'_, T>,
++    key: &[u8; super::KEY_LEN],
++    nonce: &[u8; super::NONCE_LEN],
++    aad: &[u8],
++    piv: Option<PartialIv>,
++    kid_context: Option<&[u8]>,
++    kid: Option<&[u8]>,
++    out: &mut [u8],
++) -> Result<usize, Error> {
++    let mut ciphertext = [0u8; INNER];
++    let pt_len = encode_plaintext(plain, &mut ciphertext)?;
++    let ct_len = aead::seal_in_place(key, nonce, aad, pt_len, &mut ciphertext)?;
++    encode_outer(
++        plain.ty(),
++        outer_code(plain.code(), plain.options()),
++        plain.message_id(),
++        plain.token(),
++        plain.options(),
++        piv,
++        kid_context,
++        kid,
++        &ciphertext[..ct_len],
++        out,
++    )
++}
++
+ #[allow(clippy::too_many_arguments)]
+ fn encode_outer<T: OwnedToken>(
+     ty: Type,
+@@ -581,6 +621,79 @@ mod tests {
+     use crate::error::ParseError;
+     use crate::message::{decode, decode_with_token, extended};
+ 
++    #[test]
++    fn direct_sealing_matches_staging_at_output_and_inner_limits() {
++        let key = [0x17; super::super::KEY_LEN];
++        let nonce = [0x29; super::super::NONCE_LEN];
++        let piv = PartialIv::from_seq(19).unwrap();
++        let payload = [0x35; INNER + 1];
++        let token = extended::Token::<13>::new(b"extendedtoken").unwrap();
++        let ordinary = [Opt::uri_host("node"), Opt::uri_path("value")];
++        let observe = [
++            Opt::uri_host("node"),
++            Opt::new(OptionNumber::OBSERVE, &[1]),
++            Opt::uri_path("value"),
++        ];
++        let unsorted = [Opt::uri_path("value"), Opt::etag(b"v")];
++        let full_outer = [Opt::uri_host("node"); OPT_SLOTS];
++        for code in [Code::GET, Code::CONTENT] {
++            for opts in [ordinary.as_slice(), &observe, &unsorted, &full_outer] {
++                for size in [0, 32, 1024, INNER - TAG_LEN - 2, INNER, INNER + 1] {
++                    let plain = Message::new(Type::Confirmable, code, MessageId::new(27))
++                        .with_token(token)
++                        .with_options(opts)
++                        .with_payload(&payload[..size]);
++                    for partial_iv in [None, Some(piv)] {
++                        let mut reference = [0xa5; 2048];
++                        let expected = seal_message_staged(
++                            &plain,
++                            &key,
++                            &nonce,
++                            b"aad",
++                            partial_iv,
++                            Some(b"context"),
++                            Some(b"kid"),
++                            &mut reference,
++                        );
++                        let exact = expected.unwrap_or(1280);
++                        for capacity in [0, 4, 32, 1152, 1280, exact - 1, exact, exact + 1, 2048] {
++                            let mut staged = [0xa5; 2048];
++                            let mut direct = staged;
++                            let want = seal_message_staged(
++                                &plain,
++                                &key,
++                                &nonce,
++                                b"aad",
++                                partial_iv,
++                                Some(b"context"),
++                                Some(b"kid"),
++                                &mut staged[..capacity],
++                            );
++                            let got = seal_message(
++                                &plain,
++                                &key,
++                                &nonce,
++                                b"aad",
++                                partial_iv,
++                                Some(b"context"),
++                                Some(b"kid"),
++                                &mut direct[..capacity],
++                            );
++                            assert_eq!(
++                                got, want,
++                                "code={code:?} payload={size} capacity={capacity}"
++                            );
++                            if let Ok(n) = got {
++                                assert_eq!(&direct[..n], &staged[..n]);
++                            }
++                            assert!(direct[capacity..].iter().all(|b| *b == 0xa5));
++                        }
++                    }
++                }
++            }
++        }
++    }
++
+     #[test]
+     fn stitch_merges_outer_options_and_preserves_extended_token() {
+         let token = extended::Token::<13>::new(b"extendedtoken").unwrap();
