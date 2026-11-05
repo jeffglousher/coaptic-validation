@@ -1,0 +1,74 @@
+{
+  "active/dispatch-probe.exe": {
+    "bytes": 2727936,
+    "sha256": "4016184d3bd298219a5be68549fbdac4d401bf0717c7083b1edb2c7ead83ba4f"
+  },
+  "active/dispatch-probe.pdb": {
+    "bytes": 6000640,
+    "sha256": "62d644df7f9eea1f3e4d7b1ca8bef0c625ea3d19c44ddbb4a5cf3c40b3ad4404"
+  },
+  "active/retained-probe.exe": {
+    "bytes": 1498624,
+    "sha256": "a12cece18729f213caff69752fa16b27cd7d58048c8eca7d04469c0828bb4598"
+  },
+  "active/retained-probe.pdb": {
+    "bytes": 3756032,
+    "sha256": "c8070ae5e9271d3f04d8b7ee0a9cb5c4416d0124dc6590d87e54cdeda7888477"
+  },
+  "direct-fill/dispatch-probe.exe": {
+    "bytes": 2726912,
+    "sha256": "7a87786278fedd47d8d498432e84929ff170d92eaebce48a49f080816678d42c"
+  },
+  "direct-fill/dispatch-probe.pdb": {
+    "bytes": 6000640,
+    "sha256": "361455298f30389191bb181c67c83792809a2acd63b451750b565580088670a6"
+  },
+  "direct-fill/retained-probe.exe": {
+    "bytes": 1498624,
+    "sha256": "3dff6263f3cf643847210c39ded623d5ca9752e541da97a4ea4c5f63065bc64d"
+  },
+  "direct-fill/retained-probe.pdb": {
+    "bytes": 3756032,
+    "sha256": "424b844c39e29fe0b32745d5aad97bdf7f35424e8d5ddcaae52c4433d9324fc1"
+  },
+  "scalar-pin/dispatch-probe.exe": {
+    "bytes": 2726912,
+    "sha256": "160ad849142273045f96687c98d93739cfd79dc09439de121e88870883785c67"
+  },
+  "scalar-pin/dispatch-probe.pdb": {
+    "bytes": 6000640,
+    "sha256": "0706171465274d44dc3d7dc1a4ca5e821f2e3f65d287d221087bca8f21cb3c2e"
+  },
+  "scalar-pin/retained-probe.exe": {
+    "bytes": 1498624,
+    "sha256": "970bd76ba93f8be96d2f90ed55c6f673230f345dbff038fffe7c91ff389ffd7b"
+  },
+  "scalar-pin/retained-probe.pdb": {
+    "bytes": 3756032,
+    "sha256": "45895fbd0070b43a6591f59f9cdae6a777f11b8829870f22b4094cf93171803f"
+  },
+  "fixed-expiry/dispatch-probe.exe": {
+    "bytes": 2726912,
+    "sha256": "d9b8e32aaa16ea0c0ecac18f5212871352c2805b6d49585f2d0b7e6bc0a19ed3"
+  },
+  "fixed-expiry/dispatch-probe.pdb": {
+    "bytes": 6000640,
+    "sha256": "f9bb828627fc9766739e3879979421f1f3d9bda6d709e750526acbf46cf5e6f1"
+  },
+  "fixed-expiry/retained-probe.exe": {
+    "bytes": 1498624,
+    "sha256": "14f778fb268dc862cf580b18ff7c77f0d8592dbb934eaa0680cb6943a44004d0"
+  },
+  "fixed-expiry/retained-probe.pdb": {
+    "bytes": 3756032,
+    "sha256": "d4af067f05b205410bcbbe8a64471eadcb8ac159f1169b5c1558d6c05dbae25a"
+  },
+  "diagnostic3/diagnostic3.exe": {
+    "bytes": 2785280,
+    "sha256": "23f4334c93bdb2d4f8f487917897ed0fe935e02a022ccf6d40c620a2dd912d42"
+  },
+  "diagnostic3/diagnostic3.pdb": {
+    "bytes": 6082560,
+    "sha256": "ea6ee344c0006385c612fb58697aeb78eca5bf55197b2b8262ddded3dfd576a9"
+  }
+}
