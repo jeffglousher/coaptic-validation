@@ -1,0 +1,24 @@
+[package]
+name = "dispatch-probe"
+version = "0.1.0"
+edition = "2024"
+publish = false
+[workspace]
+[dependencies]
+coaptic = { path = "../coaptic", default-features = false, features = ["std", "alloc", "oscore"] }
+getrandom = { version = "=0.3.4", features = ["std"] }
+[[bin]]
+name = "dispatch-probe"
+path = "../tools/benchmark/native/servers/src/bin/bench-core.rs"
+[profile.release]
+lto = "thin"
+codegen-units = 1
+debug = 1
+
+[features]
+oscore = []
+alloc = []
+diagnostics = ["coaptic/diagnostics"]
+[[bin]]
+name = "retained-probe"
+path = "retained.rs"

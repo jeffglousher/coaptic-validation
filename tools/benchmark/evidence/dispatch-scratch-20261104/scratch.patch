@@ -1,0 +1,207 @@
+diff --git a/src/app/mod.rs b/src/app/mod.rs
+index 3087531..b84f275 100644
+--- a/src/app/mod.rs
++++ b/src/app/mod.rs
+@@ -3365,8 +3365,12 @@ where
+         return Ok(());
+     };
+ 
+-    let mut scratch = Mem::RxScratch::default();
+-    let n = match copy_rx(engine, rx, scratch.as_mut()) {
++    let mut scratch = Some(Mem::RxScratch::default());
++    let n = match copy_rx(
++        engine,
++        rx,
++        scratch.as_mut().expect("dispatch scratch").as_mut(),
++    ) {
+         Ok(n) => n,
+         Err(e) => {
+             let _ = engine.release_rx(rx);
+@@ -3374,14 +3378,18 @@ where
+         }
+     };
+ 
+-    let parsed = match crate::message::decode_with_token::<Mem::Token>(&scratch.as_ref()[..n]) {
++    let parsed = match crate::message::decode_with_token::<Mem::Token>(
++        &scratch.as_ref().expect("dispatch scratch").as_ref()[..n],
++    ) {
+         Ok(parsed) => parsed,
+         Err(crate::message::TokenDecodeError::Capacity(_)) => {
+             // The shared decoder validated the complete wire syntax before the
+             // owned token copy failed. Refuse while its original bytes remain
+             // borrowed from this RX scratch; never truncate the identity.
+-            let request = crate::message::extended::decode(&scratch.as_ref()[..n])
+-                .expect("validated extended token datagram");
++            let request = crate::message::extended::decode(
++                &scratch.as_ref().expect("dispatch scratch").as_ref()[..n],
++            )
++            .expect("validated extended token datagram");
+             let protected = request
+                 .options()
+                 .any(|option| option.number() == crate::message::OptionNumber::OSCORE);
+@@ -3394,7 +3402,7 @@ where
+                         ids,
+                         now_ms,
+                         peer,
+-                        &scratch.as_ref()[..n],
++                        &scratch.as_ref().expect("dispatch scratch").as_ref()[..n],
+                         oscore,
+                         oscore_checkpoint,
+                         checkpoint_commit,
+@@ -3589,49 +3597,74 @@ where
+         return outcome;
+     }
+ 
+-    let mut inner_scratch = None::<Mem::RxScratch>;
+-    #[cfg(feature = "oscore")]
+-    let before = oscore
+-        .context(peer.association())
+-        .map(|ctx| ctx.replay_checkpoint());
+-    let opened = oscore::inbound(oscore, peer, &parsed, &mut inner_scratch);
++    // The retained RX packet supplies ciphertext while dispatch scratch is
++    // reused for plaintext. No second profile-sized buffer spans a send.
+     #[cfg(feature = "oscore")]
+-    if before
+-        != oscore
++    let (parsed, oscore_req, response_state) = if parsed.oscore().is_some() {
++        let before = oscore
+             .context(peer.association())
+-            .map(|ctx| ctx.replay_checkpoint())
+-    {
+-        oscore_checkpoint.invalidate();
+-    }
+-    if let Err(error) = oscore_checkpoint.flush(oscore, checkpoint_commit) {
+-        let _ = engine.release_rx(rx);
+-        return Err(error);
+-    }
+-    let opened = match opened {
+-        Ok(opened) => opened,
+-        Err(e) => {
++            .map(|ctx| ctx.replay_checkpoint());
++        let opened = {
++            let access = engine.access_rx(rx)?;
++            let outer = crate::message::decode_with_token::<Mem::Token>(access.as_bytes())
++                .expect("retained validated RX packet");
++            oscore::inbound(oscore, peer, &outer, &mut scratch)
++        };
++        if before
++            != oscore
++                .context(peer.association())
++                .map(|ctx| ctx.replay_checkpoint())
++        {
++            oscore_checkpoint.invalidate();
++        }
++        if let Err(error) = oscore_checkpoint.flush(oscore, checkpoint_commit) {
++            let _ = engine.release_rx(rx);
++            return Err(error);
++        }
++        match opened {
++            Ok(Some((inner, wire, request, state))) => {
++                write_unprotected_rx(engine, rx, wire, peer)?;
++                (inner, Some(request), state)
++            }
++            Ok(None) => (
++                crate::message::decode_with_token::<Mem::Token>(
++                    &scratch.as_ref().expect("dispatch scratch").as_ref()[..n],
++                )
++                .expect("unchanged validated RX packet"),
++                oscore::no_request(),
++                oscore::ResponseState::None,
++            ),
++            Err(_) => {
++                // Protected processing failures are silent, including response
++                // authentication and replay failures; never answer ciphertext.
++                let _ = engine.release_rx(rx);
++                return Ok(());
++            }
++        }
++    } else {
++        // Without an OSCORE option inbound only checks the security policy;
++        // its lazy output owner is never initialized.
++        let mut unused = None::<[u8; 0]>;
++        let opened = oscore::inbound(oscore, peer, &parsed, &mut unused);
++        if let Err(error) = oscore_checkpoint.flush(oscore, checkpoint_commit) {
++            let _ = engine.release_rx(rx);
++            return Err(error);
++        }
++        if let Err(error) = opened {
+             let outcome =
+-                oscore_inbound_error(engine, io, ids, &parsed, peer, now_ms, e, dedup_closed);
++                oscore_inbound_error(engine, io, ids, &parsed, peer, now_ms, error, dedup_closed);
+             let _ = engine.release_rx(rx);
+             return outcome;
+         }
++        (parsed, oscore::no_request(), oscore::ResponseState::None)
+     };
+-    let (parsed, oscore_req, response_state) = match opened {
+-        Some((inner, _wire, req, response_state)) => {
+-            #[cfg(feature = "oscore")]
+-            {
+-                // Inner Block-wise (RFC 8613 §4.1.3.4.1): assembly reads
+-                // the RX slot. Replace the outer OSCORE datagram with the
+-                // opened Inner so Block1/Block2 see Class E options.
+-                write_unprotected_rx(engine, rx, _wire, peer)?;
+-                (inner, Some(req), response_state)
+-            }
+-            #[cfg(not(feature = "oscore"))]
+-            {
+-                (inner, req, response_state)
+-            }
++    #[cfg(not(feature = "oscore"))]
++    let (parsed, oscore_req, response_state) = {
++        if let Err(error) = oscore_checkpoint.flush(oscore, checkpoint_commit) {
++            let _ = engine.release_rx(rx);
++            return Err(error);
+         }
+-        None => (parsed, oscore::no_request(), oscore::ResponseState::None),
++        (parsed, oscore::no_request(), oscore::ResponseState::None)
+     };
+ 
+     if !parsed.code().is_request() {
+@@ -7785,6 +7818,7 @@ where
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
++#[cfg(feature = "oscore")]
+ #[coaptic_io::dual_io(oscore_inbound_error_async, bound(crate::app::async_server::ProtocolIo), calls(send_response => send_response_async))]
+ fn oscore_inbound_error<S, T>(
+     engine: &mut Engine<S>,
+diff --git a/src/app/oscore.rs b/src/app/oscore.rs
+index ff1d6f8..038235f 100644
+--- a/src/app/oscore.rs
++++ b/src/app/oscore.rs
+@@ -8,7 +8,9 @@
+ #[cfg(feature = "oscore")]
+ use crate::error::EncodeError;
+ use crate::error::SlotMessageError;
+-use crate::message::{Message, OwnedToken, ParsedMessage, Token};
++#[cfg(any(feature = "oscore", test))]
++use crate::message::ParsedMessage;
++use crate::message::{Message, OwnedToken, Token};
+ use crate::storage::{DatagramSlots, Endpoint, Engine, SlotId, Storage};
+ 
+ #[cfg(feature = "oscore")]
+@@ -223,12 +225,12 @@ pub(crate) fn commit_response<E, const REQUESTS: usize, K: OwnedToken>(
+ #[cfg(feature = "oscore")]
+ pub(crate) type Opened<'a, K = Token> =
+     (ParsedMessage<'a, K>, &'a [u8], RequestRef, ResponseState<K>);
+-#[cfg(not(feature = "oscore"))]
++#[cfg(all(not(feature = "oscore"), test))]
+ pub(crate) type Opened<'a, K = Token> = (ParsedMessage<'a, K>, &'a [u8], Request, ResponseState<K>);
+ 
+ #[cfg(feature = "oscore")]
+ pub(crate) type InboundError = OscoreError;
+-#[cfg(not(feature = "oscore"))]
++#[cfg(all(not(feature = "oscore"), test))]
+ pub(crate) type InboundError = core::convert::Infallible;
+ 
+ #[cfg(feature = "oscore")]
+@@ -360,7 +362,7 @@ pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken, Scratch: Default
+     Err(OscoreError::Unprotected)
+ }
+ 
+-#[cfg(not(feature = "oscore"))]
++#[cfg(all(not(feature = "oscore"), test))]
+ pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken, Scratch: Default + AsMut<[u8]>>(
+     _ctx: &mut Field<REQUESTS, K>,
+     peer: Endpoint,

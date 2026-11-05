@@ -1,0 +1,43 @@
+{
+  "baseline": "dcf82cbb75d903bd9ab44ccd64ba3e6584bd6f93",
+  "candidate": "d2d4484cc5c6beb66856511e6d86ce75ce3cefd2",
+  "progress_future": {
+    "profile": "Constrained routes1 blockwise=false; existing async_transaction_metadata_has_independent_small_device_ceilings test",
+    "features": "all-features",
+    "compiler": "rustc1.99.1 x86_64-pc-windows-msvc",
+    "build": "cargo test --release --all-features --lib async_transaction_metadata_has_independent_small_device_ceilings -- --nocapture; incremental0 jobs2 existingcorelane",
+    "baseline_bytes": 17128,
+    "candidate_bytes": 15952,
+    "saved_bytes": 1176,
+    "percent_reduction": 6.8659504904250355,
+    "limit": "Complete concrete progress future owner only; App/pools separate unchanged; not peak stack, reserved task stacks or whole system RAM"
+  },
+  "selected_response_frames": {
+    "profile": "Constrained NoBodies REQUESTS4, release thinLTO framepointers",
+    "async_error_baseline": 1472,
+    "async_error_candidate": 768,
+    "sync_error_baseline": 1456,
+    "sync_error_candidate": 736,
+    "limit": "PDB frame records; do not add frames to future or claim callchain high-water; inspected Location branch tailcalls"
+  },
+  "options_entries": {
+    "ordinary_before": 24,
+    "ordinary_after": 8,
+    "location_before": 24,
+    "location_after": 24,
+    "bytes_per_entry": 24
+  },
+  "probe_executable_bytes": {
+    "baseline": 2672128,
+    "candidate": 2734080
+  },
+  "matched_app_pools": "All28 qualifier ledgers equal; see rawdata and verifier",
+  "checksums": {
+    "baseline-future.log": "7b082919299615a49f141198439d1db121af89b396bab162dd4e7f403fb956d4",
+    "response-scratch/future.log": "48af6127992249cb852298645479ef52c8f7009ec2fdd4ca5d6e9e3877adc993",
+    "A/dispatch-probe.exe": "cd72fa1e664f25f4595421fc0c0e985efd7d0ce1268b6ef6fd3c64ae0240b3f6",
+    "A/dispatch_probe.pdb": "6342a8b41957dac83e5c71834a4c80d59dec569622a3e9e048c9bb375a8087e0",
+    "response-scratch/B/dispatch-probe.exe": "ab64761677866cc94b355b007221bf98421cf7a461fbabd3b42668314b3c70a5",
+    "response-scratch/B/dispatch_probe.pdb": "e3f1658a52a17de341364ba79c50a154ce86205ee5118ed72a9089c28dcfd8b8"
+  }
+}

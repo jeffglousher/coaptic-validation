@@ -1,0 +1,85 @@
+diff --git a/src/app/mod.rs b/src/app/mod.rs
+index 3087531..04ccaeb 100644
+--- a/src/app/mod.rs
++++ b/src/app/mod.rs
+@@ -6881,41 +6881,46 @@ where
+             break;
+         }
+         let end = (offset + size).min(length);
+-        let mut scratch = [0u8; 1024];
+-        scratch[..end - offset].copy_from_slice(
+-            &engine
+-                .tx_body_payload(body)
+-                .ok_or(Error::Block(BlockTransferError::NoTransfer))?[offset..end],
+-        );
+-        let value = crate::message::BlockValue::new(num, end < length, q.szx())
+-            .map_err(|e| Error::Block(e.into()))?;
+-        let mid = if step == 0 {
+-            q_response_mid(engine, io, ids, now_ms, meta, first_ty, closed)?
+-        } else {
+-            ids.next_for(engine, io, now_ms)?
++        // Packet staging ends before the transport can suspend. Only the
++        // encoded TX slot and its identity must survive the send.
++        let (mid, tx) = {
++            let mut scratch = [0u8; 1024];
++            scratch[..end - offset].copy_from_slice(
++                &engine
++                    .tx_body_payload(body)
++                    .ok_or(Error::Block(BlockTransferError::NoTransfer))?[offset..end],
++            );
++            let value = crate::message::BlockValue::new(num, end < length, q.szx())
++                .map_err(|e| Error::Block(e.into()))?;
++            let mid = if step == 0 {
++                q_response_mid(engine, io, ids, now_ms, meta, first_ty, closed)?
++            } else {
++                ids.next_for(engine, io, now_ms)?
++            };
++            let tx = acquire_tx_or_evict(engine).ok_or(Error::Saturated)?;
++            if let Err(error) = encode_response(
++                engine,
++                meta.dest,
++                tx,
++                Type::NonConfirmable,
++                mid,
++                meta.token,
++                response,
++                &scratch[..end - offset],
++                Some(BlockOpt {
++                    value,
++                    q_block: true,
++                    size2: Some(length),
++                }),
++                meta.block1,
++                oscore,
++                meta.oscore,
++            ) {
++                let _ = engine.release_tx(tx);
++                return Err(error);
++            }
++            (mid, tx)
+         };
+-        let tx = acquire_tx_or_evict(engine).ok_or(Error::Saturated)?;
+-        if let Err(error) = encode_response(
+-            engine,
+-            meta.dest,
+-            tx,
+-            Type::NonConfirmable,
+-            mid,
+-            meta.token,
+-            response,
+-            &scratch[..end - offset],
+-            Some(BlockOpt {
+-                value,
+-                q_block: true,
+-                size2: Some(length),
+-            }),
+-            meta.block1,
+-            oscore,
+-            meta.oscore,
+-        ) {
+-            let _ = engine.release_tx(tx);
+-            return Err(error);
+-        }
+         finish_send(engine, io, tx, meta.dest, None)?;
+         if let Some(mut transfer) = engine.tx_body_transfer(body)
+             && transfer.q_observe_sequence().is_some()

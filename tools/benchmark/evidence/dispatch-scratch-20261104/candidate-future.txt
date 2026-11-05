@@ -1,0 +1,3 @@
+async metadata bytes: transport=40 packet=16 rx=24 body=32 notify=56 deferred_observe=24
+Constrained routes1 blockwise=false progress_async future=15952 local_rx_scratch=1152 optional_local_rx_scratch=1153; future size only, not peak stack or whole RAM
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1212 filtered out; finished in 0.00s
