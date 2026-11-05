@@ -1,0 +1,36 @@
+{
+  "source": "1c6cee94e8c4a181be48c986da614e9043ea2e3a",
+  "baseline": "bd63199b652193b4c0a882e5840e72d992cf1362",
+  "baseline_binary_source": "f84f3c199763910e246d8599aca0e29077a73ad1",
+  "verified_tracked_source_files": 148,
+  "fixture_hashes": {
+    "bench-core.rs": "47d7471da8930073deec7779c0ef6ad2ba76c8b39a12422a05731987139ada4c",
+    "Cargo.lock": "2a9b4251176521602bcee0a6a01a8ad42ee31f4737bc126a006ce8bcef6b5ed2",
+    "Cargo.toml": "dd444c63e1d2ea6b9d6448d1459885279687b86ad75b1a647e6848f690ed5a52",
+    "retained.rs": "ab050eb45dcfddee5a79e43263ec8bacb07ed4a4a43510b970e114944d4c7065",
+    "bench_core\\admission_pressure.rs": "4c897faa722b6504d4b9e1524da67e8de0a49aa8afe0e00870db375e9f5c3e12",
+    "bench_core\\incoming_rx.rs": "af4b87164e391ff0c4a3b2ed795f167694a7f6e2122e9e627f8e2f4a020cd742",
+    "bench_core\\live_c1.rs": "ca4696f687ab8b1f78a67c0df85874bf232eee87ebc87f205480968bb1286123"
+  },
+  "normalization": "CRLF to LF on archive and materialized fixture",
+  "patch_sha256": {
+    "active.patch": "dccd973d28a2981d6e2be05a6fe30791a2fa0b0c3b81d5f82bd68377bca113e1",
+    "direct-fill.patch": "0dcb22b952339edda84dce69986ad7d31148664ad810be27e24ef7f41b5c8910",
+    "scalar-pin.patch": "b0f712c2f63eea471b32c274f42d88453df2df8772a2b5eb058e768145088be6",
+    "fixed-expiry.patch": "43ec00603c6d4aa950a7bf1a9b06f980bc72958faf00a600b14654219f504fd6",
+    "fixed-expiry-tests.patch": "052a8934c229f146aeb442b17090190b3b32656013ea3a52f7fb72a912752020"
+  },
+  "toolchain": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-pc-windows-msvc\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+  "fixture_root": "D:\\CoapticCurrent\\replay-active-copy-20261105\\fixture",
+  "setup_note": "Initial verifier used wrong fixture path mapping and stopped before compilation; corrected to existing prepare.py mapping, all7 match. Prior summary count149 was investigated: this verifier selects148 src/crates/Cargo files; guessed root build.rs does not exist and was not included. No source or measurement changed.",
+  "review_test_commit": "2244b317e52098119a69f9e81beeda82a47fc061",
+  "review_test_note": "2244b31 adds only a cfg(test) duplicate-key App regression; native timing fixture remains exact1c6cee9.",
+  "candidate_pins": {
+    "active": "d62d3ac7e736d28a7d3b19800595a3a20d809bb7",
+    "direct-fill": "9af2f075d345147a4f471c41a7fdb4fad7c4786b",
+    "scalar-pin": "2e9acd1902d27c6fa0b38f2df3f29a33c0ae45bf",
+    "fixed-expiry": "1c6cee94e8c4a181be48c986da614e9043ea2e3a",
+    "fixed-expiry-tests": "2244b317e52098119a69f9e81beeda82a47fc061"
+  },
+  "status": "Both observed runtime candidates rejected; codegen precursors have no runtime cohort."
+}
