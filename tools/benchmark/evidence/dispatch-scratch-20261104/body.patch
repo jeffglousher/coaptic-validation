@@ -1,0 +1,866 @@
+diff --git a/src/app/admission.rs b/src/app/admission.rs
+index 1fb3631..cf1512e 100644
+--- a/src/app/admission.rs
++++ b/src/app/admission.rs
+@@ -84,7 +84,7 @@ pub(super) fn send_control_response<S, T, const REQUESTS: usize>(
+     dedup_closed: &mut Option<DedupClosed>,
+ ) -> Result<(), Error<T::Error>>
+ where
+-    S: Storage + DatagramSlots + PendingCons + DedupSlots,
++    S: Storage + DatagramSlots + PendingCons + DedupSlots + BodySlots,
+     T: DatagramIo,
+ {
+     let ty = match meta.ty {
+@@ -106,7 +106,7 @@ where
+         mid,
+         meta.token,
+         response,
+-        response.payload(),
++        ResponsePayload::Bytes(response.payload()),
+         None,
+         meta.block1,
+         oscore,
+@@ -153,7 +153,7 @@ pub(super) fn send_refusal<S, T, const REQUESTS: usize>(
+     dedup_closed: &mut Option<DedupClosed>,
+ ) -> Result<(), Error<T::Error>>
+ where
+-    S: Storage + DatagramSlots + PendingCons + DedupSlots,
++    S: Storage + DatagramSlots + PendingCons + DedupSlots + BodySlots,
+     T: DatagramIo,
+ {
+     if meta.no_response.suppresses(Code::SERVICE_UNAVAILABLE) {
+diff --git a/src/app/mod.rs b/src/app/mod.rs
+index 3087531..3cdda33 100644
+--- a/src/app/mod.rs
++++ b/src/app/mod.rs
+@@ -1070,7 +1070,7 @@ fn prepare_deferred_observe<
+                 mid,
+                 row.meta.token,
+                 response,
+-                response.payload(),
++                ResponsePayload::Bytes(response.payload()),
+                 preference.map(|value| BlockOpt {
+                     value,
+                     q_block: false,
+@@ -3589,49 +3589,73 @@ where
+         return outcome;
+     }
+ 
+-    let mut inner_scratch = None::<Mem::RxScratch>;
+-    #[cfg(feature = "oscore")]
+-    let before = oscore
+-        .context(peer.association())
+-        .map(|ctx| ctx.replay_checkpoint());
+-    let opened = oscore::inbound(oscore, peer, &parsed, &mut inner_scratch);
++    // The retained RX packet supplies ciphertext while dispatch scratch is
++    // reused for plaintext. No second profile-sized buffer spans a send.
+     #[cfg(feature = "oscore")]
+-    if before
+-        != oscore
++    let (parsed, oscore_req, response_state) = if parsed.oscore().is_some() {
++        let layout = parsed.layout(n);
++        let before = oscore
+             .context(peer.association())
+-            .map(|ctx| ctx.replay_checkpoint())
+-    {
+-        oscore_checkpoint.invalidate();
+-    }
+-    if let Err(error) = oscore_checkpoint.flush(oscore, checkpoint_commit) {
+-        let _ = engine.release_rx(rx);
+-        return Err(error);
+-    }
+-    let opened = match opened {
+-        Ok(opened) => opened,
+-        Err(e) => {
++            .map(|ctx| ctx.replay_checkpoint());
++        let opened = {
++            let access = engine.access_rx(rx)?;
++            // RX bytes have not changed since copy_rx and full validation.
++            let outer = layout.bind(access.as_bytes()).expect("retained RX length");
++            oscore::inbound(oscore, peer, &outer, || scratch.as_mut())
++        };
++        if before
++            != oscore
++                .context(peer.association())
++                .map(|ctx| ctx.replay_checkpoint())
++        {
++            oscore_checkpoint.invalidate();
++        }
++        if let Err(error) = oscore_checkpoint.flush(oscore, checkpoint_commit) {
++            let _ = engine.release_rx(rx);
++            return Err(error);
++        }
++        match opened {
++            Ok(Some((inner, wire, request, state))) => {
++                write_unprotected_rx(engine, rx, wire, peer)?;
++                (inner, Some(request), state)
++            }
++            Ok(None) => (
++                layout
++                    .bind(&scratch.as_ref()[..n])
++                    .expect("unchanged RX length"),
++                oscore::no_request(),
++                oscore::ResponseState::None,
++            ),
++            Err(_) => {
++                // Protected processing failures are silent, including response
++                // authentication and replay failures; never answer ciphertext.
++                let _ = engine.release_rx(rx);
++                return Ok(());
++            }
++        }
++    } else {
++        // Without an OSCORE option inbound only checks the security policy;
++        // its lazy output owner is never initialized.
++        let opened = oscore::inbound(oscore, peer, &parsed, || &mut []);
++        if let Err(error) = oscore_checkpoint.flush(oscore, checkpoint_commit) {
++            let _ = engine.release_rx(rx);
++            return Err(error);
++        }
++        if let Err(error) = opened {
+             let outcome =
+-                oscore_inbound_error(engine, io, ids, &parsed, peer, now_ms, e, dedup_closed);
++                oscore_inbound_error(engine, io, ids, &parsed, peer, now_ms, error, dedup_closed);
+             let _ = engine.release_rx(rx);
+             return outcome;
+         }
++        (parsed, oscore::no_request(), oscore::ResponseState::None)
+     };
+-    let (parsed, oscore_req, response_state) = match opened {
+-        Some((inner, _wire, req, response_state)) => {
+-            #[cfg(feature = "oscore")]
+-            {
+-                // Inner Block-wise (RFC 8613 §4.1.3.4.1): assembly reads
+-                // the RX slot. Replace the outer OSCORE datagram with the
+-                // opened Inner so Block1/Block2 see Class E options.
+-                write_unprotected_rx(engine, rx, _wire, peer)?;
+-                (inner, Some(req), response_state)
+-            }
+-            #[cfg(not(feature = "oscore"))]
+-            {
+-                (inner, req, response_state)
+-            }
++    #[cfg(not(feature = "oscore"))]
++    let (parsed, oscore_req, response_state) = {
++        if let Err(error) = oscore_checkpoint.flush(oscore, checkpoint_commit) {
++            let _ = engine.release_rx(rx);
++            return Err(error);
+         }
+-        None => (parsed, oscore::no_request(), oscore::ResponseState::None),
++        (parsed, oscore::no_request(), oscore::ResponseState::None)
+     };
+ 
+     if !parsed.code().is_request() {
+@@ -5628,7 +5652,7 @@ where
+         mid,
+         meta.token,
+         response,
+-        response.payload(),
++        ResponsePayload::Bytes(response.payload()),
+         None,
+         meta.block1,
+         oscore_ctx,
+@@ -5777,7 +5801,7 @@ where
+         meta.mid,
+         meta.token,
+         response,
+-        response.payload(),
++        ResponsePayload::Bytes(response.payload()),
+         None,
+         meta.block1,
+         oscore_ctx,
+@@ -6383,7 +6407,7 @@ where
+         meta.mid,
+         meta.token,
+         &selected,
+-        payload,
++        ResponsePayload::Bytes(payload),
+         block,
+         meta.block1,
+         oscore_ctx,
+@@ -6635,7 +6659,7 @@ where
+                 mid,
+                 meta.token,
+                 &error,
+-                error.payload(),
++                ResponsePayload::Bytes(error.payload()),
+                 None,
+                 meta.block1,
+                 oscore_ctx,
+@@ -6881,12 +6905,6 @@ where
+             break;
+         }
+         let end = (offset + size).min(length);
+-        let mut scratch = [0u8; 1024];
+-        scratch[..end - offset].copy_from_slice(
+-            &engine
+-                .tx_body_payload(body)
+-                .ok_or(Error::Block(BlockTransferError::NoTransfer))?[offset..end],
+-        );
+         let value = crate::message::BlockValue::new(num, end < length, q.szx())
+             .map_err(|e| Error::Block(e.into()))?;
+         let mid = if step == 0 {
+@@ -6903,7 +6921,10 @@ where
+             mid,
+             meta.token,
+             response,
+-            &scratch[..end - offset],
++            ResponsePayload::Body {
++                id: body,
++                range: offset..end,
++            },
+             Some(BlockOpt {
+                 value,
+                 q_block: true,
+@@ -7131,8 +7152,17 @@ where
+     S: Storage + DatagramSlots + BodySlots + DedupSlots,
+     T: crate::storage::DatagramTransport,
+ {
+-    let mut chunk = [0u8; 1024];
+-    let n = copy_issued(engine, issued, &mut chunk).map_err(Error::Block)?;
++    let end = issued
++        .offset()
++        .checked_add(issued.len())
++        .ok_or(Error::Block(BlockTransferError::Overflow))?;
++    let body_len = engine
++        .tx_body_payload(issued.id())
++        .ok_or(Error::Block(BlockTransferError::NoTransfer))?
++        .len();
++    if end > body_len || issued.len() > 1024 {
++        return Err(Error::Block(BlockTransferError::Overflow));
++    }
+     let size2 = if q_block {
+         engine.tx_body_transfer(issued.id()).map(|t| t.filled())
+     } else {
+@@ -7154,7 +7184,10 @@ where
+         mid,
+         meta.token,
+         response,
+-        &chunk[..n],
++        ResponsePayload::Body {
++            id: issued.id(),
++            range: issued.offset()..end,
++        },
+         block,
+         meta.block1,
+         oscore_ctx,
+@@ -7166,32 +7199,16 @@ where
+     Ok(tx)
+ }
+ 
+-fn copy_issued<S: Storage + BodySlots>(
+-    engine: &mut Engine<S>,
+-    issued: OutgoingBlock,
+-    dest: &mut [u8],
+-) -> Result<usize, BlockTransferError> {
+-    let payload = engine
+-        .tx_body_payload(issued.id())
+-        .ok_or(BlockTransferError::NoTransfer)?;
+-    let end = issued
+-        .offset()
+-        .checked_add(issued.len())
+-        .ok_or(BlockTransferError::Overflow)?;
+-    if end > payload.len() || issued.len() > dest.len() {
+-        return Err(BlockTransferError::Overflow);
+-    }
+-    dest[..issued.len()].copy_from_slice(&payload[issued.offset()..end]);
+-    #[cfg(feature = "diagnostics")]
+-    crate::storage::WorkMetrics::add(
+-        &mut engine.work_metrics_mut().block_tx_staged_bytes,
+-        issued.len(),
+-    );
+-    Ok(issued.len())
++enum ResponsePayload<'a> {
++    Bytes(&'a [u8]),
++    Body {
++        id: SlotId,
++        range: core::ops::Range<usize>,
++    },
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+-fn encode_response<S: Storage + DatagramSlots, E, const REQUESTS: usize>(
++fn encode_response<S: Storage + DatagramSlots + BodySlots, E, const REQUESTS: usize>(
+     engine: &mut Engine<S>,
+     peer: Endpoint,
+     tx: SlotId,
+@@ -7199,7 +7216,7 @@ fn encode_response<S: Storage + DatagramSlots, E, const REQUESTS: usize>(
+     mid: MessageId,
+     token: S::Token,
+     response: &Response<'_, S::Token>,
+-    payload: &[u8],
++    payload: ResponsePayload<'_>,
+     block: Option<BlockOpt>,
+     block1: Option<BlockOpt>,
+     oscore_ctx: &mut oscore::Field<REQUESTS, S::Token>,
+@@ -7266,15 +7283,22 @@ fn encode_response<S: Storage + DatagramSlots, E, const REQUESTS: usize>(
+         Ok(()) => {
+             let msg = Message::new(ty, response.code(), mid)
+                 .with_token(token)
+-                .with_options(opts.as_slice())
+-                .with_payload(payload);
+-            if response.fresh_piv()
++                .with_options(opts.as_slice());
++            let fresh_piv = response.fresh_piv()
+                 || block.is_some_and(|b| b.q_block)
+-                || (response.observe_seq().is_some() && ty != Type::Acknowledgement)
+-            {
+-                oscore::encode_notification(oscore_ctx, peer, oscore_req, engine, tx, &msg)
+-            } else {
+-                oscore::encode_message(oscore_ctx, peer, oscore_req, engine, tx, &msg)
++                || (response.observe_seq().is_some() && ty != Type::Acknowledgement);
++            match payload {
++                ResponsePayload::Bytes(payload) => {
++                    let msg = msg.with_payload(payload);
++                    if fresh_piv {
++                        oscore::encode_notification(oscore_ctx, peer, oscore_req, engine, tx, &msg)
++                    } else {
++                        oscore::encode_message(oscore_ctx, peer, oscore_req, engine, tx, &msg)
++                    }
++                }
++                ResponsePayload::Body { id, range } => oscore::encode_body_response(
++                    oscore_ctx, peer, oscore_req, engine, tx, msg, id, range, fresh_piv,
++                ),
+             }
+         }
+         Err(EncodeError::OptionsFull) => {
+@@ -7785,6 +7809,7 @@ where
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
++#[cfg(feature = "oscore")]
+ #[coaptic_io::dual_io(oscore_inbound_error_async, bound(crate::app::async_server::ProtocolIo), calls(send_response => send_response_async))]
+ fn oscore_inbound_error<S, T>(
+     engine: &mut Engine<S>,
+diff --git a/src/app/oscore.rs b/src/app/oscore.rs
+index ff1d6f8..0deb244 100644
+--- a/src/app/oscore.rs
++++ b/src/app/oscore.rs
+@@ -8,7 +8,9 @@
+ #[cfg(feature = "oscore")]
+ use crate::error::EncodeError;
+ use crate::error::SlotMessageError;
+-use crate::message::{Message, OwnedToken, ParsedMessage, Token};
++#[cfg(any(feature = "oscore", test))]
++use crate::message::ParsedMessage;
++use crate::message::{Message, OwnedToken, Token};
+ use crate::storage::{DatagramSlots, Endpoint, Engine, SlotId, Storage};
+ 
+ #[cfg(feature = "oscore")]
+@@ -223,12 +225,12 @@ pub(crate) fn commit_response<E, const REQUESTS: usize, K: OwnedToken>(
+ #[cfg(feature = "oscore")]
+ pub(crate) type Opened<'a, K = Token> =
+     (ParsedMessage<'a, K>, &'a [u8], RequestRef, ResponseState<K>);
+-#[cfg(not(feature = "oscore"))]
++#[cfg(all(not(feature = "oscore"), test))]
+ pub(crate) type Opened<'a, K = Token> = (ParsedMessage<'a, K>, &'a [u8], Request, ResponseState<K>);
+ 
+ #[cfg(feature = "oscore")]
+ pub(crate) type InboundError = OscoreError;
+-#[cfg(not(feature = "oscore"))]
++#[cfg(all(not(feature = "oscore"), test))]
+ pub(crate) type InboundError = core::convert::Infallible;
+ 
+ #[cfg(feature = "oscore")]
+@@ -279,11 +281,11 @@ pub(crate) fn is_active<const REQUESTS: usize, K: OwnedToken>(_ctx: &Field<REQUE
+ /// application body. A token-matching unprotected 2.xx/4.xx/5.xx must
+ /// not complete a [`Call`](super::Call).
+ #[cfg(feature = "oscore")]
+-pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken, Scratch: Default + AsMut<[u8]>>(
++pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken>(
+     ctx: &mut Field<REQUESTS, K>,
+     peer: Endpoint,
+     parsed: &ParsedMessage<'_, K>,
+-    scratch: &'a mut Option<Scratch>,
++    scratch: impl FnOnce() -> &'a mut [u8],
+ ) -> Result<Option<Opened<'a, K>>, InboundError> {
+     let Some(ctx) = selected_mut(ctx, peer.association())? else {
+         return Ok(None);
+@@ -291,7 +293,7 @@ pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken, Scratch: Default
+     if parsed.oscore().is_some() {
+         // Keep the opened wire in the caller's local owner, but initialize it
+         // only after context selection and the OSCORE-option check.
+-        let scratch = scratch.get_or_insert_with(Scratch::default).as_mut();
++        let scratch = scratch();
+         let mut response_state = ResponseState::None;
+         let (wire, request) = if parsed.code().is_request() {
+             ctx.unprotect_request_wire(parsed, scratch)?
+@@ -360,12 +362,12 @@ pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken, Scratch: Default
+     Err(OscoreError::Unprotected)
+ }
+ 
+-#[cfg(not(feature = "oscore"))]
+-pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken, Scratch: Default + AsMut<[u8]>>(
++#[cfg(all(not(feature = "oscore"), test))]
++pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken>(
+     _ctx: &mut Field<REQUESTS, K>,
+     peer: Endpoint,
+     _parsed: &ParsedMessage<'_, K>,
+-    _scratch: &'a mut Option<Scratch>,
++    _scratch: impl FnOnce() -> &'a mut [u8],
+ ) -> Result<Option<Opened<'a, K>>, InboundError> {
+     let _ = peer;
+     Ok(None)
+@@ -451,6 +453,141 @@ pub(crate) fn encode_notification<S: Storage + DatagramSlots, E, const REQUESTS:
+         .map_err(super::Error::from)
+ }
+ 
++/// Encode a body range into a fresh TX reservation without staging the chunk.
++/// The caller owns the empty TX slot and releases it on failure. No reference
++/// to either storage area survives this synchronous call.
++#[allow(clippy::too_many_arguments)]
++pub(crate) fn encode_body_response<
++    S: Storage + DatagramSlots + crate::storage::BodySlots,
++    E,
++    const REQUESTS: usize,
++>(
++    ctx: &mut Field<REQUESTS, S::Token>,
++    peer: Endpoint,
++    request: Request,
++    engine: &mut Engine<S>,
++    tx: SlotId,
++    msg: Message<'_, S::Token>,
++    body: SlotId,
++    range: core::ops::Range<usize>,
++    fresh_piv: bool,
++) -> Result<(), super::Error<E>> {
++    // A retained packet still needs transactional replacement. Keep that rare
++    // case on the existing path; normal block replies acquire an empty slot.
++    if !engine
++        .storage()
++        .tx_payload(tx)
++        .ok_or(crate::storage::SlotError::NotOccupied)?
++        .is_empty()
++    {
++        return encode_retained_body_response(
++            ctx, peer, request, engine, tx, msg, body, range, fresh_piv,
++        );
++    }
++    if engine.storage_mut().tx_datagram().is_pinned(tx) {
++        return Err(crate::storage::SlotError::Pinned.into());
++    }
++    #[cfg(feature = "oscore")]
++    let protected = ctx.is_some();
++    #[cfg(not(feature = "oscore"))]
++    let protected = false;
++    let payload_len = range
++        .end
++        .checked_sub(range.start)
++        .filter(|len| *len <= 1024)
++        .ok_or(super::Error::Block(
++            crate::error::BlockTransferError::Overflow,
++        ))?;
++    let (body, out) = engine.storage_mut().tx_body_and_tx_mut(body, tx)?;
++    let payload = body.get(range).ok_or(super::Error::Block(
++        crate::error::BlockTransferError::Overflow,
++    ))?;
++    let msg = msg.with_payload(payload);
++    let limit = if protected {
++        out.len().min(S::TX_DATAGRAM_BYTES)
++    } else {
++        out.len()
++    };
++    let n = stage_response(ctx, peer, request, &msg, fresh_piv, &mut out[..limit])?;
++    engine.storage_mut().set_tx_len(tx, n)?;
++    #[cfg(feature = "diagnostics")]
++    if !protected {
++        crate::storage::WorkMetrics::add(
++            &mut engine.work_metrics_mut().tx_payload_encoded_bytes,
++            payload_len,
++        );
++    }
++    let _ = payload_len;
++    Ok(())
++}
++
++#[cold]
++#[inline(never)]
++#[allow(clippy::too_many_arguments)]
++fn encode_retained_body_response<
++    S: Storage + DatagramSlots + crate::storage::BodySlots,
++    E,
++    const REQUESTS: usize,
++>(
++    ctx: &mut Field<REQUESTS, S::Token>,
++    peer: Endpoint,
++    request: Request,
++    engine: &mut Engine<S>,
++    tx: SlotId,
++    msg: Message<'_, S::Token>,
++    body: SlotId,
++    range: core::ops::Range<usize>,
++    fresh_piv: bool,
++) -> Result<(), super::Error<E>> {
++    let bytes = engine
++        .tx_body_payload(body)
++        .ok_or(super::Error::Block(
++            crate::error::BlockTransferError::NoTransfer,
++        ))?
++        .get(range)
++        .ok_or(super::Error::Block(
++            crate::error::BlockTransferError::Overflow,
++        ))?;
++    let mut chunk = [0u8; 1024];
++    let n = bytes.len();
++    if n > chunk.len() {
++        return Err(super::Error::Block(
++            crate::error::BlockTransferError::Overflow,
++        ));
++    }
++    chunk[..n].copy_from_slice(bytes);
++    #[cfg(feature = "diagnostics")]
++    crate::storage::WorkMetrics::add(&mut engine.work_metrics_mut().block_tx_staged_bytes, n);
++    let msg = msg.with_payload(&chunk[..n]);
++    if fresh_piv {
++        encode_notification(ctx, peer, request, engine, tx, &msg)
++    } else {
++        encode_message(ctx, peer, request, engine, tx, &msg)
++    }
++}
++
++fn stage_response<E, const REQUESTS: usize, K: OwnedToken>(
++    ctx: &mut Field<REQUESTS, K>,
++    peer: Endpoint,
++    request: Request,
++    msg: &Message<'_, K>,
++    fresh_piv: bool,
++    out: &mut [u8],
++) -> Result<usize, super::Error<E>> {
++    if fresh_piv {
++        return stage_notification(ctx, peer, request, msg, out);
++    }
++    #[cfg(not(feature = "oscore"))]
++    let _ = (ctx, peer, request);
++    #[cfg(feature = "oscore")]
++    if let Some(ctx) = selected(ctx, peer.association()).map_err(super::Error::Oscore)? {
++        let request = request.ok_or_else(|| protect_err(OscoreError::Context))?;
++        return ctx.protect_response(msg, request, out).map_err(protect_err);
++    }
++    crate::message::encode(msg, out)
++        .map_err(|error| super::Error::Message(SlotMessageError::Encode(error)))
++}
++
+ pub(crate) fn stage_notification<E, const REQUESTS: usize, K: OwnedToken>(
+     ctx: &mut Field<REQUESTS, K>,
+     peer: Endpoint,
+@@ -753,6 +890,18 @@ mod inbound_scratch_tests {
+     use crate::message::{Code, MessageId, Token, Type, decode};
+     use core::sync::atomic::{AtomicUsize, Ordering};
+ 
++    // Exercise lazy initialization independently of the App's reused buffer.
++    fn inbound<'a, const R: usize, K: OwnedToken, S: Default + AsMut<[u8]>>(
++        ctx: &mut Field<R, K>,
++        peer: Endpoint,
++        parsed: &ParsedMessage<'_, K>,
++        scratch: &'a mut Option<S>,
++    ) -> Result<Option<Opened<'a, K>>, InboundError> {
++        super::inbound(ctx, peer, parsed, || {
++            scratch.get_or_insert_with(S::default).as_mut()
++        })
++    }
++
+     static INITIALIZATIONS: AtomicUsize = AtomicUsize::new(0);
+ 
+     struct Scratch([u8; 1472]);
+@@ -921,6 +1070,108 @@ mod request_capacity_tests {
+     use crate::message::{Code, MessageId, Token, Type};
+     use crate::storage::{AllocMemory, Capacities};
+ 
++    #[test]
++    fn body_encoding_preserves_snapshot_and_refuses_missing_security_binding() {
++        use crate::storage::{BlockKey, Memory, profiles};
++        fn exercise<S: Storage<Token = Token> + DatagramSlots + crate::storage::BodySlots>(
++            storage: S,
++        ) {
++            let mut engine = Engine::from_storage(storage);
++            let peer = Endpoint::v4([127, 0, 0, 1], 5683);
++            let body = engine
++                .start_block2(BlockKey::new(Token::EMPTY, peer), &[0x5a; 1024], 6)
++                .unwrap();
++            let transfer = engine.tx_body_transfer(body).unwrap();
++            let tx = engine.acquire_tx().unwrap();
++            let mut ctx: Option<crate::oscore::SecurityContext> = None;
++            let msg = Message::new(Type::Acknowledgement, Code::CONTENT, MessageId::new(7));
++            encode_body_response::<_, core::convert::Infallible, 4>(
++                &mut ctx,
++                peer,
++                None,
++                &mut engine,
++                tx,
++                msg,
++                body,
++                17..49,
++                false,
++            )
++            .unwrap();
++            assert_eq!(engine.decode_tx(tx).unwrap().payload(), &[0x5a; 32]);
++            assert_eq!(engine.tx_body_transfer(body), Some(transfer));
++            assert_eq!(engine.tx_body_payload(body), Some(&[0x5a; 1024][..]));
++
++            ctx = Some(
++                crate::oscore::SecurityContext::derive(crate::oscore::DeriveParams {
++                    master_secret: &[0x24; 16],
++                    master_salt: &[],
++                    sender_id: &[1],
++                    recipient_id: &[2],
++                    id_context: &[],
++                })
++                .unwrap(),
++            );
++            let mut original = [0u8; 128];
++            let wire = engine.storage().tx_payload(tx).unwrap();
++            original[..wire.len()].copy_from_slice(wire);
++            let n = wire.len();
++            for fresh in [false, true] {
++                for fresh_piv in [false, true] {
++                    if fresh {
++                        engine.storage_mut().set_tx_len(tx, 0).unwrap();
++                    }
++                    assert!(matches!(
++                        encode_body_response::<_, core::convert::Infallible, 4>(
++                            &mut ctx,
++                            peer,
++                            None,
++                            &mut engine,
++                            tx,
++                            msg,
++                            body,
++                            0..32,
++                            fresh_piv,
++                        ),
++                        Err(super::super::Error::Oscore(OscoreError::Context))
++                    ));
++                    assert_eq!(
++                        engine.storage().tx_payload(tx).unwrap(),
++                        if fresh { &[][..] } else { &original[..n] }
++                    );
++                    assert_eq!(engine.tx_body_transfer(body), Some(transfer));
++                    assert_eq!(engine.tx_body_payload(body), Some(&[0x5a; 1024][..]));
++                }
++            }
++            ctx = None;
++            assert!(matches!(
++                encode_body_response::<_, core::convert::Infallible, 4>(
++                    &mut ctx,
++                    peer,
++                    None,
++                    &mut engine,
++                    tx,
++                    msg,
++                    body,
++                    1020..1030,
++                    false,
++                ),
++                Err(super::super::Error::Block(
++                    crate::error::BlockTransferError::Overflow
++                ))
++            ));
++            assert_eq!(engine.storage().tx_payload(tx), Some(&[][..]));
++        }
++        exercise(Memory::<profiles::Constrained>::with_block_wise());
++        exercise(
++            AllocMemory::try_new(
++                Capacities::from_profile::<profiles::Constrained>()
++                    .with_block_wise::<profiles::Constrained>(),
++                usize::MAX,
++            )
++            .unwrap(),
++        );
++    }
++
+     #[test]
+     fn request_protection_respects_actual_tx_before_replacing_binding() {
+         let capacities = Capacities {
+diff --git a/src/message/decode.rs b/src/message/decode.rs
+index d8a3f05..864d370 100644
+--- a/src/message/decode.rs
++++ b/src/message/decode.rs
+@@ -16,7 +16,52 @@ pub struct ParsedMessage<'a, T: OwnedToken = Token> {
+     payload: &'a [u8],
+ }
+ 
++/// Offsets and owned metadata from a fully validated datagram. App may use this
++/// to borrow the identical retained RX bytes after releasing its scratch borrow.
++/// This is not a validator for another packet, even one of the same length.
++#[cfg(feature = "oscore")]
++#[derive(Clone, Copy)]
++pub(crate) struct MessageLayout<T: OwnedToken> {
++    header: Header,
++    token: T,
++    wire_len: usize,
++    options_len: usize,
++    payload_len: usize,
++}
++
++#[cfg(feature = "oscore")]
++impl<T: OwnedToken> MessageLayout<T> {
++    /// Reborrow the exact bytes validated when this layout was obtained.
++    /// The caller must preserve their contents; length checks only bound ranges.
++    pub(crate) fn bind(self, wire: &[u8]) -> Option<ParsedMessage<'_, T>> {
++        if wire.len() != self.wire_len {
++            return None;
++        }
++        let payload_start = wire.len().checked_sub(self.payload_len)?;
++        let options_end = payload_start.checked_sub(usize::from(self.payload_len != 0))?;
++        let options_start = options_end.checked_sub(self.options_len)?;
++        Some(ParsedMessage {
++            header: self.header,
++            token: self.token,
++            options: &wire[options_start..options_end],
++            payload: &wire[payload_start..],
++        })
++    }
++}
++
+ impl<'a, T: OwnedToken> ParsedMessage<'a, T> {
++    /// Detach ranges from the original, fully validated wire of `wire_len` bytes.
++    #[cfg(feature = "oscore")]
++    pub(crate) fn layout(self, wire_len: usize) -> MessageLayout<T> {
++        MessageLayout {
++            header: self.header,
++            token: self.token,
++            wire_len,
++            options_len: self.options.len(),
++            payload_len: self.payload.len(),
++        }
++    }
++
+     /// Parsed header.
+     #[must_use]
+     pub const fn header(self) -> Header {
+diff --git a/src/message/tests.rs b/src/message/tests.rs
+index 3938506..e8216c3 100644
+--- a/src/message/tests.rs
++++ b/src/message/tests.rs
+@@ -18,6 +18,45 @@ fn encode_to<'a>(msg: &Message<'_>, buf: &'a mut [u8]) -> &'a [u8] {
+     &buf[..n]
+ }
+ 
++#[cfg(feature = "oscore")]
++#[test]
++fn validated_layout_reborrows_classic_and_extended_wire_boundaries() {
++    type Extended = super::extended::Token<300>;
++    for token_len in [0, 8, 13, 269] {
++        for option_len in [0, 13, 269] {
++            for payload in [&[][..], &b"payload"[..]] {
++                let token = Extended::new(&[7; 300][..token_len]).unwrap();
++                let value = [9; 269];
++                let options = [Opt::new(OptionNumber::new(300), &value[..option_len])];
++                let message = Message::new(Type::Confirmable, Code::POST, MessageId::new(31))
++                    .with_token(token)
++                    .with_options(&options)
++                    .with_payload(payload);
++                let mut original = [0; 1024];
++                let n = message.encode(&mut original).unwrap();
++                let parsed = super::decode_with_token::<Extended>(&original[..n]).unwrap();
++                let layout = parsed.layout(n);
++                let mut retained = [0; 1024];
++                retained[..n].copy_from_slice(&original[..n]);
++                assert_eq!(layout.bind(&retained[..n]), Some(parsed));
++                assert!(layout.bind(&retained[..n - 1]).is_none());
++                assert!(layout.bind(&retained[..n + 1]).is_none());
++                // The detached metadata retains no borrow of the old backing.
++                original.fill(0);
++                let rebound = layout.bind(&retained[..n]).unwrap();
++                assert_eq!(rebound.token(), token);
++                assert_eq!(rebound.payload(), payload);
++                assert_eq!(rebound.options().next(), Some(options[0]));
++            }
++        }
++    }
++    let empty = Message::empty_ack(MessageId::new(1));
++    let mut wire = [0; 4];
++    empty.encode(&mut wire).unwrap();
++    let parsed = decode(&wire).unwrap();
++    assert_eq!(parsed.layout(wire.len()).bind(&wire), Some(parsed));
++}
++
+ fn assert_roundtrip(msg: &Message<'_>) {
+     let mut buf = [0u8; 1024];
+     let n = encode(msg, &mut buf).expect("encode");
+diff --git a/src/storage/alloc_memory.rs b/src/storage/alloc_memory.rs
+index 10eb391..7d9d00d 100644
+--- a/src/storage/alloc_memory.rs
++++ b/src/storage/alloc_memory.rs
+@@ -809,6 +809,20 @@ impl<T: OwnedToken> DedupSlots for AllocMemory<T> {
+ }
+ 
+ impl<T: OwnedToken> BodySlots for AllocMemory<T> {
++    fn tx_body_and_tx_mut(
++        &mut self,
++        body: SlotId,
++        tx: SlotId,
++    ) -> Result<(&[u8], &mut [u8]), SlotError> {
++        let body = self
++            .tx_body
++            .as_ref()
++            .and_then(|pool| pool.payload(body))
++            .ok_or(SlotError::NotOccupied)?;
++        let tx = self.tx.payload_mut(tx).ok_or(SlotError::NotOccupied)?;
++        Ok((body, tx))
++    }
++
+     #[allow(clippy::too_many_arguments)]
+     fn replace_observe_body(
+         &mut self,
+diff --git a/src/storage/memory.rs b/src/storage/memory.rs
+index 7c7b587..9be4a5b 100644
+--- a/src/storage/memory.rs
++++ b/src/storage/memory.rs
+@@ -699,6 +699,14 @@ where
+ }
+ 
+ impl<P: MemoryProfile> BodySlots for Memory<P> {
++    fn tx_body_and_tx_mut(
++        &mut self,
++        _body: SlotId,
++        _tx: SlotId,
++    ) -> Result<(&[u8], &mut [u8]), SlotError> {
++        Err(SlotError::InvalidSlot)
++    }
++
+     fn rx_body_payload(&self, _id: SlotId) -> Option<&[u8]> {
+         None
+     }
+@@ -948,7 +956,18 @@ impl<P: MemoryProfile> BodySlots for Memory<P, WithBodies<P>>
+ where
+     P::RxBody: BodyOps<P::Token>,
+     P::TxBody: BodyOps<P::Token>,
++    P::TxDatagram: DatagramBytes,
+ {
++    fn tx_body_and_tx_mut(
++        &mut self,
++        body: SlotId,
++        tx: SlotId,
++    ) -> Result<(&[u8], &mut [u8]), SlotError> {
++        let body = self.bodies.tx.payload(body).ok_or(SlotError::NotOccupied)?;
++        let tx = self.tx.payload_mut(tx).ok_or(SlotError::NotOccupied)?;
++        Ok((body, tx))
++    }
++
+     #[allow(clippy::too_many_arguments)]
+     fn replace_observe_body(
+         &mut self,
+diff --git a/src/storage/mod.rs b/src/storage/mod.rs
+index 9e3dfff..fc4b24e 100644
+--- a/src/storage/mod.rs
++++ b/src/storage/mod.rs
+@@ -439,6 +439,18 @@ pub trait BodySlots: Storage {
+     /// Filled outgoing body, if `id` is occupied.
+     fn tx_body_payload(&self, id: SlotId) -> Option<&[u8]>;
+ 
++    /// Borrow a filled outgoing body and an occupied TX datagram's full buffer.
++    ///
++    /// The areas are disjoint. This does not copy bytes, change lengths or
++    /// sidecars, or pin either slot. The mutable storage borrow excludes other
++    /// access until both references expire. Return an error without mutation
++    /// if either slot is unavailable; callers retain ownership of both slots.
++    fn tx_body_and_tx_mut(
++        &mut self,
++        body: SlotId,
++        tx: SlotId,
++    ) -> Result<(&[u8], &mut [u8]), SlotError>;
++
+     /// Incoming Block1 / Block2 sidecar, if `id` holds a transfer.
+     fn rx_body_transfer(&self, id: SlotId) -> Option<BlockTransfer<Self::Token>>;
+ 

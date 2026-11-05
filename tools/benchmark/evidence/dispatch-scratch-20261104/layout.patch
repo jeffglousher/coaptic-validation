@@ -1,0 +1,316 @@
+diff --git a/src/app/mod.rs b/src/app/mod.rs
+index 3087531..01d726e 100644
+--- a/src/app/mod.rs
++++ b/src/app/mod.rs
+@@ -3589,49 +3589,73 @@ where
+         return outcome;
+     }
+ 
+-    let mut inner_scratch = None::<Mem::RxScratch>;
++    // The retained RX packet supplies ciphertext while dispatch scratch is
++    // reused for plaintext. No second profile-sized buffer spans a send.
+     #[cfg(feature = "oscore")]
+-    let before = oscore
+-        .context(peer.association())
+-        .map(|ctx| ctx.replay_checkpoint());
+-    let opened = oscore::inbound(oscore, peer, &parsed, &mut inner_scratch);
+-    #[cfg(feature = "oscore")]
+-    if before
+-        != oscore
++    let (parsed, oscore_req, response_state) = if parsed.oscore().is_some() {
++        let layout = parsed.layout(n);
++        let before = oscore
+             .context(peer.association())
+-            .map(|ctx| ctx.replay_checkpoint())
+-    {
+-        oscore_checkpoint.invalidate();
+-    }
+-    if let Err(error) = oscore_checkpoint.flush(oscore, checkpoint_commit) {
+-        let _ = engine.release_rx(rx);
+-        return Err(error);
+-    }
+-    let opened = match opened {
+-        Ok(opened) => opened,
+-        Err(e) => {
++            .map(|ctx| ctx.replay_checkpoint());
++        let opened = {
++            let access = engine.access_rx(rx)?;
++            // RX bytes have not changed since copy_rx and full validation.
++            let outer = layout.bind(access.as_bytes()).expect("retained RX length");
++            oscore::inbound(oscore, peer, &outer, || scratch.as_mut())
++        };
++        if before
++            != oscore
++                .context(peer.association())
++                .map(|ctx| ctx.replay_checkpoint())
++        {
++            oscore_checkpoint.invalidate();
++        }
++        if let Err(error) = oscore_checkpoint.flush(oscore, checkpoint_commit) {
++            let _ = engine.release_rx(rx);
++            return Err(error);
++        }
++        match opened {
++            Ok(Some((inner, wire, request, state))) => {
++                write_unprotected_rx(engine, rx, wire, peer)?;
++                (inner, Some(request), state)
++            }
++            Ok(None) => (
++                layout
++                    .bind(&scratch.as_ref()[..n])
++                    .expect("unchanged RX length"),
++                oscore::no_request(),
++                oscore::ResponseState::None,
++            ),
++            Err(_) => {
++                // Protected processing failures are silent, including response
++                // authentication and replay failures; never answer ciphertext.
++                let _ = engine.release_rx(rx);
++                return Ok(());
++            }
++        }
++    } else {
++        // Without an OSCORE option inbound only checks the security policy;
++        // its lazy output owner is never initialized.
++        let opened = oscore::inbound(oscore, peer, &parsed, || &mut []);
++        if let Err(error) = oscore_checkpoint.flush(oscore, checkpoint_commit) {
++            let _ = engine.release_rx(rx);
++            return Err(error);
++        }
++        if let Err(error) = opened {
+             let outcome =
+-                oscore_inbound_error(engine, io, ids, &parsed, peer, now_ms, e, dedup_closed);
++                oscore_inbound_error(engine, io, ids, &parsed, peer, now_ms, error, dedup_closed);
+             let _ = engine.release_rx(rx);
+             return outcome;
+         }
++        (parsed, oscore::no_request(), oscore::ResponseState::None)
+     };
+-    let (parsed, oscore_req, response_state) = match opened {
+-        Some((inner, _wire, req, response_state)) => {
+-            #[cfg(feature = "oscore")]
+-            {
+-                // Inner Block-wise (RFC 8613 §4.1.3.4.1): assembly reads
+-                // the RX slot. Replace the outer OSCORE datagram with the
+-                // opened Inner so Block1/Block2 see Class E options.
+-                write_unprotected_rx(engine, rx, _wire, peer)?;
+-                (inner, Some(req), response_state)
+-            }
+-            #[cfg(not(feature = "oscore"))]
+-            {
+-                (inner, req, response_state)
+-            }
++    #[cfg(not(feature = "oscore"))]
++    let (parsed, oscore_req, response_state) = {
++        if let Err(error) = oscore_checkpoint.flush(oscore, checkpoint_commit) {
++            let _ = engine.release_rx(rx);
++            return Err(error);
+         }
+-        None => (parsed, oscore::no_request(), oscore::ResponseState::None),
++        (parsed, oscore::no_request(), oscore::ResponseState::None)
+     };
+ 
+     if !parsed.code().is_request() {
+@@ -7785,6 +7809,7 @@ where
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
++#[cfg(feature = "oscore")]
+ #[coaptic_io::dual_io(oscore_inbound_error_async, bound(crate::app::async_server::ProtocolIo), calls(send_response => send_response_async))]
+ fn oscore_inbound_error<S, T>(
+     engine: &mut Engine<S>,
+diff --git a/src/app/oscore.rs b/src/app/oscore.rs
+index ff1d6f8..d028e29 100644
+--- a/src/app/oscore.rs
++++ b/src/app/oscore.rs
+@@ -8,7 +8,9 @@
+ #[cfg(feature = "oscore")]
+ use crate::error::EncodeError;
+ use crate::error::SlotMessageError;
+-use crate::message::{Message, OwnedToken, ParsedMessage, Token};
++#[cfg(any(feature = "oscore", test))]
++use crate::message::ParsedMessage;
++use crate::message::{Message, OwnedToken, Token};
+ use crate::storage::{DatagramSlots, Endpoint, Engine, SlotId, Storage};
+ 
+ #[cfg(feature = "oscore")]
+@@ -223,12 +225,12 @@ pub(crate) fn commit_response<E, const REQUESTS: usize, K: OwnedToken>(
+ #[cfg(feature = "oscore")]
+ pub(crate) type Opened<'a, K = Token> =
+     (ParsedMessage<'a, K>, &'a [u8], RequestRef, ResponseState<K>);
+-#[cfg(not(feature = "oscore"))]
++#[cfg(all(not(feature = "oscore"), test))]
+ pub(crate) type Opened<'a, K = Token> = (ParsedMessage<'a, K>, &'a [u8], Request, ResponseState<K>);
+ 
+ #[cfg(feature = "oscore")]
+ pub(crate) type InboundError = OscoreError;
+-#[cfg(not(feature = "oscore"))]
++#[cfg(all(not(feature = "oscore"), test))]
+ pub(crate) type InboundError = core::convert::Infallible;
+ 
+ #[cfg(feature = "oscore")]
+@@ -279,11 +281,11 @@ pub(crate) fn is_active<const REQUESTS: usize, K: OwnedToken>(_ctx: &Field<REQUE
+ /// application body. A token-matching unprotected 2.xx/4.xx/5.xx must
+ /// not complete a [`Call`](super::Call).
+ #[cfg(feature = "oscore")]
+-pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken, Scratch: Default + AsMut<[u8]>>(
++pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken>(
+     ctx: &mut Field<REQUESTS, K>,
+     peer: Endpoint,
+     parsed: &ParsedMessage<'_, K>,
+-    scratch: &'a mut Option<Scratch>,
++    scratch: impl FnOnce() -> &'a mut [u8],
+ ) -> Result<Option<Opened<'a, K>>, InboundError> {
+     let Some(ctx) = selected_mut(ctx, peer.association())? else {
+         return Ok(None);
+@@ -291,7 +293,7 @@ pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken, Scratch: Default
+     if parsed.oscore().is_some() {
+         // Keep the opened wire in the caller's local owner, but initialize it
+         // only after context selection and the OSCORE-option check.
+-        let scratch = scratch.get_or_insert_with(Scratch::default).as_mut();
++        let scratch = scratch();
+         let mut response_state = ResponseState::None;
+         let (wire, request) = if parsed.code().is_request() {
+             ctx.unprotect_request_wire(parsed, scratch)?
+@@ -360,12 +362,12 @@ pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken, Scratch: Default
+     Err(OscoreError::Unprotected)
+ }
+ 
+-#[cfg(not(feature = "oscore"))]
+-pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken, Scratch: Default + AsMut<[u8]>>(
++#[cfg(all(not(feature = "oscore"), test))]
++pub(crate) fn inbound<'a, const REQUESTS: usize, K: OwnedToken>(
+     _ctx: &mut Field<REQUESTS, K>,
+     peer: Endpoint,
+     _parsed: &ParsedMessage<'_, K>,
+-    _scratch: &'a mut Option<Scratch>,
++    _scratch: impl FnOnce() -> &'a mut [u8],
+ ) -> Result<Option<Opened<'a, K>>, InboundError> {
+     let _ = peer;
+     Ok(None)
+@@ -753,6 +755,18 @@ mod inbound_scratch_tests {
+     use crate::message::{Code, MessageId, Token, Type, decode};
+     use core::sync::atomic::{AtomicUsize, Ordering};
+ 
++    // Exercise lazy initialization independently of the App's reused buffer.
++    fn inbound<'a, const R: usize, K: OwnedToken, S: Default + AsMut<[u8]>>(
++        ctx: &mut Field<R, K>,
++        peer: Endpoint,
++        parsed: &ParsedMessage<'_, K>,
++        scratch: &'a mut Option<S>,
++    ) -> Result<Option<Opened<'a, K>>, InboundError> {
++        super::inbound(ctx, peer, parsed, || {
++            scratch.get_or_insert_with(S::default).as_mut()
++        })
++    }
++
+     static INITIALIZATIONS: AtomicUsize = AtomicUsize::new(0);
+ 
+     struct Scratch([u8; 1472]);
+diff --git a/src/message/decode.rs b/src/message/decode.rs
+index d8a3f05..864d370 100644
+--- a/src/message/decode.rs
++++ b/src/message/decode.rs
+@@ -16,7 +16,52 @@ pub struct ParsedMessage<'a, T: OwnedToken = Token> {
+     payload: &'a [u8],
+ }
+ 
++/// Offsets and owned metadata from a fully validated datagram. App may use this
++/// to borrow the identical retained RX bytes after releasing its scratch borrow.
++/// This is not a validator for another packet, even one of the same length.
++#[cfg(feature = "oscore")]
++#[derive(Clone, Copy)]
++pub(crate) struct MessageLayout<T: OwnedToken> {
++    header: Header,
++    token: T,
++    wire_len: usize,
++    options_len: usize,
++    payload_len: usize,
++}
++
++#[cfg(feature = "oscore")]
++impl<T: OwnedToken> MessageLayout<T> {
++    /// Reborrow the exact bytes validated when this layout was obtained.
++    /// The caller must preserve their contents; length checks only bound ranges.
++    pub(crate) fn bind(self, wire: &[u8]) -> Option<ParsedMessage<'_, T>> {
++        if wire.len() != self.wire_len {
++            return None;
++        }
++        let payload_start = wire.len().checked_sub(self.payload_len)?;
++        let options_end = payload_start.checked_sub(usize::from(self.payload_len != 0))?;
++        let options_start = options_end.checked_sub(self.options_len)?;
++        Some(ParsedMessage {
++            header: self.header,
++            token: self.token,
++            options: &wire[options_start..options_end],
++            payload: &wire[payload_start..],
++        })
++    }
++}
++
+ impl<'a, T: OwnedToken> ParsedMessage<'a, T> {
++    /// Detach ranges from the original, fully validated wire of `wire_len` bytes.
++    #[cfg(feature = "oscore")]
++    pub(crate) fn layout(self, wire_len: usize) -> MessageLayout<T> {
++        MessageLayout {
++            header: self.header,
++            token: self.token,
++            wire_len,
++            options_len: self.options.len(),
++            payload_len: self.payload.len(),
++        }
++    }
++
+     /// Parsed header.
+     #[must_use]
+     pub const fn header(self) -> Header {
+diff --git a/src/message/tests.rs b/src/message/tests.rs
+index 3938506..e8216c3 100644
+--- a/src/message/tests.rs
++++ b/src/message/tests.rs
+@@ -18,6 +18,45 @@ fn encode_to<'a>(msg: &Message<'_>, buf: &'a mut [u8]) -> &'a [u8] {
+     &buf[..n]
+ }
+ 
++#[cfg(feature = "oscore")]
++#[test]
++fn validated_layout_reborrows_classic_and_extended_wire_boundaries() {
++    type Extended = super::extended::Token<300>;
++    for token_len in [0, 8, 13, 269] {
++        for option_len in [0, 13, 269] {
++            for payload in [&[][..], &b"payload"[..]] {
++                let token = Extended::new(&[7; 300][..token_len]).unwrap();
++                let value = [9; 269];
++                let options = [Opt::new(OptionNumber::new(300), &value[..option_len])];
++                let message = Message::new(Type::Confirmable, Code::POST, MessageId::new(31))
++                    .with_token(token)
++                    .with_options(&options)
++                    .with_payload(payload);
++                let mut original = [0; 1024];
++                let n = message.encode(&mut original).unwrap();
++                let parsed = super::decode_with_token::<Extended>(&original[..n]).unwrap();
++                let layout = parsed.layout(n);
++                let mut retained = [0; 1024];
++                retained[..n].copy_from_slice(&original[..n]);
++                assert_eq!(layout.bind(&retained[..n]), Some(parsed));
++                assert!(layout.bind(&retained[..n - 1]).is_none());
++                assert!(layout.bind(&retained[..n + 1]).is_none());
++                // The detached metadata retains no borrow of the old backing.
++                original.fill(0);
++                let rebound = layout.bind(&retained[..n]).unwrap();
++                assert_eq!(rebound.token(), token);
++                assert_eq!(rebound.payload(), payload);
++                assert_eq!(rebound.options().next(), Some(options[0]));
++            }
++        }
++    }
++    let empty = Message::empty_ack(MessageId::new(1));
++    let mut wire = [0; 4];
++    empty.encode(&mut wire).unwrap();
++    let parsed = decode(&wire).unwrap();
++    assert_eq!(parsed.layout(wire.len()).bind(&wire), Some(parsed));
++}
++
+ fn assert_roundtrip(msg: &Message<'_>) {
+     let mut buf = [0u8; 1024];
+     let n = encode(msg, &mut buf).expect("encode");

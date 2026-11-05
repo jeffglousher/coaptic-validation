@@ -1,0 +1,3 @@
+# Preserve the measured fixture bytes across platforms for SHA-256 verification.
+fixture/** -text
+*.patch -text
