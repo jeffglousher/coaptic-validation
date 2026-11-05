@@ -1,0 +1,15 @@
+{
+  "fixture_source": "6d6f68b881e051248cabf7697ba02d6947355ca9",
+  "verified_source_files": 149,
+  "source_normalization": "CRLF to LF on both archive and actual fixture",
+  "patch_sha256": {
+    "owned-scan.patch": "043a21141e4146ec67a1af60fb8819d304828179af5010cd07f6b832dd52b7cf",
+    "shared.patch": "97424013404551fdfd5c6b4c6183b802cfd03965510429d5666b0d7c4773b499"
+  },
+  "baseline": "bd63199b652193b4c0a882e5840e72d992cf1362",
+  "baseline_binary_source": "f84f3c199763910e246d8599aca0e29077a73ad1",
+  "baseline_equivalence": "Reuse packet-dispatch-20261104/source-verification.json and core #741; only test/doc differences. Same fixture/features/toolchain, different absolute source path.",
+  "toolchain": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-pc-windows-msvc\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+  "status": "Both runtime variants rejected. Neither is a merge candidate.",
+  "verification_setup_failure": "Initial offline verifier incorrectly expected retained fixed App reduction1024B. Its distinct16-row fixture reduces256B; corrected expected delta only. Prospective measurement gate required strict shrink, passed unchanged. No timing rerun."
+}
