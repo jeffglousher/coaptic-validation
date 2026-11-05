@@ -1,0 +1,27 @@
+{
+  "measured_source": "f84f3c199763910e246d8599aca0e29077a73ad1",
+  "final_test_source": "d828163da9a7f1869434b053d194fb21cfa8bd42",
+  "production_source_identical": true,
+  "library_all_features": {"passed": 1214, "source": "f84f3c199763910e246d8599aca0e29077a73ad1"},
+  "library_minimal": 714,
+  "library_alloc": 762,
+  "library_oscore": 870,
+  "library_alloc_oscore": 922,
+  "library_std": 721,
+  "integration_all_features": {"deferred_fetch_validator": 6, "deferred_observe_block2": 42, "deferred_qblock2": 27},
+  "focused_final_option_oracles": 2,
+  "release_async_transaction_checks": 10,
+  "strict_clippy_all_targets": ["all-features", "no-default-features"],
+  "format": "cargo fmt --all -- --check passed",
+  "review": {
+    "kind": "independent read-only general reviewer fallback, not specialist Bugbot",
+    "target": "f84f3c199763910e246d8599aca0e29077a73ad1",
+    "base": "36f9c55635b6a53a7db4c95b9d99624095895124",
+    "result": "No actionable findings",
+    "focus": "Nonce/binding order; capacity/error precedence; Class U/E; retained-TX transaction; first-value option semantics; async lifetimes",
+    "limits": "Reviewer did not run tests, verify measurements or peak stack; final test-only Size1 additions inspected by parent separately"
+  },
+  "runner": "Windows x86_64 MSVC; rustc 1.99.1; existing registered coaptic-core-reusable lane; CARGO_INCREMENTAL=0; CARGO_BUILD_JOBS=2",
+  "logs": "Original logs in observations.zip; PowerShell may print NativeCommandError for Cargo stderr although exit code is zero. The runner checked every exit code.",
+  "limits": "Focused software checks, not full RFC certification, physical hardware qualification or a publication/release matrix"
+}

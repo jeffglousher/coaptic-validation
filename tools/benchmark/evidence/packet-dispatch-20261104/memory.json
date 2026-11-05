@@ -1,0 +1,38 @@
+{
+  "baseline": "36f9c55635b6a53a7db4c95b9d99624095895124",
+  "baseline_binary_source": "d2d4484cc5c6beb66856511e6d86ce75ce3cefd2",
+  "candidate_binary_source": "f84f3c199763910e246d8599aca0e29077a73ad1",
+  "target": "Windows x86_64 MSVC, rustc 1.99.1",
+  "app_and_requested_pool_heap": "All paired qualifier owners equal; exact ledgers in raw JSON; no added persistent field or reduced capacity",
+  "complete_progress_future": {
+    "profile": "Constrained, routes1, blockwise=false; existing release all-feature test",
+    "command": "cargo test --release --all-features --lib app::async_server::tests -- --nocapture",
+    "baseline_bytes": 15952,
+    "candidate_bytes": 15984,
+    "change_bytes": 32,
+    "candidate_test_source": "d828163da9a7f1869434b053d194fb21cfa8bd42",
+    "evidence": ["baseline/future.log", "integrated/release-async.log"],
+    "scope": "Complete concrete future size, separate from borrowed App, not task stack reservation or whole RAM"
+  },
+  "direct_packet_staging": {
+    "successful_path_removed_buffer_bytes": 1280,
+    "scope": "Source and emitted code: zeroed staging array and ciphertext copy removed from successful direct sealing; array retained in cold refusal fallback"
+  },
+  "selected_emitted_frames": {
+    "instantiation": "coaptic::oscore::protect::protect_response<4,coaptic::message::Token> in complete multi-profile ordinary probe",
+    "baseline": {"pdb_size": 1552, "pdb_saved_registers": 56, "rsp_subtract": 1544, "push_bytes": 64, "extent_bytes": 1608},
+    "candidate_protect_response": {"pdb_size": 224, "pdb_saved_registers": 56, "rsp_subtract": 216, "push_bytes": 64, "extent_bytes": 280},
+    "candidate_seal_message": {"pdb_size": 192, "pdb_saved_registers": 56, "rsp_subtract": 184, "push_bytes": 64, "extent_bytes": 248},
+    "candidate_seal_message_staged": {"pdb_size": 1440, "pdb_saved_registers": 56, "rsp_subtract": 1432, "push_bytes": 64, "extent_bytes": 1496},
+    "selected_direct_chain_bytes": 536,
+    "selected_direct_chain_change_bytes": -1072,
+    "selected_fallback_chain_bytes": 1784,
+    "selected_fallback_chain_change_bytes": 176,
+    "accounting": "Baseline selected protect frame 1608. Direct chain: protect280 + nested return8 + seal248 =536. Fallback restores seal frame and tail-jumps: protect280 + nested return8 + staged1496 =1784. Do not add seal and staged. Common outer caller/entry return and child encode/crypto frames excluded equally, not asserted identical in size.",
+    "scope": "Emitted reservation for named frames only, not dynamic high-water or whole call-chain peak; no reserved task-stack reduction justified",
+    "evidence": ["staging/baseline-protect-symbols.txt", "staging/baseline-protect-response.asm", "integrated/protect-symbols.txt", "integrated/protect-response.asm", "integrated/seal-message.asm", "integrated/seal-staged.asm"]
+  },
+  "ordinary_probe_executable": {"baseline_bytes": 2734080, "candidate_bytes": 2729984, "change_bytes": -4096, "scope": "Whole multi-profile host executable file, not firmware flash or resident RAM"},
+  "excluded_claims": ["whole-system peak memory", "minimum RAM", "used task stack", "firmware qualification", "universal memory reduction including refusal paths"],
+  "acceptance": "Scoped successful-path scratch/emitted-frame reduction with lower integrated complete-App runtime; explicit future and refusal-frame growth retained. Whole-memory acceptance remains open."
+}
