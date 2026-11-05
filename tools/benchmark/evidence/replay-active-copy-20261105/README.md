@@ -52,7 +52,9 @@ Each candidate has one 28-cell cohort: 20 ordinary SmallDevice32 and Service
 fixed/allocated1024/16384 cells, plus eight retained Q-Block2 11264-byte cells.
 Every group includes unprotected and established OSCORE, actual synchronous poll
 and asynchronous wait+progress. The shared fixture fixes routes, Calls, deferred,
-security, body and pool capacities; qualifiers and verifier compare them.
+security, body and pool capacities. The verifier compares reported capacity
+fields, including SmallDevice pools; retained outputs omit a capacity ledger,
+so their unchanged capacities are established by the pinned fixture/source.
 
 Four paired processes use AB, BA, BA, AB, CPU0 with inherited/restored affinity,
 128 warmup operations, 8192 measured operations for ordinary32/1024 and 1024
@@ -108,9 +110,12 @@ core `architecture/requirements/DEDUP-EXPIRY-20261103.md`.
 
 Run `python verify.py scalar-pin` and `python verify.py fixed-expiry`. Standard
 library only: verify all 1192 archive members and source/fixture hashes, recompute
-448 timing outputs across both cohorts, compare every memory/capacity ledger and
+448 timing outputs across both cohorts, compare reported memory/capacity fields and
 reproduce the rejected decisions. Source-verification setup mistakes are recorded;
 they changed neither source nor observed samples.
+The evidence review found that the original report overstated capacity-ledger
+coverage. SmallDevice comparisons were added and retained-output limits clarified;
+neither original decision changed and no native measurement was repeated.
 
 `python prepare.py CORE_REPO NEW_OUTPUT VARIANT` materializes baseline plus one
 exact source patch and the original fixture. Supported variants are baseline,
