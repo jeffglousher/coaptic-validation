@@ -1,0 +1,214 @@
+diff --git a/src/oscore/protect.rs b/src/oscore/protect.rs
+index 5da70d1..e81c588 100644
+--- a/src/oscore/protect.rs
++++ b/src/oscore/protect.rs
+@@ -187,7 +187,9 @@ pub fn unprotect_request<'a, const REQUESTS: usize, T: OwnedToken>(
+     protected: &ParsedMessage<'_, T>,
+     out: &'a mut [u8],
+ ) -> Result<(ParsedMessage<'a, T>, RequestRef), Error> {
+-    let (wire, request) = unprotect_request_wire(ctx, protected, out)?;
++    // Public callers retain their output on authentication/context refusal.
++    // App's private wire entry point can use disposable dispatch scratch.
++    let (wire, request) = unprotect_request_wire_staged(ctx, protected, out)?;
+     Ok((decode_owned::<T>(wire)?, request))
+ }
+ 
+@@ -195,6 +197,76 @@ fn unprotect_request_wire<'a, const REQUESTS: usize, T: OwnedToken>(
+     ctx: &mut BoundedSecurityContext<REQUESTS, T>,
+     protected: &ParsedMessage<'_, T>,
+     out: &'a mut [u8],
++) -> Result<(&'a [u8], RequestRef), Error> {
++    // With no Class U options to merge, the authenticated option/payload wire
++    // already has its final layout. Reserve the regular header/token prefix,
++    // then decrypt the inner code immediately before the options in that tail.
++    // The staged path preserves authentication/refusal ordering for short output
++    // and handles outer-option merging without a second hot-path buffer.
++    let header = parse_protected(protected)?;
++    if !ctx.matches_recipient(header.kid, header.kid_context) {
++        return Err(Error::Context);
++    }
++    let piv = header.piv.ok_or(Error::PartialIv)?;
++    if !ctx.replay_fresh(piv.seq()) {
++        return Err(Error::Replay);
++    }
++    let Some(offset) = direct_inner_offset(protected, out) else {
++        return unprotect_request_wire_staged(ctx, protected, out);
++    };
++    let kid = header.kid.unwrap_or(&[]);
++    let aad = Aad::new(kid, piv.as_bytes())?;
++    let nonce = ctx.recipient_nonce(piv);
++    let pt_len = aead::open(
++        ctx.recipient_key(),
++        &nonce,
++        aad.as_bytes(),
++        protected.payload(),
++        &mut out[offset..],
++    )?;
++    ctx.replay_accept(piv.seq());
++    let code = Code::from_raw(out[offset]);
++    if !code.is_request() {
++        return Err(Error::MessageCode);
++    }
++    let (options, _) = crate::message::decode_options_payload(&out[offset + 1..offset + pt_len])?;
++    if options.count() > OPT_SLOTS {
++        return Err(Error::Options);
++    }
++    Message::new(protected.ty(), code, protected.message_id())
++        .with_token(protected.token())
++        .encode(&mut out[..offset + 1])?;
++    let request = RequestRef::from_kid(kid, piv)?;
++    Ok((&out[..offset + pt_len], request))
++}
++
++fn direct_inner_offset<T: OwnedToken>(
++    protected: &ParsedMessage<'_, T>,
++    out: &mut [u8],
++) -> Option<usize> {
++    let pt_len = protected.payload().len().checked_sub(TAG_LEN)?;
++    if pt_len == 0 || pt_len > INNER {
++        return None;
++    }
++    if protected.options().any(|opt| {
++        !header::is_oscore(opt.number().get())
++            && header::classify(opt.number().get()) == OptionClass::Outer
++    }) {
++        return None;
++    }
++    let header_len = Message::new(protected.ty(), Code::GET, protected.message_id())
++        .with_token(protected.token())
++        .encode(out)
++        .ok()?;
++    let offset = header_len - 1;
++    (offset.checked_add(pt_len)? <= out.len().min(INNER)).then_some(offset)
++}
++
++#[inline(never)]
++fn unprotect_request_wire_staged<'a, const REQUESTS: usize, T: OwnedToken>(
++    ctx: &mut BoundedSecurityContext<REQUESTS, T>,
++    protected: &ParsedMessage<'_, T>,
++    out: &'a mut [u8],
+ ) -> Result<(&'a [u8], RequestRef), Error> {
+     let header = parse_protected(protected)?;
+     if !ctx.matches_recipient(header.kid, header.kid_context) {
+@@ -300,6 +372,8 @@ pub fn unprotect_response<'a, const REQUESTS: usize, T: OwnedToken>(
+ }
+ 
+ impl<const REQUESTS: usize, T: OwnedToken> BoundedSecurityContext<REQUESTS, T> {
++    /// App-only opening into disposable scratch. On Err, scratch contents are
++    /// unspecified and must not be exposed; public opening retains staging.
+     pub(crate) fn unprotect_request_wire<'a>(
+         &mut self,
+         protected: &ParsedMessage<'_, T>,
+@@ -621,6 +695,112 @@ mod tests {
+     use crate::error::ParseError;
+     use crate::message::{decode, decode_with_token, extended};
+ 
++    #[test]
++    fn direct_request_open_matches_staging_and_replay_at_boundaries() {
++        let server = || {
++            BoundedSecurityContext::<4, extended::Token<13>>::derive(super::super::DeriveParams {
++                master_secret: &[7; 16],
++                master_salt: &[],
++                sender_id: &[1],
++                recipient_id: &[],
++                id_context: &[],
++            })
++            .unwrap()
++        };
++        let piv = PartialIv::from_seq(0).unwrap();
++        let token = extended::Token::<13>::new(&[9; 13]).unwrap();
++        let contexts = server();
++        let nonce = contexts.recipient_nonce(piv);
++        let aad = Aad::new(&[], piv.as_bytes()).unwrap();
++        let repeated = [0u8; OPT_SLOTS + 2];
++        let mut too_many = repeated;
++        too_many[0] = Code::GET.as_raw();
++        let payload = [0x31; INNER - 2];
++        let mut maximum = [0u8; INNER];
++        maximum[0] = Code::POST.as_raw();
++        maximum[1] = 0xff;
++        maximum[2..].copy_from_slice(&payload);
++        let inners: &[&[u8]] = &[
++            &[],
++            &[1],
++            &[1, 0xb1, b'x'],
++            &[1, 0xff, b'x'],
++            &[1, 0xf0],
++            &[1, 0x0f],
++            &[1, 0xd0],
++            &[1, 0xff],
++            &[Code::CONTENT.as_raw()],
++            &too_many,
++            &maximum,
++        ];
++        for inner in inners {
++            let mut ciphertext = [0u8; INNER + TAG_LEN];
++            ciphertext[..inner.len()].copy_from_slice(inner);
++            let len = aead::seal_in_place(
++                contexts.recipient_key(),
++                &nonce,
++                aad.as_bytes(),
++                inner.len(),
++                &mut ciphertext,
++            )
++            .unwrap();
++            for outer in [&[][..], &[Opt::new(OptionNumber::URI_HOST, b"node")][..]] {
++                for corrupt in [false, true] {
++                    let mut wire = [0u8; 2048];
++                    let n = encode_outer(
++                        Type::Confirmable,
++                        Code::POST,
++                        MessageId::new(1),
++                        token,
++                        outer,
++                        Some(piv),
++                        None,
++                        Some(&[]),
++                        &ciphertext[..len],
++                        &mut wire,
++                    )
++                    .unwrap();
++                    if corrupt {
++                        wire[n - 1] ^= 1;
++                    }
++                    let parsed = decode_with_token::<extended::Token<13>>(&wire[..n]).unwrap();
++                    for capacity in [0, 4, 17, 18, 19, 20, 21, 32, 1152, 1280, 2048] {
++                        let mut direct_ctx = server();
++                        let mut staged_ctx = server();
++                        let mut direct = [0xa5; 2048];
++                        let mut staged = direct;
++                        let got = unprotect_request_wire(
++                            &mut direct_ctx,
++                            &parsed,
++                            &mut direct[..capacity],
++                        );
++                        let want = unprotect_request_wire_staged(
++                            &mut staged_ctx,
++                            &parsed,
++                            &mut staged[..capacity],
++                        );
++                        assert_eq!(
++                            got,
++                            want,
++                            "inner={} outer={} corrupt={corrupt} capacity={capacity}",
++                            inner.len(),
++                            outer.len()
++                        );
++                        assert_eq!(
++                            direct_ctx.replay_checkpoint(),
++                            staged_ctx.replay_checkpoint()
++                        );
++                        assert!(direct[capacity..].iter().all(|b| *b == 0xa5));
++                        assert_eq!(
++                            unprotect_request_wire(&mut direct_ctx, &parsed, &mut direct),
++                            unprotect_request_wire_staged(&mut staged_ctx, &parsed, &mut staged)
++                        );
++                    }
++                }
++            }
++        }
++    }
++
+     #[test]
+     fn direct_sealing_matches_staging_at_output_and_inner_limits() {
+         let key = [0x17; super::super::KEY_LEN];

@@ -1,0 +1,17 @@
+{
+  "fixture_source": "40f13c9100056023f87adcd02e174e158ce65c95",
+  "verified_tracked_source_files": 149,
+  "normalization": "CRLF to LF on both archive and fixture",
+  "patch_sha256": {
+    "direct.patch": "7159ffca8669d56a14465c7fa286dc70b4c62aafe003264db615941180e3cfaf",
+    "grouped.patch": "a0419f04df99ef29042bb35c0e6e251c1fe162b7002157c6e1f179d6742df15d",
+    "metadata.patch": "9d6beb7a0e69f842b87047f8b04482f26bc88f99ddfc3f74a6695028f520822f",
+    "request-phase.patch": "dd7e15954f5b0a3ce5a67e0171c88bfac350e316457d6c48705f0e2bc2c7f2e1"
+  },
+  "baseline": "bd63199b652193b4c0a882e5840e72d992cf1362",
+  "baseline_binary_source": "f84f3c199763910e246d8599aca0e29077a73ad1",
+  "baseline_equivalence": "Reuse packet-dispatch-20261104/source-verification.json and core #741; merged baseline has only test/doc differences from native source. Same fixture/toolchain/features, different absolute checkout path.",
+  "grouped_layout_source_note": "Diagnostic compiled before removing only an unnecessary clippy::too_many_arguments allow attribute; runtime body identical",
+  "retired_tree_matches_baseline": true,
+  "verification_failures": "First check normalized only fixture CRLF and falsely differed; corrected check normalizes both sides. Diagnostic printing then hit Windows CP1252; no source edits or measurement retries resulted."
+}

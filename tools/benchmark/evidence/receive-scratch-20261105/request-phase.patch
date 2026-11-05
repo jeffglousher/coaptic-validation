@@ -1,0 +1,64 @@
+diff --git a/src/app/mod.rs b/src/app/mod.rs
+index fd103fa..7895368 100644
+--- a/src/app/mod.rs
++++ b/src/app/mod.rs
+@@ -3355,7 +3355,7 @@ fn valid_q_selections(parsed: &ParsedMessage<'_, impl OwnedToken>) -> bool {
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+-#[coaptic_io::dual_io(dispatch_rx_io_async, bound(crate::app::async_server::ProtocolIo), calls(send_token_capacity_refusal => send_token_capacity_refusal_async, oscore::send_token_capacity_refusal => oscore::send_token_capacity_refusal_async, admission::send_refusal => admission::send_refusal_async, issue_q_observe_followup => issue_q_observe_followup_async, send_separate => send_separate_async, send_response => send_response_async, issue_classic => issue_classic_async, issue_deferred_q => issue_deferred_q_async, replay_con_request => replay_con_request_async, oscore_inbound_error => oscore_inbound_error_async, send_empty_ack => send_empty_ack_async, send_empty_rst => send_empty_rst_async, send_empty => send_empty_async, client::complete_client => client::complete_client_async, client::continue_qblock1_ack => client::continue_qblock1_ack_async))]
++#[coaptic_io::dual_io(dispatch_rx_io_async, bound(crate::app::async_server::ProtocolIo), calls(dispatch_request => dispatch_request_io_async, send_token_capacity_refusal => send_token_capacity_refusal_async, oscore::send_token_capacity_refusal => oscore::send_token_capacity_refusal_async, replay_con_request => replay_con_request_async, oscore_inbound_error => oscore_inbound_error_async, send_empty_ack => send_empty_ack_async, send_empty_rst => send_empty_rst_async, send_empty => send_empty_async, client::complete_client => client::complete_client_async, client::continue_qblock1_ack => client::continue_qblock1_ack_async))]
+ fn dispatch_rx<
+     Mem,
+     T,
+@@ -3736,6 +3736,50 @@ where
+         return outcome;
+     }
+ 
++    dispatch_request(
++        engine,
++        io,
++        site,
++        ids,
++        oscore,
++        echo_policy,
++        dedup_closed,
++        deferred,
++        deferred_lifetime_ms,
++        dispatch,
++        now_ms,
++        rx,
++        peer,
++        parsed,
++        oscore_req,
++    )
++}
++
++// Keep authenticated request handling separate from ingress and client-response
++// completion so their suspension states do not extend each other's local storage.
++#[allow(clippy::too_many_arguments)]
++#[coaptic_io::dual_io(dispatch_request_io_async, bound(crate::app::async_server::ProtocolIo), calls(admission::send_refusal => admission::send_refusal_async, issue_q_observe_followup => issue_q_observe_followup_async, send_separate => send_separate_async, send_response => send_response_async, issue_classic => issue_classic_async, issue_deferred_q => issue_deferred_q_async, send_empty_ack => send_empty_ack_async))]
++fn dispatch_request<Mem, T, const N: usize, const DEFERRED: usize, const REQUESTS: usize>(
++    engine: &mut Engine<Mem>,
++    io: &mut T,
++    site: &Site<N, Mem::Token>,
++    ids: &mut AppIds,
++    oscore: &mut oscore::Field<REQUESTS, Mem::Token>,
++    echo_policy: Option<EchoPolicy>,
++    dedup_closed: &mut Option<DedupClosed>,
++    deferred: &mut DeferredTable<DEFERRED, Mem::Token>,
++    deferred_lifetime_ms: u64,
++    dispatch: Option<&mut AppDispatch<'_, Mem::Token>>,
++    now_ms: u64,
++    rx: SlotId,
++    peer: Endpoint,
++    parsed: ParsedMessage<'_, Mem::Token>,
++    oscore_req: oscore::Request,
++) -> Result<(), Error<T::Error>>
++where
++    Mem: Storage + DatagramSlots + PendingCons + ObserveSlots + BodySlots + Exchanges + DedupSlots,
++    T: DatagramIo,
++{
+     let no_response = NoResponse::from_message(&parsed).unwrap_or(NoResponse::DEFAULT);
+     // Origin: Proxy-Uri / Proxy-Scheme MUST 5.05 (RFC 7252 §5.10.2).
+     // Before the site so a missing Uri-Path is not 4.04.

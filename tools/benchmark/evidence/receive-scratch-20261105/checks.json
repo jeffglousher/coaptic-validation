@@ -1,0 +1,33 @@
+{
+  "direct": {
+    "oscore_tests": 147,
+    "public_prototype_failed_tests": 2,
+    "general_review": "no actionable findings"
+  },
+  "request-phase": {
+    "no_default_oscore_library_tests": 870,
+    "general_review": "no actionable findings"
+  },
+  "metadata": {
+    "no_default_oscore_library_tests": 870,
+    "general_review": "no actionable findings"
+  },
+  "grouped": {
+    "native_release_builds": "ordinary and retained PASS",
+    "layout_build": "PASS",
+    "library_tests": "not rerun; runtime failed and candidate retired",
+    "general_review": "no actionable findings; all15 fields unchanged, body identical, RxOwner/BodyOwner preserved"
+  },
+  "failures": [
+    "initial all-feature LLVM out of memory before tests",
+    "first reduced test compile used wrong test constructor",
+    "public direct-output prototype violated error-buffer immutability (2 failures), corrected before timing",
+    "broad layout filter exceeded2MiB after successful compile",
+    "metadata retained qualification omitted top-level oscore,alloc; no timing rows; corrected build before sole cohort",
+    "four frozen runtime comparisons rejected"
+  ],
+  "retirement": "af73b0c: core tree identical to bd63199 baseline; no candidate code delivered",
+  "review_scope": "General native read-only reviewers, no specialist tool; no reviewer ran independent builds or measurements",
+  "portable_verification": "All four 28-cell cohorts independently recomputed; all failed decisions preserved. Selected four layouts verified. prepare.py grouped materialization passed; no recompilation/resampling.",
+  "verification_notes": "Memory verifier first matched enclosing types; narrowed to actual async body records. Source audit first normalized only one CRLF side; corrected to both. No source or measurements changed."
+}

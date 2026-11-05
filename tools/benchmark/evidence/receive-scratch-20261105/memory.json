@@ -1,0 +1,33 @@
+{
+  "scope": "Windows x86_64 MSVC rustc1.99.1 release std+alloc+oscore benchmark Constrained/CoreIo routes4 noBodies, complete progress_async future; compiler layout only, not stack/peak/system RAM",
+  "baseline": {
+    "source": "bd63199b652193b4c0a882e5840e72d992cf1362",
+    "progress_async": 15952,
+    "dispatch_rx": 15000,
+    "diagnostic": "diagnostics/baseline-future-layout.txt",
+    "complete_file": false,
+    "limitation": "compiler succeeded; broad filter exceeded2MiB and script failed, retained prefix incomplete; selected records complete"
+  },
+  "request-phase": {
+    "progress_async": 14000,
+    "dispatch_rx": 13048,
+    "dispatch_request": 11472,
+    "request_unresumed_span": 7328,
+    "diagnostic_complete": true
+  },
+  "metadata": {
+    "progress_async": 14000,
+    "dispatch_rx": 13048,
+    "dispatch_request": 11472,
+    "request_unresumed_span": 7328,
+    "diagnostic_complete": true
+  },
+  "grouped": {
+    "progress_async": 14000,
+    "dispatch_rx": 13048,
+    "dispatch_request": 11472,
+    "request_unresumed_span": 208,
+    "diagnostic_complete": true
+  },
+  "limits": "Input span is not additional live memory savings. No timing uses layout-diagnostic binary. No accepted candidate; direct opening has no retained complete-future measurement. Previous all-feature routes1 layout is a different fixture."
+}
