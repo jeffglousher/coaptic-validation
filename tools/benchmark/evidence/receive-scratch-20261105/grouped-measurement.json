@@ -1,0 +1,2081 @@
+{
+  "status": "complete",
+  "runtime_accepted": false,
+  "rows": [
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "means": {
+        "A": 2501.19140625,
+        "B": 2514.09912109375
+      },
+      "ratio": 1.0051606265763973
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "means": {
+        "A": 3265.07080078125,
+        "B": 3255.3173828125
+      },
+      "ratio": 0.9970128004677827
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "means": {
+        "A": 5267.21923828125,
+        "B": 5202.6806640625
+      },
+      "ratio": 0.9877471258933567
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "means": {
+        "A": 5965.56396484375,
+        "B": 6005.40771484375
+      },
+      "ratio": 1.0066789578042927
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "means": {
+        "A": 4891.19384765625,
+        "B": 4779.755859375
+      },
+      "ratio": 0.9772166076928952
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "means": {
+        "A": 84845.60546875,
+        "B": 83608.45703125
+      },
+      "ratio": 0.985418827166533
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "means": {
+        "A": 6782.568359375,
+        "B": 6653.3251953125
+      },
+      "ratio": 0.9809448047974544
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "means": {
+        "A": 120037.59765625,
+        "B": 121783.41796875
+      },
+      "ratio": 1.0145439457852155
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "means": {
+        "A": 11440.17822265625,
+        "B": 11475.70556640625
+      },
+      "ratio": 1.0031054886609756
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "means": {
+        "A": 195930.64453125,
+        "B": 192148.80859375
+      },
+      "ratio": 0.9806980886193287
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "means": {
+        "A": 13634.40673828125,
+        "B": 13756.84326171875
+      },
+      "ratio": 1.0089799670633073
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "means": {
+        "A": 228973.06640625,
+        "B": 223758.84765625
+      },
+      "ratio": 0.9772278074804275
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "means": {
+        "A": 4884.013671875,
+        "B": 4924.521484375
+      },
+      "ratio": 1.0082939596859173
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "means": {
+        "A": 84847.9296875,
+        "B": 83184.453125
+      },
+      "ratio": 0.9803946122359534
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "means": {
+        "A": 6988.63525390625,
+        "B": 7465.72265625
+      },
+      "ratio": 1.068266175728242
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "means": {
+        "A": 122590.91796875,
+        "B": 123409.70703125
+      },
+      "ratio": 1.0066790352504638
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "means": {
+        "A": 11432.87353515625,
+        "B": 11334.84130859375
+      },
+      "ratio": 0.9914254079465631
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "means": {
+        "A": 193247.5,
+        "B": 189424.82421875
+      },
+      "ratio": 0.9802187568726632
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "means": {
+        "A": 13736.75537109375,
+        "B": 13947.470703125
+      },
+      "ratio": 1.0153395271546188
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "means": {
+        "A": 238602.63671875,
+        "B": 234402.109375
+      },
+      "ratio": 0.9823953020741287
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "means": {
+        "A": 16772.890625,
+        "B": 16909.0234375
+      },
+      "ratio": 1.0081162403990815
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "means": {
+        "A": 21873.88671875,
+        "B": 22206.9140625
+      },
+      "ratio": 1.015224881980601
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "means": {
+        "A": 74512.12890625,
+        "B": 74711.015625
+      },
+      "ratio": 1.0026691858314805
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "means": {
+        "A": 80953.8671875,
+        "B": 80117.8125
+      },
+      "ratio": 0.9896724552322672
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "means": {
+        "A": 18419.43359375,
+        "B": 18011.69921875
+      },
+      "ratio": 0.9778639026588554
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "means": {
+        "A": 23958.046875,
+        "B": 24367.109375
+      },
+      "ratio": 1.0170741171905315
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "means": {
+        "A": 75630.078125,
+        "B": 76426.2890625
+      },
+      "ratio": 1.0105277021687593
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "means": {
+        "A": 82312.20703125,
+        "B": 85999.08203125
+      },
+      "ratio": 1.044791351525786
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "means": {
+        "B": 2584.6142578125,
+        "A": 2516.2158203125
+      },
+      "ratio": 1.0271830567743212
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "means": {
+        "B": 3224.47998046875,
+        "A": 3254.19677734375
+      },
+      "ratio": 0.9908681622814289
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "means": {
+        "B": 5123.6572265625,
+        "A": 5217.91259765625
+      },
+      "ratio": 0.9819361920442885
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "means": {
+        "B": 5948.79638671875,
+        "A": 5912.5634765625
+      },
+      "ratio": 1.006128121972792
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "means": {
+        "B": 4747.92236328125,
+        "A": 4795.23681640625
+      },
+      "ratio": 0.9901330309770896
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "means": {
+        "B": 81212.8515625,
+        "A": 83400.2734375
+      },
+      "ratio": 0.9737720059558408
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "means": {
+        "B": 6888.69384765625,
+        "A": 7250.44189453125
+      },
+      "ratio": 0.9501067587138581
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "means": {
+        "B": 116755.46875,
+        "A": 118911.015625
+      },
+      "ratio": 0.9818726056314432
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "means": {
+        "B": 11382.9443359375,
+        "A": 11766.23291015625
+      },
+      "ratio": 0.9674246993795349
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "means": {
+        "B": 189925.1953125,
+        "A": 196228.80859375
+      },
+      "ratio": 0.9678762087665717
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "means": {
+        "B": 13617.80517578125,
+        "A": 13922.02880859375
+      },
+      "ratio": 0.9781480388386562
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "means": {
+        "B": 231772.75390625,
+        "A": 225462.16796875
+      },
+      "ratio": 1.027989555828163
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "means": {
+        "B": 4928.505859375,
+        "A": 5173.50341796875
+      },
+      "ratio": 0.9526437814377743
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "means": {
+        "B": 89736.7578125,
+        "A": 88602.87109375
+      },
+      "ratio": 1.012797403794627
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "means": {
+        "B": 7212.83935546875,
+        "A": 6970.53955078125
+      },
+      "ratio": 1.0347605523105228
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "means": {
+        "B": 124001.71875,
+        "A": 124393.515625
+      },
+      "ratio": 0.9968503432592007
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "means": {
+        "B": 11591.33544921875,
+        "A": 11591.9580078125
+      },
+      "ratio": 0.9999462939226202
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "means": {
+        "B": 194442.1484375,
+        "A": 195956.54296875
+      },
+      "ratio": 0.9922717837929428
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "means": {
+        "B": 14090.244140625,
+        "A": 13730.69580078125
+      },
+      "ratio": 1.026185733415148
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "means": {
+        "B": 232796.40625,
+        "A": 230962.59765625
+      },
+      "ratio": 1.0079398509211406
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "means": {
+        "B": 17171.66015625,
+        "A": 16837.96875
+      },
+      "ratio": 1.0198177946048272
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "means": {
+        "B": 22772.6953125,
+        "A": 21646.4453125
+      },
+      "ratio": 1.0520293278522563
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "means": {
+        "B": 76144.0625,
+        "A": 75114.765625
+      },
+      "ratio": 1.0137029899039907
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "means": {
+        "B": 81193.26171875,
+        "A": 81159.0625
+      },
+      "ratio": 1.0004213850886954
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "means": {
+        "B": 18090.390625,
+        "A": 18439.35546875
+      },
+      "ratio": 0.9810749977491672
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "means": {
+        "B": 23856.11328125,
+        "A": 24895.703125
+      },
+      "ratio": 0.9582421979194452
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "means": {
+        "B": 77117.91015625,
+        "A": 76096.9140625
+      },
+      "ratio": 1.0134170499070625
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "means": {
+        "B": 83362.75390625,
+        "A": 83334.19921875
+      },
+      "ratio": 1.0003426526896244
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "means": {
+        "B": 2496.54296875,
+        "A": 2490.3173828125
+      },
+      "ratio": 1.0024999166694444
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "means": {
+        "B": 3204.765625,
+        "A": 3268.017578125
+      },
+      "ratio": 0.9806451612903225
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "means": {
+        "B": 5133.1201171875,
+        "A": 5181.6796875
+      },
+      "ratio": 0.9906286043829297
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "means": {
+        "B": 5892.93212890625,
+        "A": 5935.556640625
+      },
+      "ratio": 0.9928187844376696
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "means": {
+        "B": 4727.50244140625,
+        "A": 4839.47998046875
+      },
+      "ratio": 0.9768616587909402
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "means": {
+        "B": 82136.23046875,
+        "A": 83073.22265625
+      },
+      "ratio": 0.988720887940303
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "means": {
+        "B": 6741.396484375,
+        "A": 7627.29736328125
+      },
+      "ratio": 0.8838512730379326
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "means": {
+        "B": 116404.84375,
+        "A": 117986.640625
+      },
+      "ratio": 0.9865934239112082
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "means": {
+        "B": 11366.30126953125,
+        "A": 11368.95751953125
+      },
+      "ratio": 0.9997663594049466
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "means": {
+        "B": 188275,
+        "A": 189093.125
+      },
+      "ratio": 0.9956734281058606
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "means": {
+        "B": 13233.06396484375,
+        "A": 13477.978515625
+      },
+      "ratio": 0.9818285397548808
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "means": {
+        "B": 232988.65234375,
+        "A": 226426.0546875
+      },
+      "ratio": 1.0289834032806309
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "means": {
+        "B": 4827.6513671875,
+        "A": 4863.6767578125
+      },
+      "ratio": 0.9925929718567065
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "means": {
+        "B": 84985.72265625,
+        "A": 83472.32421875
+      },
+      "ratio": 1.018130541489823
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "means": {
+        "B": 7018.7255859375,
+        "A": 7339.50927734375
+      },
+      "ratio": 0.9562935777741335
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "means": {
+        "B": 121796.03515625,
+        "A": 120847.08984375
+      },
+      "ratio": 1.0078524465398955
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "means": {
+        "B": 11280.38818359375,
+        "A": 11541.8212890625
+      },
+      "ratio": 0.9773490596569456
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "means": {
+        "B": 199713.4765625,
+        "A": 196326.7578125
+      },
+      "ratio": 1.0172504185763331
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "means": {
+        "B": 14107.4267578125,
+        "A": 13757.09228515625
+      },
+      "ratio": 1.0254657354471814
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "means": {
+        "B": 233122.79296875,
+        "A": 234477.48046875
+      },
+      "ratio": 0.9942225262004188
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "means": {
+        "B": 17153.06640625,
+        "A": 16939.5703125
+      },
+      "ratio": 1.0126033948802384
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "means": {
+        "B": 21583.02734375,
+        "A": 21540.1953125
+      },
+      "ratio": 1.0019884699571477
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "means": {
+        "B": 75678.88671875,
+        "A": 78515.76171875
+      },
+      "ratio": 0.9638687196315827
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "means": {
+        "B": 82528.359375,
+        "A": 81240.7421875
+      },
+      "ratio": 1.0158494020712936
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "means": {
+        "B": 18021.9921875,
+        "A": 18008.37890625
+      },
+      "ratio": 1.0007559415159393
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "means": {
+        "B": 24078.2421875,
+        "A": 24163.2421875
+      },
+      "ratio": 0.996482260147855
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "means": {
+        "B": 76864.90234375,
+        "A": 75420.8984375
+      },
+      "ratio": 1.0191459388069557
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "means": {
+        "B": 82975.60546875,
+        "A": 82006.73828125
+      },
+      "ratio": 1.0118144826608904
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "means": {
+        "A": 2478.61328125,
+        "B": 2520.98876953125
+      },
+      "ratio": 1.017096450100469
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "means": {
+        "A": 3230.29052734375,
+        "B": 3210.576171875
+      },
+      "ratio": 0.993897033315774
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "means": {
+        "A": 5206.29150390625,
+        "B": 5161.1767578125
+      },
+      "ratio": 0.9913345716312848
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "means": {
+        "A": 5898.6181640625,
+        "B": 5902.8515625
+      },
+      "ratio": 1.0007176932494617
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "means": {
+        "A": 4738.583984375,
+        "B": 4661.4697265625
+      },
+      "ratio": 0.9837263076761378
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "means": {
+        "A": 85960.56640625,
+        "B": 81906.46484375
+      },
+      "ratio": 0.9528376588011264
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "means": {
+        "A": 6616.884765625,
+        "B": 6488.22265625
+      },
+      "ratio": 0.9805554858619565
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "means": {
+        "A": 117502.5390625,
+        "B": 114925.64453125
+      },
+      "ratio": 0.9780694566108112
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "means": {
+        "A": 11181.69189453125,
+        "B": 11240.8349609375
+      },
+      "ratio": 1.0052892770579
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "means": {
+        "A": 188635.25390625,
+        "B": 189851.15234375
+      },
+      "ratio": 1.0064457645764577
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "means": {
+        "A": 13453.78173828125,
+        "B": 13592.98583984375
+      },
+      "ratio": 1.0103468381062264
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "means": {
+        "A": 227885.33203125,
+        "B": 221662.0703125
+      },
+      "ratio": 0.9726912580845852
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "means": {
+        "A": 4857.74169921875,
+        "B": 4743.27392578125
+      },
+      "ratio": 0.9764360106969233
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "means": {
+        "A": 84360.5078125,
+        "B": 83362.08984375
+      },
+      "ratio": 0.9881648653541881
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "means": {
+        "A": 6854.78515625,
+        "B": 7057.158203125
+      },
+      "ratio": 1.029522886897554
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "means": {
+        "A": 122982.3828125,
+        "B": 124725.21484375
+      },
+      "ratio": 1.0141713958649439
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "means": {
+        "A": 11668.20068359375,
+        "B": 11590.21484375
+      },
+      "ratio": 0.993316378252441
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "means": {
+        "A": 194074.921875,
+        "B": 192626.6015625
+      },
+      "ratio": 0.9925373134328358
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "means": {
+        "A": 13527.65869140625,
+        "B": 13822.958984375
+      },
+      "ratio": 1.02182937193384
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "means": {
+        "A": 233221.40625,
+        "B": 238430.9765625
+      },
+      "ratio": 1.0223374449038165
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "means": {
+        "A": 17003.65234375,
+        "B": 16715.1171875
+      },
+      "ratio": 0.9830309894358634
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "means": {
+        "A": 21697.91015625,
+        "B": 21959.21875
+      },
+      "ratio": 1.0120430304977888
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "means": {
+        "A": 76130.1171875,
+        "B": 75351.8359375
+      },
+      "ratio": 0.9897769597794893
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "means": {
+        "A": 80579.3359375,
+        "B": 81006.66015625
+      },
+      "ratio": 1.0053031489249482
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "means": {
+        "A": 18063.1640625,
+        "B": 18244.78515625
+      },
+      "ratio": 1.0100547773978898
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "means": {
+        "A": 24545.7421875,
+        "B": 25152.36328125
+      },
+      "ratio": 1.0247139030922814
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "means": {
+        "A": 75996.97265625,
+        "B": 76964.51171875
+      },
+      "ratio": 1.012731284269393
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "means": {
+        "A": 82717.94921875,
+        "B": 84904.375
+      },
+      "ratio": 1.0264323015971772
+    }
+  ],
+  "summary": [
+    {
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "ratio": 1.0129370343479174,
+      "upper95": 1.0264140334794374
+    },
+    {
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "ratio": 0.9905866553904806,
+      "upper95": 0.9989940877700622
+    },
+    {
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "ratio": 0.9879046725443839,
+      "upper95": 0.9929551883579453
+    },
+    {
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "ratio": 1.001570352965931,
+      "upper95": 1.0091835442333916
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "ratio": 0.981969354625395,
+      "upper95": 0.9893800293628351
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "ratio": 0.9750854832470883,
+      "upper95": 0.9944573862420513
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "ratio": 0.9480190974904634,
+      "upper95": 1.0043590666950306
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "ratio": 0.9901670725979215,
+      "upper95": 1.0096953711151682
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "ratio": 0.9937756170955905,
+      "upper95": 1.0151185153607127
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "ratio": 0.9875648168726481,
+      "upper95": 1.0076661635454678
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "ratio": 0.9947141998839556,
+      "upper95": 1.0151720656535141
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "ratio": 1.0013640031295494,
+      "upper95": 1.038468003006835
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "ratio": 0.9822751822175868,
+      "upper95": 1.0107261006216284
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "ratio": 0.9997446581057677,
+      "upper95": 1.0216522841180942
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "ratio": 1.0213783468726065,
+      "upper95": 1.0792548187468438
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "ratio": 1.006369172171051,
+      "upper95": 1.014839922353012
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "ratio": 0.9904749673087951,
+      "upper95": 1.0017513538147036
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "ratio": 0.995478976508174,
+      "upper95": 1.013867292160798
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "ratio": 1.0221960548201212,
+      "upper95": 1.0280558978580951
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "ratio": 1.0016123941908415,
+      "upper95": 1.0221105799782977
+    },
+    {
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "ratio": 1.0057960974163873,
+      "upper95": 1.0248941120977684
+    },
+    {
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "ratio": 1.0201474555505432,
+      "upper95": 1.0459960353601987
+    },
+    {
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "ratio": 0.9923295074811392,
+      "upper95": 1.0180154676637712
+    },
+    {
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "ratio": 1.0027673974549058,
+      "upper95": 1.0156423390354201
+    },
+    {
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "ratio": 0.9923467044709446,
+      "upper95": 1.0107384998293412
+    },
+    {
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "ratio": 0.9987919275464106,
+      "upper95": 1.034737821400763
+    },
+    {
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "ratio": 1.013950511412505,
+      "upper95": 1.0182768776367757
+    },
+    {
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "ratio": 1.020710046616522,
+      "upper95": 1.0435150003737252
+    }
+  ],
+  "groups": {
+    "ordinary-sync": {
+      "ratio": 0.9906699554227145,
+      "upper95": 0.9952865045801392
+    },
+    "ordinary-async": {
+      "ratio": 0.9976007465631161,
+      "upper95": 1.0094972317419824
+    },
+    "ordinary-all": {
+      "ratio": 0.9941293110694147,
+      "upper95": 0.9984869351024392
+    },
+    "retained-sync": {
+      "ratio": 1.0010632320804196,
+      "upper95": 1.0056549542375708
+    },
+    "retained-async": {
+      "ratio": 1.0105554353815172,
+      "upper95": 1.019299436862438
+    },
+    "retained-all": {
+      "ratio": 1.0057981359793113,
+      "upper95": 1.0089127931318254
+    },
+    "all-sync": {
+      "ratio": 0.9936284029914613,
+      "upper95": 0.996075696372161
+    },
+    "all-async": {
+      "ratio": 1.001285046414486,
+      "upper95": 1.01133908758364
+    },
+    "all-all": {
+      "ratio": 0.9974493779676524,
+      "upper95": 1.0014447333780239
+    }
+  },
+  "failed_point_guards": [
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "ratio": 1.0213783468726065,
+      "upper95": 1.0792548187468438
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "ratio": 1.0221960548201212,
+      "upper95": 1.0280558978580951
+    },
+    {
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "ratio": 1.0201474555505432,
+      "upper95": 1.0459960353601987
+    },
+    {
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "ratio": 1.020710046616522,
+      "upper95": 1.0435150003737252
+    }
+  ],
+  "seconds": 18.68258329993114
+}
