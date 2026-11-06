@@ -1,0 +1,41 @@
+{
+  "candidate": "3a1e6004444beadd984d7f6e9c5c7573ce077ddb",
+  "baseline": "fd7d18a72f795779e352443ebdeef9533be7fb27",
+  "decision": "rejected before timing: selected dispatch polling stack frames grow",
+  "no_runtime_cohort": true,
+  "frames": [
+    {
+      "profile": "SmallDevice",
+      "storage": "fixed",
+      "code_bytes": 74796,
+      "frame_bytes": 19888,
+      "baseline_frame_bytes": 19568,
+      "baseline_code_bytes": 66444
+    },
+    {
+      "profile": "Service",
+      "storage": "fixed",
+      "code_bytes": 76696,
+      "frame_bytes": 18928,
+      "baseline_frame_bytes": 18144,
+      "baseline_code_bytes": 69560
+    },
+    {
+      "profile": "Default",
+      "storage": "allocated",
+      "code_bytes": 90637,
+      "frame_bytes": 26512,
+      "baseline_frame_bytes": 26208,
+      "baseline_code_bytes": 84124
+    },
+    {
+      "profile": "Service",
+      "storage": "allocated",
+      "code_bytes": 95753,
+      "frame_bytes": 26768,
+      "baseline_frame_bytes": 26240,
+      "baseline_code_bytes": 87480
+    }
+  ],
+  "limits": "Selected complete futures smaller; this is not a whole-RAM win. No runtime performance claim for this variant."
+}

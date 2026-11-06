@@ -1,0 +1,13 @@
+{
+  "candidate": "04c1c8377cdd2896de91310c81714eb10865eaba",
+  "baseline": "fd7d18a72f795779e352443ebdeef9533be7fb27",
+  "decision": "rejected: full CPU cohort fails 17 cell bounds and async aggregate; no merge, no unchanged repeat",
+  "future_reductions_bytes": {
+    "small": 928,
+    "service_fixed": 1024,
+    "service_allocated": 992
+  },
+  "all_sync_ratio": 1.0054956709827976,
+  "all_async_ratio": 1.025043098910335,
+  "coverage": "12 focused precursor checks passed; unmeasured post-review protected/counter test patch retained but not run. No full qualification claim."
+}

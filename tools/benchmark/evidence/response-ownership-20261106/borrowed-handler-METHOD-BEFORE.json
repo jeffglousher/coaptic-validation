@@ -1,0 +1,16 @@
+{
+  "authorization": "User now accepts improvement in either CPU or memory with preservation of the other within measurement tolerance; old experiments remain failed under original rules.",
+  "cohort": "Same28 cells and capacities;64 pairs per cell, AB BA BA AB repeated16times; no early stopping or replacement.",
+  "runtime_rule": "Memory improvement route: BOTH ordinary/all sync/async aggregate one-sided95 upper CPU ratios <=1.02 AND EVERY cell upper95<=1.02. Improvement route for CPU additionally requires aggregate upper95<1 with memory nongrowth. Equivalence is not inferred from a nonsignificant difference.",
+  "memory_rule": "Prospective future-focused rule: all matched App/pool requested owners and selected complete futures/encoder/reclaim frames must not grow; BOTH selected Service progress futures must strictly shrink. App/pool may stay equal. Existing whole-App ceilings, allocation counts and all configured capacities unchanged. Same Thumbv7EM App/table nongrowth requirement. This does not reclassify earlier failed cohorts.",
+  "interval": "Student t df63 one-sided95, conservatively rounded critical factor1.67,64 process log ratios; no trimming. Numerical t CDF at1.67=0.9500594225584145",
+  "limits": "CPU cycles of complete memory-transport App operations; not network throughput/latency, peak stack or hardware qualification. Runtime-neutral within2% is scoped noninferiority, not exact equality.",
+  "budget_seconds": 1200,
+  "reason_for_precision": "Same predeclared64pairs for memory route; distinct source integration, no unchanged failed cohort repeated.",
+  "baseline": "fd7d18a72f795779e352443ebdeef9533be7fb27",
+  "candidate": "04c1c8377cdd2896de91310c81714eb10865eaba",
+  "hypothesis": "Scope reply encoding separately; allow handler response to borrow incoming bytes, partition incoming body only for assembled uploads; preserve pool capacities. Phase split shrinks selected complete futures.",
+  "tradeoffs": "ReplyPartition storage capability and HRTB caller adaptation; assembled reply uses borrowed storage view and copies 92B Metrics (+optional diagnostics) restored on Drop. No added pool/heap/resident fields. Response inline128 capacity remains. Ordinary/static benchmark handlers do not use new borrowed-response API, so cohort validates integrated phase/storage costs. No speed claim for dynamic handlers from this cohort.",
+  "baseline_identity": "Reused baseline B executables at phase-sharing-static root measured source3e592ad; production bytes exactly equal merged fd7d18a. Full source hashes retained in prior portable evidence.",
+  "fixture_adaptation": "Only adds ReplyPartition trait bounds in generic bench-core/retained fixture functions; executable operation bodies unchanged. Exact patch retained. Baseline fixture does not require new trait."
+}

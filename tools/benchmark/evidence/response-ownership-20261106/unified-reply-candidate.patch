@@ -1,0 +1,2021 @@
+diff --git a/src/app/async_server.rs b/src/app/async_server.rs
+index 5ed3576..462b590 100644
+--- a/src/app/async_server.rs
++++ b/src/app/async_server.rs
+@@ -406,7 +406,7 @@ impl<
+     T: AsyncDatagramIo,
+     const N: usize,
+     const BLOCK_WISE: bool,
+-    S: AppStorage<Token = P::Token>,
++    S: AppStorage<Token = P::Token> + crate::storage::ReplyPartition,
+     const DEFERRED: usize,
+     const CALLS: usize,
+     const REQUESTS: usize,
+@@ -443,10 +443,10 @@ where
+         clock: &mut impl FnMut() -> Result<u64, C>,
+         timer: &mut impl AsyncTimer,
+         deadline_ms: u64,
+-        mut dispatch: impl FnMut(
+-            Request<'_, S::Token>,
++        mut dispatch: impl for<'request> FnMut(
++            Request<'request, S::Token>,
+             Option<DeferredReply>,
+-        ) -> Response<'static, S::Token>,
++        ) -> Response<'request, S::Token>,
+     ) -> Result<(), Error<AsyncIoError<T::Error, C>>> {
+         self.progress_protocol_async(
+             now_ms,
+@@ -493,10 +493,10 @@ where
+         timer: &mut impl AsyncTimer,
+         deadline_ms: u64,
+         mut checkpoint: impl FnMut(Option<Association>, crate::oscore::ReplayCheckpoint) -> bool,
+-        mut dispatch: impl FnMut(
+-            Request<'_, S::Token>,
++        mut dispatch: impl for<'request> FnMut(
++            Request<'request, S::Token>,
+             Option<DeferredReply>,
+-        ) -> Response<'static, S::Token>,
++        ) -> Response<'request, S::Token>,
+     ) -> Result<(), Error<AsyncIoError<T::Error, C>>> {
+         self.oscore_checkpoint.require();
+         self.progress_protocol_async(
+@@ -522,10 +522,10 @@ where
+         deadline_ms: u64,
+         mut ingress: impl FnMut(&[u8], Endpoint) -> bool,
+         mut checkpoint: impl FnMut(Option<Association>, crate::oscore::ReplayCheckpoint) -> bool,
+-        mut dispatch: impl FnMut(
+-            Request<'_, S::Token>,
++        mut dispatch: impl for<'request> FnMut(
++            Request<'request, S::Token>,
+             Option<DeferredReply>,
+-        ) -> Response<'static, S::Token>,
++        ) -> Response<'request, S::Token>,
+     ) -> Result<(), Error<AsyncIoError<T::Error, C>>> {
+         self.oscore_checkpoint.require();
+         self.progress_protocol_async(
+@@ -713,7 +713,7 @@ pub(super) async fn dispatch_rx_async<
+     rx: SlotId,
+ ) -> Result<(), Error<T::Error>>
+ where
+-    Mem: Storage + DatagramSlots + PendingCons + ObserveSlots + BodySlots + Exchanges + DedupSlots,
++    Mem: crate::storage::ReplyPartition,
+     T: ProtocolIo,
+ {
+     let mut owner = RxOwner {
+diff --git a/src/app/async_server_tests.rs b/src/app/async_server_tests.rs
+index 4c2ad7d..7bd0539 100644
+--- a/src/app/async_server_tests.rs
++++ b/src/app/async_server_tests.rs
+@@ -644,3 +644,73 @@ fn delayed_non_notification_commits_hold_and_max_age_at_acceptance() {
+     assert_eq!(interest.lifetime().unwrap().due_ms(), 15_000);
+     assert_eq!(app.engine.tx_occupied(), 0);
+ }
++
++#[test]
++fn borrowed_upload_reply_keeps_body_across_pending_send_and_releases_on_cancel() {
++    fn echo(request: Request<'_>) -> Response<'_> {
++        let body = request.body().expect("completed upload");
++        assert_eq!(body, &[0x5a; 160]);
++        Response::changed().payload_borrowed(body)
++    }
++    for cancel in [false, true] {
++        let ready = Cell::new(true);
++        let accepted = Cell::new(0);
++        let mut app = App::with_resources(
++            Resources::<profiles::Constrained>::new()
++                .routes::<1>()
++                .block_wise::<true>(),
++        )
++        .allow_unprotected()
++        .deterministic_for_tests()
++        .route("echo", crate::app::put(echo))
++        .bind(Io {
++            ready: &ready,
++            accepted: &accepted,
++        })
++        .unwrap();
++        let mut clock = || Ok::<_, ()>(10);
++        let mut timer = Timer;
++        for num in 0..2 {
++            let block = BlockValue::from_size(num, num == 0, 128).unwrap().encode();
++            let options = [Opt::uri_path("echo"), Opt::block1(&block)];
++            let bytes = [0x5a; 128];
++            let message = Message::new(
++                Type::Confirmable,
++                Code::PUT,
++                MessageId::new(80 + num as u16),
++            )
++            .with_options(&options)
++            .with_payload(&bytes[..if num == 0 { 128 } else { 32 }]);
++            let mut wire = [0; 256];
++            let len = encode(&message, &mut wire).unwrap();
++            let rx = app.engine.acquire_rx().unwrap();
++            app.engine.write_rx(rx, &wire[..len], PEER).unwrap();
++            ready.set(num == 0);
++            {
++                let mut progress = pin!(app.progress_async(10, &mut clock, &mut timer, 100));
++                let outcome = progress
++                    .as_mut()
++                    .poll(&mut Context::from_waker(Waker::noop()));
++                if num == 0 {
++                    assert!(matches!(outcome, Poll::Ready(Ok(()))));
++                } else {
++                    assert!(outcome.is_pending());
++                    if !cancel {
++                        ready.set(true);
++                        assert!(matches!(
++                            progress
++                                .as_mut()
++                                .poll(&mut Context::from_waker(Waker::noop())),
++                            Poll::Ready(Ok(()))
++                        ));
++                    }
++                }
++            }
++        }
++        assert_eq!(accepted.get(), if cancel { 1 } else { 2 });
++        let usage = app.engine.storage_usage();
++        assert_eq!(usage.rx_body.unwrap().occupied, 0);
++        assert_eq!(usage.rx_datagram.occupied, 0);
++        assert_eq!(usage.tx_datagram.occupied, 0);
++    }
++}
+diff --git a/src/app/capacity_tests.rs b/src/app/capacity_tests.rs
+index 773940d..2220e24 100644
+--- a/src/app/capacity_tests.rs
++++ b/src/app/capacity_tests.rs
+@@ -67,7 +67,12 @@ impl DatagramIo for Io {
+ 
+ type Client<S, const C: usize> = App<Eight, Io, DEFAULT_ROUTES, false, S, 0, C>;
+ 
+-fn expiry<const C: usize, S: AppStorage<Token = crate::message::Token>>(mut app: Client<S, C>) {
++fn expiry<
++    const C: usize,
++    S: AppStorage<Token = crate::message::Token> + crate::storage::ReplyPartition,
++>(
++    mut app: Client<S, C>,
++) {
+     let empty = app.resource_usage();
+     assert_eq!(empty.client_requests.capacity, C);
+     assert_eq!(empty.client_requests.occupied, 0);
+@@ -118,7 +123,10 @@ fn expiry<const C: usize, S: AppStorage<Token = crate::message::Token>>(mut app:
+     app.get("recovered").non().to(PEER).send(11).unwrap();
+ }
+ 
+-fn completions<const C: usize, S: AppStorage<Token = crate::message::Token>>(
++fn completions<
++    const C: usize,
++    S: AppStorage<Token = crate::message::Token> + crate::storage::ReplyPartition,
++>(
+     mut app: Client<S, C>,
+ ) {
+     let mut calls = [None; C];
+@@ -254,7 +262,9 @@ fn client_capacity_resizes_inline_metadata_and_preserves_default() {
+ 
+ #[test]
+ fn client_capacity_full_response_short_output_preserves_slot_and_bytes() {
+-    fn run<S: AppStorage<Token = crate::message::Token>>(mut app: Client<S, 1>) {
++    fn run<S: AppStorage<Token = crate::message::Token> + crate::storage::ReplyPartition>(
++        mut app: Client<S, 1>,
++    ) {
+         let call = app.get("value").to(PEER).send(0).unwrap();
+         let mid = decode(&app.transport().wire[..app.transport().len])
+             .unwrap()
+diff --git a/src/app/lazy_catalog_tests.rs b/src/app/lazy_catalog_tests.rs
+index 2400ae6..2576134 100644
+--- a/src/app/lazy_catalog_tests.rs
++++ b/src/app/lazy_catalog_tests.rs
+@@ -47,15 +47,18 @@ fn dispatch<'a, const N: usize>(
+     site: &Site<N>,
+     code: Code,
+     path: &[&str],
++    wire: &'a mut [u8; 256],
+     catalog: impl FnOnce() -> &'a mut [u8],
+ ) -> Response<'a> {
+-    let (wire, len) = request_wire(code, path, None, 1);
++    let (bytes, len) = request_wire(code, path, None, 1);
++    *wire = bytes;
+     let request = Request::from_decoded(decode(&wire[..len]).unwrap(), PEER, None).unwrap();
+     site.dispatch_with_catalog(request, catalog)
+ }
+ 
+ #[test]
+ fn lazy_catalog_supplier_is_unused_outside_builtin_discovery_get() {
++    let mut wire = [0; 256];
+     let mut site = Site::<2>::new();
+     site.route("value", get(handler)).well_known_core();
+     for (code, path, expected) in [
+@@ -64,17 +67,19 @@ fn lazy_catalog_supplier_is_unused_outside_builtin_discovery_get() {
+         (Code::GET, &["missing"][..], Code::NOT_FOUND),
+         (Code::POST, DISCOVERY, Code::METHOD_NOT_ALLOWED),
+     ] {
+-        let response = dispatch(&site, code, path, || panic!("unused catalog requested"));
++        let response = dispatch(&site, code, path, &mut wire, || {
++            panic!("unused catalog requested")
++        });
+         assert_eq!(response.code(), expected);
+     }
+ 
+     site.route(DISCOVERY, get(handler));
+-    let response = dispatch(&site, Code::GET, DISCOVERY, || {
++    let response = dispatch(&site, Code::GET, DISCOVERY, &mut wire, || {
+         panic!("registered discovery route must win")
+     });
+     assert_eq!(response.payload(), b"route");
+     assert_eq!(
+-        dispatch(&site, Code::POST, DISCOVERY, || {
++        dispatch(&site, Code::POST, DISCOVERY, &mut wire, || {
+             panic!("registered route's method refusal must win")
+         })
+         .code(),
+@@ -83,7 +88,7 @@ fn lazy_catalog_supplier_is_unused_outside_builtin_discovery_get() {
+ 
+     let disabled = Site::<0>::new();
+     assert_eq!(
+-        dispatch(&disabled, Code::GET, DISCOVERY, || {
++        dispatch(&disabled, Code::GET, DISCOVERY, &mut wire, || {
+             panic!("disabled discovery requested catalog")
+         })
+         .code(),
+@@ -93,6 +98,7 @@ fn lazy_catalog_supplier_is_unused_outside_builtin_discovery_get() {
+ 
+ #[test]
+ fn lazy_catalog_supplier_runs_once_and_retains_non_inline_bytes() {
++    let mut wire = [0; 256];
+     let mut site = Site::<16>::new();
+     for path in ROUTES {
+         site.route(path, get(handler));
+@@ -100,7 +106,7 @@ fn lazy_catalog_supplier_runs_once_and_retains_non_inline_bytes() {
+     site.well_known_core();
+     let calls = Cell::new(0);
+     let mut scratch = None;
+-    let response = dispatch(&site, Code::GET, DISCOVERY, || {
++    let response = dispatch(&site, Code::GET, DISCOVERY, &mut wire, || {
+         calls.set(calls.get() + 1);
+         scratch
+             .get_or_insert_with(LinkFormatScratch::<16>::new)
+diff --git a/src/app/mod.rs b/src/app/mod.rs
+index 260b4fd..88b9d4e 100644
+--- a/src/app/mod.rs
++++ b/src/app/mod.rs
+@@ -307,8 +307,8 @@ pub struct DeferredReply {
+ 
+ type AppIngress<'a> = dyn FnMut(&[u8], Endpoint) -> bool + 'a;
+ 
+-type AppDispatch<'a, K> =
+-    dyn FnMut(Request<'_, K>, Option<DeferredReply>) -> Response<'static, K> + 'a;
++type AppDispatch<'a, K> = dyn for<'request> FnMut(Request<'request, K>, Option<DeferredReply>) -> Response<'request, K>
++    + 'a;
+ 
+ #[derive(Clone, Copy)]
+ struct DeferredRow<K: OwnedToken = crate::message::Token> {
+@@ -439,6 +439,19 @@ impl RequestSelection {
+             .as_ref()
+             .ok()
+     }
++
++    fn get_or_encode_parts<K: OwnedToken>(
++        &mut self,
++        parsed: &ParsedMessage<'_, K>,
++        body: Option<&[u8]>,
++    ) -> Option<&DeferredSelection> {
++        self.encoded
++            .get_or_insert_with(|| {
++                DeferredSelection::from_parts(parsed, body.unwrap_or(parsed.payload()))
++            })
++            .as_ref()
++            .ok()
++    }
+ }
+ 
+ fn deferred_reply_metadata<K: OwnedToken>(
+@@ -2012,7 +2025,7 @@ impl<
+     T,
+     const N: usize,
+     const BLOCK_WISE: bool,
+-    S: AppStorage<Token = P::Token>,
++    S: AppStorage<Token = P::Token> + crate::storage::ReplyPartition,
+     const DEFERRED: usize,
+     const CALLS: usize,
+     const REQUESTS: usize,
+@@ -2027,8 +2040,9 @@ where
+     /// `now_ms` is the caller clock (CON RTO, Observe Max-Age, Q-Block
+     /// wait). No [`SlotId`] on this path.
+     ///
+-    /// **Inbound.** Handlers see a borrowed [`Request`] and return an owned
+-    /// [`Response`]. Empty CON (code 0.00) is answered with empty RST
++    /// **Inbound.** Handlers see a borrowed [`Request`] and return a [`Response`]
++    /// that may borrow its payload or options until this poll finishes. Retained
++    /// retransmissions and blockwise snapshots copy into their configured pools. Empty CON (code 0.00) is answered with empty RST
+     /// (RFC 7252 ping). Incomplete Q-Block1 gets an empty ACK for CON;
+     /// NON payloads get 2.31 only after a complete payload set, with the
+     /// acknowledged Q-Block1 NUM. Successful Q-Block2 responses use all-NON
+@@ -2168,10 +2182,10 @@ where
+     pub fn poll_with(
+         &mut self,
+         now_ms: u64,
+-        mut dispatch: impl FnMut(
+-            Request<'_, S::Token>,
++        mut dispatch: impl for<'request> FnMut(
++            Request<'request, S::Token>,
+             Option<DeferredReply>,
+-        ) -> Response<'static, S::Token>,
++        ) -> Response<'request, S::Token>,
+     ) -> Result<(), Error<T::Error>> {
+         poll_engine(
+             &mut self.engine,
+@@ -2270,10 +2284,10 @@ where
+         &mut self,
+         now_ms: u64,
+         mut checkpoint: impl FnMut(crate::oscore::ReplayCheckpoint) -> bool,
+-        mut dispatch: impl FnMut(
+-            Request<'_, S::Token>,
++        mut dispatch: impl for<'request> FnMut(
++            Request<'request, S::Token>,
+             Option<DeferredReply>,
+-        ) -> Response<'static, S::Token>,
++        ) -> Response<'request, S::Token>,
+     ) -> Result<(), Error<T::Error>> {
+         self.oscore_checkpoint.require();
+         poll_engine(
+@@ -2308,10 +2322,10 @@ where
+         &mut self,
+         now_ms: u64,
+         mut checkpoint: impl FnMut(Option<Association>, crate::oscore::ReplayCheckpoint) -> bool,
+-        mut dispatch: impl FnMut(
+-            Request<'_, S::Token>,
++        mut dispatch: impl for<'request> FnMut(
++            Request<'request, S::Token>,
+             Option<DeferredReply>,
+-        ) -> Response<'static, S::Token>,
++        ) -> Response<'request, S::Token>,
+     ) -> Result<(), Error<T::Error>> {
+         self.oscore_checkpoint.require();
+         poll_engine(
+@@ -2346,10 +2360,10 @@ where
+         now_ms: u64,
+         mut ingress: impl FnMut(&[u8], Endpoint) -> bool,
+         mut checkpoint: impl FnMut(Option<Association>, crate::oscore::ReplayCheckpoint) -> bool,
+-        mut dispatch: impl FnMut(
+-            Request<'_, S::Token>,
++        mut dispatch: impl for<'request> FnMut(
++            Request<'request, S::Token>,
+             Option<DeferredReply>,
+-        ) -> Response<'static, S::Token>,
++        ) -> Response<'request, S::Token>,
+     ) -> Result<(), Error<T::Error>> {
+         self.oscore_checkpoint.require();
+         poll_engine(
+@@ -2692,7 +2706,7 @@ fn poll_engine<
+     mut ingress: Option<&mut AppIngress<'_>>,
+ ) -> Result<(), Error<T::Error>>
+ where
+-    Mem: Storage + DatagramSlots + PendingCons + ObserveSlots + BodySlots + Exchanges + DedupSlots,
++    Mem: crate::storage::ReplyPartition,
+     T: DatagramIo,
+ {
+     oscore_checkpoint.flush(oscore, &mut checkpoint_commit)?;
+@@ -3362,7 +3376,7 @@ fn valid_q_selections(parsed: &ParsedMessage<'_, impl OwnedToken>) -> bool {
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+-#[coaptic_io::dual_io(dispatch_rx_io_async, bound(crate::app::async_server::ProtocolIo), calls(send_token_capacity_refusal => send_token_capacity_refusal_async, oscore::send_token_capacity_refusal => oscore::send_token_capacity_refusal_async, admission::send_refusal => admission::send_refusal_async, issue_q_observe_followup => issue_q_observe_followup_async, send_separate => send_separate_async, send_response => send_response_async, issue_classic => issue_classic_async, issue_deferred_q => issue_deferred_q_async, replay_con_request => replay_con_request_async, oscore_inbound_error => oscore_inbound_error_async, send_empty_ack => send_empty_ack_async, send_empty_rst => send_empty_rst_async, send_empty => send_empty_async, client::complete_client => client::complete_client_async, client::continue_qblock1_ack => client::continue_qblock1_ack_async))]
++#[coaptic_io::dual_io(dispatch_rx_io_async, bound(crate::app::async_server::ProtocolIo), calls(dispatch_reply => dispatch_reply_async, send_token_capacity_refusal => send_token_capacity_refusal_async, oscore::send_token_capacity_refusal => oscore::send_token_capacity_refusal_async, admission::send_refusal => admission::send_refusal_async, issue_q_observe_followup => issue_q_observe_followup_async, send_separate => send_separate_async, send_response => send_response_async, issue_classic => issue_classic_async, issue_deferred_q => issue_deferred_q_async, replay_con_request => replay_con_request_async, oscore_inbound_error => oscore_inbound_error_async, send_empty_ack => send_empty_ack_async, send_empty_rst => send_empty_rst_async, send_empty => send_empty_async, client::complete_client => client::complete_client_async, client::continue_qblock1_ack => client::continue_qblock1_ack_async))]
+ fn dispatch_rx<
+     Mem,
+     T,
+@@ -3391,7 +3405,7 @@ fn dispatch_rx<
+     rx: SlotId,
+ ) -> Result<(), Error<T::Error>>
+ where
+-    Mem: Storage + DatagramSlots + PendingCons + ObserveSlots + BodySlots + Exchanges + DedupSlots,
++    Mem: crate::storage::ReplyPartition,
+     T: DatagramIo,
+ {
+     let Some(peer) = engine.rx_endpoint(rx) else {
+@@ -4406,24 +4420,82 @@ where
+     } else {
+         None
+     };
++    // One reply view serves ordinary datagrams and assembled uploads. A single
++    // phase avoids duplicate reply state machines; the existing incoming-body
++    // owner releases completed input only after this view is dropped.
++    let body_id = match assembled {
++        InboundBody::Complete(id) => Some(id),
++        _ => None,
++    };
++    let retained = body_id
++        .and_then(|id| engine.rx_body_transfer(id))
++        .is_some_and(|t| t.if_none_match());
++    let (body, mut reply) = engine.partition_reply(body_id);
++    dispatch_reply(
++        &mut reply.engine,
++        io,
++        site,
++        ids,
++        oscore,
++        dedup_closed,
++        deferred,
++        deferred_lifetime_ms,
++        dispatch,
++        now_ms,
++        rx,
++        peer,
++        parsed,
++        request,
++        &mut selection,
++        request_plan,
++        deferred_handle,
++        deferred_observe,
++        q_selectors,
++        meta,
++        oscore_req,
++        body,
++        retained,
++    )
++}
++
++#[allow(clippy::too_many_arguments)]
++#[coaptic_io::dual_io(dispatch_reply_async, bound(crate::app::async_server::ProtocolIo), calls(send_empty_ack => send_empty_ack_async, send_response => send_response_async, send_separate => send_separate_async))]
++fn dispatch_reply<
++    S: AppStorage,
++    T: DatagramIo,
++    const N: usize,
++    const DEFERRED: usize,
++    const REQUESTS: usize,
++>(
++    engine: &mut Engine<S>,
++    io: &mut T,
++    site: &Site<N, S::Token>,
++    ids: &mut AppIds,
++    oscore: &mut oscore::Field<REQUESTS, S::Token>,
++    dedup_closed: &mut Option<DedupClosed>,
++    deferred: &mut DeferredTable<DEFERRED, S::Token>,
++    deferred_lifetime_ms: u64,
++    dispatch: Option<&mut AppDispatch<'_, S::Token>>,
++    now_ms: u64,
++    rx: SlotId,
++    peer: Endpoint,
++    parsed: ParsedMessage<'_, S::Token>,
++    request: Result<Request<'_, S::Token>, request::PathError>,
++    selection: &mut RequestSelection,
++    request_plan: Option<ObservePlan<S::Token>>,
++    deferred_handle: Option<DeferredReply>,
++    deferred_observe: Option<DeferredObserve>,
++    q_selectors: Option<DeferredQSelectors>,
++    meta: SendResponse<'_, S::Token>,
++    oscore_req: oscore::Request,
++    body: Option<&[u8]>,
++    retained: bool,
++) -> Result<(), Error<T::Error>> {
+     let plan = request_plan.unwrap_or_else(ObservePlan::idle);
+     let mut catalog = None;
+     let mut response = {
+-        let body = match assembled {
+-            InboundBody::Complete(id) => engine.rx_body_payload(id),
+-            InboundBody::None
+-            | InboundBody::Continue
+-            | InboundBody::QWait(_)
+-            | InboundBody::Refused(_) => None,
+-        };
+         match request {
+             Ok(request) => {
+-                let retained = match assembled {
+-                    InboundBody::Complete(id) => engine
+-                        .rx_body_transfer(id)
+-                        .is_some_and(|t| t.if_none_match()),
+-                    _ => false,
+-                };
+                 let request = request
+                     .with_body(body)
+                     .with_association(oscore.association(peer))
+@@ -4468,7 +4540,7 @@ where
+                 },
+                 now_ms.saturating_add(deferred_lifetime_ms),
+                 *selection
+-                    .get_or_encode(engine, &parsed, assembled)
++                    .get_or_encode_parts(&parsed, body)
+                     .expect("admitted selection"),
+                 q_selectors.expect("admitted selectors"),
+                 deferred_observe,
+@@ -4494,21 +4566,15 @@ where
+                 dedup_closed,
+             )
+         };
+-        if let InboundBody::Complete(id) = assembled {
+-            let _ = engine.release_rx_body(id);
+-        }
+         let _ = engine.release_rx(rx);
+         return outcome;
+     }
+     if let Err(error) = response.validate() {
+-        if let InboundBody::Complete(id) = assembled {
+-            let _ = engine.release_rx_body(id);
+-        }
+         let _ = engine.release_rx(rx);
+         return Err(Error::Response(error));
+     }
+     let observe_selection = if plan.register {
+-        selection.get_or_encode(engine, &parsed, assembled)
++        selection.get_or_encode_parts(&parsed, body)
+     } else {
+         None
+     };
+@@ -4521,9 +4587,6 @@ where
+         observe_selection,
+         oscore_req,
+     ) {
+-        if let InboundBody::Complete(id) = assembled {
+-            let _ = engine.release_rx_body(id);
+-        }
+         let _ = engine.release_rx(rx);
+         return Err(error.into());
+     }
+@@ -4552,12 +4615,12 @@ where
+             dedup_closed,
+         )
+     };
+-    let retained = retain_q_observe_selection(engine, BlockKey::new(meta.token, peer), |engine| {
++    let retained = retain_q_observe_selection(engine, BlockKey::new(meta.token, peer), |_engine| {
+         // Terminal Q bodies can outlive the observer. Even a failed send must
+         // update their selection; invalid paths still clear it as before.
+         request_plan.and_then(|_| {
+             selection
+-                .get_or_encode(engine, &parsed, assembled)
++                .get_or_encode_parts(&parsed, body)
+                 .copied()
+                 .map(DeferredSelection::stored)
+         })
+@@ -4566,9 +4629,6 @@ where
+     if outcome.is_ok() && response.observe_seq().is_some() {
+         record_q_observe_sent(engine, BlockKey::new(meta.token, peer), now_ms);
+     }
+-    if let InboundBody::Complete(id) = assembled {
+-        let _ = engine.release_rx_body(id);
+-    }
+     let _ = engine.release_rx(rx);
+     outcome.and(retained)
+ }
+diff --git a/src/app/response.rs b/src/app/response.rs
+index 5865731..cd3001d 100644
+--- a/src/app/response.rs
++++ b/src/app/response.rs
+@@ -128,8 +128,8 @@ impl<T: OwnedToken> IntoResponse<T> for Response<'static, T> {
+ /// reply hold; handler locations must outlive their response. [`Self::separate`] is an empty ACK to a
+ /// CON request, then the representation in a new CON during the same poll.
+ ///
+-/// Handler returns and [`Self::observe`] copy the small header +
+-/// inline/`'static` payload only.
++/// Handler responses may borrow request bytes through encoding. Only inline
++/// payloads are copied with this descriptor; borrowed payloads remain references.
+ ///
+ /// ```
+ /// use coaptic::{ContentFormat, Response};
+diff --git a/src/app/routing.rs b/src/app/routing.rs
+index 3e0e267..7f47f21 100644
+--- a/src/app/routing.rs
++++ b/src/app/routing.rs
+@@ -14,7 +14,7 @@ use super::response::Response;
+ /// Function pointer stored in a [`MethodRouter`].
+ ///
+ /// Default handlers are relatively stateless: `Request` → [`Response`].
+-pub type HandlerFn<T = Token> = fn(Request<'_, T>) -> Response<'static, T>;
++pub type HandlerFn<T = Token> = for<'request> fn(Request<'request, T>) -> Response<'request, T>;
+ 
+ /// Snapshot for a due Observe notification (`App::poll` / [`App::signal`](super::App::signal)).
+ ///
+@@ -29,11 +29,11 @@ pub(crate) enum SnapshotSource<T: OwnedToken = Token> {
+ }
+ 
+ impl<T: OwnedToken> SnapshotSource<T> {
+-    pub(crate) fn snapshot(
++    pub(crate) fn snapshot<'request>(
+         self,
+-        interest: &crate::storage::ObserveInterest<T>,
++        interest: &'request crate::storage::ObserveInterest<T>,
+         association: Option<super::Association>,
+-    ) -> Option<Response<'static, T>> {
++    ) -> Option<Response<'request, T>> {
+         match self {
+             Self::Plain(source) => Some(source()),
+             Self::Selected(source) => {
+@@ -166,7 +166,11 @@ impl<T: OwnedToken> MethodRouter<T> {
+         self
+     }
+ 
+-    pub(crate) fn call(&self, method: Method, req: Request<'_, T>) -> Response<'static, T> {
++    pub(crate) fn call<'request>(
++        &self,
++        method: Method,
++        req: Request<'request, T>,
++    ) -> Response<'request, T> {
+         match self.handlers[method.index()] {
+             Some(handler) => handler(req),
+             None => Response::problem(Code::METHOD_NOT_ALLOWED).title("Method Not Allowed"),
+diff --git a/src/app/site.rs b/src/app/site.rs
+index 2ede20a..4df5040 100644
+--- a/src/app/site.rs
++++ b/src/app/site.rs
+@@ -344,14 +344,14 @@ impl<const N: usize, T: OwnedToken> Site<N, T> {
+     /// their boundaries (RFC 6690 section 2 and RFC 7252 section 6.5).
+     /// Unsupported unicast discovery query filters are ignored.
+     #[must_use]
+-    pub fn dispatch<'a>(&self, request: Request<'_, T>, catalog: &'a mut [u8]) -> Response<'a, T> {
++    pub fn dispatch<'a>(&self, request: Request<'a, T>, catalog: &'a mut [u8]) -> Response<'a, T> {
+         self.dispatch_with_catalog(request, || catalog)
+     }
+ 
+     /// Obtain caller-owned scratch only after built-in discovery GET is selected.
+     pub(crate) fn dispatch_with_catalog<'a>(
+         &self,
+-        request: Request<'_, T>,
++        request: Request<'a, T>,
+         catalog: impl FnOnce() -> &'a mut [u8],
+     ) -> Response<'a, T> {
+         for entry in self.entries.iter().flatten() {
+diff --git a/src/app/tests.rs b/src/app/tests.rs
+index 06fb0c8..869387d 100644
+--- a/src/app/tests.rs
++++ b/src/app/tests.rs
+@@ -1519,9 +1519,12 @@ fn well_known_request() -> ([u8; 256], usize) {
+     encode_req(Code::GET, &[".well-known", "core"], &[])
+ }
+ 
+-fn dispatch_well_known<'a, const N: usize>(site: &Site<N>, scratch: &'a mut [u8]) -> Response<'a> {
+-    let (wire, n) = well_known_request();
+-    let parsed = decode(&wire[..n]).expect("decode");
++fn dispatch_well_known<'a, const N: usize>(
++    site: &Site<N>,
++    wire: &'a [u8],
++    scratch: &'a mut [u8],
++) -> Response<'a> {
++    let parsed = decode(wire).expect("decode");
+     let req = Request::from_decoded(parsed, Endpoint::v4([192, 0, 2, 1], 5683), None).expect("req");
+     site.dispatch(req, scratch)
+ }
+@@ -1543,6 +1546,7 @@ fn assert_full_catalog(body: &str) {
+ 
+ #[test]
+ fn well_known_core_lists_all_registered_routes_past_inline() {
++    let (wire, n) = well_known_request();
+     const _: () = assert!(link_format_capacity::<16>() == 16 * LINK_FORMAT_PER_ROUTE);
+     const _: () = assert!(link_format_capacity::<16>() > INLINE_PAYLOAD);
+ 
+@@ -1555,7 +1559,7 @@ fn well_known_core_lists_all_registered_routes_past_inline() {
+     assert_eq!(site.capacity(), 16);
+ 
+     let mut scratch = LinkFormatScratch::<16>::new();
+-    let response = dispatch_well_known(&site, scratch.as_mut());
++    let response = dispatch_well_known(&site, &wire[..n], scratch.as_mut());
+     assert_eq!(response.code(), Code::CONTENT);
+     assert_eq!(response.format(), Some(ContentFormat::LINK_FORMAT));
+     let body = core::str::from_utf8(response.payload()).expect("utf8");
+@@ -1598,13 +1602,14 @@ fn well_known_core_poll_lists_every_upfront_route() {
+ 
+ #[test]
+ fn well_known_core_overflow_is_internal_error() {
++    let (wire, n) = well_known_request();
+     const TOO_LONG: &str = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+     const _: () = assert!(TOO_LONG.len() + 3 > INLINE_PAYLOAD);
+ 
+     let mut site = Site::<1>::new();
+     site.route(TOO_LONG, get(get_temp)).well_known_core();
+     let mut scratch = LinkFormatScratch::<1>::new();
+-    let response = dispatch_well_known(&site, scratch.as_mut());
++    let response = dispatch_well_known(&site, &wire[..n], scratch.as_mut());
+     assert_eq!(response.code(), Code::INTERNAL_SERVER_ERROR);
+     assert!(response.payload().is_empty());
+     assert_ne!(response.format(), Some(ContentFormat::LINK_FORMAT));
+@@ -1614,6 +1619,7 @@ fn well_known_core_overflow_is_internal_error() {
+ /// capacity floors at [`INLINE_PAYLOAD`].
+ #[test]
+ fn well_known_core_small_n_keeps_inline_floor() {
++    let (wire, n) = well_known_request();
+     const PATH: &str = "sensors/temperature/celsius";
+     const _: () = assert!(PATH.len() + 3 > LINK_FORMAT_PER_ROUTE);
+     const _: () = assert!(PATH.len() + 3 <= INLINE_PAYLOAD);
+@@ -1622,7 +1628,7 @@ fn well_known_core_small_n_keeps_inline_floor() {
+     let mut site = Site::<1>::new();
+     site.route(PATH, get(get_temp)).well_known_core();
+     let mut scratch = LinkFormatScratch::<1>::new();
+-    let response = dispatch_well_known(&site, scratch.as_mut());
++    let response = dispatch_well_known(&site, &wire[..n], scratch.as_mut());
+     assert_eq!(response.code(), Code::CONTENT);
+     assert_eq!(response.format(), Some(ContentFormat::LINK_FORMAT));
+     let body = core::str::from_utf8(response.payload()).expect("utf8");
+@@ -1631,11 +1637,12 @@ fn well_known_core_small_n_keeps_inline_floor() {
+ 
+ #[test]
+ fn discovery_uri_preserves_decoded_segment_identity() {
++    let (wire, n) = well_known_request();
+     const SEGMENTS: [&str; 2] = ["AZaz09-._~!$&'()*+,;=:@", "a/b %2E?#<>\"\0é☃"];
+     let mut site = Site::<1>::new();
+     site.route(&SEGMENTS, get(get_temp)).well_known_core();
+     let mut scratch = LinkFormatScratch::<1>::new();
+-    let response = dispatch_well_known(&site, scratch.as_mut());
++    let response = dispatch_well_known(&site, &wire[..n], scratch.as_mut());
+     assert_eq!(response.code(), Code::CONTENT);
+     assert_eq!(response.format(), Some(ContentFormat::LINK_FORMAT));
+     let body = core::str::from_utf8(response.payload()).unwrap();
+@@ -1668,21 +1675,23 @@ fn discovery_uri_preserves_decoded_segment_identity() {
+ 
+ #[test]
+ fn discovery_uri_distinguishes_literal_slash_and_percent_text() {
++    let (wire, n) = well_known_request();
+     let mut site = Site::<3>::new();
+     site.route(&["a/b"], get(get_temp))
+         .route("a/b", get(get_led))
+         .route(&["%2F"], get(get_temp))
+         .well_known_core();
+     let mut scratch = LinkFormatScratch::<3>::new();
+-    let response = dispatch_well_known(&site, scratch.as_mut());
++    let response = dispatch_well_known(&site, &wire[..n], scratch.as_mut());
+     assert_eq!(response.payload(), b"</a%2Fb>,</a/b>,</%252F>");
+ }
+ 
+ #[test]
+ fn discovery_uri_empty_catalog_needs_no_scratch() {
++    let (wire, n) = well_known_request();
+     let mut site = Site::<0>::new();
+     site.well_known_core();
+-    let response = dispatch_well_known(&site, &mut []);
++    let response = dispatch_well_known(&site, &wire[..n], &mut []);
+     assert_eq!(response.code(), Code::CONTENT);
+     assert_eq!(response.format(), Some(ContentFormat::LINK_FORMAT));
+     assert!(response.payload().is_empty());
+@@ -1714,37 +1723,39 @@ fn discovery_uri_wire_reply_ignores_unsupported_unicast_filter() {
+ 
+ #[test]
+ fn discovery_uri_encoded_capacity_refuses_then_recovers() {
++    let (wire, n) = well_known_request();
+     let mut site = Site::<1>::new();
+     site.route("é", get(get_temp)).well_known_core();
+     let identity = site.observe_resource(&["é"]);
+     let mut short = [0xA5; 8];
+-    let refused = dispatch_well_known(&site, &mut short);
++    let refused = dispatch_well_known(&site, &wire[..n], &mut short);
+     assert_eq!(refused.code(), Code::INTERNAL_SERVER_ERROR);
+     assert!(refused.payload().is_empty());
+     assert_eq!(refused.format(), None);
+     assert_eq!(short, [0xA5; 8]);
+     assert_eq!(site.observe_resource(&["é"]), identity);
+     let mut exact = [0; 9];
+-    let recovered = dispatch_well_known(&site, &mut exact);
++    let recovered = dispatch_well_known(&site, &wire[..n], &mut exact);
+     assert_eq!(recovered.code(), Code::CONTENT);
+     assert_eq!(recovered.payload(), b"</%C3%A9>");
+ }
+ 
+ #[test]
+ fn discovery_uri_expansion_respects_existing_scratch_bound() {
++    let (wire, n) = well_known_request();
+     const PATH: &str = "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%";
+     assert!(PATH.len() + 3 <= INLINE_PAYLOAD);
+     assert!(PATH.len() * 3 + 3 > INLINE_PAYLOAD);
+     let mut site = Site::<1>::new();
+     site.route(PATH, get(get_temp)).well_known_core();
+     let mut scratch = LinkFormatScratch::<1>::new();
+-    let refused = dispatch_well_known(&site, scratch.as_mut());
++    let refused = dispatch_well_known(&site, &wire[..n], scratch.as_mut());
+     assert_eq!(refused.code(), Code::INTERNAL_SERVER_ERROR);
+     assert!(refused.payload().is_empty());
+     assert!(site.remove_route(PATH).unwrap());
+     site.try_route("ok", get(get_temp)).unwrap();
+     assert_eq!(
+-        dispatch_well_known(&site, scratch.as_mut()).payload(),
++        dispatch_well_known(&site, &wire[..n], scratch.as_mut()).payload(),
+         b"</ok>"
+     );
+ }
+@@ -5962,9 +5973,7 @@ fn malformed_or_missing_qblock_request_tag_is_refused_before_dispatch() {
+             .block_wise::<true>()
+             .route(
+                 "upload",
+-                put(|_: Request<'_>| -> Response<'static> {
+-                    panic!("invalid tag reached handler")
+-                }),
++                put(|_: Request<'_>| -> Response<'_> { panic!("invalid tag reached handler") }),
+             )
+             .allow_unprotected()
+             .bind(WideLoopback {
+@@ -5994,9 +6003,7 @@ fn disabled_block_assembly_refuses_before_handler_dispatch() {
+         .block_wise::<false>()
+         .route(
+             "upload",
+-            put(|_: Request<'_>| -> Response<'static> {
+-                panic!("fragment reached non-block handler")
+-            }),
++            put(|_: Request<'_>| -> Response<'_> { panic!("fragment reached non-block handler") }),
+         )
+         .allow_unprotected()
+         .bind(Loopback {
+@@ -11630,7 +11637,8 @@ fn client_assembled_body_boundary_refusal_cleanup_and_reuse() {
+             + MemoryLayout<true, Store = crate::storage::Memory<P, crate::storage::WithBodies<P>>>,
+     >()
+     where
+-        crate::storage::Memory<P, crate::storage::WithBodies<P>>: super::AppStorage<Token = Token>,
++        crate::storage::Memory<P, crate::storage::WithBodies<P>>:
++            super::AppStorage<Token = Token> + crate::storage::ReplyPartition,
+     {
+         let peer = Endpoint::v4([192, 0, 2, 1], 5683);
+         let body: [u8; 4097] = core::array::from_fn(|index| (index % 251) as u8);
+@@ -13422,7 +13430,9 @@ fn full_datagram_collection_preserves_bytes_and_retries_short_buffer() {
+     assert!(app.take_response_into(call, &mut output).unwrap().is_none());
+ }
+ 
+-fn exercise_client_without_block_storage<S: super::AppStorage<Token = Token>>(
++fn exercise_client_without_block_storage<
++    S: super::AppStorage<Token = Token> + crate::storage::ReplyPartition,
++>(
+     mut app: App<profiles::Default, WideLoopback, DEFAULT_ROUTES, false, S>,
+     protected: bool,
+ ) {
+@@ -16178,3 +16188,86 @@ fn allocated_expiry_refresh_tracks_the_existing_walk_and_pin_release() {
+     );
+     assert_eq!(engine.tx_occupied(), 1);
+ }
++
++#[test]
++fn borrowed_handler_upload_reply_owns_retry_after_incoming_release() {
++    fn echo(request: Request<'_>) -> Response<'_> {
++        let payload = request.body().unwrap_or(request.payload());
++        let response = Response::changed().payload_borrowed(payload).separate();
++        assert_eq!(response.payload().as_ptr(), payload.as_ptr());
++        response
++    }
++    let peer = Endpoint::v4([192, 0, 2, 1], 5683);
++    let expected = [b'E'; 160];
++    for q_block in [false, true] {
++        let mut app = App::profile::<profiles::Default>()
++            .deterministic_for_tests()
++            .block_wise::<true>()
++            .route("echo", put(echo))
++            .allow_unprotected()
++            .bind(RecordIo::default())
++            .unwrap();
++        for (num, payload) in expected.chunks(128).enumerate() {
++            let (wire, len) = encode_block_req(BlockReq {
++                code: Code::PUT,
++                path: &["echo"],
++                payload,
++                num: num as u32,
++                more: num == 0,
++                size: 128,
++                mid: 100 + num as u16,
++                size1: Some(160),
++                q_block,
++            });
++            app.transport_mut().inbox = Some((peer, wire, len));
++            app.poll(num as u64).unwrap();
++        }
++        let usage = app.engine.storage_usage();
++        assert_eq!(usage.rx_body.unwrap().occupied, 0);
++        assert_eq!(usage.rx_datagram.occupied, 0);
++        let (_, bytes, len) = app.transport().sent[app.transport().sent_n - 1].unwrap();
++        let reply = decode(&bytes[..len]).unwrap();
++        assert_eq!(reply.code(), Code::CHANGED);
++        assert_eq!(reply.ty(), Type::Confirmable);
++        assert_eq!(reply.payload(), expected);
++        let tx = app
++            .engine
++            .lookup_pending_con(reply.message_id(), peer)
++            .unwrap();
++        let due = app
++            .engine
++            .pending_con(tx)
++            .unwrap()
++            .rto()
++            .next_timeout_ms()
++            .unwrap();
++        app.poll(due).unwrap();
++        let (_, retry, retry_len) = app.transport().sent[app.transport().sent_n - 1].unwrap();
++        assert_eq!(&retry[..retry_len], &bytes[..len]);
++    }
++}
++
++#[test]
++fn poll_with_can_borrow_request_payload_beyond_inline_capacity() {
++    let peer = Endpoint::v4([192, 0, 2, 1], 5683);
++    let payload = [0x5a; 160];
++    let message =
++        Message::new(Type::Confirmable, Code::POST, MessageId::new(72)).with_payload(&payload);
++    let mut wire = [0; 256];
++    let len = encode(&message, &mut wire).unwrap();
++    let mut app = App::profile::<profiles::Constrained>()
++        .deterministic_for_tests()
++        .block_wise::<false>()
++        .allow_unprotected()
++        .bind(Loopback {
++            inbox: Some((peer, wire, len)),
++            last_send: None,
++        })
++        .unwrap();
++    app.poll_with(0, |request, _| {
++        Response::changed().payload_borrowed(request.payload())
++    })
++    .unwrap();
++    let (_, sent, len) = app.transport().last_send.unwrap();
++    assert_eq!(decode(&sent[..len]).unwrap().payload(), payload);
++}
+diff --git a/src/oscore/replay_tests.rs b/src/oscore/replay_tests.rs
+index 6ae90a5..3939cde 100644
+--- a/src/oscore/replay_tests.rs
++++ b/src/oscore/replay_tests.rs
+@@ -173,7 +173,7 @@ fn assert_request(events: &Events, request: &Request<'_>, sequence: u64, mid: u1
+     events.effects.set(events.effects.get() + 1);
+ }
+ 
+-fn exercise_commit_ordering<S: AppStorage<Token = Token>>(
++fn exercise_commit_ordering<S: AppStorage<Token = Token> + crate::storage::ReplyPartition>(
+     mut server: App<profiles::Default, DurableIo<'_>, DEFAULT_ROUTES, false, S>,
+     events: &Events,
+ ) {
+diff --git a/src/provisioning/cloud.rs b/src/provisioning/cloud.rs
+index 05e7056..365f37b 100644
+--- a/src/provisioning/cloud.rs
++++ b/src/provisioning/cloud.rs
+@@ -925,14 +925,14 @@ impl<'a, const A: usize, const P: usize, const C: usize, const S: usize>
+         now_ms: u64,
+         mut entropy: impl FnMut(&mut [u8]) -> bool,
+         checkpoint: impl FnMut(Option<crate::app::Association>, crate::oscore::ReplayCheckpoint) -> bool,
+-        dispatch: impl FnMut(
+-            crate::Request<'_, MP::Token>,
++        dispatch: impl for<'request> FnMut(
++            crate::Request<'request, MP::Token>,
+             Option<crate::app::DeferredReply>,
+-        ) -> crate::Response<'static, MP::Token>,
++        ) -> crate::Response<'request, MP::Token>,
+     ) -> Result<Status, SharedAppError<T::Error>>
+     where
+         MP: crate::storage::MemoryLayout<B> + crate::app::AppAssembled<B>,
+-        ST: crate::app::AppStorage<Token = MP::Token>,
++        ST: crate::app::AppStorage<Token = MP::Token> + crate::storage::ReplyPartition,
+         T: DatagramIo,
+     {
+         let maintenance = self.maintain(now_ms, registry);
+diff --git a/src/storage/alloc_memory.rs b/src/storage/alloc_memory.rs
+index 884a356..049abf4 100644
+--- a/src/storage/alloc_memory.rs
++++ b/src/storage/alloc_memory.rs
+@@ -34,6 +34,7 @@ use super::occupancy::HeapOccupancy;
+ use super::pending::{
+     PendingMark, PendingRto, next_due_slot, outstanding_pending, record_admission,
+ };
++use super::reply::{IncomingUnavailable, ReplyPartition};
+ use super::slot::{SlotError, SlotId};
+ use super::table::{DedupStore, ObserveStore};
+ use crate::error::{BlockTransferError, BuildError};
+@@ -438,7 +439,10 @@ impl SlotPool for AllocDatagramPool {
+     }
+ }
+ 
+-impl<T: OwnedToken> DatagramSlots for AllocMemory<T> {
++// Owned and response-phase storage execute the same operations.
++macro_rules! impl_alloc_datagramslots {
++    ([$($generics:tt)*] $store:ty; [$($deref:tt)*]) => {
++        impl<$($generics)*> DatagramSlots for $store {
+     type RxScratch = super::DatagramScratch<{ super::profiles::Default::RX_DATAGRAM_BYTES }>;
+     type ResidentRxScratch =
+         super::DatagramScratch<{ super::profiles::Default::RX_DATAGRAM_BYTES }>;
+@@ -512,8 +516,15 @@ impl<T: OwnedToken> DatagramSlots for AllocMemory<T> {
+         self.tx.access_mut(id)
+     }
+ }
++    };
++}
++impl_alloc_datagramslots!([T: OwnedToken] AllocMemory<T>; []);
++impl_alloc_datagramslots!(['a, T: OwnedToken] AllocReply<'a, T>; [*]);
+ 
+-impl<T: OwnedToken> PendingCons for AllocMemory<T> {
++// Owned and response-phase storage execute the same operations.
++macro_rules! impl_alloc_pendingcons {
++    ([$($generics:tt)*] $store:ty; [$($deref:tt)*]) => {
++        impl<$($generics)*> PendingCons for $store {
+     fn replace_pending_con(
+         &mut self,
+         expected: PendingCon,
+@@ -635,7 +646,7 @@ impl<T: OwnedToken> PendingCons for AllocMemory<T> {
+     }
+ 
+     fn peek_retransmit(&self, now_ms: u64) -> Option<PendingCon> {
+-        let due = next_due_slot(self.tx.slot_count(), self.retransmit_cursor, now_ms, |id| {
++        let due = next_due_slot(self.tx.slot_count(), $($deref)* self.retransmit_cursor, now_ms, |id| {
+             self.pending_con(id)
+         })?;
+         self.pending_con(due.id)
+@@ -656,7 +667,7 @@ impl<T: OwnedToken> PendingCons for AllocMemory<T> {
+                 self.tx.clear_pending_mid(due.id).ok()?;
+             }
+         }
+-        self.retransmit_cursor = due.id.index() + 1;
++        $($deref)* self.retransmit_cursor = due.id.index() + 1;
+         Some(due.event)
+     }
+ 
+@@ -665,8 +676,15 @@ impl<T: OwnedToken> PendingCons for AllocMemory<T> {
+         self.commit_retransmit(expected, now_ms)
+     }
+ }
++    };
++}
++impl_alloc_pendingcons!([T: OwnedToken] AllocMemory<T>; []);
++impl_alloc_pendingcons!(['a, T: OwnedToken] AllocReply<'a, T>; [*]);
+ 
+-impl<T: OwnedToken> Exchanges for AllocMemory<T> {
++// Owned and response-phase storage execute the same operations.
++macro_rules! impl_alloc_exchanges {
++    ([$($generics:tt)*] $store:ty; [$($deref:tt)*]) => {
++        impl<$($generics)*> Exchanges for $store {
+     fn insert_exchange(&mut self, entry: ExchangeEntry<T>) -> Option<SlotId> {
+         self.exchange.insert(entry)
+     }
+@@ -683,8 +701,15 @@ impl<T: OwnedToken> Exchanges for AllocMemory<T> {
+         self.exchange.entry(id)
+     }
+ }
++    };
++}
++impl_alloc_exchanges!([T: OwnedToken] AllocMemory<T>; []);
++impl_alloc_exchanges!(['a, T: OwnedToken] AllocReply<'a, T>; [*]);
+ 
+-impl<T: OwnedToken> DedupSlots for AllocMemory<T> {
++// Owned and response-phase storage execute the same operations.
++macro_rules! impl_alloc_dedupslots {
++    ([$($generics:tt)*] $store:ty; [$($deref:tt)*]) => {
++        impl<$($generics)*> DedupSlots for $store {
+     fn try_store_app_dedup(&mut self, entry: DedupEntry) -> Option<bool> {
+         // The private table guarantees unique keys. One walk can therefore
+         // establish absence and select the same first oldest eviction victim.
+@@ -746,7 +771,7 @@ impl<T: OwnedToken> DedupSlots for AllocMemory<T> {
+             entries,
+             occ,
+             expiry,
+-        } = &mut self.dedup;
++        } = &mut $($deref)* self.dedup;
+         let mut remaining = occ.occupied_count();
+         let mut next_due = 0;
+         for (i, payload) in entries.iter_mut().enumerate() {
+@@ -809,8 +834,15 @@ impl<T: OwnedToken> DedupSlots for AllocMemory<T> {
+         self.dedup.entry_ref(id)
+     }
+ }
++    };
++}
++impl_alloc_dedupslots!([T: OwnedToken] AllocMemory<T>; []);
++impl_alloc_dedupslots!(['a, T: OwnedToken] AllocReply<'a, T>; [*]);
+ 
+-impl<T: OwnedToken> BodySlots for AllocMemory<T> {
++// Owned and response-phase storage execute the same operations.
++macro_rules! impl_alloc_bodyslots {
++    ([$($generics:tt)*] $store:ty; [$($deref:tt)*]) => {
++        impl<$($generics)*> BodySlots for $store {
+     #[allow(clippy::too_many_arguments)]
+     fn replace_observe_body(
+         &mut self,
+@@ -1175,8 +1207,15 @@ impl<T: OwnedToken> BodySlots for AllocMemory<T> {
+             .access_mut(id)
+     }
+ }
++    };
++}
++impl_alloc_bodyslots!([T: OwnedToken] AllocMemory<T>; []);
++impl_alloc_bodyslots!(['a, T: OwnedToken] AllocReply<'a, T>; [*]);
+ 
+-impl<T: OwnedToken> ObserveSlots for AllocMemory<T> {
++// Owned and response-phase storage execute the same operations.
++macro_rules! impl_alloc_observeslots {
++    ([$($generics:tt)*] $store:ty; [$($deref:tt)*]) => {
++        impl<$($generics)*> ObserveSlots for $store {
+     fn replace_observe_con(
+         &mut self,
+         pending: PendingCon,
+@@ -1230,6 +1269,88 @@ impl<T: OwnedToken> ObserveSlots for AllocMemory<T> {
+         self.observe.set_entry(id, interest)
+     }
+ }
++    };
++}
++impl_alloc_observeslots!([T: OwnedToken] AllocMemory<T>; []);
++impl_alloc_observeslots!(['a, T: OwnedToken] AllocReply<'a, T>; [*]);
++
++/// Temporary allocator-backed response view; every mutable owner stays in place.
++/// Incoming-pool access is unavailable until this view and its body borrow end.
++pub struct AllocReply<'a, T: OwnedToken> {
++    retransmit_cursor: &'a mut usize,
++    rx: &'a mut AllocDatagramPool,
++    tx: &'a mut AllocDatagramPool,
++    dedup: &'a mut AllocDedupTable,
++    observe: &'a mut AllocObserveTable<T>,
++    exchange: &'a mut AllocExchangeTable<T>,
++    rx_body: Option<IncomingUnavailable<T>>,
++    tx_body: Option<&'a mut AllocBodyPool<T>>,
++    incoming_capacity: Option<(usize, usize)>,
++}
++
++impl<T: OwnedToken> Storage for AllocReply<'_, T> {
++    type Token = T;
++    fn capacities(&self) -> Capacities {
++        Capacities {
++            rx_datagram_slots: self.rx.occ.slot_count(),
++            rx_datagram_bytes: self.rx.slot_bytes,
++            tx_datagram_slots: self.tx.occ.slot_count(),
++            tx_datagram_bytes: self.tx.slot_bytes,
++            dedup_entries: self.dedup.occ.slot_count(),
++            observe_entries: self.observe.occ.slot_count(),
++            rx_body_slots: self.incoming_capacity.map(|c| c.0),
++            rx_body_bytes: self.incoming_capacity.map(|c| c.1),
++            tx_body_slots: self.tx_body.as_ref().map(|p| p.occ.slot_count()),
++            tx_body_bytes: self.tx_body.as_ref().map(|p| p.slot_bytes),
++        }
++    }
++    fn rx_datagram(&mut self) -> &mut dyn SlotPool {
++        self.rx
++    }
++    fn tx_datagram(&mut self) -> &mut dyn SlotPool {
++        self.tx
++    }
++    fn dedup(&mut self) -> &mut dyn SlotPool {
++        self.dedup
++    }
++    fn observe(&mut self) -> &mut dyn SlotPool {
++        self.observe
++    }
++    fn rx_body(&mut self) -> Option<&mut dyn SlotPool> {
++        None
++    }
++    fn tx_body(&mut self) -> Option<&mut dyn SlotPool> {
++        self.tx_body.as_mut().map(|p| &mut **p as &mut dyn SlotPool)
++    }
++}
++
++impl<T: OwnedToken> ReplyPartition for AllocMemory<T> {
++    type Reply<'a>
++        = AllocReply<'a, T>
++    where
++        Self: 'a;
++    fn partition_reply(&mut self, body: Option<SlotId>) -> (Option<&[u8]>, Self::Reply<'_>) {
++        let payload = body.and_then(|id| self.rx_body.as_ref()?.payload(id));
++        let incoming_capacity = self
++            .rx_body
++            .as_ref()
++            .map(|p| (p.occ.slot_count(), p.slot_bytes));
++        (
++            payload,
++            AllocReply {
++                retransmit_cursor: &mut self.retransmit_cursor,
++                rx: &mut self.rx,
++                tx: &mut self.tx,
++                dedup: &mut self.dedup,
++                observe: &mut self.observe,
++                exchange: &mut self.exchange,
++                rx_body: None,
++                tx_body: self.tx_body.as_mut(),
++                incoming_capacity,
++            },
++        )
++    }
++}
+ 
+ struct AllocBodySlot<T: OwnedToken = Token> {
+     buf: Vec<u8>,
+diff --git a/src/storage/engine.rs b/src/storage/engine.rs
+index 0da13db..5c81198 100644
+--- a/src/storage/engine.rs
++++ b/src/storage/engine.rs
+@@ -62,6 +62,49 @@ pub struct Engine<S: Storage> {
+     work_metrics: super::WorkMetrics,
+ }
+ 
++/// Temporary reply engine. Counters are restored even when a pending send is
++/// cancelled; the incoming-body owner outlives this view.
++pub(crate) struct ReplyEngine<'a, S: Storage> {
++    pub(crate) engine: Engine<S>,
++    metrics: &'a mut Metrics,
++    #[cfg(feature = "diagnostics")]
++    work_metrics: &'a mut super::WorkMetrics,
++}
++
++impl<S: Storage> Drop for ReplyEngine<'_, S> {
++    fn drop(&mut self) {
++        *self.metrics = self.engine.metrics;
++        #[cfg(feature = "diagnostics")]
++        {
++            *self.work_metrics = self.engine.work_metrics;
++        }
++    }
++}
++
++impl<S: super::ReplyPartition> Engine<S> {
++    pub(crate) fn partition_reply(
++        &mut self,
++        body: Option<SlotId>,
++    ) -> (Option<&[u8]>, ReplyEngine<'_, S::Reply<'_>>) {
++        let (payload, storage) = self.storage.partition_reply(body);
++        let engine = Engine {
++            storage,
++            metrics: self.metrics,
++            #[cfg(feature = "diagnostics")]
++            work_metrics: self.work_metrics,
++        };
++        (
++            payload,
++            ReplyEngine {
++                engine,
++                metrics: &mut self.metrics,
++                #[cfg(feature = "diagnostics")]
++                work_metrics: &mut self.work_metrics,
++            },
++        )
++    }
++}
++
+ impl<S: Storage> Engine<S> {
+     pub(crate) fn from_storage(storage: S) -> Self {
+         Self {
+diff --git a/src/storage/memory.rs b/src/storage/memory.rs
+index f61e199..647e682 100644
+--- a/src/storage/memory.rs
++++ b/src/storage/memory.rs
+@@ -26,6 +26,7 @@ use super::capacities::{Capacities, bytes_ok};
+ use super::exchange::ExchangeStore;
+ use super::pending::{PendingRto, next_due_slot, outstanding_pending, record_admission};
+ use super::pool::DatagramBytes;
++use super::reply::{IncomingUnavailable, ReplyPartition};
+ use super::table::{DedupStore, ObserveStore};
+ use crate::error::BlockTransferError;
+ use crate::message::{BlockValue, MessageId};
+@@ -104,6 +105,7 @@ pub trait MemoryLayout<const BLOCK_WISE: bool>: MemoryProfile {
+         + BodySlots
+         + Exchanges
+         + DedupSlots
++        + ReplyPartition
+         + Default;
+ }
+ 
+@@ -116,7 +118,8 @@ where
+         + ObserveSlots
+         + BodySlots
+         + Exchanges
+-        + DedupSlots,
++        + DedupSlots
++        + ReplyPartition,
+ {
+     type Store = Memory<P>;
+ }
+@@ -130,7 +133,8 @@ where
+         + ObserveSlots
+         + BodySlots
+         + Exchanges
+-        + DedupSlots,
++        + DedupSlots
++        + ReplyPartition,
+ {
+     type Store = Memory<P, WithBodies<P>>;
+ }
+@@ -315,21 +319,21 @@ impl<P: MemoryProfile> Memory<P, WithBodies<P>> {
+ }
+ 
+ macro_rules! impl_common_storage {
+-    () => {
++    ([$($deref:tt)*]) => {
+         fn rx_datagram(&mut self) -> &mut dyn SlotPool {
+-            &mut self.rx
++            &mut $($deref)* self.rx
+         }
+ 
+         fn tx_datagram(&mut self) -> &mut dyn SlotPool {
+-            &mut self.tx
++            &mut $($deref)* self.tx
+         }
+ 
+         fn dedup(&mut self) -> &mut dyn SlotPool {
+-            &mut self.dedup
++            &mut $($deref)* self.dedup
+         }
+ 
+         fn observe(&mut self) -> &mut dyn SlotPool {
+-            &mut self.observe
++            &mut $($deref)* self.observe
+         }
+     };
+ }
+@@ -340,7 +344,7 @@ impl<P: MemoryProfile> Storage for Memory<P> {
+         Capacities::from_profile::<P>()
+     }
+ 
+-    impl_common_storage!();
++    impl_common_storage!([]);
+ 
+     fn rx_body(&mut self) -> Option<&mut dyn SlotPool> {
+         None
+@@ -357,7 +361,7 @@ impl<P: MemoryProfile> Storage for Memory<P, WithBodies<P>> {
+         Capacities::from_profile::<P>().with_block_wise::<P>()
+     }
+ 
+-    impl_common_storage!();
++    impl_common_storage!([]);
+ 
+     fn rx_body(&mut self) -> Option<&mut dyn SlotPool> {
+         Some(&mut self.bodies.rx)
+@@ -368,7 +372,10 @@ impl<P: MemoryProfile> Storage for Memory<P, WithBodies<P>> {
+     }
+ }
+ 
+-impl<P: MemoryProfile, B> DatagramSlots for Memory<P, B>
++// Owned and response-phase storage execute the same operations.
++macro_rules! impl_memory_datagramslots {
++    ([$($generics:tt)*] $store:ty; [$($deref:tt)*]) => {
++        impl<$($generics)*> DatagramSlots for $store
+ where
+     P::RxDatagram: DatagramBytes,
+     P::TxDatagram: DatagramBytes,
+@@ -380,73 +387,77 @@ where
+     type TxScratch = P::TxScratch;
+ 
+     fn rx_payload(&self, id: SlotId) -> Option<&[u8]> {
+-        DatagramBytes::payload(&self.rx, id)
++        DatagramBytes::payload(& $($deref)* self.rx, id)
+     }
+ 
+     fn tx_payload(&self, id: SlotId) -> Option<&[u8]> {
+-        DatagramBytes::payload(&self.tx, id)
++        DatagramBytes::payload(& $($deref)* self.tx, id)
+     }
+ 
+     fn rx_payload_mut(&mut self, id: SlotId) -> Option<&mut [u8]> {
+-        DatagramBytes::payload_mut(&mut self.rx, id)
++        DatagramBytes::payload_mut(&mut $($deref)* self.rx, id)
+     }
+ 
+     fn tx_payload_mut(&mut self, id: SlotId) -> Option<&mut [u8]> {
+-        DatagramBytes::payload_mut(&mut self.tx, id)
++        DatagramBytes::payload_mut(&mut $($deref)* self.tx, id)
+     }
+ 
+     fn set_rx_len(&mut self, id: SlotId, len: usize) -> Result<(), SlotError> {
+-        DatagramBytes::set_len(&mut self.rx, id, len)
++        DatagramBytes::set_len(&mut $($deref)* self.rx, id, len)
+     }
+ 
+     fn set_tx_len(&mut self, id: SlotId, len: usize) -> Result<(), SlotError> {
+-        DatagramBytes::set_len(&mut self.tx, id, len)
++        DatagramBytes::set_len(&mut $($deref)* self.tx, id, len)
+     }
+ 
+     fn rx_endpoint(&self, id: SlotId) -> Option<Endpoint> {
+-        DatagramBytes::endpoint(&self.rx, id)
++        DatagramBytes::endpoint(& $($deref)* self.rx, id)
+     }
+ 
+     fn tx_endpoint(&self, id: SlotId) -> Option<Endpoint> {
+-        DatagramBytes::endpoint(&self.tx, id)
++        DatagramBytes::endpoint(& $($deref)* self.tx, id)
+     }
+ 
+     fn set_rx_endpoint(&mut self, id: SlotId, endpoint: Endpoint) -> Result<(), SlotError> {
+-        DatagramBytes::set_endpoint(&mut self.rx, id, endpoint)
++        DatagramBytes::set_endpoint(&mut $($deref)* self.rx, id, endpoint)
+     }
+ 
+     fn set_tx_endpoint(&mut self, id: SlotId, endpoint: Endpoint) -> Result<(), SlotError> {
+-        DatagramBytes::set_endpoint(&mut self.tx, id, endpoint)
++        DatagramBytes::set_endpoint(&mut $($deref)* self.tx, id, endpoint)
+     }
+ 
+     fn tx_pending_mid(&self, id: SlotId) -> Option<MessageId> {
+-        DatagramBytes::pending_mid(&self.tx, id)
++        DatagramBytes::pending_mid(& $($deref)* self.tx, id)
+     }
+ 
+     fn set_tx_pending(&mut self, id: SlotId, message_id: MessageId) -> Result<(), SlotError> {
+-        DatagramBytes::set_pending_mid(&mut self.tx, id, message_id)
++        DatagramBytes::set_pending_mid(&mut $($deref)* self.tx, id, message_id)
+     }
+ 
+     fn clear_tx_pending(&mut self, id: SlotId) -> Result<(), SlotError> {
+-        DatagramBytes::clear_pending_mid(&mut self.tx, id)
++        DatagramBytes::clear_pending_mid(&mut $($deref)* self.tx, id)
+     }
+ 
+     fn lookup_tx_pending(&self, message_id: MessageId, endpoint: Endpoint) -> Option<SlotId> {
+-        DatagramBytes::lookup_pending(&self.tx, message_id, endpoint)
++        DatagramBytes::lookup_pending(& $($deref)* self.tx, message_id, endpoint)
+     }
+ 
+     fn access_rx(&mut self, id: SlotId) -> Result<Access<'_>, SlotError> {
+-        DatagramBytes::access(&mut self.rx, id)
++        DatagramBytes::access(&mut $($deref)* self.rx, id)
+     }
+ 
+     fn access_tx(&mut self, id: SlotId) -> Result<Access<'_>, SlotError> {
+-        DatagramBytes::access(&mut self.tx, id)
++        DatagramBytes::access(&mut $($deref)* self.tx, id)
+     }
+ 
+     fn access_tx_mut(&mut self, id: SlotId) -> Result<AccessMut<'_>, SlotError> {
+-        DatagramBytes::access_mut(&mut self.tx, id)
++        DatagramBytes::access_mut(&mut $($deref)* self.tx, id)
+     }
+ }
++    };
++}
++impl_memory_datagramslots!([P: MemoryProfile, B] Memory<P, B>; []);
++impl_memory_datagramslots!(['a, P: MemoryProfile, B] MemoryReply<'a, P, B>; [*]);
+ 
+ const _: () = {
+     assert!(<Memory<super::profiles::Default> as DatagramSlots>::RX_DATAGRAM_BYTES == 1472);
+@@ -454,7 +465,10 @@ const _: () = {
+     assert!(<Memory<super::profiles::Constrained> as DatagramSlots>::TX_DATAGRAM_BYTES == 1152);
+ };
+ 
+-impl<P: MemoryProfile, B> PendingCons for Memory<P, B>
++// Owned and response-phase storage execute the same operations.
++macro_rules! impl_memory_pendingcons {
++    ([$($generics:tt)*] $store:ty; [$($deref:tt)*]) => {
++        impl<$($generics)*> PendingCons for $store
+ where
+     P::TxDatagram: DatagramBytes + SlotPool,
+ {
+@@ -484,8 +498,8 @@ where
+         let outstanding =
+             outstanding_pending(self.tx.slot_count(), endpoint, |sid| self.pending_con(sid));
+         record_admission(None, message_id, endpoint, outstanding)?;
+-        DatagramBytes::set_endpoint(&mut self.tx, id, endpoint).ok()?;
+-        DatagramBytes::set_pending(&mut self.tx, id, message_id, PendingRto::reserved()).ok()?;
++        DatagramBytes::set_endpoint(&mut $($deref)* self.tx, id, endpoint).ok()?;
++        DatagramBytes::set_pending(&mut $($deref)* self.tx, id, message_id, PendingRto::reserved()).ok()?;
+         self.pending_con(id)
+     }
+ 
+@@ -499,7 +513,7 @@ where
+             return None;
+         }
+         DatagramBytes::set_pending(
+-            &mut self.tx,
++            &mut $($deref)* self.tx,
+             expected.tx_slot(),
+             expected.message_id(),
+             PendingRto::new(now_ms, jitter_ms),
+@@ -512,7 +526,7 @@ where
+         if expected.rto().is_started() || self.pending_con(expected.tx_slot()) != Some(expected) {
+             return false;
+         }
+-        DatagramBytes::clear_pending_mid(&mut self.tx, expected.tx_slot()).is_ok()
++        DatagramBytes::clear_pending_mid(&mut $($deref)* self.tx, expected.tx_slot()).is_ok()
+     }
+ 
+     fn record_pending_con(
+@@ -535,9 +549,9 @@ where
+         if !record_admission(existing, message_id, endpoint, outstanding)? {
+             return Some(id);
+         }
+-        DatagramBytes::set_endpoint(&mut self.tx, id, endpoint).ok()?;
++        DatagramBytes::set_endpoint(&mut $($deref)* self.tx, id, endpoint).ok()?;
+         DatagramBytes::set_pending(
+-            &mut self.tx,
++            &mut $($deref)* self.tx,
+             id,
+             message_id,
+             PendingRto::new(now_ms, jitter_ms),
+@@ -547,24 +561,24 @@ where
+     }
+ 
+     fn lookup_pending_con(&self, message_id: MessageId, endpoint: Endpoint) -> Option<SlotId> {
+-        DatagramBytes::lookup_pending(&self.tx, message_id, endpoint)
++        DatagramBytes::lookup_pending(& $($deref)* self.tx, message_id, endpoint)
+     }
+ 
+     fn take_pending_con(&mut self, message_id: MessageId, endpoint: Endpoint) -> Option<SlotId> {
+-        let id = DatagramBytes::lookup_pending(&self.tx, message_id, endpoint)?;
+-        DatagramBytes::clear_pending_mid(&mut self.tx, id).ok()?;
++        let id = DatagramBytes::lookup_pending(& $($deref)* self.tx, message_id, endpoint)?;
++        DatagramBytes::clear_pending_mid(&mut $($deref)* self.tx, id).ok()?;
+         Some(id)
+     }
+ 
+     fn pending_con(&self, id: SlotId) -> Option<PendingCon> {
+-        let message_id = DatagramBytes::pending_mid(&self.tx, id)?;
+-        let endpoint = DatagramBytes::endpoint(&self.tx, id)?;
+-        let rto = DatagramBytes::pending_rto(&self.tx, id)?;
++        let message_id = DatagramBytes::pending_mid(& $($deref)* self.tx, id)?;
++        let endpoint = DatagramBytes::endpoint(& $($deref)* self.tx, id)?;
++        let rto = DatagramBytes::pending_rto(& $($deref)* self.tx, id)?;
+         Some(PendingCon::new(message_id, endpoint, id).with_rto(rto))
+     }
+ 
+     fn peek_retransmit(&self, now_ms: u64) -> Option<PendingCon> {
+-        let due = next_due_slot(self.tx.slot_count(), self.retransmit_cursor, now_ms, |id| {
++        let due = next_due_slot(self.tx.slot_count(), $($deref)* self.retransmit_cursor, now_ms, |id| {
+             self.pending_con(id)
+         })?;
+         self.pending_con(due.id)
+@@ -577,13 +591,13 @@ where
+         let due = super::pending::due_snapshot(expected, now_ms)?;
+         match due.mark {
+             Some(mark) => {
+-                DatagramBytes::set_pending(&mut self.tx, due.id, mark.message_id, mark.rto).ok()?;
++                DatagramBytes::set_pending(&mut $($deref)* self.tx, due.id, mark.message_id, mark.rto).ok()?;
+             }
+             None => {
+-                DatagramBytes::clear_pending_mid(&mut self.tx, due.id).ok()?;
++                DatagramBytes::clear_pending_mid(&mut $($deref)* self.tx, due.id).ok()?;
+             }
+         }
+-        self.retransmit_cursor = due.id.index() + 1;
++        $($deref)* self.retransmit_cursor = due.id.index() + 1;
+         Some(due.event)
+     }
+ 
+@@ -592,13 +606,20 @@ where
+         self.commit_retransmit(expected, now_ms)
+     }
+ }
++    };
++}
++impl_memory_pendingcons!([P: MemoryProfile, B] Memory<P, B>; []);
++impl_memory_pendingcons!(['a, P: MemoryProfile, B] MemoryReply<'a, P, B>; [*]);
+ 
+-impl<P: MemoryProfile, B> DedupSlots for Memory<P, B>
++// Owned and response-phase storage execute the same operations.
++macro_rules! impl_memory_dedupslots {
++    ([$($generics:tt)*] $store:ty; [$($deref:tt)*]) => {
++        impl<$($generics)*> DedupSlots for $store
+ where
+     P::Dedup: DedupStore,
+ {
+     fn try_store_app_dedup(&mut self, entry: DedupEntry) -> Option<bool> {
+-        let tx = &mut self.tx;
++        let tx = &mut $($deref)* self.tx;
+         self.dedup.try_store_app(entry, |pin| {
+             let _ = tx.release(pin);
+         })
+@@ -620,8 +641,15 @@ where
+         self.dedup.entry_ref(id)
+     }
+ }
++    };
++}
++impl_memory_dedupslots!([P: MemoryProfile, B] Memory<P, B>; []);
++impl_memory_dedupslots!(['a, P: MemoryProfile, B] MemoryReply<'a, P, B>; [*]);
+ 
+-impl<P: MemoryProfile, B> Exchanges for Memory<P, B>
++// Owned and response-phase storage execute the same operations.
++macro_rules! impl_memory_exchanges {
++    ([$($generics:tt)*] $store:ty; [$($deref:tt)*]) => {
++        impl<$($generics)*> Exchanges for $store
+ where
+     P::Exchange: ExchangeStore<P::Token>,
+     Self: Storage<Token = P::Token>,
+@@ -642,8 +670,15 @@ where
+         self.exchange.entry(id)
+     }
+ }
++    };
++}
++impl_memory_exchanges!([P: MemoryProfile, B] Memory<P, B>; []);
++impl_memory_exchanges!(['a, P: MemoryProfile, B] MemoryReply<'a, P, B>; [*]);
+ 
+-impl<P: MemoryProfile, B> ObserveSlots for Memory<P, B>
++// Owned and response-phase storage execute the same operations.
++macro_rules! impl_memory_observeslots {
++    ([$($generics:tt)*] $store:ty; [$($deref:tt)*]) => {
++        impl<$($generics)*> ObserveSlots for $store
+ where
+     P::Observe: ObserveStore<P::Token>,
+     Self: Storage<Token = P::Token>,
+@@ -701,8 +736,15 @@ where
+         self.observe.set_entry(id, interest)
+     }
+ }
++    };
++}
++impl_memory_observeslots!([P: MemoryProfile, B] Memory<P, B>; []);
++impl_memory_observeslots!(['a, P: MemoryProfile, B] MemoryReply<'a, P, B>; [*]);
+ 
+-impl<P: MemoryProfile> BodySlots for Memory<P> {
++// Owned and response-phase storage execute the same operations.
++macro_rules! impl_memory_no_bodies {
++    ([$($generics:tt)*] $store:ty; [$($deref:tt)*]) => {
++        impl<$($generics)*> BodySlots for $store {
+     fn rx_body_payload(&self, _id: SlotId) -> Option<&[u8]> {
+         None
+     }
+@@ -947,8 +989,15 @@ impl<P: MemoryProfile> BodySlots for Memory<P> {
+         Err(SlotError::InvalidSlot)
+     }
+ }
++    };
++}
++impl_memory_no_bodies!([P: MemoryProfile] Memory<P>; []);
++impl_memory_no_bodies!(['a, P: MemoryProfile] MemoryReply<'a, P>; []);
+ 
+-impl<P: MemoryProfile> BodySlots for Memory<P, WithBodies<P>>
++// Owned and response-phase storage execute the same operations.
++macro_rules! impl_memory_bodies {
++    ([$($generics:tt)*] $store:ty; [$($deref:tt)*]) => {
++        impl<$($generics)*> BodySlots for $store
+ where
+     P::RxBody: BodyOps<P::Token>,
+     P::TxBody: BodyOps<P::Token>,
+@@ -1269,6 +1318,118 @@ where
+         self.bodies.tx.access_mut(id)
+     }
+ }
++    };
++}
++impl_memory_bodies!([P: MemoryProfile] Memory<P, WithBodies<P>>; []);
++impl_memory_bodies!(['a, P: MemoryProfile] MemoryReply<'a, P, ReplyBodies<'a, P>>; []);
++
++/// Temporary storage view used only while a completed request body is borrowed.
++/// Incoming-pool access is unavailable; other owners are borrowed in place.
++pub struct MemoryReply<'a, P: MemoryProfile, B = NoBodies> {
++    retransmit_cursor: &'a mut usize,
++    rx: &'a mut P::RxDatagram,
++    tx: &'a mut P::TxDatagram,
++    dedup: &'a mut P::Dedup,
++    observe: &'a mut P::Observe,
++    exchange: &'a mut P::Exchange,
++    bodies: B,
++}
++
++/// Outgoing body access retained by a fixed response-phase view.
++pub struct ReplyBodies<'a, P: MemoryProfile> {
++    rx: IncomingUnavailable<P::Token>,
++    tx: &'a mut P::TxBody,
++}
++
++impl<P: MemoryProfile> Storage for MemoryReply<'_, P> {
++    type Token = P::Token;
++    fn capacities(&self) -> Capacities {
++        Capacities::from_profile::<P>()
++    }
++    impl_common_storage!([*]);
++    fn rx_body(&mut self) -> Option<&mut dyn SlotPool> {
++        None
++    }
++    fn tx_body(&mut self) -> Option<&mut dyn SlotPool> {
++        None
++    }
++}
++
++impl<P: MemoryProfile> Storage for MemoryReply<'_, P, ReplyBodies<'_, P>> {
++    type Token = P::Token;
++    fn capacities(&self) -> Capacities {
++        Capacities::from_profile::<P>().with_block_wise::<P>()
++    }
++    impl_common_storage!([*]);
++    fn rx_body(&mut self) -> Option<&mut dyn SlotPool> {
++        None
++    }
++    fn tx_body(&mut self) -> Option<&mut dyn SlotPool> {
++        Some(self.bodies.tx)
++    }
++}
++
++impl<P: MemoryProfile> ReplyPartition for Memory<P>
++where
++    P::RxDatagram: DatagramBytes,
++    P::TxDatagram: DatagramBytes,
++    P::Dedup: DedupStore,
++    P::Observe: ObserveStore<P::Token>,
++    P::Exchange: ExchangeStore<P::Token>,
++{
++    type Reply<'a>
++        = MemoryReply<'a, P>
++    where
++        Self: 'a;
++    fn partition_reply(&mut self, _body: Option<SlotId>) -> (Option<&[u8]>, Self::Reply<'_>) {
++        (
++            None,
++            MemoryReply {
++                retransmit_cursor: &mut self.retransmit_cursor,
++                rx: &mut self.rx,
++                tx: &mut self.tx,
++                dedup: &mut self.dedup,
++                observe: &mut self.observe,
++                exchange: &mut self.exchange,
++                bodies: NoBodies,
++            },
++        )
++    }
++}
++
++impl<P: MemoryProfile> ReplyPartition for Memory<P, WithBodies<P>>
++where
++    P::RxDatagram: DatagramBytes,
++    P::TxDatagram: DatagramBytes,
++    P::Dedup: DedupStore,
++    P::Observe: ObserveStore<P::Token>,
++    P::Exchange: ExchangeStore<P::Token>,
++    P::RxBody: BodyOps<P::Token>,
++    P::TxBody: BodyOps<P::Token>,
++{
++    type Reply<'a>
++        = MemoryReply<'a, P, ReplyBodies<'a, P>>
++    where
++        Self: 'a;
++    fn partition_reply(&mut self, body: Option<SlotId>) -> (Option<&[u8]>, Self::Reply<'_>) {
++        let payload = body.and_then(|id| self.bodies.rx.payload(id));
++        (
++            payload,
++            MemoryReply {
++                retransmit_cursor: &mut self.retransmit_cursor,
++                rx: &mut self.rx,
++                tx: &mut self.tx,
++                dedup: &mut self.dedup,
++                observe: &mut self.observe,
++                exchange: &mut self.exchange,
++                bodies: ReplyBodies {
++                    rx: IncomingUnavailable::new(),
++                    tx: &mut self.bodies.tx,
++                },
++            },
++        )
++    }
++}
+ 
+ impl<P: MemoryProfile> core::fmt::Debug for Memory<P> {
+     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+diff --git a/src/storage/mod.rs b/src/storage/mod.rs
+index 5fc199c..b37f10f 100644
+--- a/src/storage/mod.rs
++++ b/src/storage/mod.rs
+@@ -39,6 +39,7 @@ mod pending;
+ mod pool;
+ pub mod profiles;
+ mod progress;
++mod reply;
+ mod slot;
+ mod table;
+ mod usage;
+@@ -53,7 +54,7 @@ mod tests;
+ 
+ pub use access::{Access, AccessMut};
+ #[cfg(feature = "alloc")]
+-pub use alloc_memory::AllocMemory;
++pub use alloc_memory::{AllocMemory, AllocReply};
+ pub use async_io::{AsyncDatagramIo, InitialConSendError};
+ pub(crate) use block::classic_block2_range;
+ pub use block::{
+@@ -68,11 +69,14 @@ pub use exchange::{ExchangeEntry, ExchangeKey, ExchangeTable, Exchanges};
+ #[cfg(feature = "std")]
+ pub use io::UdpSocketIo;
+ pub use io::{DatagramIo, DatagramIoError, DatagramTransport};
+-pub use memory::{Memory, MemoryLayout, MemoryProfile, NoBodies, WithBodies};
++pub use memory::{
++    Memory, MemoryLayout, MemoryProfile, MemoryReply, NoBodies, ReplyBodies, WithBodies,
++};
+ pub use metrics::Metrics;
+ pub use pending::{PendingCon, PendingCons, PendingReplaceError, PendingRto, Retransmit};
+ pub use pool::{BodyPool, DatagramPool, DatagramScratch, ResidentScratch};
+ pub use progress::Progress;
++pub use reply::ReplyPartition;
+ pub use slot::{SlotError, SlotId};
+ pub(crate) use table::ObserveSelection;
+ pub use table::{
+diff --git a/src/storage/reply.rs b/src/storage/reply.rs
+new file mode 100644
+index 0000000..6f4111d
+--- /dev/null
++++ b/src/storage/reply.rs
+@@ -0,0 +1,240 @@
++//! Temporary response-phase access without borrowing the incoming body through Engine.
++
++use super::block::{BlockKey, BlockProgress, BlockRole, BlockTransfer, BodyOps, OutgoingBlock};
++use super::{Access, AccessMut, SlotError, SlotId, Storage};
++use crate::app::AppStorage;
++use crate::error::BlockTransferError;
++use crate::message::{BlockValue, OwnedToken};
++
++/// Split a completed incoming body from the storage needed to encode its reply.
++///
++/// The returned payload borrows only bytes; the reply view does not retain a
++/// reference to the incoming pool or its metadata. Configured capacities remain
++/// unchanged, but incoming-pool access is temporarily unavailable: `rx_body` and
++/// incoming body reads return `None`, and incoming mutations refuse. Datagram,
++/// outgoing-body and table operations remain available. After both values drop,
++/// release the completed body through the original storage.
++/// This temporary view must not run incoming transfer admission or progress.
++pub trait ReplyPartition: AppStorage {
++    /// Storage capabilities available while the incoming body is borrowed.
++    type Reply<'a>: AppStorage<Token = <Self as Storage>::Token>
++    where
++        Self: 'a;
++
++    /// Borrow `body` and the remaining storage without moving or copying its bytes.
++    fn partition_reply(&mut self, body: Option<SlotId>) -> (Option<&[u8]>, Self::Reply<'_>);
++}
++
++/// No incoming-pool access during reply encoding. A zero-sized facade avoids
++/// adding Sync requirements to custom incoming-body storage across an await.
++pub(crate) struct IncomingUnavailable<T>(core::marker::PhantomData<fn() -> T>);
++
++impl<T> IncomingUnavailable<T> {
++    pub(crate) fn new() -> Self {
++        Self(core::marker::PhantomData)
++    }
++}
++
++impl<T: OwnedToken> BodyOps<T> for IncomingUnavailable<T> {
++    fn payload(&self, _id: SlotId) -> Option<&[u8]> {
++        None
++    }
++
++    fn transfer(&self, _id: SlotId) -> Option<BlockTransfer<T>> {
++        None
++    }
++
++    fn lookup(&self, _key: BlockKey<T>) -> Option<SlotId> {
++        None
++    }
++
++    fn set_transfer(&mut self, _id: SlotId, _transfer: BlockTransfer<T>) -> Result<(), SlotError> {
++        Err(SlotError::Pinned)
++    }
++
++    fn admit_incoming(
++        &mut self,
++        _key: BlockKey<T>,
++        _role: BlockRole,
++        _block: BlockValue,
++        _payload: &[u8],
++        _expected_len: Option<u32>,
++    ) -> Result<SlotId, BlockTransferError> {
++        Err(SlotError::Pinned.into())
++    }
++
++    fn write_incoming(
++        &mut self,
++        _id: SlotId,
++        _role: BlockRole,
++        _block: BlockValue,
++        _payload: &[u8],
++    ) -> Result<BlockProgress, BlockTransferError> {
++        Err(SlotError::Pinned.into())
++    }
++
++    fn apply_incoming(
++        &mut self,
++        _key: BlockKey<T>,
++        _role: BlockRole,
++        _block: BlockValue,
++        _payload: &[u8],
++        _expected_len: Option<u32>,
++    ) -> Result<BlockProgress, BlockTransferError> {
++        Err(SlotError::Pinned.into())
++    }
++
++    fn start_outgoing(
++        &mut self,
++        _key: BlockKey<T>,
++        _role: BlockRole,
++        _body: &[u8],
++        _szx: u8,
++    ) -> Result<SlotId, BlockTransferError> {
++        Err(SlotError::Pinned.into())
++    }
++
++    fn next_outgoing(
++        &mut self,
++        _id: SlotId,
++        _role: BlockRole,
++    ) -> Result<OutgoingBlock, BlockTransferError> {
++        Err(SlotError::Pinned.into())
++    }
++
++    fn adopt_smaller_outgoing_szx(
++        &mut self,
++        _id: SlotId,
++        _role: BlockRole,
++        _szx: u8,
++    ) -> Result<(), BlockTransferError> {
++        Err(SlotError::Pinned.into())
++    }
++
++    fn next_bert_outgoing(
++        &mut self,
++        _id: SlotId,
++        _role: BlockRole,
++        _max_payload: usize,
++    ) -> Result<OutgoingBlock, BlockTransferError> {
++        Err(SlotError::Pinned.into())
++    }
++
++    fn ack_outgoing(
++        &mut self,
++        _id: SlotId,
++        _role: BlockRole,
++        _num: u32,
++    ) -> Result<BlockProgress, BlockTransferError> {
++        Err(SlotError::Pinned.into())
++    }
++
++    fn access(&mut self, _id: SlotId) -> Result<Access<'_>, SlotError> {
++        Err(SlotError::Pinned)
++    }
++
++    fn access_mut(&mut self, _id: SlotId) -> Result<AccessMut<'_>, SlotError> {
++        Err(SlotError::Pinned)
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::ReplyPartition;
++    use crate::message::{BlockValue, MessageId, Token};
++    use crate::storage::{
++        BlockKey, BodySlots, DatagramSlots, Endpoint, Memory, PendingCons, Storage, profiles,
++    };
++
++    fn check_body_projection<S: ReplyPartition<Token = Token>>(store: &mut S) {
++        let endpoint = Endpoint::v4([192, 0, 2, 1], 5683);
++        let key = BlockKey::new(Token::new(&[1]).unwrap(), endpoint);
++        let block = BlockValue::from_size(0, false, 1024).unwrap();
++        let bytes = [0xa5; 900];
++        let incoming = store.admit_block1(key, block, &bytes, Some(900)).unwrap();
++        let transfer = store.rx_body_transfer(incoming).unwrap();
++        let pointer = store.rx_body_payload(incoming).unwrap().as_ptr();
++        let capacities = store.capacities();
++
++        let (tx, outgoing) = {
++            let (payload, mut reply) = store.partition_reply(Some(incoming));
++            let payload = payload.unwrap();
++            assert_eq!(payload.as_ptr(), pointer);
++            assert_eq!(payload, bytes);
++            assert_eq!(reply.capacities(), capacities);
++            assert!(reply.rx_body().is_none());
++            assert!(reply.rx_body_payload(incoming).is_none());
++            assert!(reply.rx_body_transfer(incoming).is_none());
++            assert!(reply.lookup_rx_body(key).is_none());
++            assert!(reply.set_rx_body_transfer(incoming, transfer).is_err());
++            assert!(reply.write_block1(incoming, block, b"replacement").is_err());
++            assert!(reply.admit_block1(key, block, b"new", None).is_err());
++
++            // Encoding and retained outgoing snapshots can use the borrowed bytes.
++            let tx = reply.tx_datagram().acquire().unwrap();
++            reply.tx_payload_mut(tx).unwrap()[..payload.len()].copy_from_slice(payload);
++            reply.set_tx_len(tx, payload.len()).unwrap();
++            let pending = reply
++                .reserve_pending_con(tx, endpoint, MessageId::new(7))
++                .unwrap();
++            assert_eq!(reply.pending_con(tx), Some(pending));
++            let outgoing = reply.start_block2(key, payload, 6).unwrap();
++            assert_eq!(reply.tx_body_payload(outgoing), Some(payload));
++            assert_eq!(payload, bytes);
++            (tx, outgoing)
++        };
++
++        assert_eq!(store.rx_body_payload(incoming), Some(bytes.as_slice()));
++        assert_eq!(store.rx_body_transfer(incoming), Some(transfer));
++        assert_eq!(store.tx_payload(tx), Some(bytes.as_slice()));
++        assert!(store.pending_con(tx).is_some());
++        assert_eq!(store.tx_body_payload(outgoing), Some(bytes.as_slice()));
++        store.rx_body().unwrap().release(incoming).unwrap();
++        assert!(store.rx_body_payload(incoming).is_none());
++        // Releasing the original body cannot invalidate the retained reply.
++        assert_eq!(store.tx_body_payload(outgoing), Some(bytes.as_slice()));
++    }
++
++    #[test]
++    fn fixed_reply_projection_keeps_capacity_and_borrows_body_in_place() {
++        check_body_projection(&mut Memory::<profiles::Constrained>::with_block_wise());
++    }
++
++    #[cfg(feature = "alloc")]
++    #[test]
++    fn allocated_reply_projection_keeps_capacity_and_borrows_body_in_place() {
++        let capacities = crate::storage::Capacities::from_profile::<profiles::Constrained>()
++            .with_block_wise::<profiles::Constrained>();
++        let mut store = crate::storage::AllocMemory::try_new(capacities, usize::MAX).unwrap();
++        check_body_projection(&mut store);
++    }
++
++    fn check_no_body_projection<S: ReplyPartition<Token = Token>>(store: &mut S) {
++        let capacities = store.capacities();
++        let tx = {
++            let (payload, mut reply) = store.partition_reply(None);
++            assert!(payload.is_none());
++            assert_eq!(reply.capacities(), capacities);
++            assert!(reply.rx_body().is_none());
++            assert!(reply.tx_body().is_none());
++            let tx = reply.tx_datagram().acquire().unwrap();
++            reply.tx_payload_mut(tx).unwrap()[..4].copy_from_slice(b"test");
++            reply.set_tx_len(tx, 4).unwrap();
++            tx
++        };
++        assert_eq!(store.tx_payload(tx), Some(b"test".as_slice()));
++    }
++
++    #[test]
++    fn fixed_reply_projection_without_bodies_keeps_datagram_access() {
++        check_no_body_projection(&mut Memory::<profiles::Constrained>::new());
++    }
++
++    #[cfg(feature = "alloc")]
++    #[test]
++    fn allocated_reply_projection_without_bodies_keeps_datagram_access() {
++        let capacities = crate::storage::Capacities::from_profile::<profiles::Constrained>();
++        let mut store = crate::storage::AllocMemory::try_new(capacities, usize::MAX).unwrap();
++        check_no_body_projection(&mut store);
++    }
++}
