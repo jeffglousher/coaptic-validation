@@ -14,6 +14,7 @@ PINS = {
     "borrowed-handler": "04c1c8377cdd2896de91310c81714eb10865eaba",
     "unified-reply": "3a1e6004444beadd984d7f6e9c5c7573ce077ddb",
     "response-metadata": "6ad0bfd2eb7347cf6d2399ccf5cba47a0df9024f",
+    "borrowed-response-origin": "9e5bad550fcc7cb3a29323efeeaea58dfb270896",
 }
 read = lambda p: json.loads(p.read_text(encoding="utf-8"))
 digest = lambda data: hashlib.sha256(data).hexdigest()
@@ -178,7 +179,7 @@ with zipfile.ZipFile(ROOT / "borrowed-handler.zip") as z:
         with zipfile.ZipFile(ROOT.parent / "phase-sharing-static-20261106/observations.zip") as baseline:
             assert digest(baseline.read("candidate/B/" + name)) == method["binaries"]["A-" + kind]
 
-for variant in ("unified-reply", "response-metadata"):
+for variant in ("unified-reply", "response-metadata", "borrowed-response-origin"):
     with zipfile.ZipFile(ROOT / (variant + ".zip")) as z:
         for row in json.loads(z.read("dispatch-preflight.json"))["rows"]:
             assert baseline_frames[row["profile"], row["storage"]] == (row["baseline_frame_bytes"], row["baseline_code_bytes"])
@@ -229,14 +230,29 @@ for variant in PINS:
         target_b = layouts(z.read("layout32/candidate-layout.txt"))
         assert all(target_b[name] == size for name, size in baseline_layout32.items())
         layout_summary[variant] = {key: baseline_futures[key] - value for key, value in futures.items()}
-        if variant == "response-metadata":
-            assert all(delta == 120 for delta in layout_summary[variant].values())
-            raw_log = z.read("lib-tests.log")
+        if variant in ("response-metadata", "borrowed-response-origin"):
+            origin = variant == "borrowed-response-origin"
+            assert all(delta == (216 if origin else 120) for delta in layout_summary[variant].values())
+            raw_log = z.read("lib-tests-3.log" if origin else "lib-tests.log")
             text = raw_log.decode("utf-16" if raw_log.startswith(b"\xff\xfe") else "utf-8")
-            assert "test result: ok. 1219 passed; 0 failed" in text
+            assert f"test result: ok. {1220 if origin else 1219} passed; 0 failed" in text
+            if origin:
+                assert "private_interfaces" in text
+                decision = json.loads(z.read("result.json"))
+                assert decision["visibility_cleanup_source"] == "5690c3183f15ce8b31229985235bb339ad6520f5"
+                cleanup = z.read("unbuilt-visibility-cleanup.patch")
+                assert b"-    pub(crate) fn from_client(" in cleanup
+                assert b"+    pub(super) fn from_client(" in cleanup
+                source = json.loads(z.read("source-verification.json"))
+                assert len(source["source_file_hashes"]) == 148
+                assert json.loads(z.read("fixture-sha256.json")) == read(ROOT / "original-fixture-sha256.json")
+                frames = dispatch_frames(z.read("dispatch-symbols.txt").decode())
+                deltas = {key: value[0] - baseline_frames[key][0] for key, value in frames.items()}
+                assert deltas == {("SmallDevice", "fixed"): 0, ("Service", "fixed"): -32,
+                                  ("Default", "allocated"): 0, ("Service", "allocated"): 16}
 
 print(json.dumps({"archive_members": total, "cells": 28, "pairs_per_cell": 64,
                   "timing_outputs": 3584, "borrowed_runtime_accepted": accepted,
                   "failed_cells": len(failures), "groups": groups,
                   "future_reductions_bytes": layout_summary,
-                  "untimed_rejections": ["unified-reply", "response-metadata"]}, indent=2))
+                  "untimed_rejections": ["unified-reply", "response-metadata", "borrowed-response-origin"]}, indent=2))

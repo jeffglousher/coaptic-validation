@@ -13,5 +13,10 @@
     "members": 56,
     "uncompressed_bytes": 15352450,
     "archive_sha256": "341e7d4d5190feab4c820cef38e55978218b92b5ca39488cb53f353e4045ed74"
+  },
+  "borrowed-response-origin": {
+    "members": 56,
+    "uncompressed_bytes": 15352731,
+    "archive_sha256": "c792b11a1e0c645283bfa72a94a60dbbf6ccf2cef6907651b5c9e7c291bdfa34"
   }
 }

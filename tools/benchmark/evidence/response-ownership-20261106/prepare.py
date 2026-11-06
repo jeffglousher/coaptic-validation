@@ -1,7 +1,7 @@
 """Materialize an exact candidate; never build or execute it.
 
 Usage: python -B prepare.py CORE_REPO NEW_OUTPUT VARIANT
-VARIANT: baseline, borrowed-handler, unified-reply, response-metadata.
+VARIANT: baseline, borrowed-handler, unified-reply, response-metadata, borrowed-response-origin.
 """
 from pathlib import Path
 import hashlib
@@ -50,7 +50,7 @@ def adapt_fixture(files):
 
 def main():
     repo, destination, variant = sys.argv[1:]
-    assert variant in ("baseline", "borrowed-handler", "unified-reply", "response-metadata")
+    assert variant in ("baseline", "borrowed-handler", "unified-reply", "response-metadata", "borrowed-response-origin")
     output = Path(destination).resolve()
     assert not output.exists(), "Refuse to overwrite existing inputs"
     core = output / "coaptic"

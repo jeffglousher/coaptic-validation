@@ -1,6 +1,6 @@
-# Response ownership: three rejected candidates
+# Response ownership: four rejected candidates
 
-All three candidates are rejected against merged core baseline
+All four candidates are rejected against merged core baseline
 `fd7d18a72f795779e352443ebdeef9533be7fb27`. Nothing in this package is an
 accepted optimization. Preserve the sources, failures and original gates;
 do not repeat unchanged candidates or infer runtime benefit from smaller futures.
@@ -23,6 +23,15 @@ do not repeat unchanged candidates or infer runtime benefit from smaller futures
   library tests pass. The allocated Service dispatch polling frame grows by
   16 bytes, violating the prospective frame guard. This is an untimed rejection;
   source review and passing tests do not override it.
+
+- **Borrowed response origin, `9e5bad550fcc7cb3a29323efeeaea58dfb270896`:**
+  borrows peer and receive-time fields from the already borrowed immutable reply
+  metadata. All three selected complete futures shrink by 216 bytes. The fixed
+  Service dispatch frame shrinks by 32 bytes, but the allocated Service frame
+  grows by 16 bytes and fails the same prospective guard. This source is rejected
+  before timing; no CPU cohort exists. Its 1,220 library tests pass with a
+  `private_interfaces` warning. The later visibility-only cleanup `5690c31` is
+  retained separately as an **unbuilt** patch and has no qualification claim.
 
 ## Evidence and limits
 
@@ -68,7 +77,7 @@ adaptation adds ReplyPartition bounds **and changes the retained callback return
 signature from `Response<'static>` to `Response<'_>`**. The executable handler
 bodies are unchanged. Original METHOD text saying only trait bounds is preserved
 as an original record; this paragraph corrects that omission. The metadata
-candidate uses the unmodified original seven-file fixture.
+and borrowed-origin candidates use the unmodified original seven-file fixture.
 
 ## Checks and preserved failures
 
@@ -82,28 +91,32 @@ protected/counter regression patch in
 not applied by the reconstruction script. Unified-reply has build/layout
 evidence and its failed preflight, not a runtime result. Response-metadata keeps
 the 1,219-test log, focused test attempts, source review and failed frame check.
+Borrowed-origin retains the 1,220-test log and earlier failed test attempts; its
+`unbuilt-visibility-cleanup.patch` is not applied by `prepare.py`. The tested
+constructor visibility produces a warning, so no full qualification is claimed.
 
-The frame gate for unified-reply and response-metadata was written before their
-runtime work and stopped both candidates. The later dispatch-frame diagnosis
-does not replace or retroactively alter borrowed-handler's already failed CPU
+The frame gate for unified-reply, response-metadata and borrowed-origin was
+written before runtime work and stopped all three candidates. The later
+dispatch-frame diagnosis does not replace or retroactively alter borrowed-handler's already failed CPU
 cohort. Larger generated code is a possible cost explanation, not measured causal
 attribution. No unsupported whole-behavior or qualification claim follows from
 passing a focused test.
 
 ## Reproduce offline
 
-Run `python -B verify.py` with Python's standard library. It verifies all 7,468
+Run `python -B verify.py` with Python's standard library. It verifies all 7,524
 archive members and SHA256 manifests, matches the pinned baseline/candidate
 executables, checks all 3,640 process exits in their expected order, recomputes
 all 3,584 timing outputs and every aggregate/cell bound, and confirms rejection.
 It also verifies fixture reconstruction, exact selected layout records, resident
-owner preservation and both untimed stack-frame refusals. It does not run native
-code, build, fetch dependencies or sample again.
+owner preservation and all three untimed stack-frame refusals. It does not run
+native code, build, fetch dependencies or sample again.
 
 `python -B prepare.py CORE_REPO NEW_OUTPUT VARIANT` materializes exact source
 from the merged baseline plus its recorded patch. VARIANT is `baseline`,
-`borrowed-handler`, `unified-reply` or `response-metadata`. The destination must
-not exist. It reuses the sibling dispatch fixture, verifies original hashes,
+`borrowed-handler`, `unified-reply`, `response-metadata` or
+`borrowed-response-origin`. The destination must not exist. It reuses the sibling
+dispatch fixture, verifies original hashes,
 reconstructs the two type-only fixture adaptations when needed and verifies the
 adapted hashes. The archived native producers retain their original paths;
 native reproduction would require a compatible Windows MSVC/Rust 1.99.1 lane,

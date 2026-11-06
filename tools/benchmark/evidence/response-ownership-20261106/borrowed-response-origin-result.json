@@ -1,0 +1,13 @@
+{
+  "candidate": "9e5bad550fcc7cb3a29323efeeaea58dfb270896",
+  "baseline": "fd7d18a72f795779e352443ebdeef9533be7fb27",
+  "decision": "Rejected before runtime: allocated Service dispatch poll frame grew16 bytes; prospective selected-frame nongrowth guard fails.",
+  "no_runtime_cohort": true,
+  "library_tests_passed": 1220,
+  "future_reduction_bytes": 216,
+  "capacity_changes": false,
+  "public_api_changes": false,
+  "visibility_cleanup_source": "5690c3183f15ce8b31229985235bb339ad6520f5",
+  "visibility_cleanup_validation": "Source-only after measured build; no qualification or performance claim.",
+  "limits": "Selected future/frame layouts, not peak stack or total memory. No CPU result for this source."
+}
