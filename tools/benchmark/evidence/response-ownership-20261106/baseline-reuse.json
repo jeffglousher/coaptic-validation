@@ -1,0 +1,9 @@
+{
+  "merged_baseline": "fd7d18a72f795779e352443ebdeef9533be7fb27",
+  "measured_source": "3e592adb1fd52c5e6918af1b4e810bb874413bad",
+  "exact_source_files": 148,
+  "binaries": {
+    "dispatch-probe.exe": "42553e07f651935de49338eaa3e27dee857afc8dc3a74b34c1577bbd479b62d2",
+    "retained-probe.exe": "82d6d0f8ff9437f2348a0e1c888da843f8e5b27de4e6b88cda393cfb68b95134"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "borrowed-handler": {
+    "members": 7357,
+    "uncompressed_bytes": 203099946,
+    "archive_sha256": "9bc07e1a7499103ed3297cd8403655e1e420036afc1b698dae39cc8a8481684d"
+  },
+  "unified-reply": {
+    "members": 55,
+    "uncompressed_bytes": 17535379,
+    "archive_sha256": "e9057adfbe2a4c8821cfeaeb190fc31f74dbd27d86795aaff1ff83ef8d95a3f1"
+  },
+  "response-metadata": {
+    "members": 56,
+    "uncompressed_bytes": 15352450,
+    "archive_sha256": "341e7d4d5190feab4c820cef38e55978218b92b5ca39488cb53f353e4045ed74"
+  },
+  "borrowed-response-origin": {
+    "members": 56,
+    "uncompressed_bytes": 15352731,
+    "archive_sha256": "c792b11a1e0c645283bfa72a94a60dbbf6ccf2cef6907651b5c9e7c291bdfa34"
+  }
+}

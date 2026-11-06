@@ -1,0 +1,143 @@
+--- a/tools/benchmark/native/servers/src/bin/bench-core.rs
++++ b/tools/benchmark/native/servers/src/bin/bench-core.rs
+@@ -296,7 +296,7 @@
+ ) -> Result<(), Failure>
+ where
+     P: MemoryLayout<B> + AppAssembled<B>,
+-    S: AppStorage<Token = P::Token>,
++    S: AppStorage<Token = P::Token> + coaptic::storage::ReplyPartition,
+ {
+     let mut latencies = Vec::with_capacity(operations);
+     let mut clock_calibration = Vec::with_capacity(4096);
+@@ -361,7 +361,7 @@
+ ) -> Result<u128, Failure>
+ where
+     P: MemoryLayout<B> + AppAssembled<B>,
+-    S: AppStorage<Token = P::Token>,
++    S: AppStorage<Token = P::Token> + coaptic::storage::ReplyPartition,
+ {
+     let mid = MessageId::new(operation as u16);
+     let token = Token::new(&(operation as u64).to_be_bytes()).ok_or("token")?;
+@@ -421,7 +421,7 @@
+     calibration_capacity: usize,
+ ) where
+     P: MemoryLayout<B> + AppAssembled<B>,
+-    S: AppStorage<Token = P::Token>,
++    S: AppStorage<Token = P::Token> + coaptic::storage::ReplyPartition,
+ {
+     let caps = app.engine().capacities();
+     print!(
+@@ -703,7 +703,7 @@
+     clock: Instant,
+ ) -> Result<(), Failure>
+ where
+-    S: AppStorage<Token = Token>,
++    S: AppStorage<Token = Token> + coaptic::storage::ReplyPartition,
+ {
+     service_deadline(pending.started)?;
+     if pending.polls >= SERVICE_ROUNDS {
+@@ -767,7 +767,7 @@
+     output: &mut [u8],
+ ) -> Result<(u128, u32), Failure>
+ where
+-    S: AppStorage<Token = Token>,
++    S: AppStorage<Token = Token> + coaptic::storage::ReplyPartition,
+ {
+     let mut pending = service_begin(client, payload, clock)?;
+     let result = (|| {
+@@ -804,7 +804,7 @@
+     allocated: bool,
+ ) -> Result<(), Failure>
+ where
+-    S: AppStorage<Token = Token>,
++    S: AppStorage<Token = Token> + coaptic::storage::ReplyPartition,
+ {
+     let expiry_mode = std::env::var("COAPTIC_EXPIRY_PROBE").unwrap_or_else(|_| "steady".into());
+     if !matches!(expiry_mode.as_str(), "steady" | "idle" | "burst") {
+@@ -1370,7 +1370,7 @@
+         body: &[u8],
+     ) where
+         P: MemoryLayout<B> + AppAssembled<B>,
+-        S: AppStorage<Token = P::Token>,
++        S: AppStorage<Token = P::Token> + coaptic::storage::ReplyPartition,
+     {
+         let capacities = app.engine().capacities();
+         let mut opened = [0; WIRE];
+@@ -1442,7 +1442,7 @@
+         body: &[u8],
+     ) where
+         P: MemoryLayout<B> + AppAssembled<B>,
+-        S: AppStorage<Token = P::Token>,
++        S: AppStorage<Token = P::Token> + coaptic::storage::ReplyPartition,
+     {
+         let clock = Instant::now();
+         for fault in 0..8 {
+@@ -1788,7 +1788,7 @@
+             .unwrap()
+     }
+ 
+-    fn service_reuse<S: AppStorage<Token = Token>>(
++    fn service_reuse<S: AppStorage<Token = Token> + coaptic::storage::ReplyPartition>(
+         server: &mut ServiceServer<S>,
+         protected: bool,
+         payload: usize,
+@@ -2123,7 +2123,7 @@
+ fn drive<P, T, S, const N: usize, const B: bool, const D: usize, const C: usize>(
+     app: &mut App<P,T,N,B,S,D,C>, now: u64,
+ ) -> Result<(), Failure>
+-where P: MemoryLayout<B> + AppAssembled<B>, S: AppStorage<Token=P::Token>,
++where P: MemoryLayout<B> + AppAssembled<B>, S: AppStorage<Token=P::Token> + coaptic::storage::ReplyPartition,
+ T: DatagramIo + coaptic::storage::AsyncDatagramIo,
+ {
+     if !ASYNC_MODE.get().copied().unwrap_or(false) {
+--- a/probe/retained.rs
++++ b/probe/retained.rs
+@@ -161,7 +161,7 @@
+     context: Option<coaptic::oscore::SecurityContext>,
+ }
+ impl Peer {
+-    fn new<S: AppStorage<Token = coaptic::message::Token>>(
++    fn new<S: AppStorage<Token = coaptic::message::Token> + coaptic::storage::ReplyPartition>(
+         server: &mut Server<S>,
+         protected: bool,
+     ) -> Self {
+@@ -297,7 +297,7 @@
+         frame
+     }
+ }
+-fn packets<S: AppStorage<Token = coaptic::message::Token>>(
++fn packets<S: AppStorage<Token = coaptic::message::Token> + coaptic::storage::ReplyPartition>(
+     server: &mut Server<S>,
+     peer: &Peer,
+     start: u32,
+@@ -323,7 +323,7 @@
+     }
+     assert!(server.transport_mut().take().is_none());
+ }
+-fn ack<S: AppStorage<Token = coaptic::message::Token>>(server: &mut Server<S>, mid: u16) {
++fn ack<S: AppStorage<Token = coaptic::message::Token> + coaptic::storage::ReplyPartition>(server: &mut Server<S>, mid: u16) {
+     let f = server.transport_mut().take().unwrap();
+     let p = decode(&f.bytes[..f.len]).unwrap();
+     assert_eq!(p.code(), Code::EMPTY);
+@@ -353,10 +353,10 @@
+         Poll::Pending=>panic!("immediate fixture unexpectedly suspended"),
+     }
+ }
+-fn response(_: coaptic::Request<'_>, _: Option<coaptic::DeferredReply>) -> Response<'static> {
++fn response(_: coaptic::Request<'_>, _: Option<coaptic::DeferredReply>) -> Response<'_> {
+     Response::content(&BODY).etag(b"snapshot").content_format(ContentFormat::OCTET_STREAM)
+ }
+-fn drive<S: AppStorage<Token=Token>>(app: &mut Server<S>, now: u64, asynchronous: bool) {
++fn drive<S: AppStorage<Token=Token> + coaptic::storage::ReplyPartition>(app: &mut Server<S>, now: u64, asynchronous: bool) {
+     if asynchronous {
+         let mut timer=Timer;
+         ready(async {
+@@ -376,7 +376,7 @@
+     assert_ne!(unsafe{QueryThreadCycleTime(GetCurrentThread(),&mut value)},0);
+     value
+ }
+-fn run<S: AppStorage<Token=Token>>(mut server: Server<S>, count: usize, protected: bool, asynchronous: bool, allocated: bool) {
++fn run<S: AppStorage<Token=Token> + coaptic::storage::ReplyPartition>(mut server: Server<S>, count: usize, protected: bool, asynchronous: bool, allocated: bool) {
+     let mut peer=Peer::new(&mut server,protected);
+     let mut samples=Vec::with_capacity(count);
+     #[cfg(feature="diagnostics")]

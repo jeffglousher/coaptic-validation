@@ -1,0 +1,338 @@
+diff --git a/src/app/client.rs b/src/app/client.rs
+index 92d4725..28dbfc7 100644
+--- a/src/app/client.rs
++++ b/src/app/client.rs
+@@ -253,6 +253,14 @@ pub(super) struct ReplyMeta {
+ }
+ 
+ impl ReplyMeta {
++    pub(super) const fn peer(&self) -> Endpoint {
++        self.peer
++    }
++
++    pub(super) const fn received_at_ms(&self) -> u64 {
++        self.received_at_ms
++    }
++
+     // Canonically encoded code, Token, MID and selected options. Capture time
+     // and copied payload bookkeeping are not representation-header identity.
+     pub(super) fn same_header(&self, other: &Self) -> bool {
+@@ -311,11 +319,8 @@ impl ReplyMeta {
+             crate::message::decode_with_token::<K>(&self.header[..usize::from(self.header_len)])
+                 .expect("encoded response header");
+         let mut response = Response::from_client(
+-            parsed.code(),
+-            parsed.ty(),
+-            parsed.token(),
+-            parsed.message_id(),
+-            self.peer,
++            parsed,
++            self,
+             &self.payload[..usize::from(self.payload_len)],
+             parsed.content_format().and_then(Result::ok),
+         )
+@@ -346,7 +351,7 @@ impl ReplyMeta {
+                 response = response.location_query(query);
+             }
+         }
+-        response.with_received_header(parsed, self.received_at_ms)
++        response
+     }
+ }
+ 
+diff --git a/src/app/extended_handler_tests.rs b/src/app/extended_handler_tests.rs
+index bb42627..fb1f0e8 100644
+--- a/src/app/extended_handler_tests.rs
++++ b/src/app/extended_handler_tests.rs
+@@ -94,16 +94,8 @@ fn extended_token_snapshot_retains_selection_and_client_metadata() {
+     let mut wire = [0; 64];
+     let n = response_message.encode(&mut wire).unwrap();
+     let parsed = decode_with_token::<LongToken>(&wire[..n]).unwrap();
+-    let response = Response::from_client(
+-        Code::CONTENT,
+-        Type::Acknowledgement,
+-        token(),
+-        MessageId::new(9),
+-        peer,
+-        parsed.payload(),
+-        None,
+-    )
+-    .with_received_header(parsed, 123);
++    let origin = crate::app::client::ReplyMeta::from_parsed(&parsed, peer, 123).unwrap();
++    let response: Response<'_, LongToken> = origin.response();
+     assert_eq!(response.token(), Some(token()));
+     assert_eq!(response.received_at_ms(), Some(123));
+     assert_eq!(response.payload(), b"value");
+diff --git a/src/app/response.rs b/src/app/response.rs
+index 5865731..9fd1c8f 100644
+--- a/src/app/response.rs
++++ b/src/app/response.rs
+@@ -96,6 +96,27 @@ impl<T: OwnedToken> IntoResponse<T> for Response<'static, T> {
+     }
+ }
+ 
++#[derive(Clone, Copy)]
++struct Received<'a, T: OwnedToken> {
++    header: crate::message::Header,
++    token: T,
++    options: &'a [u8],
++    origin: &'a super::client::ReplyMeta,
++}
++
++impl<T: OwnedToken> core::fmt::Debug for Received<'_, T> {
++    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
++        // Keep the retained raw header/payload private and respect Token::Debug.
++        f.debug_struct("Received")
++            .field("header", &self.header)
++            .field("token", &self.token)
++            .field("options", &self.options)
++            .field("at_ms", &self.origin.received_at_ms())
++            .field("peer", &self.origin.peer())
++            .finish()
++    }
++}
++
+ /// Owned response: handler intent, or a client snapshot from
+ /// [`App::take_response`](super::App::take_response).
+ ///
+@@ -144,8 +165,7 @@ impl<T: OwnedToken> IntoResponse<T> for Response<'static, T> {
+ #[derive(Clone, Copy, Debug)]
+ pub struct Response<'a, T: OwnedToken = Token> {
+     invalid: Option<ResponseError>,
+-    received_header: Option<crate::message::ParsedMessage<'a, T>>,
+-    received_at_ms: Option<u64>,
++    received: Option<Received<'a, T>>,
+     code: Code,
+     payload: Payload<'a>,
+     content_format: Option<ContentFormat>,
+@@ -153,10 +173,6 @@ pub struct Response<'a, T: OwnedToken = Token> {
+     etag_len: u8,
+     max_age: Option<u32>,
+     observe: Option<u32>,
+-    ty: Option<Type>,
+-    token: Option<T>,
+-    mid: Option<MessageId>,
+-    peer: Option<Endpoint>,
+     assembled: Option<&'a [u8]>,
+     echo: Option<Echo>,
+     location_path: [&'a str; LOCATION_MAX],
+@@ -177,8 +193,7 @@ impl<'a, T: OwnedToken> Response<'a, T> {
+     pub const fn new(code: Code) -> Self {
+         Self {
+             invalid: None,
+-            received_header: None,
+-            received_at_ms: None,
++            received: None,
+             code,
+             payload: Payload::Empty,
+             content_format: None,
+@@ -186,10 +201,6 @@ impl<'a, T: OwnedToken> Response<'a, T> {
+             etag_len: 0,
+             max_age: None,
+             observe: None,
+-            ty: None,
+-            token: None,
+-            mid: None,
+-            peer: None,
+             assembled: None,
+             echo: None,
+             location_path: [""; LOCATION_MAX],
+@@ -209,7 +220,10 @@ impl<'a, T: OwnedToken> Response<'a, T> {
+     /// assembly time does not extend Max-Age. Handler-created intents return `None`.
+     #[must_use]
+     pub const fn received_at_ms(&self) -> Option<u64> {
+-        self.received_at_ms
++        match self.received {
++            Some(ref received) => Some(received.origin.received_at_ms()),
++            None => None,
++        }
+     }
+ 
+     /// All received options in wire order, including unknown elective options.
+@@ -218,19 +232,11 @@ impl<'a, T: OwnedToken> Response<'a, T> {
+     /// elective values. Handler-created responses have no received header and
+     /// yield an empty iterator. These bytes borrow App's completed-reply hold.
+     pub fn received_options(&self) -> impl Iterator<Item = crate::message::Opt<'_>> {
+-        self.received_header
+-            .into_iter()
+-            .flat_map(|header| header.options())
+-    }
+-
+-    pub(crate) fn with_received_header(
+-        mut self,
+-        header: crate::message::ParsedMessage<'a, T>,
+-        received_at_ms: u64,
+-    ) -> Self {
+-        self.received_header = Some(header);
+-        self.received_at_ms = Some(received_at_ms);
+-        self
++        crate::message::Options::new(
++            self.received
++                .as_ref()
++                .map_or(&[], |received| received.options),
++        )
+     }
+ 
+     /// Check payload and option bounds before returning or sending this response.
+@@ -905,25 +911,37 @@ impl<'a, T: OwnedToken> Response<'a, T> {
+     /// populated it.
+     #[must_use]
+     pub const fn ty(&self) -> Option<Type> {
+-        self.ty
++        match self.received {
++            Some(ref received) => Some(received.header.ty()),
++            None => None,
++        }
+     }
+ 
+     /// Token on a client snapshot, if populated (same as [`Call::token`](super::Call::token)).
+     #[must_use]
+     pub const fn token(&self) -> Option<T> {
+-        self.token
++        match self.received {
++            Some(ref received) => Some(received.token),
++            None => None,
++        }
+     }
+ 
+     /// Message ID of the matched datagram on a client snapshot, if populated.
+     #[must_use]
+     pub const fn message_id(&self) -> Option<MessageId> {
+-        self.mid
++        match self.received {
++            Some(ref received) => Some(received.header.message_id()),
++            None => None,
++        }
+     }
+ 
+     /// Remote endpoint that sent a client-snapshot response, if populated.
+     #[must_use]
+     pub const fn peer(&self) -> Option<Endpoint> {
+-        self.peer
++        match self.received {
++            Some(ref received) => Some(received.origin.peer()),
++            None => None,
++        }
+     }
+ 
+     /// Complete assembled response body, if Block2 / Q-Block2 filled an RX body area.
+@@ -947,20 +965,22 @@ impl<'a, T: OwnedToken> Response<'a, T> {
+     }
+ 
+     pub(crate) fn from_client(
+-        code: Code,
+-        ty: Type,
+-        token: T,
+-        mid: MessageId,
+-        peer: Endpoint,
++        header: crate::message::ParsedMessage<'a, T>,
++        origin: &'a super::client::ReplyMeta,
+         payload: &[u8],
+         content_format: Option<ContentFormat>,
+     ) -> Self {
+-        let mut response = Self::new(code).payload_copy(payload);
++        let mut response = Self::new(header.code()).payload_copy(payload);
+         response.content_format = content_format;
+-        response.ty = Some(ty);
+-        response.token = Some(token);
+-        response.mid = Some(mid);
+-        response.peer = Some(peer);
++        // The retained header already owns type, Token, and Message ID. Keep
++        // their identity together instead of copying each into another field.
++        // Options already borrow this immutable inbox hold; origin can too.
++        response.received = Some(Received {
++            header: header.header(),
++            token: header.token(),
++            options: header.options_bytes(),
++            origin,
++        });
+         response
+     }
+ 
+@@ -1469,4 +1489,70 @@ mod assembled_hold_tests {
+         assert!(!full.payload_truncated());
+         assert_eq!(full.payload_src_len(), 200);
+     }
++    #[test]
++    fn edited_snapshot_debug_does_not_reveal_retained_payload() {
++        use crate::message::{Message, MessageId, Token, decode, encode};
++        use crate::storage::Endpoint;
++        let payload = [165; INLINE_PAYLOAD];
++        let message =
++            Message::con(Code::CONTENT, MessageId::new(1), Token::EMPTY).with_payload(&payload);
++        let mut wire = [0; 256];
++        let len = encode(&message, &mut wire).unwrap();
++        let parsed = decode(&wire[..len]).unwrap();
++        let origin = super::super::client::ReplyMeta::from_parsed(
++            &parsed,
++            Endpoint::v4([192, 0, 2, 8], 5683),
++            0,
++        )
++        .unwrap();
++        let response: Response<'_, Token> = origin.response().payload_copy(b"edited");
++        let debug = std::format!("{response:?}");
++        assert!(
++            !debug.contains("165, 165"),
++            "retained payload leaked: {debug}"
++        );
++    }
++
++    #[test]
++    fn received_identity_is_atomic_and_survives_response_edits() {
++        use crate::message::{ContentFormat, Message, MessageId, Opt, Token, Type, decode, encode};
++        use crate::storage::Endpoint;
++        let token = Token::new(b"identity").unwrap();
++        let mid = MessageId::new(0x1234);
++        let peer = Endpoint::v4([192, 0, 2, 8], 5683);
++        let format = ContentFormat::TEXT_PLAIN.encode();
++        let options = [Opt::content_format(&format)];
++        let message = Message::new(Type::Acknowledgement, Code::CONTENT, mid)
++            .with_token(token)
++            .with_options(&options)
++            .with_payload(b"original");
++        let mut wire = [0; 64];
++        let len = encode(&message, &mut wire).unwrap();
++        let header = decode(&wire[..len]).unwrap();
++        let origin = super::super::client::ReplyMeta::from_parsed(&header, peer, 0).unwrap();
++        let response: Response<'_, Token> = origin
++            .response()
++            .content_format(ContentFormat::OCTET_STREAM)
++            .location_path("receipt")
++            .payload_copy(b"edited");
++        assert_eq!(response.received_at_ms(), Some(0));
++        assert_eq!(response.ty(), Some(Type::Acknowledgement));
++        assert_eq!(response.token(), Some(token));
++        assert_eq!(response.message_id(), Some(mid));
++        assert_eq!(response.peer(), Some(peer));
++        assert_eq!(response.format(), Some(ContentFormat::OCTET_STREAM));
++        assert_eq!(response.payload(), b"edited");
++        assert_eq!(response.location_paths(), &["receipt"]);
++        assert_eq!(
++            response.received_options().next().unwrap().value(),
++            format.as_bytes()
++        );
++        let handler = Response::<Token>::content(b"handler");
++        assert_eq!(handler.received_at_ms(), None);
++        assert_eq!(handler.ty(), None);
++        assert_eq!(handler.token(), None);
++        assert_eq!(handler.message_id(), None);
++        assert_eq!(handler.peer(), None);
++        assert!(handler.received_options().next().is_none());
++    }
+ }
+diff --git a/src/message/decode.rs b/src/message/decode.rs
+index 864d370..d48ed2d 100644
+--- a/src/message/decode.rs
++++ b/src/message/decode.rs
+@@ -62,6 +62,11 @@ impl<'a, T: OwnedToken> ParsedMessage<'a, T> {
+         }
+     }
+ 
++    /// The validated encoded options, without header, token, or payload bytes.
++    pub(crate) const fn options_bytes(self) -> &'a [u8] {
++        self.options
++    }
++
+     /// Parsed header.
+     #[must_use]
+     pub const fn header(self) -> Header {

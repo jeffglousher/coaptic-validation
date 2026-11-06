@@ -1,0 +1,44 @@
+{
+  "review": "Author source/evidence inspection and independent stdlib arithmetic from original raw observations; no additional specialist review claimed",
+  "verified_archive_members": 7524,
+  "timing_outputs_recomputed": 3584,
+  "process_exits_verified": 3640,
+  "borrowed_failed_cell_bounds": 17,
+  "untimed_rejections_verified": [
+    "unified-reply",
+    "response-metadata",
+    "borrowed-response-origin"
+  ],
+  "source_reconstruction": {
+    "borrowed-handler": 149,
+    "unified-reply": 149,
+    "response-metadata": 148,
+    "borrowed-response-origin": 148
+  },
+  "fixture_reconstruction": "Original seven hashes verified; two type-signature adaptations reproduce all seven adapted hashes; metadata and borrowed-origin use the original fixture",
+  "baseline_production_equivalence": "git diff 3e592ad fd7d18a -- src crates Cargo.toml Cargo.lock is empty",
+  "scope": "No native probes/Cargo or source/fixture/build-lane mutations; failed original measurements unchanged",
+  "packaging_setup_corrections": [
+    "Third-root private notice was detected before archive write and excluded; incomplete packaging output replaced, original evidence unchanged.",
+    "Initial new verifier expected a local metadata baseline-layout file; reuse of pinned phase-sharing layout archive fixed that expectation, no measurement rerun.",
+    "Final author review found Git normalizes exported JSON line endings; archive/export checks now compare parsed JSON while retaining byte hashes and exact patches. Committed LF blobs were checked against archived originals."
+  ],
+  "borrowed_origin": {
+    "source": "9e5bad550fcc7cb3a29323efeeaea58dfb270896",
+    "library_tests_passed": 1220,
+    "build_warning": "private_interfaces",
+    "selected_future_reductions_bytes": [
+      216,
+      216,
+      216
+    ],
+    "dispatch_frame_deltas_bytes": {
+      "SmallDevice fixed": 0,
+      "Service fixed": -32,
+      "Default allocated": 0,
+      "Service allocated": 16
+    },
+    "runtime_cohort": false,
+    "unbuilt_cleanup": "5690c3183f15ce8b31229985235bb339ad6520f5; patch preserved separately and not applied or qualified"
+  }
+}
