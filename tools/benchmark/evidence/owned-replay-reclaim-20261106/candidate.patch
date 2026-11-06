@@ -1,0 +1,1146 @@
+diff --git a/src/app/mod.rs b/src/app/mod.rs
+index fd103fa..44e15b6 100644
+--- a/src/app/mod.rs
++++ b/src/app/mod.rs
+@@ -7187,8 +7187,20 @@ where
+     S: Storage + DatagramSlots + BodySlots + DedupSlots,
+     T: crate::storage::DatagramTransport,
+ {
+-    let mut chunk = [0u8; 1024];
+-    let n = copy_issued(engine, issued, &mut chunk).map_err(Error::Block)?;
++    let source = issued_payload(engine, issued).map_err(Error::Block)?;
++    // A full block initializes every byte directly. Short final blocks keep
++    // their bounded zero-filled backing; only the issued prefix is encoded.
++    let mut chunk: [u8; 1024];
++    match <&[u8; 1024]>::try_from(source) {
++        Ok(full) => chunk = *full,
++        Err(_) => {
++            chunk = [0; 1024];
++            chunk[..source.len()].copy_from_slice(source);
++        }
++    }
++    let n = issued.len();
++    #[cfg(feature = "diagnostics")]
++    crate::storage::WorkMetrics::add(&mut engine.work_metrics_mut().block_tx_staged_bytes, n);
+     let size2 = if q_block {
+         engine.tx_body_transfer(issued.id()).map(|t| t.filled())
+     } else {
+@@ -7222,11 +7234,10 @@ where
+     Ok(tx)
+ }
+ 
+-fn copy_issued<S: Storage + BodySlots>(
+-    engine: &mut Engine<S>,
++fn issued_payload<S: Storage + BodySlots>(
++    engine: &Engine<S>,
+     issued: OutgoingBlock,
+-    dest: &mut [u8],
+-) -> Result<usize, BlockTransferError> {
++) -> Result<&[u8], BlockTransferError> {
+     let payload = engine
+         .tx_body_payload(issued.id())
+         .ok_or(BlockTransferError::NoTransfer)?;
+@@ -7234,16 +7245,10 @@ fn copy_issued<S: Storage + BodySlots>(
+         .offset()
+         .checked_add(issued.len())
+         .ok_or(BlockTransferError::Overflow)?;
+-    if end > payload.len() || issued.len() > dest.len() {
++    if end > payload.len() || issued.len() > 1024 {
+         return Err(BlockTransferError::Overflow);
+     }
+-    dest[..issued.len()].copy_from_slice(&payload[issued.offset()..end]);
+-    #[cfg(feature = "diagnostics")]
+-    crate::storage::WorkMetrics::add(
+-        &mut engine.work_metrics_mut().block_tx_staged_bytes,
+-        issued.len(),
+-    );
+-    Ok(issued.len())
++    Ok(&payload[issued.offset()..end])
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+@@ -7823,6 +7828,12 @@ fn acquire_tx_or_evict<S: Storage + DatagramSlots + DedupSlots>(
+ }
+ 
+ fn evict_one_dedup_pin<S: Storage + DedupSlots>(engine: &mut Engine<S>) -> bool {
++    if let Some(reclaimed) = engine
++        .storage_mut()
++        .try_reclaim_app_dedup_tx(empty_ack_replay)
++    {
++        return reclaimed;
++    }
+     let n = engine.capacities().dedup_entries;
+     let mut best: Option<DedupEntry> = None;
+     for i in 0..n {
+@@ -7844,16 +7855,22 @@ fn evict_one_dedup_pin<S: Storage + DedupSlots>(engine: &mut Engine<S>) -> bool
+         let _ = engine.release_tx(pin);
+     }
+     let _ = engine.remove_dedup(entry.key());
+-    let mut buf = [0u8; 16];
+-    if let Ok(n) = encode(&Message::empty_ack(entry.message_id()), &mut buf) {
+-        let row = DedupEntry::new(entry.message_id(), entry.endpoint())
+-            .with_due_ms(entry.due_ms())
+-            .with_replay(&buf[..n]);
++    if let Some(row) = empty_ack_replay(entry.key(), entry.due_ms()) {
+         let _ = engine.insert_dedup(row);
+     }
+     true
+ }
+ 
++fn empty_ack_replay(key: DedupKey, due_ms: u64) -> Option<DedupEntry> {
++    let mut buf = [0u8; 16];
++    let n = encode(&Message::empty_ack(key.message_id()), &mut buf).ok()?;
++    Some(
++        DedupEntry::from(key)
++            .with_due_ms(due_ms)
++            .with_replay(&buf[..n]),
++    )
++}
++
+ fn evict_oldest_app_dedup<S: Storage + DedupSlots>(engine: &mut Engine<S>) -> bool {
+     let n = engine.capacities().dedup_entries;
+     let mut best: Option<DedupEntry> = None;
+diff --git a/src/storage/alloc_memory.rs b/src/storage/alloc_memory.rs
+index 10eb391..0708927 100644
+--- a/src/storage/alloc_memory.rs
++++ b/src/storage/alloc_memory.rs
+@@ -30,7 +30,7 @@ use super::block::{
+ };
+ use super::exchange::ExchangeStore;
+ use super::memory::MemoryProfile;
+-use super::occupancy::HeapOccupancy;
++use super::occupancy::{DedupIndex, HeapOccupancy};
+ use super::pending::{
+     PendingMark, PendingRto, next_due_slot, outstanding_pending, record_admission,
+ };
+@@ -68,7 +68,8 @@ impl<T: OwnedToken> AllocMemory<T> {
+         let mut bytes = HeapSize(0);
+         bytes.pool::<AllocSlot>(c.rx_datagram_slots, c.rx_datagram_bytes)?;
+         bytes.pool::<AllocSlot>(c.tx_datagram_slots, c.tx_datagram_bytes)?;
+-        bytes.table::<Option<DedupEntry>>(c.dedup_entries)?;
++        bytes.array::<Option<DedupEntry>>(c.dedup_entries, 1)?;
++        bytes.array::<u32>(c.dedup_entries, 1)?;
+         bytes.table::<Option<ObserveInterest<T>>>(c.observe_entries)?;
+         bytes.table::<Option<ExchangeEntry<T>>>(c.tx_datagram_slots)?;
+         if let Some((rx_slots, rx_bytes, tx_slots, tx_bytes)) = c.body_dims() {
+@@ -683,6 +684,31 @@ impl<T: OwnedToken> Exchanges for AllocMemory<T> {
+ }
+ 
+ impl<T: OwnedToken> DedupSlots for AllocMemory<T> {
++    fn try_reclaim_app_dedup_tx(
++        &mut self,
++        replacement: fn(DedupKey, u64) -> Option<DedupEntry>,
++    ) -> Option<bool> {
++        let Some((id, key, pin, due)) =
++            super::table::oldest_pinned_replay(self.dedup.occ.slot_count(), |id| {
++                self.dedup.entry_ref(id)
++            })
++        else {
++            return Some(false);
++        };
++        let _ = self.tx.release(pin);
++        let _ = self.dedup.release(id);
++        if let Some(row) = replacement(key, due) {
++            if row.key() != key {
++                let _ = self.dedup.insert(row);
++            } else if let Some(id) = self.dedup.occ.acquire() {
++                // The private table enforces unique keys. Removal established
++                // absence; reuse its cursor without two more key searches.
++                self.dedup.write(id, row);
++            }
++        }
++        Some(true)
++    }
++
+     fn try_store_app_dedup(&mut self, entry: DedupEntry) -> Option<bool> {
+         // The private table guarantees unique keys. One walk can therefore
+         // establish absence and select the same first oldest eviction victim.
+@@ -691,14 +717,14 @@ impl<T: OwnedToken> DedupSlots for AllocMemory<T> {
+         let mut oldest_due = u64::MAX;
+         for i in 0..self.dedup.occ.slot_count() {
+             let id = SlotId::from_index(i);
+-            let Some(row) = self.dedup.entry_ref(id) else {
++            let Some(old) = self.dedup.entry_ref(id) else {
+                 continue;
+             };
+-            if row.key() == entry.key() {
++            if self.dedup.occ.matches(id, entry.key().message_id()) && old.key() == entry.key() {
+                 existing = Some(id);
+                 break;
+             }
+-            let due = row.due_ms();
++            let due = old.due_ms();
+             if due != 0 && (oldest.is_none() || due < oldest_due) {
+                 oldest = Some(id);
+                 oldest_due = due;
+@@ -729,8 +755,7 @@ impl<T: OwnedToken> DedupSlots for AllocMemory<T> {
+                 id
+             }
+         };
+-        self.dedup.expiry.note(&entry);
+-        self.dedup.entries[id.index()] = Some(entry);
++        self.dedup.write(id, entry);
+         Some(true)
+     }
+ 
+@@ -756,12 +781,9 @@ impl<T: OwnedToken> DedupSlots for AllocMemory<T> {
+                 continue;
+             }
+             remaining -= 1; // Includes acquired slots with no payload.
+-            let Some(row) = payload.as_ref() else {
+-                continue;
+-            };
+-            let due = row.due_ms();
++            let due = payload.as_ref().map_or(0, DedupEntry::due_ms);
+             if due != 0 && now_ms >= due {
+-                if let Some(pin) = row.tx_pin() {
++                if let Some(pin) = payload.as_ref().and_then(|row| row.tx_pin()) {
+                     let _ = self.tx.release(pin);
+                 }
+                 if occ.release(id).is_ok() {
+@@ -1753,7 +1775,7 @@ impl DedupExpiry {
+ 
+ struct AllocDedupTable {
+     entries: Vec<Option<DedupEntry>>,
+-    occ: HeapOccupancy,
++    occ: DedupIndex<Vec<u32>>,
+     expiry: DedupExpiry,
+ }
+ 
+@@ -1761,11 +1783,17 @@ impl AllocDedupTable {
+     fn new(entries: usize) -> Result<Self, BuildError> {
+         Ok(Self {
+             entries: try_array(entries, || Ok(None))?,
+-            occ: HeapOccupancy::new_unpinned(entries)?,
++            occ: DedupIndex::new(try_array(entries, || Ok(0))?),
+             expiry: DedupExpiry::new(),
+         })
+     }
+ 
++    fn write(&mut self, id: SlotId, entry: DedupEntry) {
++        self.expiry.note(&entry);
++        self.occ.set_mid(id, entry.key().message_id());
++        entry.write_into(&mut self.entries[id.index()]);
++    }
++
+     fn reset(&mut self, id: SlotId) {
+         if let Some(slot) = self.entries.get_mut(id.index()) {
+             *slot = None;
+@@ -1779,14 +1807,16 @@ impl DedupStore for AllocDedupTable {
+             return Some(id);
+         }
+         let id = self.occ.acquire()?;
+-        self.expiry.note(&entry);
+-        self.entries[id.index()] = Some(entry);
++        self.write(id, entry);
+         Some(id)
+     }
+ 
+     fn lookup(&self, key: DedupKey) -> Option<SlotId> {
+         (0..self.occ.slot_count()).find_map(|i| {
+             let id = SlotId::from_index(i);
++            if !self.occ.matches(id, key.message_id()) {
++                return None;
++            }
+             match self.entry_ref(id) {
+                 Some(entry) if entry.key() == key => Some(id),
+                 _ => None,
+@@ -2168,8 +2198,38 @@ mod tests {
+         memory.insert_dedup(row).is_some()
+     }
+ 
++    fn reclaim_replacement(key: DedupKey, due: u64) -> Option<DedupEntry> {
++        match due {
++            1 => None,
++            500 => Some(DedupEntry::new(MessageId::new(2), key.endpoint()).with_replay(b"other")),
++            _ => Some(DedupEntry::from(key).with_due_ms(due).with_replay(b"ack")),
++        }
++    }
++
++    fn reference_reclaim(memory: &mut AllocMemory<Token>) -> bool {
++        let mut best: Option<DedupEntry> = None;
++        for i in 0..memory.dedup.slot_count() {
++            let Some(row) = memory.dedup.entry_ref(SlotId::from_index(i)).copied() else {
++                continue;
++            };
++            if row.tx_pin().is_some()
++                && row.due_ms() != 0
++                && best.is_none_or(|old| row.due_ms() < old.due_ms())
++            {
++                best = Some(row);
++            }
++        }
++        let Some(row) = best else { return false };
++        let _ = memory.tx.release(row.tx_pin().unwrap());
++        let _ = memory.remove_dedup(row.key());
++        if let Some(next) = reclaim_replacement(row.key(), row.due_ms()) {
++            let _ = memory.insert_dedup(next);
++        }
++        true
++    }
++
+     #[test]
+-    fn combined_reply_store_matches_original_replacement_eviction_and_pin_ownership() {
++    fn combined_reply_store_and_reclaim_match_original_rows_cursors_and_pin_ownership() {
+         let peer = Endpoint::v4([192, 0, 2, 69], 5683);
+         for n in [0, 1, 8, 64] {
+             let mut c = Capacities::from_profile::<super::super::profiles::Default>();
+@@ -2178,7 +2238,7 @@ mod tests {
+             let mut reference = AllocMemory::<Token>::try_new(c, usize::MAX).unwrap();
+             for step in 0..900usize {
+                 let key = DedupKey::new(MessageId::new((step % (n + 3)) as u16), peer);
+-                match step % 7 {
++                match step % 9 {
+                     0 => {
+                         assert_eq!(actual.dedup.acquire(), reference.dedup.acquire());
+                     }
+@@ -2190,6 +2250,12 @@ mod tests {
+                         assert!(actual.try_expire_dedup(now));
+                         reference_expire(&mut reference, now);
+                     }
++                    7 | 8 => {
++                        assert_eq!(
++                            actual.try_reclaim_app_dedup_tx(reclaim_replacement),
++                            Some(reference_reclaim(&mut reference))
++                        );
++                    }
+                     _ => {
+                         let mut row = DedupEntry::from(key)
+                             .with_due_ms([0, 1, 500, u64::MAX][(step / 7) % 4])
+@@ -2202,7 +2268,7 @@ mod tests {
+                                 reference.tx.payload_mut(pin).unwrap()[0] = step as u8;
+                                 actual.tx.set_len(pin, 1).unwrap();
+                                 reference.tx.set_len(pin, 1).unwrap();
+-                                if step % 9 == 0 {
++                                if step % 6 == 0 {
+                                     actual.tx.occ.try_pin(pin).unwrap();
+                                     reference.tx.occ.try_pin(pin).unwrap();
+                                 }
+diff --git a/src/storage/memory.rs b/src/storage/memory.rs
+index 7c7b587..9994e32 100644
+--- a/src/storage/memory.rs
++++ b/src/storage/memory.rs
+@@ -593,6 +593,16 @@ impl<P: MemoryProfile, B> DedupSlots for Memory<P, B>
+ where
+     P::Dedup: DedupStore,
+ {
++    fn try_reclaim_app_dedup_tx(
++        &mut self,
++        replacement: fn(DedupKey, u64) -> Option<DedupEntry>,
++    ) -> Option<bool> {
++        let tx = &mut self.tx;
++        self.dedup.try_reclaim_app(replacement, |pin| {
++            let _ = tx.release(pin);
++        })
++    }
++
+     fn try_store_app_dedup(&mut self, entry: DedupEntry) -> Option<bool> {
+         let tx = &mut self.tx;
+         self.dedup.try_store_app(entry, |pin| {
+@@ -600,6 +610,13 @@ where
+         })
+     }
+ 
++    fn try_expire_dedup(&mut self, now_ms: u64) -> bool {
++        let tx = &mut self.tx;
++        self.dedup.try_expire_app(now_ms, |pin| {
++            let _ = tx.release(pin);
++        })
++    }
++
+     fn insert_dedup(&mut self, entry: DedupEntry) -> Option<SlotId> {
+         self.dedup.insert(entry)
+     }
+diff --git a/src/storage/mod.rs b/src/storage/mod.rs
+index 9e3dfff..6eb9154 100644
+--- a/src/storage/mod.rs
++++ b/src/storage/mod.rs
+@@ -272,6 +272,22 @@ pub enum DedupExpiry {
+ /// [`DedupEntry::tx_pin`] so a duplicate CON request can be answered
+ /// without a second handler call.
+ pub trait DedupSlots {
++    /// Optionally reclaim the oldest nonzero-deadline App reply with a TX pin.
++    ///
++    /// Select the earliest slot on deadline ties. Release its TX pin, then remove
++    /// the first row matching its key, ignoring release errors as App does.
++    /// Call `replacement` once with the selected key/deadline after removal and
++    /// insert its returned entry using ordinary duplicate/cursor semantics.
++    /// `Some(true)` means a candidate was processed, even if replacement fails;
++    /// `Some(false)` means no eligible row. `None` must not call the function or
++    /// mutate storage, allowing App's generic sequence to run.
++    fn try_reclaim_app_dedup_tx(
++        &mut self,
++        _replacement: fn(DedupKey, u64) -> Option<DedupEntry>,
++    ) -> Option<bool> {
++        None
++    }
++
+     /// Optionally retain an App reply using this backend's owned pools.
+     ///
+     /// `Some` completes App's replacement/insertion/oldest-row eviction sequence.
+diff --git a/src/storage/occupancy.rs b/src/storage/occupancy.rs
+index f99395c..6d10ba9 100644
+--- a/src/storage/occupancy.rs
++++ b/src/storage/occupancy.rs
+@@ -10,6 +10,96 @@
+ //! for that id. Rotate does not evict, so it does not consult the pin bit.
+ 
+ use super::slot::{SlotError, SlotId};
++use crate::message::MessageId;
++
++/// Replay-table occupancy and a message-ID rejection filter share one owner.
++/// Zero is free, one is acquired without a payload, and `mid + 2` is occupied
++/// with a payload. All 16-bit IDs remain representable; a filter match still
++/// requires comparing the complete endpoint/key in the table.
++pub(crate) struct DedupIndex<S> {
++    slots: S,
++    cursor: usize,
++    count: usize,
++}
++
++impl<S> DedupIndex<S> {
++    /// The caller supplies zeroed, bounded storage, allocated only at startup.
++    pub(crate) const fn new(slots: S) -> Self {
++        Self {
++            slots,
++            cursor: 0,
++            count: 0,
++        }
++    }
++}
++
++impl<S: AsRef<[u32]> + AsMut<[u32]>> DedupIndex<S> {
++    pub(crate) fn acquire(&mut self) -> Option<SlotId> {
++        let slots = self.slots.as_mut();
++        let n = slots.len();
++        if self.count == n {
++            return None;
++        }
++        let start = self.cursor;
++        let index = if slots[start] == 0 {
++            start
++        } else {
++            slots[start..]
++                .iter()
++                .position(|&v| v == 0)
++                .map(|i| start + i)
++                .or_else(|| slots[..start].iter().position(|&v| v == 0))?
++        };
++        slots[index] = 1;
++        self.count += 1;
++        self.cursor = if index + 1 == n { 0 } else { index + 1 };
++        Some(SlotId::from_index(index))
++    }
++
++    pub(crate) fn release(&mut self, id: SlotId) -> Result<(), SlotError> {
++        let slot = self
++            .slots
++            .as_mut()
++            .get_mut(id.index())
++            .ok_or(SlotError::InvalidSlot)?;
++        if *slot == 0 {
++            return Err(SlotError::NotOccupied);
++        }
++        *slot = 0;
++        self.count -= 1;
++        Ok(())
++    }
++
++    pub(crate) fn set_mid(&mut self, id: SlotId, mid: MessageId) {
++        debug_assert!(self.is_occupied(id));
++        self.slots.as_mut()[id.index()] = u32::from(mid.get()) + 2;
++    }
++
++    pub(crate) fn matches(&self, id: SlotId, mid: MessageId) -> bool {
++        self.slots.as_ref().get(id.index()).copied() == Some(u32::from(mid.get()) + 2)
++    }
++
++    pub(crate) fn is_occupied(&self, id: SlotId) -> bool {
++        self.slots.as_ref().get(id.index()).is_some_and(|&v| v != 0)
++    }
++
++    pub(crate) fn occupied_count(&self) -> usize {
++        self.count
++    }
++    pub(crate) fn slot_count(&self) -> usize {
++        self.slots.as_ref().len()
++    }
++    pub(crate) fn cursor(&self) -> usize {
++        self.cursor
++    }
++
++    pub(crate) fn advance(&mut self, steps: usize) {
++        let n = self.slot_count();
++        if n != 0 {
++            self.cursor = (self.cursor + steps % n) % n;
++        }
++    }
++}
+ 
+ pub(crate) fn acquire(
+     occupied: &mut [bool],
+@@ -292,6 +382,98 @@ mod tests {
+     use crate::storage::SlotError;
+     use crate::storage::SlotId;
+ 
++    fn dedup_index_churn<const N: usize>() {
++        let mut index = super::DedupIndex::new([0; N]);
++        let mut occupied = [false; N];
++        let mut mids = [None; N];
++        let mut cursor = 0;
++        for step in 0..(N * 8 + 64) {
++            let id = SlotId::from_index(step % (N + 1));
++            if step % 3 == 0 {
++                let expected = if id.index() == N {
++                    Err(SlotError::InvalidSlot)
++                } else if !occupied[id.index()] {
++                    Err(SlotError::NotOccupied)
++                } else {
++                    occupied[id.index()] = false;
++                    mids[id.index()] = None;
++                    Ok(())
++                };
++                assert_eq!(index.release(id), expected);
++            } else {
++                let expected = (0..N).map(|i| (cursor + i) % N).find(|&i| !occupied[i]);
++                assert_eq!(index.acquire().map(SlotId::index), expected);
++                if let Some(i) = expected {
++                    occupied[i] = true;
++                    cursor = (i + 1) % N;
++                    // Some acquired slots intentionally have no payload.
++                    if step % 5 != 0 {
++                        let mid = [0, 1, 32768, u16::MAX][step % 4];
++                        index.set_mid(SlotId::from_index(i), super::MessageId::new(mid));
++                        mids[i] = Some(mid);
++                    }
++                }
++            }
++            index.advance(step * 7);
++            if N != 0 {
++                cursor = (cursor + step * 7 % N) % N;
++            }
++            assert_eq!(index.cursor(), cursor);
++            assert_eq!(
++                index.occupied_count(),
++                occupied.iter().filter(|&&v| v).count()
++            );
++            for i in 0..=N {
++                let id = SlotId::from_index(i);
++                assert_eq!(
++                    index.is_occupied(id),
++                    occupied.get(i).copied().unwrap_or(false)
++                );
++                for mid in [0, 1, 32768, u16::MAX] {
++                    assert_eq!(
++                        index.matches(id, super::MessageId::new(mid)),
++                        mids.get(i).copied().flatten() == Some(mid)
++                    );
++                }
++            }
++        }
++    }
++
++    #[test]
++    fn dedup_index_matches_independent_rotation_and_reserved_slot_model() {
++        dedup_index_churn::<0>();
++        dedup_index_churn::<1>();
++        dedup_index_churn::<4>();
++        dedup_index_churn::<31>();
++        dedup_index_churn::<32>();
++        dedup_index_churn::<33>();
++        dedup_index_churn::<131>();
++    }
++
++    #[test]
++    fn dedup_index_represents_every_mid_without_reusing_empty_states() {
++        let mut index = super::DedupIndex::new([0; 1]);
++        let id = index.acquire().unwrap();
++        for value in 0..=u16::MAX {
++            let mid = super::MessageId::new(value);
++            index.set_mid(id, mid);
++            assert!(index.matches(id, mid));
++            assert!(!index.matches(id, super::MessageId::new(value.wrapping_add(1))));
++            assert!(index.is_occupied(id));
++            assert_eq!(index.occupied_count(), 1);
++        }
++        index.release(id).unwrap();
++        assert_eq!(index.acquire(), Some(id));
++        for value in 0..=u16::MAX {
++            assert!(!index.matches(id, super::MessageId::new(value)));
++        }
++        assert_eq!(
++            index.release(SlotId::from_index(usize::MAX)),
++            Err(SlotError::InvalidSlot)
++        );
++        assert_eq!(index.occupied_count(), 1);
++    }
++
+     fn assert_unpinned_parity<const N: usize>(
+         zero: &Occupancy<N, 0>,
+         default: &Occupancy<N>,
+diff --git a/src/storage/table.rs b/src/storage/table.rs
+index 80b5f96..08eef04 100644
+--- a/src/storage/table.rs
++++ b/src/storage/table.rs
+@@ -2,7 +2,7 @@
+ 
+ use super::SlotPool;
+ use super::endpoint::Endpoint;
+-use super::occupancy::Occupancy;
++use super::occupancy::{DedupIndex, Occupancy};
+ use super::slot::{SlotError, SlotId};
+ use crate::message::{MessageId, OBSERVE_SEQUENCE_MASK, ObserveTransmission, OwnedToken, Token};
+ 
+@@ -46,16 +46,51 @@ impl DedupKey {
+ /// CON retransmit can be answered without a second handler call: compact
+ /// [`Self::replay`] when the datagram fits, otherwise a TX pin for
+ /// `EXCHANGE_LIFETIME`. See `knowledge/rfcs/rfc7252.txt` §4.5.
++///
++/// Equality and hashing describe the key, deadline and current replay owner.
++/// Replacing or clearing replay discards the previous bytes from that identity.
+ #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+ pub struct DedupEntry {
+     key: DedupKey,
+     due_ms: u64,
+-    replay_len: u16,
+-    replay: [u8; Self::REPLAY_MAX],
+-    tx_pin: Option<SlotId>,
++    replay: DedupReplay,
++}
++
++// Inline replay and a retained TX packet are mutually exclusive owners.
++#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
++enum DedupReplay {
++    None,
++    Inline {
++        bytes: [u8; DedupEntry::REPLAY_MAX],
++        len: u16,
++    },
++    Tx(SlotId),
+ }
+ 
+ impl DedupEntry {
++    /// Write only the active replay owner; a TX pin has no inline bytes to copy.
++    pub(super) fn write_into(self, slot: &mut Option<Self>) {
++        match self.replay {
++            DedupReplay::Inline { .. } => *slot = Some(self),
++            DedupReplay::None => {
++                let entry = slot.insert(Self::new(self.key.message_id(), self.key.endpoint()));
++                entry.due_ms = self.due_ms;
++            }
++            DedupReplay::Tx(id) => Self::write_tx(slot, self.key, self.due_ms, id),
++        }
++    }
++
++    // Keep this scalar boundary: inlining the variant assignment can recover a
++    // whole-enum memcpy, including its inactive 256-byte replay payload.
++    #[inline(never)]
++    fn write_tx(slot: &mut Option<Self>, key: DedupKey, due_ms: u64, id: SlotId) {
++        *slot = Some(Self {
++            key,
++            due_ms,
++            replay: DedupReplay::Tx(id),
++        });
++    }
++
+     /// Bytes of encoded ACK cached inline on this row.
+     ///
+     /// Larger piggybacked ACKs use [`Self::tx_pin`] (Default TX slot) so
+@@ -70,9 +105,7 @@ impl DedupEntry {
+         Self {
+             key: DedupKey::new(message_id, endpoint),
+             due_ms: 0,
+-            replay_len: 0,
+-            replay: [0; Self::REPLAY_MAX],
+-            tx_pin: None,
++            replay: DedupReplay::None,
+         }
+     }
+ 
+@@ -85,17 +118,25 @@ impl DedupEntry {
+ 
+     /// Cache encoded reply bytes when they fit [`Self::REPLAY_MAX`].
+     ///
+-    /// Larger datagrams are not truncated: replay stays empty so a later
+-    /// duplicate cannot send a lie. The caller may [`Self::with_tx_pin`]
+-    /// instead.
++    /// Larger datagrams leave this entry unchanged; they are never truncated.
++    /// The caller may use [`Self::with_tx_pin`] instead. An empty slice clears
++    /// either replay owner.
+     #[must_use]
+     pub fn with_replay(mut self, bytes: &[u8]) -> Self {
+         if bytes.len() > Self::REPLAY_MAX {
+             return self;
+         }
+-        self.replay[..bytes.len()].copy_from_slice(bytes);
+-        self.replay_len = bytes.len() as u16;
+-        self.tx_pin = None;
++        self.replay = if bytes.is_empty() {
++            DedupReplay::None
++        } else {
++            DedupReplay::Inline {
++                bytes: [0; Self::REPLAY_MAX],
++                len: bytes.len() as u16,
++            }
++        };
++        if let DedupReplay::Inline { bytes: replay, .. } = &mut self.replay {
++            replay[..bytes.len()].copy_from_slice(bytes);
++        }
+         self
+     }
+ 
+@@ -105,8 +146,7 @@ impl DedupEntry {
+     /// until this row expires or is replaced.
+     #[must_use]
+     pub const fn with_tx_pin(mut self, id: SlotId) -> Self {
+-        self.tx_pin = Some(id);
+-        self.replay_len = 0;
++        self.replay = DedupReplay::Tx(id);
+         self
+     }
+ 
+@@ -137,17 +177,19 @@ impl DedupEntry {
+     /// Cached piggybacked / empty-ACK bytes, if stored inline.
+     #[must_use]
+     pub fn replay(&self) -> Option<&[u8]> {
+-        if self.replay_len == 0 {
+-            None
+-        } else {
+-            Some(&self.replay[..usize::from(self.replay_len)])
++        match &self.replay {
++            DedupReplay::Inline { bytes, len } => Some(&bytes[..usize::from(*len)]),
++            DedupReplay::None | DedupReplay::Tx(_) => None,
+         }
+     }
+ 
+     /// Occupied TX slot holding the encoded ACK, if pinned.
+     #[must_use]
+-    pub const fn tx_pin(self) -> Option<SlotId> {
+-        self.tx_pin
++    pub const fn tx_pin(&self) -> Option<SlotId> {
++        match self.replay {
++            DedupReplay::Tx(id) => Some(id),
++            DedupReplay::None | DedupReplay::Inline { .. } => None,
++        }
+     }
+ 
+     /// Whether this row can answer a CON retransmit (`replay` or `tx_pin`).
+@@ -171,6 +213,13 @@ impl From<DedupKey> for DedupEntry {
+ /// Each operation scans the configured entry count (O(n) in capacity). Capacity
+ /// is fixed at construction.
+ pub(crate) trait DedupStore {
++    fn try_reclaim_app(
++        &mut self,
++        _replacement: fn(DedupKey, u64) -> Option<DedupEntry>,
++        _release_tx: impl FnMut(SlotId),
++    ) -> Option<bool> {
++        None
++    }
+     fn try_store_app(
+         &mut self,
+         _entry: DedupEntry,
+@@ -178,12 +227,33 @@ pub(crate) trait DedupStore {
+     ) -> Option<bool> {
+         None
+     }
++    fn try_expire_app(&mut self, _now_ms: u64, _release_tx: impl FnMut(SlotId)) -> bool {
++        false
++    }
+     fn insert(&mut self, entry: DedupEntry) -> Option<SlotId>;
+     fn lookup(&self, key: DedupKey) -> Option<SlotId>;
+     fn remove(&mut self, key: DedupKey) -> bool;
+     fn entry_ref(&self, id: SlotId) -> Option<&DedupEntry>;
+ }
+ 
++pub(super) fn oldest_pinned_replay<'a>(
++    capacity: usize,
++    mut entry: impl FnMut(SlotId) -> Option<&'a DedupEntry>,
++) -> Option<(SlotId, DedupKey, SlotId, u64)> {
++    let mut best = None;
++    for i in 0..capacity {
++        let id = SlotId::from_index(i);
++        let Some(row) = entry(id) else { continue };
++        let due = row.due_ms();
++        if row.tx_pin().is_some() && due != 0 && best.is_none_or(|(_, old)| due < old) {
++            best = Some((id, due));
++        }
++    }
++    let (id, due) = best?;
++    let row = entry(id)?;
++    Some((id, row.key(), row.tx_pin()?, due))
++}
++
+ /// Lookup identity for one Observe Interest Table row.
+ ///
+ /// RFC 7641 keys the observer list by client endpoint and Token. The local
+@@ -935,7 +1005,7 @@ pub(crate) trait ObserveStore<T: OwnedToken = Token> {
+ /// still advances the occupancy cursor used by acquire.
+ pub struct DedupTable<const ENTRIES: usize> {
+     entries: [Option<DedupEntry>; ENTRIES],
+-    occ: Occupancy<ENTRIES, 0>,
++    occ: DedupIndex<[u32; ENTRIES]>,
+ }
+ 
+ impl<const ENTRIES: usize> DedupTable<ENTRIES> {
+@@ -944,7 +1014,7 @@ impl<const ENTRIES: usize> DedupTable<ENTRIES> {
+     pub const fn new() -> Self {
+         Self {
+             entries: [None; ENTRIES],
+-            occ: Occupancy::new(),
++            occ: DedupIndex::new([0; ENTRIES]),
+         }
+     }
+ 
+@@ -957,7 +1027,7 @@ impl<const ENTRIES: usize> DedupTable<ENTRIES> {
+             return Some(id);
+         }
+         let id = self.occ.acquire()?;
+-        self.entries[id.index()] = Some(entry);
++        self.write(id, entry);
+         Some(id)
+     }
+ 
+@@ -968,6 +1038,9 @@ impl<const ENTRIES: usize> DedupTable<ENTRIES> {
+     pub fn lookup(&self, key: DedupKey) -> Option<SlotId> {
+         (0..ENTRIES).find_map(|i| {
+             let id = SlotId::from_index(i);
++            if !self.occ.matches(id, key.message_id()) {
++                return None;
++            }
+             match self.entry_ref(id) {
+                 Some(entry) if entry.key() == key => Some(id),
+                 _ => None,
+@@ -1009,10 +1082,15 @@ impl<const ENTRIES: usize> DedupTable<ENTRIES> {
+                 SlotError::InvalidSlot
+             });
+         }
+-        self.entries[id.index()] = Some(entry);
++        self.write(id, entry);
+         Ok(())
+     }
+ 
++    fn write(&mut self, id: SlotId, entry: DedupEntry) {
++        self.occ.set_mid(id, entry.key().message_id());
++        entry.write_into(&mut self.entries[id.index()]);
++    }
++
+     fn reset(&mut self, id: SlotId) {
+         if let Some(slot) = self.entries.get_mut(id.index()) {
+             *slot = None;
+@@ -1027,6 +1105,46 @@ impl<const ENTRIES: usize> Default for DedupTable<ENTRIES> {
+ }
+ 
+ impl<const ENTRIES: usize> DedupStore for DedupTable<ENTRIES> {
++    fn try_reclaim_app(
++        &mut self,
++        replacement: fn(DedupKey, u64) -> Option<DedupEntry>,
++        mut release_tx: impl FnMut(SlotId),
++    ) -> Option<bool> {
++        let Some((_, key, pin, due)) = oldest_pinned_replay(ENTRIES, |id| self.entry_ref(id))
++        else {
++            return Some(false);
++        };
++        release_tx(pin);
++        // Public set_entry permits duplicates. One key walk identifies both
++        // the row generic remove would select and any surviving duplicate.
++        let mut first = None;
++        let mut survives = false;
++        for i in 0..ENTRIES {
++            let id = SlotId::from_index(i);
++            if self.occ.matches(id, key.message_id())
++                && self.entry_ref(id).is_some_and(|row| row.key() == key)
++            {
++                if first.is_none() {
++                    first = Some(id);
++                } else {
++                    survives = true;
++                    break;
++                }
++            }
++        }
++        if let Some(id) = first {
++            let _ = self.release(id);
++        }
++        if let Some(row) = replacement(key, due) {
++            if row.key() != key {
++                let _ = self.insert(row);
++            } else if !survives && let Some(id) = self.occ.acquire() {
++                self.write(id, row);
++            }
++        }
++        Some(true)
++    }
++
+     fn try_store_app(
+         &mut self,
+         entry: DedupEntry,
+@@ -1036,15 +1154,16 @@ impl<const ENTRIES: usize> DedupStore for DedupTable<ENTRIES> {
+         let mut oldest = None;
+         for i in 0..ENTRIES {
+             let id = SlotId::from_index(i);
+-            let Some(row) = self.entry_ref(id) else {
++            let Some(old) = self.entry_ref(id) else {
+                 continue;
+             };
+-            if row.key() == entry.key() {
++            if self.occ.matches(id, entry.key().message_id()) && old.key() == entry.key() {
+                 existing = Some(id);
+                 break;
+             }
+-            if row.due_ms() != 0 && oldest.is_none_or(|(_, due)| row.due_ms() < due) {
+-                oldest = Some((id, row.due_ms()));
++            let due = old.due_ms();
++            if due != 0 && oldest.is_none_or(|(_, old)| due < old) {
++                oldest = Some((id, due));
+             }
+         }
+         if let Some(id) = existing {
+@@ -1079,10 +1198,30 @@ impl<const ENTRIES: usize> DedupStore for DedupTable<ENTRIES> {
+                 id
+             }
+         };
+-        self.entries[id.index()] = Some(entry);
++        self.write(id, entry);
+         Some(true)
+     }
+ 
++    fn try_expire_app(&mut self, now_ms: u64, mut release_tx: impl FnMut(SlotId)) -> bool {
++        for i in 0..ENTRIES {
++            let Some(row) = self.entry_ref(SlotId::from_index(i)) else {
++                continue;
++            };
++            let due = row.due_ms();
++            if due != 0 && now_ms >= due {
++                let key = row.key();
++                let pin = row.tx_pin();
++                if let Some(pin) = pin {
++                    release_tx(pin);
++                }
++                // Public set_entry can create duplicate keys. Preserve the
++                // generic App walk's key-based removal, including earlier rows.
++                let _ = self.remove(key);
++            }
++        }
++        true
++    }
++
+     fn insert(&mut self, entry: DedupEntry) -> Option<SlotId> {
+         DedupTable::insert(self, entry)
+     }
+@@ -1438,6 +1577,129 @@ mod format_tests {
+ mod app_store_tests {
+     use super::*;
+ 
++    fn replacement(key: DedupKey, due: u64) -> Option<DedupEntry> {
++        match due {
++            1 => None,
++            10 => Some(DedupEntry::new(MessageId::new(2), key.endpoint()).with_replay(b"other")),
++            _ => Some(DedupEntry::from(key).with_due_ms(due).with_replay(b"ack")),
++        }
++    }
++
++    fn reference_reclaim<const N: usize>(
++        table: &mut DedupTable<N>,
++        released: &mut Option<SlotId>,
++    ) -> bool {
++        let mut best: Option<DedupEntry> = None;
++        for i in 0..N {
++            let Some(row) = table.entry(SlotId::from_index(i)) else {
++                continue;
++            };
++            if row.tx_pin().is_some()
++                && row.due_ms() != 0
++                && best.is_none_or(|old| row.due_ms() < old.due_ms())
++            {
++                best = Some(row);
++            }
++        }
++        let Some(row) = best else { return false };
++        *released = row.tx_pin();
++        let _ = table.remove(row.key());
++        if let Some(next) = replacement(row.key(), row.due_ms()) {
++            let _ = table.insert(next);
++        }
++        true
++    }
++
++    fn compare_reclaim<const N: usize>() {
++        let mut actual = DedupTable::<N>::new();
++        let mut original = DedupTable::<N>::new();
++        for step in 0..1200usize {
++            let peer = Endpoint::v4([192, 0, 2, (step % 2) as u8], 5683);
++            let mut row = DedupEntry::new(MessageId::new(((step / 2) % 5) as u16), peer)
++                .with_due_ms([0, 1, 10, u64::MAX][(step / 7) % 4])
++                .with_replay(&[step as u8; 32]);
++            if step % 3 != 0 {
++                row = row.with_tx_pin(SlotId::from_index(step % 4));
++            }
++            match step % 7 {
++                0 => {
++                    assert_eq!(actual.acquire(), original.acquire());
++                }
++                1 | 2 if N > 0 => {
++                    let id = SlotId::from_index((step / 7) % N);
++                    assert_eq!(actual.set_entry(id, row), original.set_entry(id, row));
++                }
++                3 => {
++                    assert_eq!(actual.insert(row), original.insert(row));
++                }
++                4 => {
++                    assert_eq!(actual.remove(row.key()), original.remove(row.key()));
++                }
++                _ => {
++                    let mut released = None;
++                    let mut expected = None;
++                    assert_eq!(
++                        actual.try_reclaim_app(replacement, |pin| {
++                            assert!(released.is_none());
++                            released = Some(pin);
++                        }),
++                        Some(reference_reclaim(&mut original, &mut expected))
++                    );
++                    assert_eq!(released, expected);
++                }
++            }
++            assert_eq!(actual.cursor(), original.cursor());
++            assert_eq!(actual.occupied_count(), original.occupied_count());
++            for i in 0..N {
++                let id = SlotId::from_index(i);
++                assert_eq!(actual.is_occupied(id), original.is_occupied(id));
++                assert_eq!(actual.entry(id), original.entry(id));
++            }
++        }
++    }
++
++    #[test]
++    fn reclaim_matches_original_selection_replacement_and_cursor() {
++        compare_reclaim::<0>();
++        compare_reclaim::<1>();
++        compare_reclaim::<4>();
++        compare_reclaim::<64>();
++    }
++
++    #[test]
++    fn reclaim_releases_selected_pin_but_removes_first_duplicate() {
++        let mut table = DedupTable::<4>::new();
++        let row = DedupEntry::new(MessageId::new(9), Endpoint::v4([192, 0, 2, 1], 5683));
++        let first = table.acquire().unwrap();
++        let selected = table.acquire().unwrap();
++        let tied = table.acquire().unwrap();
++        let pin = SlotId::from_index(7);
++        table.set_entry(first, row.with_replay(b"first")).unwrap();
++        table
++            .set_entry(selected, row.with_due_ms(u64::MAX).with_tx_pin(pin))
++            .unwrap();
++        table
++            .set_entry(
++                tied,
++                row.with_due_ms(u64::MAX).with_tx_pin(SlotId::from_index(8)),
++            )
++            .unwrap();
++        let mut releases = 0;
++        assert_eq!(
++            table.try_reclaim_app(replacement, |id| {
++                assert_eq!(id, pin);
++                releases += 1;
++            }),
++            Some(true)
++        );
++        assert_eq!(releases, 1);
++        assert_eq!(table.entry(first), None);
++        assert_eq!(table.entry(selected).unwrap().tx_pin(), Some(pin));
++        assert!(table.entry(tied).is_some());
++        assert_eq!(table.cursor(), 3);
++        assert_eq!(table.occupied_count(), 2);
++    }
++
+     fn reference<const N: usize>(
+         table: &mut DedupTable<N>,
+         entry: DedupEntry,
+@@ -1518,3 +1780,86 @@ mod app_store_tests {
+         compare::<64>();
+     }
+ }
++
++#[cfg(test)]
++mod index_tests {
++    use super::*;
++
++    #[test]
++    fn lookup_checks_endpoint_and_tracks_overwrite_and_empty_slots() {
++        let a = Endpoint::v4([192, 0, 2, 1], 5683);
++        let b = Endpoint::v4([192, 0, 2, 2], 5683);
++        let mut table = DedupTable::<3>::new();
++        let first = DedupEntry::new(MessageId::new(7), a);
++        let second = DedupEntry::new(MessageId::new(7), b);
++        let x = table.insert(first).unwrap();
++        let y = table.insert(second).unwrap();
++        assert_eq!(table.lookup(first.key()), Some(x));
++        assert_eq!(table.lookup(second.key()), Some(y));
++        let replacement = DedupEntry::new(MessageId::new(8), b);
++        table.set_entry(x, replacement).unwrap();
++        assert_eq!(table.lookup(first.key()), None);
++        assert_eq!(table.lookup(replacement.key()), Some(x));
++        table.release(x).unwrap();
++        assert_eq!(table.lookup(replacement.key()), None);
++        let empty = table.acquire().unwrap();
++        assert_eq!(table.entry_ref(empty), None);
++        assert_eq!(table.lookup(first.key()), None);
++        assert_eq!(table.lookup(second.key()), Some(y));
++    }
++
++    #[test]
++    fn expiry_preserves_duplicate_key_removal_and_full_deadlines() {
++        let peer = Endpoint::v4([192, 0, 2, 9], 5683);
++        let mut table = DedupTable::<3>::new();
++        let first = table.acquire().unwrap();
++        let second = table.acquire().unwrap();
++        let forever = table.acquire().unwrap();
++        let row = DedupEntry::new(MessageId::new(7), peer);
++        let pin = SlotId::from_index(11);
++        table.set_entry(first, row.with_due_ms(0)).unwrap();
++        table
++            .set_entry(second, row.with_due_ms(5).with_tx_pin(pin))
++            .unwrap();
++        let last = DedupEntry::new(MessageId::new(8), peer).with_due_ms(u64::MAX);
++        table.set_entry(forever, last).unwrap();
++        let mut releases = 0;
++        assert!(table.try_expire_app(5, |id| {
++            assert_eq!(id, pin);
++            releases += 1;
++        }));
++        assert_eq!(releases, 1);
++        assert_eq!(table.entry_ref(first), None);
++        assert!(table.entry_ref(second).is_some());
++        assert_eq!(table.entry_ref(forever), Some(&last));
++        assert!(table.try_expire_app(4, |_| panic!("clock reversal must not expire")));
++        assert!(table.try_expire_app(5, |id| {
++            assert_eq!(id, pin);
++            releases += 1;
++        }));
++        assert_eq!(releases, 2);
++        assert_eq!(table.entry_ref(second), None);
++        assert!(table.try_expire_app(u64::MAX, |_| panic!("no pin")));
++        assert_eq!(table.occupied_count(), 0);
++    }
++
++    #[test]
++    fn replay_owner_transitions_preserve_active_bytes_and_refuse_oversize() {
++        let peer = Endpoint::v4([192, 0, 2, 1], 5683);
++        let pin = SlotId::from_index(3);
++        let row = DedupEntry::new(MessageId::new(7), peer)
++            .with_due_ms(9)
++            .with_replay(b"old");
++        let held = row.with_tx_pin(pin);
++        assert_eq!(held.replay(), None);
++        assert_eq!(held.with_replay(&[1; DedupEntry::REPLAY_MAX + 1]), held);
++        let replaced = held.with_replay(b"new");
++        assert_eq!(replaced.replay(), Some(&b"new"[..]));
++        assert_eq!(replaced.tx_pin(), None);
++        assert_eq!(replaced.key(), row.key());
++        assert_eq!(replaced.due_ms(), 9);
++        let empty = held.with_replay(&[]);
++        assert_eq!(empty.replay(), None);
++        assert_eq!(empty.tx_pin(), None);
++    }
++}

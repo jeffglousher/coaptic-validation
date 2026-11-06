@@ -1,0 +1,4 @@
+*.zip binary
+*.patch -text
+*.json text eol=lf
+*.py text eol=lf

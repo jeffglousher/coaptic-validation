@@ -1,0 +1,4267 @@
+{
+  "status": "complete",
+  "rows": [
+    {
+      "pair": 0,
+      "mode": "sync",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2597.5173611111113,
+          "B_cycles_per_call": 2686.6493055555557,
+          "ratio": 1.0343142824679012
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 868.8888888888889,
+          "B_cycles_per_call": 907.8472222222222,
+          "ratio": 1.044836956521739
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 843.3478260869565,
+          "B_cycles_per_call": 859.0173913043478,
+          "ratio": 1.0185801928133216
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 850.2951388888889,
+          "B_cycles_per_call": 861.8055555555555,
+          "ratio": 1.0135369663311349
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 885.361328125,
+        "B": 819.951171875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 10939.1015625,
+        "B": 11476.66015625
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 0,
+      "mode": "sync",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2968.5069444444443,
+          "B_cycles_per_call": 2576.5625,
+          "ratio": 0.8679657983694572
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 1040.3645833333333,
+          "B_cycles_per_call": 943.8541666666666,
+          "ratio": 0.9072340425531915
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 963.9739130434782,
+          "B_cycles_per_call": 849.704347826087,
+          "ratio": 0.8814598987885295
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 967.7604166666666,
+          "B_cycles_per_call": 849.7048611111111,
+          "ratio": 0.8780115888990546
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 833.9794921875,
+        "B": 821.0302734375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15799.04296875,
+        "B": 13873.92578125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 0,
+      "mode": "async",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2586.8923611111113,
+          "B_cycles_per_call": 2599.878472222222,
+          "ratio": 1.0050199657729606
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 866.8229166666666,
+          "B_cycles_per_call": 922.6041666666666,
+          "ratio": 1.0643513789581205
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 846.6,
+          "B_cycles_per_call": 847.7826086956521,
+          "ratio": 1.0013968919154879
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 847.34375,
+          "B_cycles_per_call": 854.7222222222222,
+          "ratio": 1.008707767328457
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 829.580078125,
+        "B": 821.279296875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11691.81640625,
+        "B": 11954.12109375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 0,
+      "mode": "async",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2577.152777777778,
+          "B_cycles_per_call": 2606.9618055555557,
+          "ratio": 1.01156665139716
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 899.5833333333334,
+          "B_cycles_per_call": 934.1145833333334,
+          "ratio": 1.0383858267716535
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 841.8695652173913,
+          "B_cycles_per_call": 857.8347826086956,
+          "ratio": 1.0189640035118526
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 834.3576388888889,
+          "B_cycles_per_call": 854.4270833333334,
+          "ratio": 1.0240537672444288
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 829.580078125,
+        "B": 820.615234375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14489.84375,
+        "B": 14830.5078125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 1,
+      "mode": "sync",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2770.1736111111113,
+          "B_cycles_per_call": 2657.7256944444443,
+          "ratio": 0.9594076283826976
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 920.2430555555555,
+          "B_cycles_per_call": 936.4756944444445,
+          "ratio": 1.017639512508018
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 888.5826086956522,
+          "B_cycles_per_call": 869.2173913043479,
+          "ratio": 0.9782066211944768
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 886.0069444444445,
+          "B_cycles_per_call": 869.1840277777778,
+          "ratio": 0.9810126582278481
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 866.103515625,
+        "B": 854.98046875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11773.828125,
+        "B": 11342.8515625
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 1,
+      "mode": "sync",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2584.2361111111113,
+          "B_cycles_per_call": 2713.8020833333335,
+          "ratio": 1.0501370488807675
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 914.6354166666666,
+          "B_cycles_per_call": 1005.5381944444445,
+          "ratio": 1.0993868989996773
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 841.8695652173913,
+          "B_cycles_per_call": 891.9826086956522,
+          "ratio": 1.0595258999122037
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 845.8680555555555,
+          "B_cycles_per_call": 878.9236111111111,
+          "ratio": 1.0390788555478019
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 822.3583984375,
+        "B": 838.876953125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13652.79296875,
+        "B": 15007.8125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 1,
+      "mode": "async",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2656.840277777778,
+          "B_cycles_per_call": 2570.9548611111113,
+          "ratio": 0.9676738502554988
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 867.7083333333334,
+          "B_cycles_per_call": 916.7013888888889,
+          "ratio": 1.0564625850340137
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 858.5739130434782,
+          "B_cycles_per_call": 847.3391304347826,
+          "ratio": 0.9869146005509642
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 880.3993055555555,
+          "B_cycles_per_call": 844.3923611111111,
+          "ratio": 0.9591015755950385
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 832.3193359375,
+        "B": 842.529296875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 12116.484375,
+        "B": 11732.65625
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 1,
+      "mode": "async",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2585.7118055555557,
+          "B_cycles_per_call": 2646.5104166666665,
+          "ratio": 1.0235132975687706
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 904.8958333333334,
+          "B_cycles_per_call": 947.1006944444445,
+          "ratio": 1.0466405740378344
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 839.6521739130435,
+          "B_cycles_per_call": 865.2260869565217,
+          "ratio": 1.0304577464788731
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 839.375,
+          "B_cycles_per_call": 897.5173611111111,
+          "ratio": 1.069268635724332
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 864.775390625,
+        "B": 823.4375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14429.08203125,
+        "B": 15170.83984375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 2,
+      "mode": "sync",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2688.125,
+          "B_cycles_per_call": 2638.246527777778,
+          "ratio": 0.9814448836187967
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 889.84375,
+          "B_cycles_per_call": 929.0972222222222,
+          "ratio": 1.0441127694859038
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 849.5565217391304,
+          "B_cycles_per_call": 868.1826086956522,
+          "ratio": 1.0219244823386116
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 868.0034722222222,
+          "B_cycles_per_call": 858.8541666666666,
+          "ratio": 0.9894593675620538
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 845.185546875,
+        "B": 836.6357421875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11413.2421875,
+        "B": 11235.9375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 2,
+      "mode": "sync",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2616.1111111111113,
+          "B_cycles_per_call": 2619.9479166666665,
+          "ratio": 1.0014666064981947
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 896.3368055555555,
+          "B_cycles_per_call": 951.8229166666666,
+          "ratio": 1.0619031939413894
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 841.1304347826087,
+          "B_cycles_per_call": 860.2,
+          "ratio": 1.022671353251318
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 850.2951388888889,
+          "B_cycles_per_call": 867.1180555555555,
+          "ratio": 1.019784796945505
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 833.3154296875,
+        "B": 826.8408203125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13792.24609375,
+        "B": 14136.23046875
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 2,
+      "mode": "async",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2606.371527777778,
+          "B_cycles_per_call": 2699.9305555555557,
+          "ratio": 1.0358962744876006
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 849.4097222222222,
+          "B_cycles_per_call": 927.03125,
+          "ratio": 1.0913829047949966
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 856.5043478260869,
+          "B_cycles_per_call": 865.9652173913043,
+          "ratio": 1.0110459095616156
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 836.1284722222222,
+          "B_cycles_per_call": 865.6423611111111,
+          "ratio": 1.035298270384751
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 829.248046875,
+        "B": 827.421875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11675.21484375,
+        "B": 12269.8828125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 2,
+      "mode": "async",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2711.440972222222,
+          "B_cycles_per_call": 2554.722222222222,
+          "ratio": 0.9422009361053663
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 898.4027777777778,
+          "B_cycles_per_call": 928.2118055555555,
+          "ratio": 1.033180026281209
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 860.7913043478261,
+          "B_cycles_per_call": 842.9043478260869,
+          "ratio": 0.9792203331616005
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 863.28125,
+          "B_cycles_per_call": 852.65625,
+          "ratio": 0.9876923076923076
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 851.826171875,
+        "B": 829.74609375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15070.234375,
+        "B": 14653.53515625
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 3,
+      "mode": "sync",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2663.628472222222,
+          "B_cycles_per_call": 2687.2395833333335,
+          "ratio": 1.0088642659279778
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 893.6805555555555,
+          "B_cycles_per_call": 917.8819444444445,
+          "ratio": 1.0270805812417438
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 861.8260869565217,
+          "B_cycles_per_call": 844.6782608695652,
+          "ratio": 0.9801029159519725
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 855.3125,
+          "B_cycles_per_call": 853.2465277777778,
+          "ratio": 0.997584541062802
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 834.39453125,
+        "B": 821.5283203125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11382.6953125,
+        "B": 11542.734375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 3,
+      "mode": "sync",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2595.4513888888887,
+          "B_cycles_per_call": 2666.5798611111113,
+          "ratio": 1.0274050488969753
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 902.5347222222222,
+          "B_cycles_per_call": 942.3784722222222,
+          "ratio": 1.0441465009810333
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 847.0434782608696,
+          "B_cycles_per_call": 853.4,
+          "ratio": 1.007504363001745
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 839.0798611111111,
+          "B_cycles_per_call": 874.2013888888889,
+          "ratio": 1.0418571931058742
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 827.587890625,
+        "B": 825.0146484375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13654.78515625,
+        "B": 14173.41796875
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 3,
+      "mode": "async",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2561.215277777778,
+          "B_cycles_per_call": 2561.8055555555557,
+          "ratio": 1.000230467849735
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 862.6909722222222,
+          "B_cycles_per_call": 906.6666666666666,
+          "ratio": 1.05097502565857
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 832.704347826087,
+          "B_cycles_per_call": 843.9391304347826,
+          "ratio": 1.0134919225989703
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 841.7361111111111,
+          "B_cycles_per_call": 846.1631944444445,
+          "ratio": 1.0052594670406731
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 825.8447265625,
+        "B": 823.5205078125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11565.9765625,
+        "B": 11709.08203125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 3,
+      "mode": "async",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2723.5416666666665,
+          "B_cycles_per_call": 2763.3854166666665,
+          "ratio": 1.0146293888166449
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 942.3784722222222,
+          "B_cycles_per_call": 959.2013888888889,
+          "ratio": 1.0178515502662073
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 880.6,
+          "B_cycles_per_call": 895.8260869565217,
+          "ratio": 1.0172905825079739
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 881.875,
+          "B_cycles_per_call": 917.5868055555555,
+          "ratio": 1.0404953145917002
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 854.3994140625,
+        "B": 878.3056640625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15128.671875,
+        "B": 15592.51953125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 4,
+      "mode": "sync",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2678.6805555555557,
+          "B_cycles_per_call": 2747.7430555555557,
+          "ratio": 1.0257822829440282
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 884.53125,
+          "B_cycles_per_call": 932.9340277777778,
+          "ratio": 1.0547213880547215
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 868.0347826086957,
+          "B_cycles_per_call": 874.2434782608696,
+          "ratio": 1.0071525885558583
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 869.7743055555555,
+          "B_cycles_per_call": 900.7638888888889,
+          "ratio": 1.0356294536817103
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 834.39453125,
+        "B": 834.4775390625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11213.359375,
+        "B": 11750.5859375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 4,
+      "mode": "sync",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2701.40625,
+          "B_cycles_per_call": 2715.5729166666665,
+          "ratio": 1.0052441822353326
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 901.9444444444445,
+          "B_cycles_per_call": 984.8784722222222,
+          "ratio": 1.0919502617801047
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 851.6260869565217,
+          "B_cycles_per_call": 894.7913043478261,
+          "ratio": 1.0506856448533242
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 847.34375,
+          "B_cycles_per_call": 898.1076388888889,
+          "ratio": 1.059909439219784
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 831.4892578125,
+        "B": 855.3125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14137.55859375,
+        "B": 14966.97265625
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 4,
+      "mode": "async",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2585.4166666666665,
+          "B_cycles_per_call": 2569.4791666666665,
+          "ratio": 0.9938356164383562
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 880.6944444444445,
+          "B_cycles_per_call": 918.7673611111111,
+          "ratio": 1.043230563002681
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 850.7391304347826,
+          "B_cycles_per_call": 840.0956521739131,
+          "ratio": 0.9874891398783667
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 850.2951388888889,
+          "B_cycles_per_call": 850.8854166666666,
+          "ratio": 1.0006942034015966
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 861.5380859375,
+        "B": 829.74609375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11869.453125,
+        "B": 11768.515625
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 4,
+      "mode": "async",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2624.0798611111113,
+          "B_cycles_per_call": 2579.21875,
+          "ratio": 0.9829040602856821
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 913.75,
+          "B_cycles_per_call": 936.7708333333334,
+          "ratio": 1.0251937984496124
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 859.3130434782609,
+          "B_cycles_per_call": 846.6,
+          "ratio": 0.9852055737140891
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 856.7881944444445,
+          "B_cycles_per_call": 847.0486111111111,
+          "ratio": 0.9886324491904925
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 822.0263671875,
+        "B": 817.3779296875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14764.43359375,
+        "B": 14894.2578125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 5,
+      "mode": "sync",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2663.3333333333335,
+          "B_cycles_per_call": 2656.840277777778,
+          "ratio": 0.9975620567375886
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 877.4479166666666,
+          "B_cycles_per_call": 909.9131944444445,
+          "ratio": 1.0369996636394214
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 848.2260869565217,
+          "B_cycles_per_call": 849.8521739130434,
+          "ratio": 1.0019170442662948
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 863.5763888888889,
+          "B_cycles_per_call": 865.6423611111111,
+          "ratio": 1.0023923444976075
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 832.1533203125,
+        "B": 847.9248046875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11395.9765625,
+        "B": 11485.29296875
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 5,
+      "mode": "sync",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2722.3611111111113,
+          "B_cycles_per_call": 2634.1145833333335,
+          "ratio": 0.9675845620121423
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 945.0347222222222,
+          "B_cycles_per_call": 960.3819444444445,
+          "ratio": 1.0162398500936916
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 886.9565217391304,
+          "B_cycles_per_call": 870.5478260869565,
+          "ratio": 0.9815
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 889.5486111111111,
+          "B_cycles_per_call": 878.9236111111111,
+          "ratio": 0.9880557398805574
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 865.0244140625,
+        "B": 831.904296875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14257.75390625,
+        "B": 14224.8828125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 5,
+      "mode": "async",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2589.253472222222,
+          "B_cycles_per_call": 2649.7569444444443,
+          "ratio": 1.0233671492077967
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 872.1354166666666,
+          "B_cycles_per_call": 950.0520833333334,
+          "ratio": 1.0893401015228428
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 844.5304347826087,
+          "B_cycles_per_call": 869.3652173913043,
+          "ratio": 1.02940661648871
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 852.3611111111111,
+          "B_cycles_per_call": 875.6770833333334,
+          "ratio": 1.0273545706371192
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 826.923828125,
+        "B": 844.4384765625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11680.859375,
+        "B": 12174.921875
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 5,
+      "mode": "async",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2672.1875,
+          "B_cycles_per_call": 2596.0416666666665,
+          "ratio": 0.9715043074884029
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 896.6319444444445,
+          "B_cycles_per_call": 936.4756944444445,
+          "ratio": 1.0444371296905859
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 849.8521739130434,
+          "B_cycles_per_call": 855.0260869565218,
+          "ratio": 1.00608801530701
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 852.0659722222222,
+          "B_cycles_per_call": 857.96875,
+          "ratio": 1.0069276065119501
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 836.884765625,
+        "B": 816.298828125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14903.88671875,
+        "B": 14825.859375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 6,
+      "mode": "sync",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2584.8263888888887,
+          "B_cycles_per_call": 2713.2118055555557,
+          "ratio": 1.0496688741721856
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 858.8541666666666,
+          "B_cycles_per_call": 931.7534722222222,
+          "ratio": 1.0848797250859106
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 845.7130434782608,
+          "B_cycles_per_call": 856.5043478260869,
+          "ratio": 1.0127600069917846
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 837.6041666666666,
+          "B_cycles_per_call": 855.9027777777778,
+          "ratio": 1.02184637068358
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 824.43359375,
+        "B": 824.8486328125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 10863.73046875,
+        "B": 11579.2578125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 6,
+      "mode": "sync",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2713.8020833333335,
+          "B_cycles_per_call": 2565.9375,
+          "ratio": 0.9455138662316476
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 902.2395833333334,
+          "B_cycles_per_call": 932.0486111111111,
+          "ratio": 1.0330389270526659
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 852.0695652173913,
+          "B_cycles_per_call": 846.895652173913,
+          "ratio": 0.9939278278972935
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 858.2638888888889,
+          "B_cycles_per_call": 847.9340277777778,
+          "ratio": 0.9879642365887208
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 840.6201171875,
+        "B": 821.3623046875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14089.74609375,
+        "B": 13737.4609375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 6,
+      "mode": "async",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2729.4444444444443,
+          "B_cycles_per_call": 2621.128472222222,
+          "ratio": 0.9603157439446367
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 888.6631944444445,
+          "B_cycles_per_call": 932.34375,
+          "ratio": 1.0491531052806375
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 874.5391304347826,
+          "B_cycles_per_call": 851.9217391304347,
+          "ratio": 0.9741379310344828
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 883.3506944444445,
+          "B_cycles_per_call": 858.8541666666666,
+          "ratio": 0.9722686267958569
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 852.7392578125,
+        "B": 823.3544921875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 12351.23046875,
+        "B": 11876.7578125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 6,
+      "mode": "async",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2637.3611111111113,
+          "B_cycles_per_call": 2602.8298611111113,
+          "ratio": 0.9869068934646374
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 920.8333333333334,
+          "B_cycles_per_call": 969.2361111111111,
+          "ratio": 1.0525641025641026
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 859.4608695652174,
+          "B_cycles_per_call": 855.3217391304348,
+          "ratio": 0.9951840385276918
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 862.3958333333334,
+          "B_cycles_per_call": 856.7881944444445,
+          "ratio": 0.9934976043805612
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 834.6435546875,
+        "B": 830.8251953125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14635.60546875,
+        "B": 14923.4765625
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 7,
+      "mode": "sync",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2675.7291666666665,
+          "B_cycles_per_call": 2666.5798611111113,
+          "ratio": 0.9965806309287449
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 886.3020833333334,
+          "B_cycles_per_call": 906.9618055555555,
+          "ratio": 1.0233100233100232
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 855.7652173913043,
+          "B_cycles_per_call": 855.1739130434783,
+          "ratio": 0.9993090343755399
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 869.7743055555555,
+          "B_cycles_per_call": 864.1666666666666,
+          "ratio": 0.993552765524262
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 848.4228515625,
+        "B": 820.8642578125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11371.40625,
+        "B": 11474.66796875
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 7,
+      "mode": "sync",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2674.5486111111113,
+          "B_cycles_per_call": 2724.1319444444443,
+          "ratio": 1.018538953873317
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 900.46875,
+          "B_cycles_per_call": 943.8541666666666,
+          "ratio": 1.048180924287119
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 840.9826086956522,
+          "B_cycles_per_call": 892.1304347826087,
+          "ratio": 1.0608191246264722
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 851.1805555555555,
+          "B_cycles_per_call": 880.9895833333334,
+          "ratio": 1.0350208044382803
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 846.513671875,
+        "B": 871.416015625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14001.7578125,
+        "B": 14507.44140625
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 7,
+      "mode": "async",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2560.3298611111113,
+          "B_cycles_per_call": 2709.375,
+          "ratio": 1.0582132564841498
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 859.4444444444445,
+          "B_cycles_per_call": 927.03125,
+          "ratio": 1.07864010989011
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 833.4434782608696,
+          "B_cycles_per_call": 871.4347826086956,
+          "ratio": 1.0455835402625044
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 848.5243055555555,
+          "B_cycles_per_call": 850.8854166666666,
+          "ratio": 1.0027826086956522
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 825.6787109375,
+        "B": 819.78515625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11577.265625,
+        "B": 12232.36328125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 7,
+      "mode": "async",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2605.190972222222,
+          "B_cycles_per_call": 2568.003472222222,
+          "ratio": 0.985725614591594
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 896.0416666666666,
+          "B_cycles_per_call": 926.4409722222222,
+          "ratio": 1.0339262187088274
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 844.8260869565217,
+          "B_cycles_per_call": 847.9304347826087,
+          "ratio": 1.0036745406824148
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 858.2638888888889,
+          "B_cycles_per_call": 841.1458333333334,
+          "ratio": 0.9800550206327373
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 842.4462890625,
+        "B": 825.4296875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14612.36328125,
+        "B": 14627.63671875
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 8,
+      "mode": "sync",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2560.034722222222,
+          "B_cycles_per_call": 2584.53125,
+          "ratio": 1.0095688263776805
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 875.0868055555555,
+          "B_cycles_per_call": 918.7673611111111,
+          "ratio": 1.0499156829679595
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 843.0521739130435,
+          "B_cycles_per_call": 846.008695652174,
+          "ratio": 1.003506926179204
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 835.5381944444445,
+          "B_cycles_per_call": 844.0972222222222,
+          "ratio": 1.0102437301306957
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 820.6982421875,
+        "B": 829.08203125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 10884.6484375,
+        "B": 11043.02734375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 8,
+      "mode": "sync",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2609.6180555555557,
+          "B_cycles_per_call": 2591.3194444444443,
+          "ratio": 0.9929880117620448
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 896.6319444444445,
+          "B_cycles_per_call": 941.7881944444445,
+          "ratio": 1.0503620803159974
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 847.3391304347826,
+          "B_cycles_per_call": 851.6260869565217,
+          "ratio": 1.0050593161200279
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 849.1145833333334,
+          "B_cycles_per_call": 861.2152777777778,
+          "ratio": 1.0142509558567954
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 835.4736328125,
+        "B": 839.375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13744.1015625,
+        "B": 13948.96484375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 8,
+      "mode": "async",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2589.5486111111113,
+          "B_cycles_per_call": 2687.2395833333335,
+          "ratio": 1.037725096877137
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 870.6597222222222,
+          "B_cycles_per_call": 919.0625,
+          "ratio": 1.055593220338983
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 845.4173913043478,
+          "B_cycles_per_call": 855.4695652173913,
+          "ratio": 1.0118901905927609
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 848.2291666666666,
+          "B_cycles_per_call": 864.1666666666666,
+          "ratio": 1.0187891440501045
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 826.923828125,
+        "B": 837.3828125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11697.4609375,
+        "B": 12181.23046875
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 8,
+      "mode": "async",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2583.3506944444443,
+          "B_cycles_per_call": 2571.840277777778,
+          "ratio": 0.9955443847823604
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 909.9131944444445,
+          "B_cycles_per_call": 940.3125,
+          "ratio": 1.0334090171910477
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 843.4956521739131,
+          "B_cycles_per_call": 851.1826086956522,
+          "ratio": 1.0091132141605328
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 833.1770833333334,
+          "B_cycles_per_call": 871.8402777777778,
+          "ratio": 1.0464045341834927
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 839.873046875,
+        "B": 825.5126953125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14427.08984375,
+        "B": 14980.5859375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 9,
+      "mode": "sync",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2546.753472222222,
+          "B_cycles_per_call": 2768.6979166666665,
+          "ratio": 1.0871479893382778
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 871.5451388888889,
+          "B_cycles_per_call": 978.9756944444445,
+          "ratio": 1.123264476803251
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 826.2,
+          "B_cycles_per_call": 882.6695652173913,
+          "ratio": 1.0683485417784935
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 837.6041666666666,
+          "B_cycles_per_call": 901.9444444444445,
+          "ratio": 1.076814658210007
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 814.47265625,
+        "B": 826.923828125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 10823.5546875,
+        "B": 12195.5078125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 9,
+      "mode": "sync",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2651.527777777778,
+          "B_cycles_per_call": 2594.565972222222,
+          "ratio": 0.9785173642030276
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 929.9826388888889,
+          "B_cycles_per_call": 939.7222222222222,
+          "ratio": 1.0104728657569024
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 864.7826086956521,
+          "B_cycles_per_call": 841.5739130434782,
+          "ratio": 0.9731623931623932
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 861.5104166666666,
+          "B_cycles_per_call": 843.8020833333334,
+          "ratio": 0.9794450154162385
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 862.7001953125,
+        "B": 833.564453125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13973.53515625,
+        "B": 13912.109375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 9,
+      "mode": "async",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 3359.565972222222,
+          "B_cycles_per_call": 2629.3923611111113,
+          "ratio": 0.7826583501713081
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 1157.829861111111,
+          "B_cycles_per_call": 933.2291666666666,
+          "ratio": 0.8060158042314555
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 1088.591304347826,
+          "B_cycles_per_call": 859.4608695652174,
+          "ratio": 0.789516567083107
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 1099.0972222222222,
+          "B_cycles_per_call": 863.28125,
+          "ratio": 0.7854457572502686
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 1101.4306640625,
+        "B": 853.4033203125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 16454.140625,
+        "B": 11977.36328125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 9,
+      "mode": "async",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2718.5243055555557,
+          "B_cycles_per_call": 2585.121527777778,
+          "ratio": 0.9509282379763326
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 907.8472222222222,
+          "B_cycles_per_call": 937.9513888888889,
+          "ratio": 1.0331599479843954
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 864.9304347826087,
+          "B_cycles_per_call": 853.991304347826,
+          "ratio": 0.9873525893009741
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 868.8888888888889,
+          "B_cycles_per_call": 861.2152777777778,
+          "ratio": 0.9911684782608696
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 841.2841796875,
+        "B": 826.5087890625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15148.92578125,
+        "B": 14719.94140625
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 10,
+      "mode": "sync",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2642.6736111111113,
+          "B_cycles_per_call": 2669.53125,
+          "ratio": 1.010163055617601
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 889.2534722222222,
+          "B_cycles_per_call": 943.2638888888889,
+          "ratio": 1.0607368071689347
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 865.9652173913043,
+          "B_cycles_per_call": 873.0608695652174,
+          "ratio": 1.00819392284056
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 863.8715277777778,
+          "B_cycles_per_call": 876.5625,
+          "ratio": 1.0146908097027674
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 845.2685546875,
+        "B": 869.423828125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11161.23046875,
+        "B": 11392.65625
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 10,
+      "mode": "sync",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2774.6006944444443,
+          "B_cycles_per_call": 2768.6979166666665,
+          "ratio": 0.9978725667482182
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 961.2673611111111,
+          "B_cycles_per_call": 977.7951388888889,
+          "ratio": 1.0171937365673933
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 900.8521739130434,
+          "B_cycles_per_call": 891.5391304347826,
+          "ratio": 0.9896619625861504
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 906.6666666666666,
+          "B_cycles_per_call": 895.4513888888889,
+          "ratio": 0.9876302083333334
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 854.0673828125,
+        "B": 858.466796875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15088.828125,
+        "B": 14805.60546875
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 10,
+      "mode": "async",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2641.1979166666665,
+          "B_cycles_per_call": 2641.1979166666665,
+          "ratio": 1.0
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 892.7951388888889,
+          "B_cycles_per_call": 946.2152777777778,
+          "ratio": 1.0598347107438018
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 860.3478260869565,
+          "B_cycles_per_call": 873.3565217391305,
+          "ratio": 1.0151202749140895
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 860.0347222222222,
+          "B_cycles_per_call": 869.7743055555555,
+          "ratio": 1.011324639670556
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 849.0869140625,
+        "B": 844.9365234375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11949.8046875,
+        "B": 12157.98828125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 10,
+      "mode": "async",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2690.78125,
+          "B_cycles_per_call": 2741.5451388888887,
+          "ratio": 1.018865854996161
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 944.7395833333334,
+          "B_cycles_per_call": 958.0208333333334,
+          "ratio": 1.014058106841612
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 861.5304347826087,
+          "B_cycles_per_call": 888.1391304347826,
+          "ratio": 1.030885380919698
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 872.1354166666666,
+          "B_cycles_per_call": 889.84375,
+          "ratio": 1.0203045685279188
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 856.0595703125,
+        "B": 839.375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15068.2421875,
+        "B": 15573.26171875
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 11,
+      "mode": "sync",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2648.5763888888887,
+          "B_cycles_per_call": 2731.215277777778,
+          "ratio": 1.0312012480499222
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 928.5069444444445,
+          "B_cycles_per_call": 931.4583333333334,
+          "ratio": 1.003178639542276
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 869.6608695652174,
+          "B_cycles_per_call": 869.9565217391304,
+          "ratio": 1.0003399626041136
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 867.1180555555555,
+          "B_cycles_per_call": 884.8263888888889,
+          "ratio": 1.020422055820286
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 876.8115234375,
+        "B": 837.880859375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11387.34375,
+        "B": 11780.80078125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 11,
+      "mode": "sync",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2731.215277777778,
+          "B_cycles_per_call": 2686.9444444444443,
+          "ratio": 0.9837907931705208
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 915.5208333333334,
+          "B_cycles_per_call": 969.8263888888889,
+          "ratio": 1.059316569954868
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 869.8086956521739,
+          "B_cycles_per_call": 867.7391304347826,
+          "ratio": 0.9976206662134602
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 860.3298611111111,
+          "B_cycles_per_call": 876.8576388888889,
+          "ratio": 1.019210977701544
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 839.1259765625,
+        "B": 852.98828125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14302.24609375,
+        "B": 14423.10546875
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 11,
+      "mode": "async",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2709.965277777778,
+          "B_cycles_per_call": 2576.2673611111113,
+          "ratio": 0.9506643432803311
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 897.5173611111111,
+          "B_cycles_per_call": 911.6840277777778,
+          "ratio": 1.0157842814863534
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 870.991304347826,
+          "B_cycles_per_call": 846.895652173913,
+          "ratio": 0.9723353699932112
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 887.1875,
+          "B_cycles_per_call": 851.1805555555555,
+          "ratio": 0.959414504324684
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 852.65625,
+        "B": 824.765625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 12393.73046875,
+        "B": 11748.92578125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 11,
+      "mode": "async",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2674.253472222222,
+          "B_cycles_per_call": 2560.034722222222,
+          "ratio": 0.9572894823970864
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 888.0729166666666,
+          "B_cycles_per_call": 932.9340277777778,
+          "ratio": 1.0505151213027586
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 851.6260869565217,
+          "B_cycles_per_call": 847.0434782608696,
+          "ratio": 0.9946189897587225
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 847.9340277777778,
+          "B_cycles_per_call": 856.7881944444445,
+          "ratio": 1.0104420466411417
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 823.4375,
+        "B": 817.4609375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14842.79296875,
+        "B": 14550.2734375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 12,
+      "mode": "sync",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2564.4618055555557,
+          "B_cycles_per_call": 2697.8645833333335,
+          "ratio": 1.0520197951432846
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 869.1840277777778,
+          "B_cycles_per_call": 918.1770833333334,
+          "ratio": 1.0563667232597622
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 843.9391304347826,
+          "B_cycles_per_call": 853.8434782608696,
+          "ratio": 1.0117358556664915
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 845.5729166666666,
+          "B_cycles_per_call": 869.7743055555555,
+          "ratio": 1.0286212914485167
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 827.5048828125,
+        "B": 828.8330078125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 10890.625,
+        "B": 11565.9765625
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 12,
+      "mode": "sync",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2569.184027777778,
+          "B_cycles_per_call": 2667.1701388888887,
+          "ratio": 1.0381390005743825
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 901.6493055555555,
+          "B_cycles_per_call": 945.0347222222222,
+          "ratio": 1.0481178396072013
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 837.4347826086956,
+          "B_cycles_per_call": 852.8086956521739,
+          "ratio": 1.0183583406884378
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 844.0972222222222,
+          "B_cycles_per_call": 860.9201388888889,
+          "ratio": 1.01993006993007
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 823.603515625,
+        "B": 828.1689453125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13605.3125,
+        "B": 14155.15625
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 12,
+      "mode": "async",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2596.3368055555557,
+          "B_cycles_per_call": 2628.2118055555557,
+          "ratio": 1.0122769125838353
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 855.3125,
+          "B_cycles_per_call": 933.5243055555555,
+          "ratio": 1.0914423740510697
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 851.7739130434783,
+          "B_cycles_per_call": 855.3217391304348,
+          "ratio": 1.0041652204095801
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 847.0486111111111,
+          "B_cycles_per_call": 846.7534722222222,
+          "ratio": 0.9996515679442508
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 827.0068359375,
+        "B": 821.11328125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11591.54296875,
+        "B": 11918.59375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 12,
+      "mode": "async",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2663.9236111111113,
+          "B_cycles_per_call": 2684.2881944444443,
+          "ratio": 1.0076445823177487
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 899.2881944444445,
+          "B_cycles_per_call": 942.3784722222222,
+          "ratio": 1.0479159829340334
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 851.4782608695652,
+          "B_cycles_per_call": 869.9565217391304,
+          "ratio": 1.0217013888888888
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 874.2013888888889,
+          "B_cycles_per_call": 882.7604166666666,
+          "ratio": 1.0097906819716407
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 863.9453125,
+        "B": 821.943359375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14971.2890625,
+        "B": 15410.234375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 13,
+      "mode": "sync",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2560.9201388888887,
+          "B_cycles_per_call": 2654.7743055555557,
+          "ratio": 1.0366486112711768
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 879.21875,
+          "B_cycles_per_call": 917.2916666666666,
+          "ratio": 1.0433031218529707
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 840.5391304347826,
+          "B_cycles_per_call": 847.9304347826087,
+          "ratio": 1.008793527963419
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 839.375,
+          "B_cycles_per_call": 874.4965277777778,
+          "ratio": 1.0418424753867792
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 825.595703125,
+        "B": 826.3427734375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 10920.83984375,
+        "B": 11373.06640625
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 13,
+      "mode": "sync",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2693.7326388888887,
+          "B_cycles_per_call": 2687.8298611111113,
+          "ratio": 0.9978086994631316
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 902.2395833333334,
+          "B_cycles_per_call": 948.5763888888889,
+          "ratio": 1.051357540071966
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 865.6695652173913,
+          "B_cycles_per_call": 840.3913043478261,
+          "ratio": 0.9707991803278688
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 847.9340277777778,
+          "B_cycles_per_call": 873.6111111111111,
+          "ratio": 1.0302819352593107
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 841.2841796875,
+        "B": 837.7978515625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14017.03125,
+        "B": 14210.2734375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 13,
+      "mode": "async",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2571.840277777778,
+          "B_cycles_per_call": 2627.03125,
+          "ratio": 1.0214597199908193
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 857.6736111111111,
+          "B_cycles_per_call": 920.5381944444445,
+          "ratio": 1.073296627666896
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 842.1652173913044,
+          "B_cycles_per_call": 853.104347826087,
+          "ratio": 1.0129892926101456
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 844.6875,
+          "B_cycles_per_call": 853.8368055555555,
+          "ratio": 1.0108315863032844
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 827.5048828125,
+        "B": 840.537109375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11602.83203125,
+        "B": 11965.7421875
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 13,
+      "mode": "async",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2716.753472222222,
+          "B_cycles_per_call": 2559.1493055555557,
+          "ratio": 0.9419880499728409
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 908.1423611111111,
+          "B_cycles_per_call": 935.0,
+          "ratio": 1.029574260643484
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 861.6782608695652,
+          "B_cycles_per_call": 841.5739130434782,
+          "ratio": 0.9766683822267971
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 877.1527777777778,
+          "B_cycles_per_call": 859.4444444444445,
+          "ratio": 0.9798115746971736
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 857.2216796875,
+        "B": 821.3623046875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15174.82421875,
+        "B": 14981.58203125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 14,
+      "mode": "sync",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2616.996527777778,
+          "B_cycles_per_call": 2767.5173611111113,
+          "ratio": 1.0575166347129807
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 867.1180555555555,
+          "B_cycles_per_call": 954.4791666666666,
+          "ratio": 1.1007488087134105
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 845.4173913043478,
+          "B_cycles_per_call": 884.4434782608696,
+          "ratio": 1.0461619164189544
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 851.4756944444445,
+          "B_cycles_per_call": 895.4513888888889,
+          "ratio": 1.0516464471403812
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 826.7578125,
+        "B": 888.681640625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 10988.57421875,
+        "B": 11869.78515625
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 14,
+      "mode": "sync",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2679.8611111111113,
+          "B_cycles_per_call": 2618.1770833333335,
+          "ratio": 0.9769823788546256
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 893.9756944444445,
+          "B_cycles_per_call": 951.5277777777778,
+          "ratio": 1.0643776824034334
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 852.5130434782609,
+          "B_cycles_per_call": 865.0782608695653,
+          "ratio": 1.0147390324258714
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 855.0173611111111,
+          "B_cycles_per_call": 871.25,
+          "ratio": 1.0189851570590267
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 830.8251953125,
+        "B": 885.4443359375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14040.2734375,
+        "B": 14026.66015625
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 14,
+      "mode": "async",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2742.1354166666665,
+          "B_cycles_per_call": 2583.3506944444443,
+          "ratio": 0.9420945000538156
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 891.3194444444445,
+          "B_cycles_per_call": 933.2291666666666,
+          "ratio": 1.047019867549669
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 879.8608695652174,
+          "B_cycles_per_call": 855.6173913043478,
+          "ratio": 0.9724462365591398
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 886.5972222222222,
+          "B_cycles_per_call": 868.0034722222222,
+          "ratio": 0.9790279627163782
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 864.443359375,
+        "B": 830.6591796875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 12506.62109375,
+        "B": 11895.68359375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 14,
+      "mode": "async",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2745.3819444444443,
+          "B_cycles_per_call": 2621.4236111111113,
+          "ratio": 0.9548484196946895
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 957.1354166666666,
+          "B_cycles_per_call": 939.1319444444445,
+          "ratio": 0.981190255935862
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 897.6,
+          "B_cycles_per_call": 849.704347826087,
+          "ratio": 0.9466403162055336
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 903.7152777777778,
+          "B_cycles_per_call": 851.7708333333334,
+          "ratio": 0.9425212279555846
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 829.3310546875,
+        "B": 829.4140625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15131.9921875,
+        "B": 15047.32421875
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 15,
+      "mode": "sync",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2585.4166666666665,
+          "B_cycles_per_call": 2734.7569444444443,
+          "ratio": 1.0577625570776257
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 853.5416666666666,
+          "B_cycles_per_call": 949.7569444444445,
+          "ratio": 1.1127247579529738
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 848.3739130434783,
+          "B_cycles_per_call": 880.008695652174,
+          "ratio": 1.03728872625893
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 828.4548611111111,
+          "B_cycles_per_call": 883.9409722222222,
+          "ratio": 1.0669754185963662
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 827.587890625,
+        "B": 820.947265625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 10879.3359375,
+        "B": 11878.41796875
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 15,
+      "mode": "sync",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2681.9270833333335,
+          "B_cycles_per_call": 2684.878472222222,
+          "ratio": 1.0011004732034774
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 911.09375,
+          "B_cycles_per_call": 973.6631944444445,
+          "ratio": 1.0686750890832524
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 859.6086956521739,
+          "B_cycles_per_call": 878.9739130434782,
+          "ratio": 1.0225279449699054
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 870.6597222222222,
+          "B_cycles_per_call": 886.8923611111111,
+          "ratio": 1.0186440677966102
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 853.65234375,
+        "B": 836.8017578125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 14144.53125,
+        "B": 14554.2578125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 15,
+      "mode": "async",
+      "security": "unprotected",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2673.9583333333335,
+          "B_cycles_per_call": 2640.0173611111113,
+          "ratio": 0.9873068432671082
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 891.3194444444445,
+          "B_cycles_per_call": 932.34375,
+          "ratio": 1.046026490066225
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 865.6695652173913,
+          "B_cycles_per_call": 867.0,
+          "ratio": 1.0015368852459017
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 858.8541666666666,
+          "B_cycles_per_call": 875.3819444444445,
+          "ratio": 1.0192439862542957
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 855.2294921875,
+        "B": 832.8173828125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 11932.5390625,
+        "B": 12009.90234375
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          55,
+          55,
+          1152
+        ],
+        "B": [
+          55,
+          55,
+          1152
+        ]
+      }
+    },
+    {
+      "pair": 15,
+      "mode": "async",
+      "security": "oscore",
+      "phases": {
+        "store": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 2772.534722222222,
+          "B_cycles_per_call": 2974.7048611111113,
+          "ratio": 1.0729188843942943
+        },
+        "construct_replay": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 934.7048611111111,
+          "B_cycles_per_call": 1100.8680555555557,
+          "ratio": 1.1777707609725294
+        },
+        "lookup": {
+          "A_calls": 2300,
+          "B_calls": 2300,
+          "A_cycles_per_call": 879.2695652173913,
+          "B_cycles_per_call": 968.408695652174,
+          "ratio": 1.10137861466039
+        },
+        "expiry": {
+          "A_calls": 1152,
+          "B_calls": 1152,
+          "A_cycles_per_call": 859.4444444444445,
+          "B_cycles_per_call": 1014.6875,
+          "ratio": 1.1806318681318682
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 853.5693359375,
+        "B": 821.4453125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15312.6171875,
+        "B": 18612.67578125
+      },
+      "wire_lengths_min_max_count": {
+        "A": [
+          66,
+          66,
+          1152
+        ],
+        "B": [
+          66,
+          66,
+          1152
+        ]
+      }
+    }
+  ],
+  "summary": [
+    {
+      "mode": "sync",
+      "security": "unprotected",
+      "phase": "store",
+      "A_mean_cycles_per_call": 2627.9904513888887,
+      "B_mean_cycles_per_call": 2691.4453125,
+      "paired_geomean_ratio": 1.0242365936695321,
+      "A_call_counts": [
+        1152
+      ],
+      "B_call_counts": [
+        1152
+      ]
+    },
+    {
+      "mode": "sync",
+      "security": "unprotected",
+      "phase": "construct_replay",
+      "A_mean_cycles_per_call": 882.0779079861111,
+      "B_mean_cycles_per_call": 930.3146701388889,
+      "paired_geomean_ratio": 1.0547242890209074,
+      "A_call_counts": [
+        1152
+      ],
+      "B_call_counts": [
+        1152
+      ]
+    },
+    {
+      "mode": "sync",
+      "security": "unprotected",
+      "phase": "lookup",
+      "A_mean_cycles_per_call": 852.7625,
+      "B_mean_cycles_per_call": 863.4244565217391,
+      "paired_geomean_ratio": 1.0125323799132893,
+      "A_call_counts": [
+        2300
+      ],
+      "B_call_counts": [
+        2300
+      ]
+    },
+    {
+      "mode": "sync",
+      "security": "unprotected",
+      "phase": "expiry",
+      "A_mean_cycles_per_call": 854.3348524305555,
+      "B_mean_cycles_per_call": 872.5412326388889,
+      "paired_geomean_ratio": 1.0212984825117164,
+      "A_call_counts": [
+        1152
+      ],
+      "B_call_counts": [
+        1152
+      ]
+    },
+    {
+      "mode": "sync",
+      "security": "oscore",
+      "phase": "store",
+      "A_mean_cycles_per_call": 2685.5056423611113,
+      "B_mean_cycles_per_call": 2657.2645399305557,
+      "paired_geomean_ratio": 0.9898186864309101,
+      "A_call_counts": [
+        1152
+      ],
+      "B_call_counts": [
+        1152
+      ]
+    },
+    {
+      "mode": "sync",
+      "security": "oscore",
+      "phase": "construct_replay",
+      "A_mean_cycles_per_call": 919.7450086805555,
+      "B_mean_cycles_per_call": 957.0431857638889,
+      "paired_geomean_ratio": 1.041097641562403,
+      "A_call_counts": [
+        1152
+      ],
+      "B_call_counts": [
+        1152
+      ]
+    },
+    {
+      "mode": "sync",
+      "security": "oscore",
+      "phase": "lookup",
+      "A_mean_cycles_per_call": 863.9788043478261,
+      "B_mean_cycles_per_call": 865.5864130434783,
+      "paired_geomean_ratio": 1.0022396615834759,
+      "A_call_counts": [
+        2300
+      ],
+      "B_call_counts": [
+        2300
+      ]
+    },
+    {
+      "mode": "sync",
+      "security": "oscore",
+      "phase": "expiry",
+      "A_mean_cycles_per_call": 865.2918836805555,
+      "B_mean_cycles_per_call": 871.6189236111111,
+      "paired_geomean_ratio": 1.0077879724888568,
+      "A_call_counts": [
+        1152
+      ],
+      "B_call_counts": [
+        1152
+      ]
+    },
+    {
+      "mode": "async",
+      "security": "unprotected",
+      "phase": "store",
+      "A_mean_cycles_per_call": 2672.51953125,
+      "B_mean_cycles_per_call": 2624.6885850694443,
+      "paired_geomean_ratio": 0.9840680718838646,
+      "A_call_counts": [
+        1152
+      ],
+      "B_call_counts": [
+        1152
+      ]
+    },
+    {
+      "mode": "async",
+      "security": "unprotected",
+      "phase": "construct_replay",
+      "A_mean_cycles_per_call": 891.3747829861111,
+      "B_mean_cycles_per_call": 926.9390190972222,
+      "paired_geomean_ratio": 1.0425973516167415,
+      "A_call_counts": [
+        1152
+      ],
+      "B_call_counts": [
+        1152
+      ]
+    },
+    {
+      "mode": "async",
+      "security": "unprotected",
+      "phase": "lookup",
+      "A_mean_cycles_per_call": 868.9032608695652,
+      "B_mean_cycles_per_call": 856.5043478260869,
+      "paired_geomean_ratio": 0.9876069578320601,
+      "A_call_counts": [
+        2300
+      ],
+      "B_call_counts": [
+        2300
+      ]
+    },
+    {
+      "mode": "async",
+      "security": "unprotected",
+      "phase": "expiry",
+      "A_mean_cycles_per_call": 873.2421875,
+      "B_mean_cycles_per_call": 858.7250434027777,
+      "paired_geomean_ratio": 0.9853837761999965,
+      "A_call_counts": [
+        1152
+      ],
+      "B_call_counts": [
+        1152
+      ]
+    },
+    {
+      "mode": "async",
+      "security": "oscore",
+      "phase": "store",
+      "A_mean_cycles_per_call": 2668.8856336805557,
+      "B_mean_cycles_per_call": 2638.486328125,
+      "paired_geomean_ratio": 0.9880908160482664,
+      "A_call_counts": [
+        1152
+      ],
+      "B_call_counts": [
+        1152
+      ]
+    },
+    {
+      "mode": "async",
+      "security": "oscore",
+      "phase": "construct_replay",
+      "A_mean_cycles_per_call": 913.8975694444445,
+      "B_mean_cycles_per_call": 951.5093315972223,
+      "paired_geomean_ratio": 1.0405408617746539,
+      "A_call_counts": [
+        1152
+      ],
+      "B_call_counts": [
+        1152
+      ]
+    },
+    {
+      "mode": "async",
+      "security": "oscore",
+      "phase": "lookup",
+      "A_mean_cycles_per_call": 859.2483695652174,
+      "B_mean_cycles_per_call": 864.791847826087,
+      "paired_geomean_ratio": 1.0060112882115597,
+      "A_call_counts": [
+        2300
+      ],
+      "B_call_counts": [
+        2300
+      ]
+    },
+    {
+      "mode": "async",
+      "security": "oscore",
+      "phase": "expiry",
+      "A_mean_cycles_per_call": 861.5657552083334,
+      "B_mean_cycles_per_call": 875.8430989583334,
+      "paired_geomean_ratio": 1.015750056305112,
+      "A_call_counts": [
+        1152
+      ],
+      "B_call_counts": [
+        1152
+      ]
+    }
+  ],
+  "process_exits": [
+    {
+      "label": "0-sync-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "0-sync-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "0-sync-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "0-sync-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "0-async-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "0-async-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "0-async-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "0-async-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "1-sync-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "1-sync-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "1-sync-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "1-sync-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "1-async-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "1-async-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "1-async-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "1-async-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "2-sync-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "2-sync-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "2-sync-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "2-sync-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "2-async-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "2-async-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "2-async-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "2-async-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "3-sync-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "3-sync-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "3-sync-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "3-sync-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "3-async-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "3-async-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "3-async-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "3-async-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "4-sync-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "4-sync-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "4-sync-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "4-sync-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "4-async-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "4-async-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "4-async-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "4-async-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "5-sync-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "5-sync-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "5-sync-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "5-sync-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "5-async-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "5-async-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "5-async-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "5-async-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "6-sync-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "6-sync-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "6-sync-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "6-sync-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "6-async-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "6-async-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "6-async-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "6-async-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "7-sync-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "7-sync-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "7-sync-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "7-sync-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "7-async-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "7-async-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "7-async-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "7-async-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "8-sync-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "8-sync-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "8-sync-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "8-sync-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "8-async-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "8-async-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "8-async-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "8-async-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "9-sync-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "9-sync-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "9-sync-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "9-sync-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "9-async-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "9-async-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "9-async-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "9-async-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "10-sync-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "10-sync-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "10-sync-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "10-sync-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "10-async-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "10-async-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "10-async-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "10-async-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "11-sync-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "11-sync-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "11-sync-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "11-sync-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "11-async-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "11-async-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "11-async-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "11-async-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "12-sync-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "12-sync-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "12-sync-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "12-sync-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "12-async-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "12-async-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "12-async-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "12-async-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "13-sync-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "13-sync-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "13-sync-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "13-sync-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "13-async-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "13-async-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "13-async-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "13-async-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "14-sync-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "14-sync-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "14-sync-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "14-sync-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "14-async-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "14-async-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "14-async-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "14-async-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "15-sync-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "15-sync-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "15-sync-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "15-sync-oscore-B",
+      "exit_code": 0
+    },
+    {
+      "label": "15-async-unprotected-A",
+      "exit_code": 0
+    },
+    {
+      "label": "15-async-unprotected-B",
+      "exit_code": 0
+    },
+    {
+      "label": "15-async-oscore-A",
+      "exit_code": 0
+    },
+    {
+      "label": "15-async-oscore-B",
+      "exit_code": 0
+    }
+  ],
+  "seconds": 4.288305599940941,
+  "acceptance_claim": false
+}

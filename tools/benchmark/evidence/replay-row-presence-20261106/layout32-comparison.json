@@ -1,0 +1,55 @@
+{
+  "target": "thumbv7em-none-eabi",
+  "features": [
+    "alloc",
+    "oscore"
+  ],
+  "baseline": "bd63199b652193b4c0a882e5840e72d992cf1362",
+  "candidate": "8fc41ead4790e25051ae90c395b012b4c8518f72",
+  "memory_nongrowth": true,
+  "scope": "Static object layout on existing installed32-bit target, unit transport; no device execution or runtime claim. Do not compare absolute sizes against the64-bit transport-inclusive table.",
+  "rows": [
+    {
+      "owner": "SmallDevice App / unit transport",
+      "baseline": 11304,
+      "baseline_record": "print-type-size type: `coaptic::App<coaptic::profiles::Constrained, (), 4, false, coaptic::storage::Memory<coaptic::profiles::Constrained>, 0, 1>`: 11304 bytes, alignment: 8 bytes",
+      "candidate": 11280,
+      "candidate_record": "print-type-size type: `coaptic::App<coaptic::profiles::Constrained, (), 4, false, coaptic::storage::Memory<coaptic::profiles::Constrained>, 0, 1>`: 11280 bytes, alignment: 8 bytes"
+    },
+    {
+      "owner": "Service fixed App / unit transport",
+      "baseline": 307504,
+      "baseline_record": "print-type-size type: `coaptic::App<coaptic::profiles::Service, (), 32, true, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, 8, 4>`: 307504 bytes, alignment: 8 bytes",
+      "candidate": 307184,
+      "candidate_record": "print-type-size type: `coaptic::App<coaptic::profiles::Service, (), 32, true, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, 8, 4>`: 307184 bytes, alignment: 8 bytes"
+    },
+    {
+      "owner": "Service allocated App / unit transport",
+      "baseline": 28184,
+      "baseline_record": "print-type-size type: `coaptic::App<coaptic::profiles::Service, (), 32, true, coaptic::storage::AllocMemory, 8, 4>`: 28184 bytes, alignment: 8 bytes",
+      "candidate": 28168,
+      "candidate_record": "print-type-size type: `coaptic::App<coaptic::profiles::Service, (), 32, true, coaptic::storage::AllocMemory, 8, 4>`: 28168 bytes, alignment: 8 bytes"
+    },
+    {
+      "owner": "Replay row",
+      "baseline": 312,
+      "baseline_record": "print-type-size type: `coaptic::storage::DedupEntry`: 312 bytes, alignment: 8 bytes",
+      "candidate": 304,
+      "candidate_record": "print-type-size type: `coaptic::storage::DedupEntry`: 304 bytes, alignment: 8 bytes"
+    },
+    {
+      "owner": "Four-entry replay table",
+      "baseline": 1264,
+      "baseline_record": "print-type-size type: `coaptic::storage::DedupTable<4>`: 1264 bytes, alignment: 8 bytes",
+      "candidate": 1240,
+      "candidate_record": "print-type-size type: `coaptic::storage::DedupTable<4>`: 1240 bytes, alignment: 8 bytes"
+    },
+    {
+      "owner": "64-entry replay table",
+      "baseline": 20040,
+      "baseline_record": "print-type-size type: `coaptic::storage::DedupTable<64>`: 20040 bytes, alignment: 8 bytes",
+      "candidate": 19720,
+      "candidate_record": "print-type-size type: `coaptic::storage::DedupTable<64>`: 19720 bytes, alignment: 8 bytes"
+    }
+  ]
+}

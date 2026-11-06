@@ -1,0 +1,11 @@
+{
+  "baseline": "bd63199b652193b4c0a882e5840e72d992cf1362",
+  "candidate": "cc8e20aac1acc6df4dcb79deeca6523108b62fbe",
+  "authorization": "User now accepts improvement in either CPU or memory with preservation of the other within measurement tolerance; old experiments remain failed under original rules.",
+  "cohort": "Same28 cells, capacities, security, actualsync/async and verification as previous.16 paired processes per cell, ABBA repeated4times; no stopping early or replacement.",
+  "runtime_rule": "Memory improvement route: BOTH ordinary/all sync/async aggregate one-sided95 upper CPU ratios <=1.02 AND EVERY cell upper95<=1.02. Improvement route for CPU additionally requires aggregate upper95<1 with memory nongrowth. Equivalence is not inferred from a nonsignificant difference.",
+  "memory_rule": "Same owner-only shrink rules as prior; no capacities reduced, no undeclared owner growth; complete selected future must shrink or stay equal and report physical overlap separately.",
+  "interval": "Student t df15 one-sided95 factor1.7530503557 on16 process log ratios. Equalweight cells; no trimming, sample replacement or changed gate after results.",
+  "limits": "CPU cycles of complete memory-transport App operations; not network throughput/latency, peak stack or hardware qualification. Runtime-neutral within2% is scoped noninferiority, not exact equality.",
+  "budget_seconds": 720
+}

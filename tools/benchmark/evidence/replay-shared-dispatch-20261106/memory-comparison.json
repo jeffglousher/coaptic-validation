@@ -1,0 +1,93 @@
+{
+  "rows": [
+    {
+      "owner": "SmallDevice App",
+      "baseline": 14936,
+      "candidate": 14192,
+      "unit": "bytes",
+      "source": "matched qualifier owner ledger"
+    },
+    {
+      "owner": "Service fixed App",
+      "baseline": 315656,
+      "candidate": 314152,
+      "unit": "bytes",
+      "source": "matched qualifier owner ledger"
+    },
+    {
+      "owner": "Service allocated App",
+      "baseline": 35672,
+      "candidate": 34976,
+      "unit": "bytes",
+      "source": "matched qualifier owner ledger"
+    },
+    {
+      "owner": "Service allocated pool heap",
+      "baseline": 282512,
+      "candidate": 281680,
+      "unit": "bytes",
+      "source": "matched qualifier owner ledger"
+    },
+    {
+      "owner": "SmallDevice complete progress future",
+      "baseline": 15952,
+      "candidate": 15952,
+      "unit": "bytes",
+      "source": "compiler layout, not peak stack"
+    },
+    {
+      "owner": "Service fixed complete progress future",
+      "baseline": 16912,
+      "candidate": 15496,
+      "unit": "bytes",
+      "source": "compiler layout, not peak stack"
+    },
+    {
+      "owner": "Service allocated complete progress future",
+      "baseline": 16912,
+      "candidate": 15496,
+      "unit": "bytes",
+      "source": "compiler layout, not peak stack"
+    }
+  ],
+  "layout_records": [
+    {
+      "owner": "SmallDevice complete progress future",
+      "file": "D:\\CoapticCurrent\\receive-scratch-20261105\\baseline-future-layout.txt",
+      "record": "print-type-size type: `{async fn body of coaptic::app::async_server::<impl coaptic::App<coaptic::profiles::Constrained, CoreIo, 4, false, coaptic::storage::Memory<coaptic::profiles::Constrained>, 0, 1>>::progress_async<(), {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>()}`: 15952 bytes, alignment: 8 bytes"
+    },
+    {
+      "owner": "SmallDevice complete progress future",
+      "file": "D:\\CoapticCurrent\\replay-shared-dispatch-20261106\\owner-layout.txt",
+      "record": "print-type-size type: `{async fn body of coaptic::app::async_server::<impl coaptic::App<coaptic::profiles::Constrained, CoreIo, 4, false, coaptic::storage::Memory<coaptic::profiles::Constrained>, 0, 1>>::progress_async<(), {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>()}`: 15952 bytes, alignment: 8 bytes"
+    },
+    {
+      "owner": "Service fixed complete progress future",
+      "file": "D:\\CoapticCurrent\\receive-scratch-20261105\\baseline-future-layout.txt",
+      "record": "print-type-size type: `{async fn body of coaptic::app::async_server::<impl coaptic::App<coaptic::profiles::Service, ServiceIo, 32, true, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, 8, 4>>::progress_async<(), {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>()}`: 16912 bytes, alignment: 8 bytes"
+    },
+    {
+      "owner": "Service fixed complete progress future",
+      "file": "D:\\CoapticCurrent\\replay-shared-dispatch-20261106\\owner-layout.txt",
+      "record": "print-type-size type: `{async fn body of coaptic::app::async_server::<impl coaptic::App<coaptic::profiles::Service, ServiceIo, 32, true, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, 8, 4>>::progress_async<(), {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>()}`: 15496 bytes, alignment: 8 bytes"
+    },
+    {
+      "owner": "Service allocated complete progress future",
+      "file": "D:\\CoapticCurrent\\receive-scratch-20261105\\baseline-future-layout.txt",
+      "record": "print-type-size type: `{async fn body of coaptic::app::async_server::<impl coaptic::App<coaptic::profiles::Service, ServiceIo, 32, true, coaptic::storage::AllocMemory, 8, 4>>::progress_async<(), {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>()}`: 16912 bytes, alignment: 8 bytes"
+    },
+    {
+      "owner": "Service allocated complete progress future",
+      "file": "D:\\CoapticCurrent\\replay-shared-dispatch-20261106\\owner-layout.txt",
+      "record": "print-type-size type: `{async fn body of coaptic::app::async_server::<impl coaptic::App<coaptic::profiles::Service, ServiceIo, 32, true, coaptic::storage::AllocMemory, 8, 4>>::progress_async<(), {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>()}`: 15496 bytes, alignment: 8 bytes"
+    }
+  ],
+  "baseline_layout_sha256": "5120da7548759337d1cd78f3fe6e2ac76ce9090d44f2036e41d36a1b635703a3",
+  "candidate_layout_sha256": "73d12f13f0ce5a5bd81a53e959d64cdc1fa0dd8fa628119de6b46b2c010aa780",
+  "warning": "Rows are separate owners/views; do not add App inline and nested pool storage, nor compiler futures to task reservations. No new device or libcoap comparison. Requested heap excludes allocator metadata and rounding. Startup allocation count matches baseline; no separate deadline allocation.",
+  "baseline_layout_archive": "../receive-scratch-20261105/observations.zip",
+  "baseline_layout_member": "diagnostics/baseline-future-layout.txt",
+  "baseline_layout_complete": false,
+  "candidate_layout_complete": true,
+  "layout_limitation": "Baseline diagnostic capture is an incomplete broad-filter prefix; compiler build succeeded and the three selected progress_async records are complete. Candidate capture is complete. These are compiler object sizes, not measured stack peaks."
+}

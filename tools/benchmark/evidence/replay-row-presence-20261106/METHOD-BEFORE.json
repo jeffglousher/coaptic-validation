@@ -1,0 +1,19 @@
+{
+  "baseline": "bd63199b652193b4c0a882e5840e72d992cf1362",
+  "candidate": "8fc41ead4790e25051ae90c395b012b4c8518f72",
+  "authorization": "User now accepts improvement in either CPU or memory with preservation of the other within measurement tolerance; old experiments remain failed under original rules.",
+  "cohort": "Same28 cells and capacities;64 pairs per cell, AB BA BA AB repeated16times; no early stopping or replacement.",
+  "runtime_rule": "Memory improvement route: BOTH ordinary/all sync/async aggregate one-sided95 upper CPU ratios <=1.02 AND EVERY cell upper95<=1.02. Improvement route for CPU additionally requires aggregate upper95<1 with memory nongrowth. Equivalence is not inferred from a nonsignificant difference.",
+  "memory_rule": "Same owner-only shrink rules as prior; no capacities reduced, no undeclared owner growth; complete selected future must shrink or stay equal and report physical overlap separately. Additional prospective audit: unchanged or smaller Thumbv7EM SmallDevice/Service fixed and allocated App/table owners against the retained pinned baseline; no device execution claim. Additionally require selected reclaim frame sizes <= pinned baseline: SmallDevice800, ConstrainedWithBodies800, Servicefixed784, Serviceallocated800 bytes; compiler reservations only, no peak-stack claim.",
+  "interval": "Student t df63 one-sided95, conservatively rounded critical factor1.67,64 process log ratios; no trimming. Numerical t CDF at1.67=0.9500594225584145",
+  "limits": "CPU cycles of complete memory-transport App operations; not network throughput/latency, peak stack or hardware qualification. Runtime-neutral within2% is scoped noninferiority, not exact equality.",
+  "budget_seconds": 1200,
+  "reason_for_precision": "Same predeclared64pairs for memory route; distinct source integration, no unchanged failed cohort repeated.",
+  "harness_correction": "Replace subprocess capture pipes/reader threads with direct stdout/stderr files, parsed after child completion. Original incomplete383-output run retained, no verdict, no samples reused. Same binaries,64 fixed pairs,28cells,gate and baseline.",
+  "source_hypothesis": "Use initialized Option row presence instead of repeating occupancy reads in fixed and allocated entry_ref. Acquire/release clear rows; an acquired-empty slot remains None. No capacity, layout, initialization or public refusal change. Keep previous short128-byte writer, compact owner, reclaimed lookup and full-chunk improvements integrated.",
+  "hypothesis": "Use initialized Option row presence instead of repeating occupancy reads in fixed and allocated entry_ref. Acquire/release clear rows; an acquired-empty slot remains None. No capacity, layout, initialization or public refusal change. Keep previous short128-byte writer, compact owner, reclaimed lookup and full-chunk improvements integrated.",
+  "tradeoffs": "Relies explicitly on existing private row/occupancy coherence invariant. Complete state models and focused general review cover every write/reset/release path. No buffer threshold changes or new metadata.",
+  "capture_failure": "Prior c181cdf initial capture had an unexplained timeout, preserved separately. Its fresh cohort completed but failed CPU acceptance. This is a changed source hypothesis.",
+  "capture_change": "Reuse explicit Popen exit diagnostics established by the completed prior cohort, with same64pairs/28cells/15second child and1200second total bounds; no replacement samples.",
+  "preflight_repair": "Preceding6760b72 failed two SmallDevice CPU bounds; preserve it. This candidate changes row-access checks, not the failed cohort sampling. Repeat changed-code regressions and selected emitted frames, then one64-pair cohort with unchanged rules."
+}

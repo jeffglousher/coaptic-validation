@@ -1,0 +1,820 @@
+diff --git a/src/app/async_server.rs b/src/app/async_server.rs
+index 6034dfc..51eb995 100644
+--- a/src/app/async_server.rs
++++ b/src/app/async_server.rs
+@@ -662,6 +662,7 @@ where
+         };
+         poll_engine_async(
+             &mut self.engine,
++            P::provider::<S::RxScratch>(&mut self.assembled),
+             &mut io,
+             &self.site,
+             &mut self.ids,
+@@ -693,6 +694,7 @@ pub(super) async fn dispatch_rx_async<
+     const REQUESTS: usize,
+ >(
+     engine: &mut Engine<Mem>,
++    scratch: impl super::response::DispatchScratch,
+     io: &mut T,
+     site: &Site<N, Mem::Token>,
+     inbox: &mut client::ClientInbox<CALLS, Mem::Token>,
+@@ -721,6 +723,7 @@ where
+     };
+     let result = super::dispatch_rx_io_async(
+         owner.engine,
++        scratch,
+         io,
+         site,
+         inbox,
+diff --git a/src/app/client.rs b/src/app/client.rs
+index f581e4d..aa5e63e 100644
+--- a/src/app/client.rs
++++ b/src/app/client.rs
+@@ -350,9 +350,17 @@ impl ReplyMeta {
+     }
+ }
+ 
++#[derive(Clone, Copy, Debug, Eq, PartialEq)]
++enum InboxState {
++    Partial,
++    Complete,
++    // The metadata remains borrow backing, but the row owns no protocol work.
++    Vacant,
++}
++
+ #[derive(Clone, Copy, Debug)]
+ struct InboxRow<K: OwnedToken = Token> {
+-    complete: bool,
++    state: InboxState,
+     call: Call<K>,
+     meta: Result<ReplyMeta, CallFailure>,
+     body: Option<SlotId>,
+@@ -362,30 +370,47 @@ struct InboxRow<K: OwnedToken = Token> {
+ /// Bounded completed-reply table (not a seventh memory area).
+ #[derive(Clone, Copy, Debug)]
+ pub(crate) struct ClientInbox<const CALLS: usize, K: OwnedToken = Token> {
+-    rows: [Option<InboxRow<K>>; CALLS],
+-    held: Option<ReplyMeta>,
++    rows: [InboxRow<K>; CALLS],
+ }
+ 
+ impl<const CALLS: usize, K: OwnedToken> ClientInbox<CALLS, K> {
++    fn active(&self) -> impl Iterator<Item = &InboxRow<K>> {
++        self.rows
++            .iter()
++            .filter(|row| row.state != InboxState::Vacant)
++    }
++
++    fn active_mut(&mut self) -> impl Iterator<Item = &mut InboxRow<K>> {
++        self.rows
++            .iter_mut()
++            .filter(|row| row.state != InboxState::Vacant)
++    }
++
+     pub(super) fn usage(&self) -> (usize, usize) {
+         (
+-            self.rows.iter().flatten().count(),
+-            self.rows
+-                .iter()
+-                .flatten()
+-                .filter(|row| row.complete)
++            self.active().count(),
++            self.active()
++                .filter(|row| row.state == InboxState::Complete)
+                 .count(),
+         )
+     }
+ 
+     pub(super) fn has_protocol_state(&self) -> bool {
+-        self.rows.iter().any(Option::is_some)
++        self.active().next().is_some()
+     }
+ 
+     pub(crate) const fn new() -> Self {
+         Self {
+-            rows: [None; CALLS],
+-            held: None,
++            rows: [InboxRow {
++                state: InboxState::Vacant,
++                call: Call {
++                    token: K::EMPTY,
++                    peer: Endpoint::v4([0; 4], 0),
++                },
++                meta: Err(CallFailure::Cancelled),
++                body: None,
++                datagram: None,
++            }; CALLS],
+         }
+     }
+ 
+@@ -399,75 +424,68 @@ impl<const CALLS: usize, K: OwnedToken> ClientInbox<CALLS, K> {
+         meta: Result<ReplyMeta, CallFailure>,
+         body: Option<SlotId>,
+     ) -> Result<Option<SlotId>, ()> {
+-        if let Some(slot) = self.rows.iter_mut().find(|row| {
+-            row.as_ref()
+-                .is_some_and(|row| row.call.token == call.token && row.call.peer == call.peer)
+-        }) {
+-            let prev = slot.take().and_then(|row| row.body);
+-            *slot = Some(InboxRow {
+-                complete: true,
++        if let Some(slot) = self.active_mut().find(|row| row.call == call) {
++            let prev = slot.body;
++            *slot = InboxRow {
++                state: InboxState::Complete,
+                 call,
+                 meta,
+                 body,
+                 datagram: None,
+-            });
++            };
+             return Ok(prev);
+         }
+-        if let Some(slot) = self.rows.iter_mut().find(|row| row.is_none()) {
+-            *slot = Some(InboxRow {
+-                complete: true,
++        if let Some(slot) = self
++            .rows
++            .iter_mut()
++            .find(|row| row.state == InboxState::Vacant)
++        {
++            *slot = InboxRow {
++                state: InboxState::Complete,
+                 call,
+                 meta,
+                 body,
+                 datagram: None,
+-            });
++            };
+             return Ok(None);
+         }
+         Err(())
+     }
+ 
+     pub(super) fn holds_datagram(&self, rx: SlotId) -> bool {
+-        self.rows
+-            .iter()
+-            .flatten()
+-            .any(|row| row.datagram == Some(rx))
++        self.active().any(|row| row.datagram == Some(rx))
+     }
+ 
+     fn take_datagram(&mut self, call: Call<K>) -> Option<SlotId> {
+-        self.rows
+-            .iter_mut()
+-            .flatten()
++        self.active_mut()
+             .find(|row| row.call == call)?
+             .datagram
+             .take()
+     }
+ 
+     fn completed(&self, call: Call<K>) -> Option<&InboxRow<K>> {
+-        self.rows
+-            .iter()
+-            .flatten()
+-            .find(|row| row.complete && row.call == call)
++        self.active()
++            .find(|row| row.state == InboxState::Complete && row.call == call)
+     }
+ 
+     fn discard(&mut self, call: Call<K>) {
+-        for row in &mut self.rows {
+-            if row.as_ref().is_some_and(|row| row.call == call) {
+-                *row = None;
++        for row in self.active_mut() {
++            if row.call == call {
++                row.state = InboxState::Vacant;
++                row.body = None;
++                row.datagram = None;
+             }
+         }
+     }
+ 
+     fn contains(&self, call: Call<K>) -> bool {
+-        self.rows
+-            .iter()
+-            .flatten()
+-            .any(|row| row.call == call && row.complete)
++        self.completed(call).is_some()
+     }
+     fn partial_meta(&self, call: Call<K>, body: SlotId) -> Option<ReplyMeta> {
+-        self.rows
+-            .iter()
+-            .flatten()
+-            .find(|row| row.call == call && !row.complete && row.body == Some(body))?
++        self.active()
++            .find(|row| {
++                row.call == call && row.state == InboxState::Partial && row.body == Some(body)
++            })?
+             .meta
+             .ok()
+     }
+@@ -482,8 +500,8 @@ impl<const CALLS: usize, K: OwnedToken> ClientInbox<CALLS, K> {
+             return Ok(None);
+         }
+         let previous = self.insert(call, Ok(meta), Some(body))?;
+-        if let Some(row) = self.rows.iter_mut().flatten().find(|row| row.call == call) {
+-            row.complete = false;
++        if let Some(row) = self.active_mut().find(|row| row.call == call) {
++            row.state = InboxState::Partial;
+         }
+         Ok(previous)
+     }
+@@ -493,23 +511,100 @@ impl<const CALLS: usize, K: OwnedToken> ClientInbox<CALLS, K> {
+         &mut self,
+         call: Call<K>,
+     ) -> Option<(Result<Response<'_, K>, CallFailure>, Option<SlotId>)> {
+-        let i = self.rows.iter().position(|row| {
+-            row.as_ref().is_some_and(|row| {
+-                row.complete && row.call.token == call.token && row.call.peer == call.peer
+-            })
+-        })?;
+-        let row = self.rows[i].take()?;
+-        let response = match row.meta {
+-            Ok(meta) => {
+-                self.held = Some(meta);
+-                Ok(self.held.as_ref().expect("stored reply").response())
+-            }
+-            Err(error) => {
+-                self.held = None;
+-                Err(error)
+-            }
++        let row = self
++            .active_mut()
++            .find(|row| row.state == InboxState::Complete && row.call == call)?;
++        // A Response borrows this row, preventing mutation until collection's
++        // caller releases it. Afterwards insert may reuse the vacant row. No
++        // second metadata owner or copy is needed to keep these bytes alive.
++        row.state = InboxState::Vacant;
++        let body = row.body.take();
++        let response = match &row.meta {
++            Ok(meta) => Ok(meta.response()),
++            Err(error) => Err(*error),
+         };
+-        Some((response, row.body))
++        Some((response, body))
++    }
++}
++
++#[cfg(test)]
++mod inbox_collection_tests {
++    use super::*;
++
++    fn reply(port: u16) -> (Call, ReplyMeta) {
++        let peer = Endpoint::v4([192, 0, 2, 1], port);
++        let mut wire = [0; 64];
++        let len = crate::message::encode(
++            &Message::new(Type::Acknowledgement, Code::CONTENT, MessageId::new(port))
++                .with_payload(b"retained reply"),
++            &mut wire,
++        )
++        .unwrap();
++        let parsed = crate::message::decode(&wire[..len]).unwrap();
++        (
++            Call::new(parsed.token(), peer),
++            ReplyMeta::from_parsed(&parsed, peer, 7).unwrap(),
++        )
++    }
++
++    #[test]
++    fn collected_reply_releases_credit_and_row_without_evicting_untaken_reply() {
++        let mut inbox = ClientInbox::<2>::new();
++        let lives = ClientLives::<2>::new();
++        let (first, first_meta) = reply(5683);
++        let (second, second_meta) = reply(5684);
++        let (third, third_meta) = reply(5685);
++        let body = SlotId::from_index(1);
++        inbox.insert(first, Ok(first_meta), Some(body)).unwrap();
++        inbox.insert(second, Ok(second_meta), None).unwrap();
++        assert!(inbox.insert(third, Ok(third_meta), None).is_err());
++        assert_eq!(lives.response_credits(&inbox), 2);
++        {
++            let (response, returned_body) = inbox.take(first).unwrap();
++            assert_eq!(response.unwrap().payload(), b"retained reply");
++            assert_eq!(returned_body, Some(body));
++        }
++        assert_eq!(inbox.usage(), (1, 1));
++        assert_eq!(lives.response_credits(&inbox), 1);
++        assert!(inbox.take(first).is_none());
++        assert!(inbox.partial_meta(first, body).is_none());
++        assert_eq!(inbox.insert(third, Ok(third_meta), None), Ok(None));
++        assert_eq!(
++            inbox.take(second).unwrap().0.unwrap().message_id(),
++            Some(MessageId::new(5684))
++        );
++        assert_eq!(
++            inbox.take(third).unwrap().0.unwrap().payload(),
++            b"retained reply"
++        );
++        assert!(!inbox.has_protocol_state());
++        assert_eq!(inbox.usage(), (0, 0));
++        assert_eq!(lives.response_credits(&inbox), 0);
++    }
++
++    #[test]
++    fn collected_failure_can_be_reused_for_partial_and_completed_same_call() {
++        let mut inbox = ClientInbox::<1>::new();
++        let (call, meta) = reply(5683);
++        inbox
++            .insert(call, Err(CallFailure::TimedOut), None)
++            .unwrap();
++        assert_eq!(
++            inbox.take(call).unwrap().0.unwrap_err(),
++            CallFailure::TimedOut
++        );
++        assert!(!inbox.contains(call));
++        assert!(!inbox.has_protocol_state());
++        let body = SlotId::from_index(0);
++        assert_eq!(inbox.retain_partial(call, meta, body), Ok(None));
++        assert_eq!(inbox.usage(), (1, 0));
++        assert!(inbox.take(call).is_none());
++        assert!(inbox.partial_meta(call, body).is_some());
++        assert_eq!(inbox.insert(call, Ok(meta), Some(body)), Ok(Some(body)));
++        let (response, returned_body) = inbox.take(call).unwrap();
++        assert_eq!(response.unwrap().payload(), b"retained reply");
++        assert_eq!(returned_body, Some(body));
++        assert!(!inbox.has_protocol_state());
+     }
+ }
+ 
+@@ -670,15 +765,15 @@ impl<const CALLS: usize, K: OwnedToken> ClientLives<CALLS, K> {
+             .flatten()
+             .filter(|row| {
+                 !row.retired
+-                    && !inbox.rows.iter().flatten().any(|reply| {
+-                        reply.call == row.call && reply.complete && reply.meta.is_err()
++                    && !inbox.active().any(|reply| {
++                        reply.call == row.call
++                            && reply.state == InboxState::Complete
++                            && reply.meta.is_err()
+                     })
+             })
+             .count()
+             + inbox
+-                .rows
+-                .iter()
+-                .flatten()
++                .active()
+                 .filter(|row| {
+                     row.meta.is_ok()
+                         && !self
+@@ -1227,10 +1322,10 @@ where
+                 return Some(Err(CallFailure::ResponseBodyBounds));
+             }
+             if let Some(bytes) = rx_body_payload(&self.engine, id) {
+-                P::store(&mut self.assembled, bytes);
++                P::store::<S::RxScratch>(&mut self.assembled, bytes);
+             }
+             release_rx_body(&mut self.engine, id);
+-            if let Some(bytes) = P::view(&self.assembled) {
++            if let Some(bytes) = P::view::<S::RxScratch>(&self.assembled) {
+                 return Some(response.map(|response| response.with_assembled(bytes)));
+             }
+         }
+@@ -1258,7 +1353,7 @@ where
+         };
+         let body = row.body;
+         let datagram = row.datagram;
+-        if let Ok(meta) = row.meta {
++        if let Ok(meta) = &row.meta {
+             let bytes = if let Some(body) = body {
+                 self.engine
+                     .rx_body_payload(body)
+@@ -1297,7 +1392,7 @@ where
+             let bytes = parsed.payload();
+             output[..bytes.len()].copy_from_slice(bytes);
+             bytes.len()
+-        } else if let Ok(meta) = row.meta {
++        } else if let Ok(meta) = &row.meta {
+             let len = usize::from(meta.payload_len);
+             output[..len].copy_from_slice(&meta.payload[..len]);
+             len
+@@ -4078,9 +4173,7 @@ where
+     // An Observe replacement releases its previous RX ownership before keeping
+     // the new packet. Unexpected/custom states still cannot consume headroom.
+     let replacing_rx = inbox
+-        .rows
+-        .iter()
+-        .flatten()
++        .active()
+         .any(|row| row.call == call && row.datagram.is_some());
+     if full_responses
+         && !replacing_rx
+@@ -4111,7 +4204,7 @@ where
+         None,
+     );
+     if full_responses {
+-        if let Some(row) = inbox.rows.iter_mut().flatten().find(|row| row.call == call) {
++        if let Some(row) = inbox.active_mut().find(|row| row.call == call) {
+             row.datagram = Some(rx);
+         } else {
+             let _ = engine.release_rx(rx);
+diff --git a/src/app/mod.rs b/src/app/mod.rs
+index fd103fa..de17c4f 100644
+--- a/src/app/mod.rs
++++ b/src/app/mod.rs
+@@ -1179,9 +1179,8 @@ pub struct App<
+     /// Caller-owned OSCORE context (`()` without the `oscore` feature).
+     oscore: oscore::Store<REQUESTS, ASSOCIATIONS, S::Token>,
+     oscore_checkpoint: oscore::CheckpointState,
+-    /// Client Block2 / Q-Block2 snapshot for [`Self::take_response`].
+-    /// Present when `BLOCK_WISE`; zero-sized otherwise.
+-    assembled: AssembledField<P, BLOCK_WISE>,
++    /// Reusable dispatch scratch; shares collected-body storage when blockwise.
++    assembled: AssembledField<P, BLOCK_WISE, S::RxScratch>,
+     deferred: DeferredTable<DEFERRED, S::Token>,
+ }
+ 
+@@ -1696,7 +1695,7 @@ impl<
+         }
+         // Collected replies are only borrow backing, not outstanding work.
+         self.inbox = client::ClientInbox::new();
+-        P::store(&mut self.assembled, &[]);
++        P::store::<S::RxScratch>(&mut self.assembled, &[]);
+         self.lives = client::ClientLives::new();
+         self.oscore
+             .set_primary(candidate.take().expect("checked candidate"));
+@@ -2132,6 +2131,7 @@ where
+     pub fn poll(&mut self, now_ms: u64) -> Result<(), Error<T::Error>> {
+         poll_engine(
+             &mut self.engine,
++            P::provider::<S::RxScratch>(&mut self.assembled),
+             &mut self.io,
+             &self.site,
+             &mut self.ids,
+@@ -2175,6 +2175,7 @@ where
+     ) -> Result<(), Error<T::Error>> {
+         poll_engine(
+             &mut self.engine,
++            P::provider::<S::RxScratch>(&mut self.assembled),
+             &mut self.io,
+             &self.site,
+             &mut self.ids,
+@@ -2238,6 +2239,7 @@ where
+         self.oscore_checkpoint.require();
+         poll_engine(
+             &mut self.engine,
++            P::provider::<S::RxScratch>(&mut self.assembled),
+             &mut self.io,
+             &self.site,
+             &mut self.ids,
+@@ -2276,6 +2278,7 @@ where
+         self.oscore_checkpoint.require();
+         poll_engine(
+             &mut self.engine,
++            P::provider::<S::RxScratch>(&mut self.assembled),
+             &mut self.io,
+             &self.site,
+             &mut self.ids,
+@@ -2313,6 +2316,7 @@ where
+         self.oscore_checkpoint.require();
+         poll_engine(
+             &mut self.engine,
++            P::provider::<S::RxScratch>(&mut self.assembled),
+             &mut self.io,
+             &self.site,
+             &mut self.ids,
+@@ -2350,6 +2354,7 @@ where
+         self.oscore_checkpoint.require();
+         poll_engine(
+             &mut self.engine,
++            P::provider::<S::RxScratch>(&mut self.assembled),
+             &mut self.io,
+             &self.site,
+             &mut self.ids,
+@@ -2668,6 +2673,7 @@ fn poll_engine<
+     const REQUESTS: usize,
+ >(
+     engine: &mut Engine<Mem>,
++    scratch: impl response::DispatchScratch,
+     io: &mut T,
+     site: &Site<N, Mem::Token>,
+     ids: &mut AppIds,
+@@ -2779,6 +2785,7 @@ where
+         } else {
+             dispatch_rx(
+                 engine,
++                scratch,
+                 io,
+                 site,
+                 inbox,
+@@ -3365,6 +3372,7 @@ fn dispatch_rx<
+     const REQUESTS: usize,
+ >(
+     engine: &mut Engine<Mem>,
++    mut scratch: impl response::DispatchScratch,
+     io: &mut T,
+     site: &Site<N, Mem::Token>,
+     inbox: &mut client::ClientInbox<CALLS, Mem::Token>,
+@@ -3391,7 +3399,7 @@ where
+         return Ok(());
+     };
+ 
+-    let mut scratch = Mem::RxScratch::default();
++    let mut scratch = scratch.packet();
+     let n = match copy_rx(engine, rx, scratch.as_mut()) {
+         Ok(n) => n,
+         Err(e) => {
+diff --git a/src/app/response.rs b/src/app/response.rs
+index 97aa14d..057bb4e 100644
+--- a/src/app/response.rs
++++ b/src/app/response.rs
+@@ -1048,7 +1048,7 @@ fn encode_problem_payload(
+ ///
+ /// One App-owned hold (not a field of [`Response`]). Handler returns and
+ /// Observe sequence updates copy the small [`Response`] header only.
+-/// Datagram App (`BLOCK_WISE = false`) uses [`AssembledNone`] (ZST).
++/// Datagram Apps create profile-sized packet scratch only during dispatch.
+ pub(crate) trait AssembledBytes {
+     /// Copy `src` (truncated at [`RESPONSE_BODY`]).
+     fn store(&mut self, src: &[u8]);
+@@ -1056,23 +1056,9 @@ pub(crate) trait AssembledBytes {
+     ///
+     /// [`AssembledBuf`]: `len == 0` (never stored, or stored empty) returns
+     /// `Some(&[])`. Empty and unset are not distinguished.
+-    /// [`AssembledNone`]: always `None`.
+     fn view(&self) -> Option<&[u8]>;
+ }
+ 
+-/// ZST stand-in: `.block_wise::<false>()` has no client Block2 hold.
+-#[derive(Default)]
+-#[doc(hidden)]
+-pub struct AssembledNone;
+-
+-impl AssembledBytes for AssembledNone {
+-    fn store(&mut self, _src: &[u8]) {}
+-
+-    fn view(&self) -> Option<&[u8]> {
+-        None
+-    }
+-}
+-
+ /// Owned [`RESPONSE_BODY`] hold for a completed client Block2 / Q-Block2 body.
+ ///
+ /// Not `Copy`: `[u8; RESPONSE_BODY]` would memcpy 4KiB on every assign.
+@@ -1103,69 +1089,190 @@ impl AssembledBytes for AssembledBuf {
+     }
+ }
+ 
+-/// Selects [`AssembledNone`] or [`AssembledBuf`] from `BLOCK_WISE`.
++/// Supplies either an on-demand packet owner or a borrowed reusable buffer.
++#[doc(hidden)]
++pub trait DispatchScratch {
++    type Packet<'a>: AsRef<[u8]> + AsMut<[u8]>
++    where
++        Self: 'a;
++    fn packet(&mut self) -> Self::Packet<'_>;
++}
++
++impl<S: DispatchScratch> DispatchScratch for &mut S {
++    type Packet<'a>
++        = S::Packet<'a>
++    where
++        Self: 'a;
++    fn packet(&mut self) -> Self::Packet<'_> {
++        (**self).packet()
++    }
++}
++
++/// Datagram-only Apps keep their original on-demand scratch and App ceiling.
++#[doc(hidden)]
++pub struct DatagramDispatch<R>(core::marker::PhantomData<R>);
++impl<R> Default for DatagramDispatch<R> {
++    fn default() -> Self {
++        Self(core::marker::PhantomData)
++    }
++}
++impl<R: Default + AsRef<[u8]> + AsMut<[u8]>> DispatchScratch for DatagramDispatch<R> {
++    type Packet<'a>
++        = R
++    where
++        Self: 'a;
++    fn packet(&mut self) -> R {
++        R::default()
++    }
++}
++
++/// Reusable dispatch bytes sharing the collected-body lifetime where possible.
+ ///
+-/// Bound on [`super::App`] so the hold is a ZST when `BLOCK_WISE` is false.
+-/// Blanket-implemented for every [`MemoryProfile`].
++/// A collected Response borrows App, so another mutable App operation cannot
++/// overlap that view. Large custom scratch types retain their full capacity;
++/// switching between their packet and collected-body variants initializes the
++/// selected owner, while ordinary profiles keep the body buffer throughout.
+ #[doc(hidden)]
+-pub trait AppAssembled<const BLOCK_WISE: bool> {
+-    /// [`AssembledNone`] or [`AssembledBuf`].
+-    #[doc(hidden)]
+-    type Buf: Default;
+-
+-    /// Copy `src` into the hold (no-op on the datagram stub).
+-    #[doc(hidden)]
+-    fn store(buf: &mut Self::Buf, src: &[u8]);
+-
+-    /// Held bytes: [`AssembledBuf`] returns `Some` even when `len == 0`;
+-    /// [`AssembledNone`] returns `None`.
+-    #[doc(hidden)]
+-    fn view(buf: &Self::Buf) -> Option<&[u8]>;
++pub struct SharedScratch<R> {
++    storage: ScratchStorage<R>,
++    capacity: usize,
+ }
+ 
+-impl<P: MemoryProfile> AppAssembled<false> for P {
+-    type Buf = AssembledNone;
++enum ScratchStorage<R> {
++    Packet(R),
++    Body(AssembledBuf),
++}
+ 
+-    fn store(buf: &mut Self::Buf, src: &[u8]) {
+-        buf.store(src);
++impl<R: Default + AsRef<[u8]> + AsMut<[u8]>> Default for SharedScratch<R> {
++    fn default() -> Self {
++        let mut packet = R::default();
++        let capacity = packet.as_mut().len();
++        let storage = if capacity <= RESPONSE_BODY {
++            ScratchStorage::Body(AssembledBuf::default())
++        } else {
++            ScratchStorage::Packet(packet)
++        };
++        Self { storage, capacity }
+     }
++}
+ 
+-    fn view(buf: &Self::Buf) -> Option<&[u8]> {
+-        buf.view()
++impl<R: Default + AsRef<[u8]> + AsMut<[u8]>> SharedScratch<R> {
++    fn scratch(&mut self) -> &mut [u8] {
++        if self.capacity > RESPONSE_BODY && matches!(self.storage, ScratchStorage::Body(_)) {
++            self.storage = ScratchStorage::Packet(R::default());
++        }
++        match &mut self.storage {
++            ScratchStorage::Packet(packet) => packet.as_mut(),
++            ScratchStorage::Body(body) => {
++                body.len = 0;
++                &mut body.bytes[..self.capacity]
++            }
++        }
++    }
++
++    fn store(&mut self, src: &[u8]) {
++        if matches!(self.storage, ScratchStorage::Packet(_)) {
++            self.storage = ScratchStorage::Body(AssembledBuf::default());
++        }
++        if let ScratchStorage::Body(body) = &mut self.storage {
++            body.store(src);
++        }
++    }
++
++    fn view(&self) -> Option<&[u8]> {
++        match &self.storage {
++            ScratchStorage::Packet(_) => Some(&[]),
++            ScratchStorage::Body(body) => body.view(),
++        }
+     }
+ }
+ 
+-impl<P: MemoryProfile> AppAssembled<true> for P {
+-    type Buf = AssembledBuf;
++impl<R: Default + AsRef<[u8]> + AsMut<[u8]>> DispatchScratch for SharedScratch<R> {
++    type Packet<'a>
++        = &'a mut [u8]
++    where
++        Self: 'a;
++    fn packet(&mut self) -> &mut [u8] {
++        self.scratch()
++    }
++}
+ 
+-    fn store(buf: &mut Self::Buf, src: &[u8]) {
+-        buf.store(src);
++/// Selects reusable dispatch storage, sharing the client hold when blockwise.
++#[doc(hidden)]
++pub trait AppAssembled<const BLOCK_WISE: bool> {
++    /// Storage initialized at App construction.
++    type Buf<R: Default + AsRef<[u8]> + AsMut<[u8]>>: Default + DispatchScratch;
++    /// Datagram-only providers carry no borrowed owner across suspension.
++    type Provider<'a, R: Default + AsRef<[u8]> + AsMut<[u8]> + 'a>: DispatchScratch;
++    fn provider<'a, R: Default + AsRef<[u8]> + AsMut<[u8]> + 'a>(
++        buf: &'a mut Self::Buf<R>,
++    ) -> Self::Provider<'a, R>;
++
++    /// Copy collected bytes, or do nothing when blockwise is disabled.
++    fn store<R: Default + AsRef<[u8]> + AsMut<[u8]>>(buf: &mut Self::Buf<R>, src: &[u8]);
++    /// Collected bytes, or None when blockwise is disabled.
++    fn view<R: Default + AsRef<[u8]> + AsMut<[u8]>>(buf: &Self::Buf<R>) -> Option<&[u8]>;
++}
++
++impl<P: MemoryProfile> AppAssembled<false> for P {
++    type Buf<R: Default + AsRef<[u8]> + AsMut<[u8]>> = DatagramDispatch<R>;
++    type Provider<'a, R: Default + AsRef<[u8]> + AsMut<[u8]> + 'a> = DatagramDispatch<R>;
++    fn provider<'a, R: Default + AsRef<[u8]> + AsMut<[u8]> + 'a>(
++        _buf: &'a mut Self::Buf<R>,
++    ) -> Self::Provider<'a, R> {
++        DatagramDispatch::default()
++    }
++    fn store<R: Default + AsRef<[u8]> + AsMut<[u8]>>(_buf: &mut DatagramDispatch<R>, _src: &[u8]) {}
++    fn view<R: Default + AsRef<[u8]> + AsMut<[u8]>>(_buf: &DatagramDispatch<R>) -> Option<&[u8]> {
++        None
+     }
++}
+ 
+-    fn view(buf: &Self::Buf) -> Option<&[u8]> {
++impl<P: MemoryProfile> AppAssembled<true> for P {
++    type Buf<R: Default + AsRef<[u8]> + AsMut<[u8]>> = SharedScratch<R>;
++    type Provider<'a, R: Default + AsRef<[u8]> + AsMut<[u8]> + 'a> = &'a mut SharedScratch<R>;
++    fn provider<'a, R: Default + AsRef<[u8]> + AsMut<[u8]> + 'a>(
++        buf: &'a mut Self::Buf<R>,
++    ) -> Self::Provider<'a, R> {
++        buf
++    }
++    fn store<R: Default + AsRef<[u8]> + AsMut<[u8]>>(buf: &mut SharedScratch<R>, src: &[u8]) {
++        buf.store(src);
++    }
++    fn view<R: Default + AsRef<[u8]> + AsMut<[u8]>>(buf: &SharedScratch<R>) -> Option<&[u8]> {
+         buf.view()
+     }
+ }
+ 
+-pub(crate) type AssembledField<P, const BLOCK_WISE: bool> = <P as AppAssembled<BLOCK_WISE>>::Buf;
++pub(crate) type AssembledField<P, const BLOCK_WISE: bool, R> =
++    <P as AppAssembled<BLOCK_WISE>>::Buf<R>;
+ 
+ #[cfg(test)]
+ mod assembled_hold_tests {
+     use super::{
+-        AppAssembled, AssembledBuf, AssembledBytes, AssembledNone, INLINE_PAYLOAD, RESPONSE_BODY,
+-        Response, ResponseError,
++        AppAssembled, AssembledBuf, AssembledBytes, INLINE_PAYLOAD, RESPONSE_BODY, Response,
++        ResponseError, SharedScratch,
+     };
+     use crate::{Code, profiles};
+     use core::mem::size_of;
+ 
+     #[test]
+-    fn datagram_assembled_hold_is_zst() {
++    fn datagram_scratch_has_no_separate_assembled_hold() {
+         assert_eq!(
+-            size_of::<<profiles::Default as AppAssembled<false>>::Buf>(),
++            size_of::<
++                <profiles::Default as AppAssembled<false>>::Buf<
++                    crate::storage::DatagramScratch<1472>,
++                >,
++            >(),
+             0
+         );
+-        assert_eq!(size_of::<AssembledNone>(), 0);
+-        assert!(size_of::<<profiles::Default as AppAssembled<true>>::Buf>() >= RESPONSE_BODY);
++        assert!(
++            size_of::<
++                <profiles::Default as AppAssembled<true>>::Buf<
++                    crate::storage::DatagramScratch<1472>,
++                >,
++            >() >= RESPONSE_BODY
++        );
+         assert!(size_of::<AssembledBuf>() >= RESPONSE_BODY);
+     }
+ 
+@@ -1176,10 +1283,35 @@ mod assembled_hold_tests {
+         let mut stored_empty = AssembledBuf::default();
+         stored_empty.store(&[]);
+         assert_eq!(stored_empty.view(), Some(&[][..]));
+-        let mut none = AssembledNone;
+-        assert_eq!(none.view(), None);
+-        none.store(b"x");
+-        assert_eq!(none.view(), None);
++    }
++
++    #[test]
++    fn dispatch_reuses_collected_body_storage_without_stale_views() {
++        let mut shared = SharedScratch::<crate::storage::DatagramScratch<1152>>::default();
++        let packet = shared.scratch().as_ptr();
++        shared.scratch()[..4].copy_from_slice(b"wire");
++        shared.store(b"response");
++        assert_eq!(shared.view(), Some(&b"response"[..]));
++        assert_eq!(shared.view().unwrap().as_ptr(), packet);
++        assert_eq!(shared.scratch().len(), 1152);
++        assert_eq!(shared.scratch().as_ptr(), packet);
++        assert_eq!(shared.view(), Some(&[][..]));
++        shared.store(&[7; RESPONSE_BODY + 1]);
++        assert_eq!(shared.view().unwrap(), &[7; RESPONSE_BODY]);
++    }
++
++    #[test]
++    fn large_custom_dispatch_scratch_keeps_capacity_across_collection() {
++        let mut shared = SharedScratch::<crate::storage::DatagramScratch<8192>>::default();
++        assert_eq!(shared.scratch().len(), 8192);
++        shared.scratch()[8191] = 9;
++        shared.store(b"body");
++        assert_eq!(shared.view(), Some(&b"body"[..]));
++        assert_eq!(shared.scratch().len(), 8192);
++        shared.scratch()[8191] = 3;
++        shared.store(&[]);
++        assert_eq!(shared.view(), Some(&[][..]));
++        assert_eq!(shared.scratch().len(), 8192);
+     }
+ 
+     #[test]

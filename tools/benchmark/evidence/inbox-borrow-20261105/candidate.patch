@@ -1,0 +1,340 @@
+diff --git a/src/app/client.rs b/src/app/client.rs
+index f581e4d..527069b 100644
+--- a/src/app/client.rs
++++ b/src/app/client.rs
+@@ -350,9 +350,17 @@ impl ReplyMeta {
+     }
+ }
+ 
++#[derive(Clone, Copy, Debug, Eq, PartialEq)]
++enum InboxState {
++    Partial,
++    Complete,
++    // The metadata remains borrow backing, but the row owns no protocol work.
++    Collected,
++}
++
+ #[derive(Clone, Copy, Debug)]
+ struct InboxRow<K: OwnedToken = Token> {
+-    complete: bool,
++    state: InboxState,
+     call: Call<K>,
+     meta: Result<ReplyMeta, CallFailure>,
+     body: Option<SlotId>,
+@@ -363,29 +371,39 @@ struct InboxRow<K: OwnedToken = Token> {
+ #[derive(Clone, Copy, Debug)]
+ pub(crate) struct ClientInbox<const CALLS: usize, K: OwnedToken = Token> {
+     rows: [Option<InboxRow<K>>; CALLS],
+-    held: Option<ReplyMeta>,
+ }
+ 
+ impl<const CALLS: usize, K: OwnedToken> ClientInbox<CALLS, K> {
++    fn active(&self) -> impl Iterator<Item = &InboxRow<K>> {
++        self.rows
++            .iter()
++            .flatten()
++            .filter(|row| row.state != InboxState::Collected)
++    }
++
++    fn active_mut(&mut self) -> impl Iterator<Item = &mut InboxRow<K>> {
++        self.rows
++            .iter_mut()
++            .flatten()
++            .filter(|row| row.state != InboxState::Collected)
++    }
++
+     pub(super) fn usage(&self) -> (usize, usize) {
+         (
+-            self.rows.iter().flatten().count(),
+-            self.rows
+-                .iter()
+-                .flatten()
+-                .filter(|row| row.complete)
++            self.active().count(),
++            self.active()
++                .filter(|row| row.state == InboxState::Complete)
+                 .count(),
+         )
+     }
+ 
+     pub(super) fn has_protocol_state(&self) -> bool {
+-        self.rows.iter().any(Option::is_some)
++        self.active().next().is_some()
+     }
+ 
+     pub(crate) const fn new() -> Self {
+         Self {
+             rows: [None; CALLS],
+-            held: None,
+         }
+     }
+ 
+@@ -401,11 +419,11 @@ impl<const CALLS: usize, K: OwnedToken> ClientInbox<CALLS, K> {
+     ) -> Result<Option<SlotId>, ()> {
+         if let Some(slot) = self.rows.iter_mut().find(|row| {
+             row.as_ref()
+-                .is_some_and(|row| row.call.token == call.token && row.call.peer == call.peer)
++                .is_some_and(|row| row.state != InboxState::Collected && row.call == call)
+         }) {
+             let prev = slot.take().and_then(|row| row.body);
+             *slot = Some(InboxRow {
+-                complete: true,
++                state: InboxState::Complete,
+                 call,
+                 meta,
+                 body,
+@@ -413,9 +431,12 @@ impl<const CALLS: usize, K: OwnedToken> ClientInbox<CALLS, K> {
+             });
+             return Ok(prev);
+         }
+-        if let Some(slot) = self.rows.iter_mut().find(|row| row.is_none()) {
++        if let Some(slot) = self.rows.iter_mut().find(|row| {
++            row.as_ref()
++                .is_none_or(|row| row.state == InboxState::Collected)
++        }) {
+             *slot = Some(InboxRow {
+-                complete: true,
++                state: InboxState::Complete,
+                 call,
+                 meta,
+                 body,
+@@ -427,26 +448,19 @@ impl<const CALLS: usize, K: OwnedToken> ClientInbox<CALLS, K> {
+     }
+ 
+     pub(super) fn holds_datagram(&self, rx: SlotId) -> bool {
+-        self.rows
+-            .iter()
+-            .flatten()
+-            .any(|row| row.datagram == Some(rx))
++        self.active().any(|row| row.datagram == Some(rx))
+     }
+ 
+     fn take_datagram(&mut self, call: Call<K>) -> Option<SlotId> {
+-        self.rows
+-            .iter_mut()
+-            .flatten()
++        self.active_mut()
+             .find(|row| row.call == call)?
+             .datagram
+             .take()
+     }
+ 
+     fn completed(&self, call: Call<K>) -> Option<&InboxRow<K>> {
+-        self.rows
+-            .iter()
+-            .flatten()
+-            .find(|row| row.complete && row.call == call)
++        self.active()
++            .find(|row| row.state == InboxState::Complete && row.call == call)
+     }
+ 
+     fn discard(&mut self, call: Call<K>) {
+@@ -458,16 +472,13 @@ impl<const CALLS: usize, K: OwnedToken> ClientInbox<CALLS, K> {
+     }
+ 
+     fn contains(&self, call: Call<K>) -> bool {
+-        self.rows
+-            .iter()
+-            .flatten()
+-            .any(|row| row.call == call && row.complete)
++        self.completed(call).is_some()
+     }
+     fn partial_meta(&self, call: Call<K>, body: SlotId) -> Option<ReplyMeta> {
+-        self.rows
+-            .iter()
+-            .flatten()
+-            .find(|row| row.call == call && !row.complete && row.body == Some(body))?
++        self.active()
++            .find(|row| {
++                row.call == call && row.state == InboxState::Partial && row.body == Some(body)
++            })?
+             .meta
+             .ok()
+     }
+@@ -482,8 +493,8 @@ impl<const CALLS: usize, K: OwnedToken> ClientInbox<CALLS, K> {
+             return Ok(None);
+         }
+         let previous = self.insert(call, Ok(meta), Some(body))?;
+-        if let Some(row) = self.rows.iter_mut().flatten().find(|row| row.call == call) {
+-            row.complete = false;
++        if let Some(row) = self.active_mut().find(|row| row.call == call) {
++            row.state = InboxState::Partial;
+         }
+         Ok(previous)
+     }
+@@ -493,23 +504,100 @@ impl<const CALLS: usize, K: OwnedToken> ClientInbox<CALLS, K> {
+         &mut self,
+         call: Call<K>,
+     ) -> Option<(Result<Response<'_, K>, CallFailure>, Option<SlotId>)> {
+-        let i = self.rows.iter().position(|row| {
+-            row.as_ref().is_some_and(|row| {
+-                row.complete && row.call.token == call.token && row.call.peer == call.peer
+-            })
+-        })?;
+-        let row = self.rows[i].take()?;
+-        let response = match row.meta {
+-            Ok(meta) => {
+-                self.held = Some(meta);
+-                Ok(self.held.as_ref().expect("stored reply").response())
+-            }
+-            Err(error) => {
+-                self.held = None;
+-                Err(error)
+-            }
++        let row = self
++            .active_mut()
++            .find(|row| row.state == InboxState::Complete && row.call == call)?;
++        // A Response borrows this row, preventing mutation until collection's
++        // caller releases it. Afterwards insert may reuse the vacant row. No
++        // second metadata owner or copy is needed to keep these bytes alive.
++        row.state = InboxState::Collected;
++        let body = row.body.take();
++        let response = match &row.meta {
++            Ok(meta) => Ok(meta.response()),
++            Err(error) => Err(*error),
+         };
+-        Some((response, row.body))
++        Some((response, body))
++    }
++}
++
++#[cfg(test)]
++mod inbox_collection_tests {
++    use super::*;
++
++    fn reply(port: u16) -> (Call, ReplyMeta) {
++        let peer = Endpoint::v4([192, 0, 2, 1], port);
++        let mut wire = [0; 64];
++        let len = crate::message::encode(
++            &Message::new(Type::Acknowledgement, Code::CONTENT, MessageId::new(port))
++                .with_payload(b"retained reply"),
++            &mut wire,
++        )
++        .unwrap();
++        let parsed = crate::message::decode(&wire[..len]).unwrap();
++        (
++            Call::new(parsed.token(), peer),
++            ReplyMeta::from_parsed(&parsed, peer, 7).unwrap(),
++        )
++    }
++
++    #[test]
++    fn collected_reply_releases_credit_and_row_without_evicting_untaken_reply() {
++        let mut inbox = ClientInbox::<2>::new();
++        let lives = ClientLives::<2>::new();
++        let (first, first_meta) = reply(5683);
++        let (second, second_meta) = reply(5684);
++        let (third, third_meta) = reply(5685);
++        let body = SlotId::from_index(1);
++        inbox.insert(first, Ok(first_meta), Some(body)).unwrap();
++        inbox.insert(second, Ok(second_meta), None).unwrap();
++        assert!(inbox.insert(third, Ok(third_meta), None).is_err());
++        assert_eq!(lives.response_credits(&inbox), 2);
++        {
++            let (response, returned_body) = inbox.take(first).unwrap();
++            assert_eq!(response.unwrap().payload(), b"retained reply");
++            assert_eq!(returned_body, Some(body));
++        }
++        assert_eq!(inbox.usage(), (1, 1));
++        assert_eq!(lives.response_credits(&inbox), 1);
++        assert!(inbox.take(first).is_none());
++        assert!(inbox.partial_meta(first, body).is_none());
++        assert_eq!(inbox.insert(third, Ok(third_meta), None), Ok(None));
++        assert_eq!(
++            inbox.take(second).unwrap().0.unwrap().message_id(),
++            Some(MessageId::new(5684))
++        );
++        assert_eq!(
++            inbox.take(third).unwrap().0.unwrap().payload(),
++            b"retained reply"
++        );
++        assert!(!inbox.has_protocol_state());
++        assert_eq!(inbox.usage(), (0, 0));
++        assert_eq!(lives.response_credits(&inbox), 0);
++    }
++
++    #[test]
++    fn collected_failure_can_be_reused_for_partial_and_completed_same_call() {
++        let mut inbox = ClientInbox::<1>::new();
++        let (call, meta) = reply(5683);
++        inbox
++            .insert(call, Err(CallFailure::TimedOut), None)
++            .unwrap();
++        assert_eq!(
++            inbox.take(call).unwrap().0.unwrap_err(),
++            CallFailure::TimedOut
++        );
++        assert!(!inbox.contains(call));
++        assert!(!inbox.has_protocol_state());
++        let body = SlotId::from_index(0);
++        assert_eq!(inbox.retain_partial(call, meta, body), Ok(None));
++        assert_eq!(inbox.usage(), (1, 0));
++        assert!(inbox.take(call).is_none());
++        assert!(inbox.partial_meta(call, body).is_some());
++        assert_eq!(inbox.insert(call, Ok(meta), Some(body)), Ok(Some(body)));
++        let (response, returned_body) = inbox.take(call).unwrap();
++        assert_eq!(response.unwrap().payload(), b"retained reply");
++        assert_eq!(returned_body, Some(body));
++        assert!(!inbox.has_protocol_state());
+     }
+ }
+ 
+@@ -670,15 +758,15 @@ impl<const CALLS: usize, K: OwnedToken> ClientLives<CALLS, K> {
+             .flatten()
+             .filter(|row| {
+                 !row.retired
+-                    && !inbox.rows.iter().flatten().any(|reply| {
+-                        reply.call == row.call && reply.complete && reply.meta.is_err()
++                    && !inbox.active().any(|reply| {
++                        reply.call == row.call
++                            && reply.state == InboxState::Complete
++                            && reply.meta.is_err()
+                     })
+             })
+             .count()
+             + inbox
+-                .rows
+-                .iter()
+-                .flatten()
++                .active()
+                 .filter(|row| {
+                     row.meta.is_ok()
+                         && !self
+@@ -1258,7 +1346,7 @@ where
+         };
+         let body = row.body;
+         let datagram = row.datagram;
+-        if let Ok(meta) = row.meta {
++        if let Ok(meta) = &row.meta {
+             let bytes = if let Some(body) = body {
+                 self.engine
+                     .rx_body_payload(body)
+@@ -1297,7 +1385,7 @@ where
+             let bytes = parsed.payload();
+             output[..bytes.len()].copy_from_slice(bytes);
+             bytes.len()
+-        } else if let Ok(meta) = row.meta {
++        } else if let Ok(meta) = &row.meta {
+             let len = usize::from(meta.payload_len);
+             output[..len].copy_from_slice(&meta.payload[..len]);
+             len
+@@ -4078,9 +4166,7 @@ where
+     // An Observe replacement releases its previous RX ownership before keeping
+     // the new packet. Unexpected/custom states still cannot consume headroom.
+     let replacing_rx = inbox
+-        .rows
+-        .iter()
+-        .flatten()
++        .active()
+         .any(|row| row.call == call && row.datagram.is_some());
+     if full_responses
+         && !replacing_rx
+@@ -4111,7 +4197,7 @@ where
+         None,
+     );
+     if full_responses {
+-        if let Some(row) = inbox.rows.iter_mut().flatten().find(|row| row.call == call) {
++        if let Some(row) = inbox.active_mut().find(|row| row.call == call) {
+             row.datagram = Some(rx);
+         } else {
+             let _ = engine.release_rx(rx);

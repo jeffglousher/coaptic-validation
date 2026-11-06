@@ -1,0 +1,14 @@
+{
+  "baseline": "bd63199b652193b4c0a882e5840e72d992cf1362",
+  "candidate": "1d7b3d8c9a7053fc03d50b8c12e1d0db1215ba01",
+  "authorization": "User now accepts improvement in either CPU or memory with preservation of the other within measurement tolerance; old experiments remain failed under original rules.",
+  "cohort": "Same28 cells and capacities;64 pairs per cell, AB BA BA AB repeated16times; no early stopping or replacement.",
+  "runtime_rule": "Memory improvement route: BOTH ordinary/all sync/async aggregate one-sided95 upper CPU ratios <=1.02 AND EVERY cell upper95<=1.02. Improvement route for CPU additionally requires aggregate upper95<1 with memory nongrowth. Equivalence is not inferred from a nonsignificant difference.",
+  "memory_rule": "Same owner-only shrink rules as prior; no capacities reduced, no undeclared owner growth; complete selected future must shrink or stay equal and report physical overlap separately.",
+  "interval": "Student t df63 one-sided95, conservatively rounded critical factor1.67,64 process log ratios; no trimming. Numerical t CDF at1.67=0.9500594225584145",
+  "limits": "CPU cycles of complete memory-transport App operations; not network throughput/latency, peak stack or hardware qualification. Runtime-neutral within2% is scoped noninferiority, not exact equality.",
+  "budget_seconds": 1200,
+  "reason_for_precision": "Previous distinct integration16-pair cohort had unresolved per-cell preservation bounds. Choose64 prospectively for this new source; do not augment or relabel previous measurements.",
+  "harness_correction": "Replace subprocess capture pipes/reader threads with direct stdout/stderr files, parsed after child completion. Original incomplete383-output run retained, no verdict, no samples reused. Same binaries,64 fixed pairs,28cells,gate and baseline.",
+  "source_hypothesis": "Flatten Option plus row state into Vacant/Partial/Complete, retaining borrowed reply metadata and capacities. Previous d35d9c6 failed four bounds; no unchanged resampling."
+}

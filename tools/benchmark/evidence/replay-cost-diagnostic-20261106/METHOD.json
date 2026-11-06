@@ -1,0 +1,61 @@
+{
+  "purpose": "Diagnostic only, no production qualification or repeated acceptance hypothesis",
+  "sources": {
+    "A": "bd63199b652193b4c0a882e5840e72d992cf1362",
+    "B": "42c823463b1d7eac5cca31df58e1dac7b243d610"
+  },
+  "cells": [
+    [
+      "sync",
+      1024
+    ],
+    [
+      "sync",
+      16384
+    ],
+    [
+      "async",
+      1024
+    ],
+    [
+      "async",
+      16384
+    ]
+  ],
+  "security": "unprotected",
+  "storage": "Service allocated, unchanged64 replay rows",
+  "operations": 1024,
+  "warmup": 128,
+  "pairs": 16,
+  "orders": [
+    "AB",
+    "BA",
+    "BA",
+    "AB",
+    "AB",
+    "BA",
+    "BA",
+    "AB",
+    "AB",
+    "BA",
+    "BA",
+    "AB",
+    "AB",
+    "BA",
+    "BA",
+    "AB"
+  ],
+  "cpu": 0,
+  "phases": [
+    "store",
+    "expiry",
+    "lookup"
+  ],
+  "counter": "Existing fixture QueryThreadCycleTime passed as a safe function pointer; RAII inclusive phase intervals; client tables excluded by64-row capacity",
+  "limits": "Counts and phase sums include128 warmups; outer App samples exclude warmup. Clock/call overhead retained. Do not sum potentially nested phase costs or infer uninstrumented CPU shares. Compiler/code-placement and measurement overhead perturb execution. No replacement samples. Original black_box field denotes retained optimizer barriers, not absence of diagnostic instrumentation.",
+  "empty_intervals": 4096,
+  "binaries": {
+    "A": "04c16b0323332e92d3b17e622768253ede848b382024cc7b2c2c1e166d06bb58",
+    "B": "bd18571607b3787d122d8abde5fae0077590bbf1e262bc351957816ab7044a6e"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "audit.py": "28a023b8aaeacb543b64a42328a8904fc1522da055b9c490bcb60f97e724e54d",
+  "baseline-build.log": "a52debeb27ef9f4120ad8301a0d34e72a5e2abe6a67efa10c08e9bc10627e1fc",
+  "baseline-constants.txt": "7194a5ce8cad0ebe33ac1ea6a29c0a0849d4e36ab1e490b307af2471df12dc27",
+  "baseline-layout.txt": "255fd60b6b396ab7494b8117f55536b087f39d4eea25627b4fb6e0733d25fb47",
+  "baseline-source.json": "769911daca947ed815da8daf1da46df44026c00db6350a4c74bc37aa0810670f",
+  "candidate-build.log": "181ea20bfff9aa521e9297d839a5fcf8738332a88ed78f7b6ab90b1d8da6b186",
+  "candidate-constants.txt": "6d1bb5e8f143b163662a6e2b7d3e4011927e93a5bbc792b28999ae6ef485b7c3",
+  "candidate-layout.txt": "0b630e7a55a748368211463d49879f48c3c40c223b5967a0e6b69f45a13f9902",
+  "candidate-source.json": "43e72b0655319cbfc13a3b142a27949afaf6e83b6d96b0630246d3f634bfaba1",
+  "Cargo.lock": "ea68fbb8ca072a2a97ce29bcd21a75203600f04abcf76e36d07253761a5caf74",
+  "Cargo.toml": "448108504d049911773ef6f4468ce9a7a83f2ca86ade36ee19eeb3b5bad4d215",
+  "lib.rs": "d3e1553ae1808fa932ad9ea67b88b3ae2348e4663d521b129bdedac7d88c60f7",
+  "preflight.json": "3fb4ebfebe4a758ebc70530e5299753eb8ee901fde85c043d27c9d84744e9db1",
+  "results.json": "86734da026fadbb1e50b0339646cda50664caedd0a642a2a8eba1acca6ed4c5f"
+}

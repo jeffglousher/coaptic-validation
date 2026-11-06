@@ -1,0 +1,3 @@
+General read-only owner_overlap_review: no actionable correctness/security defects in cc8e20a vsbd63199. Authentication/replay/checkpoint ordering preserved; async child awaited and cancellation paths retained. Metadata first-value and proxy precedence maintained; payload occupancy invariant preserved.924 alloc+oscore library tests pass.
+
+Remaining costs: dispatch_rx owns RxScratch borrowed across child sends; protected processing copies plaintext back to RX. No claim of eliminating those copies or every scratch overlap. Preallocation bounds pool owners but cannot automatically eliminate independent stack locals, copies or coroutine suspension-state storage.

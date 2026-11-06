@@ -1,0 +1,16 @@
+{
+  "source": "3e592adb1fd52c5e6918af1b4e810bb874413bad",
+  "baseline": "bd63199b652193b4c0a882e5840e72d992cf1362",
+  "reconstructed_core_files": 148,
+  "patch_sha256": "4364bf99df977d9fd490dbfcdb8b0c0f347a1937156f24e241b4f48c1872d4f6",
+  "command": [
+    "python",
+    "-B",
+    "prepare.py",
+    "CORE_REPO",
+    "NEW_OUTPUT",
+    "candidate"
+  ],
+  "result": "Every recorded native core source hash matches reconstructed baseline plus patch after explicit LF normalization.",
+  "initial_failure": "Host Git archive/apply emitted CRLF; every initial differing hash matches after CRLF-to-LF conversion. Initial result retained in reproduction-initial.json."
+}

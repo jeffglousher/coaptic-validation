@@ -1,0 +1,499 @@
+diff --git a/src/app/mod.rs b/src/app/mod.rs
+index fd103fa..09b4522 100644
+--- a/src/app/mod.rs
++++ b/src/app/mod.rs
+@@ -3249,14 +3249,49 @@ struct RequestOptions {
+     valid_q_selections: bool,
+ }
+ 
+-/// None means 4.02 before dispatch: unknown critical, OSCORE without a context,
+-/// malformed Block/Q-Block2, or an unsupported option combination.
+-fn request_options<K: OwnedToken, const REQUESTS: usize>(
++struct RequestMetadata {
++    no_response: NoResponse,
++    proxy: bool,
++    options: Option<RequestOptions>,
++}
++
++fn request_metadata<K: OwnedToken, const REQUESTS: usize>(
+     parsed: &ParsedMessage<'_, K>,
+     oscore: &oscore::Field<REQUESTS, K>,
++) -> RequestMetadata {
++    use crate::message::OptionNumber;
++    let mut no_response = None;
++    let mut proxy = false;
++    let mut options = parsed.options().inspect(|option| match option.number() {
++        OptionNumber::NO_RESPONSE if no_response.is_none() => {
++            no_response = Some(NoResponse::decode(option.value()).unwrap_or(NoResponse::DEFAULT));
++        }
++        OptionNumber::PROXY_URI | OptionNumber::PROXY_SCHEME => proxy = true,
++        _ => {}
++    });
++    let validated = validate_request_options(
++        &mut options,
++        parsed.code() == Code::FETCH,
++        oscore::is_active(oscore),
++    );
++    // Validation may stop early. Later proxy options still take precedence over
++    // 4.02, and the first No-Response still controls the eventual error response.
++    for _ in options {}
++    RequestMetadata {
++        no_response: no_response.unwrap_or(NoResponse::DEFAULT),
++        proxy,
++        options: validated,
++    }
++}
++
++/// None means 4.02 before dispatch: unknown critical, OSCORE without a context,
++/// malformed Block/Q-Block2, or an unsupported option combination.
++fn validate_request_options<'a>(
++    options: impl Iterator<Item = crate::message::Opt<'a>>,
++    fetch: bool,
++    oscore_active: bool,
+ ) -> Option<RequestOptions> {
+     use crate::message::OptionNumber;
+-    let fetch = parsed.code() == Code::FETCH;
+     let mut result = RequestOptions {
+         valid_q_selections: true,
+         ..RequestOptions::default()
+@@ -3267,7 +3302,7 @@ fn request_options<K: OwnedToken, const REQUESTS: usize>(
+     let mut previous_q: Option<BlockValue> = None;
+     let mut repeated_q = false;
+     let mut q_start = false;
+-    for option in parsed.options() {
++    for option in options {
+         match option.number() {
+             OptionNumber::REQUEST_TAG => {
+                 if tag || option.value().len() > 8 {
+@@ -3283,7 +3318,7 @@ fn request_options<K: OwnedToken, const REQUESTS: usize>(
+             }
+             OptionNumber::SIZE1 if size1.is_none() => size1 = Some(option.as_uint().is_ok()),
+             OptionNumber::OBSERVE => result.observe = true,
+-            OptionNumber::OSCORE if !oscore::is_active(oscore) => return None,
++            OptionNumber::OSCORE if !oscore_active => return None,
+             OptionNumber::BLOCK1 if result.block1.is_none() => {
+                 result.block1 = Some(option.as_block().ok()?)
+             }
+@@ -3329,7 +3364,7 @@ fn bad_option_request<K: OwnedToken, const REQUESTS: usize>(
+     parsed: &ParsedMessage<'_, K>,
+     oscore: &oscore::Field<REQUESTS, K>,
+ ) -> bool {
+-    request_options(parsed, oscore).is_none()
++    request_metadata(parsed, oscore).options.is_none()
+ }
+ 
+ fn mixes_block_and_qblock(parsed: &ParsedMessage<'_, impl OwnedToken>) -> bool {
+@@ -3355,7 +3390,7 @@ fn valid_q_selections(parsed: &ParsedMessage<'_, impl OwnedToken>) -> bool {
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+-#[coaptic_io::dual_io(dispatch_rx_io_async, bound(crate::app::async_server::ProtocolIo), calls(send_token_capacity_refusal => send_token_capacity_refusal_async, oscore::send_token_capacity_refusal => oscore::send_token_capacity_refusal_async, admission::send_refusal => admission::send_refusal_async, issue_q_observe_followup => issue_q_observe_followup_async, send_separate => send_separate_async, send_response => send_response_async, issue_classic => issue_classic_async, issue_deferred_q => issue_deferred_q_async, replay_con_request => replay_con_request_async, oscore_inbound_error => oscore_inbound_error_async, send_empty_ack => send_empty_ack_async, send_empty_rst => send_empty_rst_async, send_empty => send_empty_async, client::complete_client => client::complete_client_async, client::continue_qblock1_ack => client::continue_qblock1_ack_async))]
++#[coaptic_io::dual_io(dispatch_rx_io_async, bound(crate::app::async_server::ProtocolIo), calls(dispatch_request => dispatch_request_io_async, send_token_capacity_refusal => send_token_capacity_refusal_async, oscore::send_token_capacity_refusal => oscore::send_token_capacity_refusal_async, replay_con_request => replay_con_request_async, oscore_inbound_error => oscore_inbound_error_async, send_empty_ack => send_empty_ack_async, send_empty_rst => send_empty_rst_async, send_empty => send_empty_async, client::complete_client => client::complete_client_async, client::continue_qblock1_ack => client::continue_qblock1_ack_async))]
+ fn dispatch_rx<
+     Mem,
+     T,
+@@ -3736,10 +3771,55 @@ where
+         return outcome;
+     }
+ 
+-    let no_response = NoResponse::from_message(&parsed).unwrap_or(NoResponse::DEFAULT);
++    dispatch_request(
++        engine,
++        io,
++        site,
++        ids,
++        oscore,
++        echo_policy,
++        dedup_closed,
++        deferred,
++        deferred_lifetime_ms,
++        dispatch,
++        now_ms,
++        rx,
++        peer,
++        parsed,
++        oscore_req,
++    )
++}
++
++// Keep authenticated request handling separate from ingress and client-response
++// completion so their suspension states do not extend each other's local storage.
++#[allow(clippy::too_many_arguments)]
++#[coaptic_io::dual_io(dispatch_request_io_async, bound(crate::app::async_server::ProtocolIo), calls(admission::send_refusal => admission::send_refusal_async, issue_q_observe_followup => issue_q_observe_followup_async, send_separate => send_separate_async, send_response => send_response_async, issue_classic => issue_classic_async, issue_deferred_q => issue_deferred_q_async, send_empty_ack => send_empty_ack_async))]
++fn dispatch_request<Mem, T, const N: usize, const DEFERRED: usize, const REQUESTS: usize>(
++    engine: &mut Engine<Mem>,
++    io: &mut T,
++    site: &Site<N, Mem::Token>,
++    ids: &mut AppIds,
++    oscore: &mut oscore::Field<REQUESTS, Mem::Token>,
++    echo_policy: Option<EchoPolicy>,
++    dedup_closed: &mut Option<DedupClosed>,
++    deferred: &mut DeferredTable<DEFERRED, Mem::Token>,
++    deferred_lifetime_ms: u64,
++    dispatch: Option<&mut AppDispatch<'_, Mem::Token>>,
++    now_ms: u64,
++    rx: SlotId,
++    peer: Endpoint,
++    parsed: ParsedMessage<'_, Mem::Token>,
++    oscore_req: oscore::Request,
++) -> Result<(), Error<T::Error>>
++where
++    Mem: Storage + DatagramSlots + PendingCons + ObserveSlots + BodySlots + Exchanges + DedupSlots,
++    T: DatagramIo,
++{
++    let metadata = request_metadata(&parsed, oscore);
++    let no_response = metadata.no_response;
+     // Origin: Proxy-Uri / Proxy-Scheme MUST 5.05 (RFC 7252 §5.10.2).
+     // Before the site so a missing Uri-Path is not 4.04.
+-    if parsed.proxy_uri().is_some() || parsed.proxy_scheme().is_some() {
++    if metadata.proxy {
+         let meta = SendResponse {
+             dest: peer,
+             ty: parsed.ty(),
+@@ -3769,7 +3849,7 @@ where
+     // Known-stack critical check and OSCORE-without-context run here,
+     // before Site::dispatch. `knowledge/rfcs/rfc7252.txt` §5.4.1;
+     // `knowledge/rfcs/rfc8613.txt` §8.2 (option 9 with no context).
+-    let Some(options) = request_options(&parsed, oscore) else {
++    let Some(options) = metadata.options else {
+         let meta = SendResponse {
+             dest: peer,
+             ty: parsed.ty(),
+diff --git a/src/app/option_validation_tests.rs b/src/app/option_validation_tests.rs
+index ca504a4..2aa38ac 100644
+--- a/src/app/option_validation_tests.rs
++++ b/src/app/option_validation_tests.rs
+@@ -59,7 +59,17 @@ fn compare_case(code: Code, extra: &[Opt<'_>], oscore: &oscore::Field<4>) {
+         "{code:?}, {extra:?}, security active={}",
+         oscore::is_active(oscore)
+     );
+-    if let Some(cached) = super::request_options(&parsed, oscore) {
++    let metadata = super::request_metadata(&parsed, oscore);
++    assert_eq!(
++        metadata.no_response,
++        crate::message::NoResponse::from_message(&parsed)
++            .unwrap_or(crate::message::NoResponse::DEFAULT)
++    );
++    assert_eq!(
++        metadata.proxy,
++        parsed.proxy_uri().is_some() || parsed.proxy_scheme().is_some()
++    );
++    if let Some(cached) = metadata.options {
+         assert_eq!(cached.block1, parsed.block1().and_then(Result::ok));
+         assert_eq!(cached.block2, parsed.block2().and_then(Result::ok));
+         assert_eq!(
+@@ -135,6 +145,11 @@ fn compare_cases(oscore: &oscore::Field<4>) {
+         Opt::new(OptionNumber::SIZE1, &[]),
+         Opt::new(OptionNumber::SIZE1, &[1; 5]),
+         Opt::uri_query("a=1"),
++        Opt::new(OptionNumber::PROXY_URI, &[0xff]),
++        Opt::new(OptionNumber::PROXY_SCHEME, &[]),
++        Opt::new(OptionNumber::NO_RESPONSE, &[]),
++        Opt::new(OptionNumber::NO_RESPONSE, &[26]),
++        Opt::new(OptionNumber::NO_RESPONSE, &[0, 26]),
+     ];
+     for code in [Code::GET, Code::FETCH] {
+         // Includes the exact fixture's sole Uri-Path and the missing FETCH
+diff --git a/src/storage/alloc_memory.rs b/src/storage/alloc_memory.rs
+index 10eb391..ac39cb5 100644
+--- a/src/storage/alloc_memory.rs
++++ b/src/storage/alloc_memory.rs
+@@ -730,7 +730,7 @@ impl<T: OwnedToken> DedupSlots for AllocMemory<T> {
+             }
+         };
+         self.dedup.expiry.note(&entry);
+-        self.dedup.entries[id.index()] = Some(entry);
++        entry.write_into(&mut self.dedup.entries[id.index()]);
+         Some(true)
+     }
+ 
+@@ -1780,7 +1780,7 @@ impl DedupStore for AllocDedupTable {
+         }
+         let id = self.occ.acquire()?;
+         self.expiry.note(&entry);
+-        self.entries[id.index()] = Some(entry);
++        entry.write_into(&mut self.entries[id.index()]);
+         Some(id)
+     }
+ 
+@@ -1802,9 +1802,8 @@ impl DedupStore for AllocDedupTable {
+     }
+ 
+     fn entry_ref(&self, id: SlotId) -> Option<&DedupEntry> {
+-        if !self.occ.is_occupied(id) {
+-            return None;
+-        }
++        // Every release clears the payload and every write follows acquisition.
++        // None also represents an acquired slot that has no payload yet.
+         self.entries.get(id.index()).and_then(Option::as_ref)
+     }
+ }
+diff --git a/src/storage/table.rs b/src/storage/table.rs
+index 80b5f96..7b48ec0 100644
+--- a/src/storage/table.rs
++++ b/src/storage/table.rs
+@@ -46,16 +46,51 @@ impl DedupKey {
+ /// CON retransmit can be answered without a second handler call: compact
+ /// [`Self::replay`] when the datagram fits, otherwise a TX pin for
+ /// `EXCHANGE_LIFETIME`. See `knowledge/rfcs/rfc7252.txt` §4.5.
++///
++/// Equality and hashing describe the key, deadline and current replay owner.
++/// Replacing or clearing replay discards the previous bytes from that identity.
+ #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+ pub struct DedupEntry {
+     key: DedupKey,
+     due_ms: u64,
+-    replay_len: u16,
+-    replay: [u8; Self::REPLAY_MAX],
+-    tx_pin: Option<SlotId>,
++    replay: DedupReplay,
++}
++
++// Inline replay and a retained TX packet are mutually exclusive owners.
++#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
++enum DedupReplay {
++    None,
++    Inline {
++        bytes: [u8; DedupEntry::REPLAY_MAX],
++        len: u16,
++    },
++    Tx(SlotId),
+ }
+ 
+ impl DedupEntry {
++    /// Write only the active replay owner; a TX pin has no inline bytes to copy.
++    pub(super) fn write_into(self, slot: &mut Option<Self>) {
++        match self.replay {
++            DedupReplay::Inline { .. } => *slot = Some(self),
++            DedupReplay::None => {
++                let entry = slot.insert(Self::new(self.key.message_id(), self.key.endpoint()));
++                entry.due_ms = self.due_ms;
++            }
++            DedupReplay::Tx(id) => Self::write_tx(slot, self.key, self.due_ms, id),
++        }
++    }
++
++    // Keep this scalar boundary: inlining the variant assignment can recover a
++    // whole-enum memcpy, including its inactive 256-byte replay payload.
++    #[inline(never)]
++    fn write_tx(slot: &mut Option<Self>, key: DedupKey, due_ms: u64, id: SlotId) {
++        *slot = Some(Self {
++            key,
++            due_ms,
++            replay: DedupReplay::Tx(id),
++        });
++    }
++
+     /// Bytes of encoded ACK cached inline on this row.
+     ///
+     /// Larger piggybacked ACKs use [`Self::tx_pin`] (Default TX slot) so
+@@ -70,9 +105,7 @@ impl DedupEntry {
+         Self {
+             key: DedupKey::new(message_id, endpoint),
+             due_ms: 0,
+-            replay_len: 0,
+-            replay: [0; Self::REPLAY_MAX],
+-            tx_pin: None,
++            replay: DedupReplay::None,
+         }
+     }
+ 
+@@ -85,17 +118,25 @@ impl DedupEntry {
+ 
+     /// Cache encoded reply bytes when they fit [`Self::REPLAY_MAX`].
+     ///
+-    /// Larger datagrams are not truncated: replay stays empty so a later
+-    /// duplicate cannot send a lie. The caller may [`Self::with_tx_pin`]
+-    /// instead.
++    /// Larger datagrams leave this entry unchanged; they are never truncated.
++    /// The caller may use [`Self::with_tx_pin`] instead. An empty slice clears
++    /// either replay owner.
+     #[must_use]
+     pub fn with_replay(mut self, bytes: &[u8]) -> Self {
+         if bytes.len() > Self::REPLAY_MAX {
+             return self;
+         }
+-        self.replay[..bytes.len()].copy_from_slice(bytes);
+-        self.replay_len = bytes.len() as u16;
+-        self.tx_pin = None;
++        self.replay = if bytes.is_empty() {
++            DedupReplay::None
++        } else {
++            DedupReplay::Inline {
++                bytes: [0; Self::REPLAY_MAX],
++                len: bytes.len() as u16,
++            }
++        };
++        if let DedupReplay::Inline { bytes: replay, .. } = &mut self.replay {
++            replay[..bytes.len()].copy_from_slice(bytes);
++        }
+         self
+     }
+ 
+@@ -105,8 +146,7 @@ impl DedupEntry {
+     /// until this row expires or is replaced.
+     #[must_use]
+     pub const fn with_tx_pin(mut self, id: SlotId) -> Self {
+-        self.tx_pin = Some(id);
+-        self.replay_len = 0;
++        self.replay = DedupReplay::Tx(id);
+         self
+     }
+ 
+@@ -137,17 +177,19 @@ impl DedupEntry {
+     /// Cached piggybacked / empty-ACK bytes, if stored inline.
+     #[must_use]
+     pub fn replay(&self) -> Option<&[u8]> {
+-        if self.replay_len == 0 {
+-            None
+-        } else {
+-            Some(&self.replay[..usize::from(self.replay_len)])
++        match &self.replay {
++            DedupReplay::Inline { bytes, len } => Some(&bytes[..usize::from(*len)]),
++            DedupReplay::None | DedupReplay::Tx(_) => None,
+         }
+     }
+ 
+     /// Occupied TX slot holding the encoded ACK, if pinned.
+     #[must_use]
+-    pub const fn tx_pin(self) -> Option<SlotId> {
+-        self.tx_pin
++    pub const fn tx_pin(&self) -> Option<SlotId> {
++        match self.replay {
++            DedupReplay::Tx(id) => Some(id),
++            DedupReplay::None | DedupReplay::Inline { .. } => None,
++        }
+     }
+ 
+     /// Whether this row can answer a CON retransmit (`replay` or `tx_pin`).
+@@ -957,7 +999,7 @@ impl<const ENTRIES: usize> DedupTable<ENTRIES> {
+             return Some(id);
+         }
+         let id = self.occ.acquire()?;
+-        self.entries[id.index()] = Some(entry);
++        entry.write_into(&mut self.entries[id.index()]);
+         Some(id)
+     }
+ 
+@@ -994,9 +1036,8 @@ impl<const ENTRIES: usize> DedupTable<ENTRIES> {
+     /// Borrow an occupied payload without copying its replay buffer.
+     #[must_use]
+     pub fn entry_ref(&self, id: SlotId) -> Option<&DedupEntry> {
+-        if !self.occ.is_occupied(id) {
+-            return None;
+-        }
++        // Payload writes require an occupied slot; release clears the payload.
++        // Acquired empty slots are None too, so a second occupancy read is redundant.
+         self.entries.get(id.index()).and_then(Option::as_ref)
+     }
+ 
+@@ -1009,7 +1050,7 @@ impl<const ENTRIES: usize> DedupTable<ENTRIES> {
+                 SlotError::InvalidSlot
+             });
+         }
+-        self.entries[id.index()] = Some(entry);
++        entry.write_into(&mut self.entries[id.index()]);
+         Ok(())
+     }
+ 
+@@ -1079,7 +1120,7 @@ impl<const ENTRIES: usize> DedupStore for DedupTable<ENTRIES> {
+                 id
+             }
+         };
+-        self.entries[id.index()] = Some(entry);
++        entry.write_into(&mut self.entries[id.index()]);
+         Some(true)
+     }
+ 
+diff --git a/src/storage/tests.rs b/src/storage/tests.rs
+index 5c0c76f..eae835e 100644
+--- a/src/storage/tests.rs
++++ b/src/storage/tests.rs
+@@ -1391,6 +1391,87 @@ fn dedup_entry_replay_fits_or_stays_empty() {
+     assert!(pinned.has_usable_replay());
+ }
+ 
++#[test]
++fn dedup_payload_presence_tracks_slot_lifecycle() {
++    let mut table = DedupTable::<2>::new();
++    let entry = DedupEntry::new(MessageId::new(7), Endpoint::v4([198, 51, 100, 7], 5683))
++        .with_replay(&[1, 2, 3]);
++    let invalid = SlotId::from_index(2);
++    assert!(table.entry_ref(invalid).is_none());
++    assert_eq!(table.set_entry(invalid, entry), Err(SlotError::InvalidSlot));
++    for _ in 0..8 {
++        let id = table.acquire().unwrap();
++        assert!(table.entry_ref(id).is_none());
++        table.set_entry(id, entry).unwrap();
++        table.advance(1);
++        assert_eq!(table.entry_ref(id), Some(&entry));
++        table.release(id).unwrap();
++        assert!(table.entry_ref(id).is_none());
++        assert_eq!(table.set_entry(id, entry), Err(SlotError::NotOccupied));
++        assert_eq!(table.release(id), Err(SlotError::NotOccupied));
++        assert!(table.entry_ref(id).is_none());
++    }
++}
++
++#[test]
++fn dedup_replay_owner_transitions_preserve_identity_deadline_and_refusal() {
++    extern crate std;
++
++    use core::hash::{Hash, Hasher};
++
++    fn hash(entry: DedupEntry) -> u64 {
++        let mut hasher = std::collections::hash_map::DefaultHasher::new();
++        entry.hash(&mut hasher);
++        hasher.finish()
++    }
++
++    let endpoint = Endpoint::v4([198, 51, 100, 7], 5683);
++    let initial = DedupEntry::new(MessageId::new(7), endpoint).with_due_ms(900);
++    let bytes = [0x5a; DedupEntry::REPLAY_MAX];
++    let oversized = [0xa5; DedupEntry::REPLAY_MAX + 1];
++    let tx = SlotId::from_index(2);
++    let inline = initial.with_replay(&bytes);
++    assert_eq!(inline.replay(), Some(bytes.as_slice()));
++    assert_eq!(inline.with_replay(&oversized), inline);
++    let pinned = inline.with_tx_pin(tx);
++    assert_eq!(pinned, initial.with_tx_pin(tx));
++    assert_eq!(hash(pinned), hash(initial.with_tx_pin(tx)));
++    assert_eq!(pinned.tx_pin(), Some(tx));
++    assert!(pinned.replay().is_none());
++    assert_eq!(pinned.with_replay(&oversized), pinned);
++    let replaced = pinned.with_replay(&[1, 2, 3]);
++    assert_eq!(replaced, inline.with_replay(&[1, 2, 3]));
++    assert_eq!(replaced, initial.with_replay(&[1, 2, 3]));
++    assert_eq!(hash(replaced), hash(initial.with_replay(&[1, 2, 3])));
++    assert_eq!(replaced.replay(), Some(&[1, 2, 3][..]));
++    assert!(replaced.tx_pin().is_none());
++    for entry in [initial, inline, pinned, replaced] {
++        for old in [
++            None,
++            Some(initial),
++            Some(inline),
++            Some(pinned),
++            Some(replaced),
++        ] {
++            let mut slot = old;
++            entry.write_into(&mut slot);
++            assert_eq!(slot, Some(entry));
++            assert_eq!(hash(slot.unwrap()), hash(entry));
++        }
++    }
++    for entry in [inline, pinned, replaced] {
++        assert_eq!(entry.key(), initial.key());
++        assert_eq!(entry.due_ms(), initial.due_ms());
++        let empty = entry.with_replay(&[]);
++        assert_eq!(empty, initial);
++        assert_eq!(hash(empty), hash(initial));
++        assert_eq!(empty.key(), initial.key());
++        assert_eq!(empty.due_ms(), initial.due_ms());
++        assert!(!empty.has_usable_replay());
++        assert_eq!(empty.with_tx_pin(tx).tx_pin(), Some(tx));
++    }
++}
++
+ #[test]
+ fn engine_dedup_fills_to_capacity() {
+     let mut engine = build_default();

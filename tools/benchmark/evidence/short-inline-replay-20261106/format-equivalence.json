@@ -1,0 +1,9 @@
+{
+  "measured_source": "6760b72a8ed07b6a108cde24eeb36e552a0f076d",
+  "formatted_source": "0c30dadda2e7cd3003745f29550f57c436908ac7",
+  "only_changed_file": "src/storage/table.rs",
+  "proof": "rustfmt --edition2024 --emit stdout on measured file equals formatted source exactly after CRLF normalization",
+  "initial_fmt_check": "failed on line101 multiline Short struct literal; preserved patch shows correction",
+  "native_binaries": "Retain exact measured6760b72; do not relabel as built from formatted source",
+  "initial_equivalence_attempt": "Whitespace-only assertion failed because rustfmt also removes optional trailing comma; replaced with actual formatter output comparison"
+}
