@@ -77,7 +77,13 @@ for variant, pin in PINS.items():
             assert Path(name).name not in {"OWNER.json", "start-notice.json", "rejection-notice.json", "timing-resource-status.json"}
         total += len(hashes)
         for name in ("candidate.patch", "source-verification.json", "METHOD-BEFORE.json", "result.json"):
-            assert z.read(name) == (ROOT / (variant + "-" + name)).read_bytes()
+            archived = z.read(name)
+            exported = (ROOT / (variant + "-" + name)).read_bytes()
+            if name.endswith(".patch"):
+                assert archived == exported
+            else:
+                # Git normalizes exported JSON; archives preserve original bytes.
+                assert json.loads(archived) == json.loads(exported)
         source = json.loads(z.read("source-verification.json"))
         assert source["source"] == pin and source["baseline"] == BASELINE
         assert digest(z.read("candidate.patch")) == source["patch_sha256"]

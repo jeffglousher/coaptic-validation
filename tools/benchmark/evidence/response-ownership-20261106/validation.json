@@ -18,6 +18,7 @@
   "scope": "No native probes/Cargo or source/fixture/build-lane mutations; failed original measurements unchanged",
   "packaging_setup_corrections": [
     "Third-root private notice was detected before archive write and excluded; incomplete packaging output replaced, original evidence unchanged.",
-    "Initial new verifier expected a local metadata baseline-layout file; reuse of pinned phase-sharing layout archive fixed that expectation, no measurement rerun."
+    "Initial new verifier expected a local metadata baseline-layout file; reuse of pinned phase-sharing layout archive fixed that expectation, no measurement rerun.",
+    "Final author review found Git normalizes exported JSON line endings; archive/export checks now compare parsed JSON while retaining byte hashes and exact patches. Committed LF blobs were checked against archived originals."
   ]
 }
