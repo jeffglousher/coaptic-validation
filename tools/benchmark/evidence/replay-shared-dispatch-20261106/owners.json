@@ -1,0 +1,1177 @@
+[
+  {
+    "type": "coaptic::App<coaptic::profiles::Service, ServiceIo, 32, true, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, 8, 4>",
+    "bytes": 314152,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".io",
+        "bytes": 2984
+      },
+      {
+        "name": ".inbox",
+        "bytes": 3072
+      },
+      {
+        "name": ".engine",
+        "bytes": 279912
+      },
+      {
+        "name": ".lives",
+        "bytes": 4544
+      },
+      {
+        "name": ".site",
+        "bytes": 6928
+      },
+      {
+        "name": ".oscore",
+        "bytes": 456
+      },
+      {
+        "name": ".deferred",
+        "bytes": 12040
+      },
+      {
+        "name": ".ids",
+        "bytes": 40
+      },
+      {
+        "name": ".assembled",
+        "bytes": 4112
+      },
+      {
+        "name": ".dedup_closed",
+        "bytes": 40
+      },
+      {
+        "name": ".echo_policy",
+        "bytes": 8
+      },
+      {
+        "name": ".deferred_lifetime_ms",
+        "bytes": 8
+      },
+      {
+        "name": ".full_responses",
+        "bytes": 1
+      },
+      {
+        "name": ".oscore_checkpoint",
+        "bytes": 1
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::Engine<coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>>",
+    "bytes": 279912,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".storage",
+        "bytes": 279816
+      },
+      {
+        "name": ".metrics",
+        "bytes": 92
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>",
+    "bytes": 279816,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".observe",
+        "bytes": 20784
+      },
+      {
+        "name": ".bodies",
+        "bytes": 136688
+      },
+      {
+        "name": ".rx",
+        "bytes": 49104
+      },
+      {
+        "name": ".tx",
+        "bytes": 49104
+      },
+      {
+        "name": ".exchange",
+        "bytes": 4400
+      },
+      {
+        "name": ".dedup",
+        "bytes": 19728
+      },
+      {
+        "name": ".retransmit_cursor",
+        "bytes": 8
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::BodyPool<4, 16384>",
+    "bytes": 68344,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".transfers",
+        "bytes": 2752
+      },
+      {
+        "name": ".occ",
+        "bytes": 24
+      },
+      {
+        "name": ".bytes",
+        "bytes": 65536
+      },
+      {
+        "name": ".lens",
+        "bytes": 32
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::DatagramPool<32, 1472>",
+    "bytes": 49104,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".occ",
+        "bytes": 80
+      },
+      {
+        "name": ".pending",
+        "bytes": 768
+      },
+      {
+        "name": ".endpoints",
+        "bytes": 896
+      },
+      {
+        "name": ".bytes",
+        "bytes": 47104
+      },
+      {
+        "name": ".lens",
+        "bytes": 256
+      }
+    ]
+  },
+  {
+    "type": "coaptic::App<coaptic::profiles::Service, ServiceIo, 32, true, coaptic::storage::AllocMemory, 8, 4>",
+    "bytes": 34976,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".io",
+        "bytes": 2984
+      },
+      {
+        "name": ".inbox",
+        "bytes": 3072
+      },
+      {
+        "name": ".lives",
+        "bytes": 4544
+      },
+      {
+        "name": ".site",
+        "bytes": 6928
+      },
+      {
+        "name": ".oscore",
+        "bytes": 456
+      },
+      {
+        "name": ".deferred",
+        "bytes": 12040
+      },
+      {
+        "name": ".engine",
+        "bytes": 736
+      },
+      {
+        "name": ".ids",
+        "bytes": 40
+      },
+      {
+        "name": ".assembled",
+        "bytes": 4112
+      },
+      {
+        "name": ".dedup_closed",
+        "bytes": 40
+      },
+      {
+        "name": ".echo_policy",
+        "bytes": 8
+      },
+      {
+        "name": ".deferred_lifetime_ms",
+        "bytes": 8
+      },
+      {
+        "name": ".full_responses",
+        "bytes": 1
+      },
+      {
+        "name": ".oscore_checkpoint",
+        "bytes": 1
+      }
+    ]
+  },
+  {
+    "type": "coaptic::App<coaptic::profiles::Constrained, incoming_rx::UploadIo, 4, true, coaptic::storage::Memory<coaptic::profiles::Constrained, coaptic::storage::WithBodies<coaptic::profiles::Constrained>>, 0, 1>",
+    "bytes": 27984,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".io",
+        "bytes": 3024
+      },
+      {
+        "name": ".inbox",
+        "bytes": 768
+      },
+      {
+        "name": ".engine",
+        "bytes": 17496
+      },
+      {
+        "name": ".lives",
+        "bytes": 1136
+      },
+      {
+        "name": ".site",
+        "bytes": 880
+      },
+      {
+        "name": ".oscore",
+        "bytes": 456
+      },
+      {
+        "name": ".ids",
+        "bytes": 40
+      },
+      {
+        "name": ".assembled",
+        "bytes": 4112
+      },
+      {
+        "name": ".dedup_closed",
+        "bytes": 40
+      },
+      {
+        "name": ".echo_policy",
+        "bytes": 8
+      },
+      {
+        "name": ".deferred_lifetime_ms",
+        "bytes": 8
+      },
+      {
+        "name": ".deferred",
+        "bytes": 8
+      },
+      {
+        "name": ".full_responses",
+        "bytes": 1
+      },
+      {
+        "name": ".oscore_checkpoint",
+        "bytes": 1
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::DedupTable<64>",
+    "bytes": 19728,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".entries",
+        "bytes": 19456
+      },
+      {
+        "name": ".occ",
+        "bytes": 272
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::Engine<coaptic::storage::Memory<coaptic::profiles::Constrained, coaptic::storage::WithBodies<coaptic::profiles::Constrained>>>",
+    "bytes": 17496,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".storage",
+        "bytes": 17400
+      },
+      {
+        "name": ".metrics",
+        "bytes": 92
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::Memory<coaptic::profiles::Constrained, coaptic::storage::WithBodies<coaptic::profiles::Constrained>>",
+    "bytes": 17400,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".observe",
+        "bytes": 1320
+      },
+      {
+        "name": ".bodies",
+        "bytes": 9632
+      },
+      {
+        "name": ".exchange",
+        "bytes": 296
+      },
+      {
+        "name": ".rx",
+        "bytes": 2448
+      },
+      {
+        "name": ".tx",
+        "bytes": 2448
+      },
+      {
+        "name": ".dedup",
+        "bytes": 1248
+      },
+      {
+        "name": ".retransmit_cursor",
+        "bytes": 8
+      }
+    ]
+  },
+  {
+    "type": "coaptic::App<coaptic::profiles::Default, ServiceIo, 1, true, coaptic::storage::AllocMemory, 0, 4>",
+    "bytes": 16248,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".io",
+        "bytes": 2984
+      },
+      {
+        "name": ".inbox",
+        "bytes": 3072
+      },
+      {
+        "name": ".lives",
+        "bytes": 4544
+      },
+      {
+        "name": ".site",
+        "bytes": 232
+      },
+      {
+        "name": ".oscore",
+        "bytes": 456
+      },
+      {
+        "name": ".engine",
+        "bytes": 736
+      },
+      {
+        "name": ".ids",
+        "bytes": 40
+      },
+      {
+        "name": ".assembled",
+        "bytes": 4112
+      },
+      {
+        "name": ".dedup_closed",
+        "bytes": 40
+      },
+      {
+        "name": ".echo_policy",
+        "bytes": 8
+      },
+      {
+        "name": ".deferred_lifetime_ms",
+        "bytes": 8
+      },
+      {
+        "name": ".deferred",
+        "bytes": 8
+      },
+      {
+        "name": ".full_responses",
+        "bytes": 1
+      },
+      {
+        "name": ".oscore_checkpoint",
+        "bytes": 1
+      }
+    ]
+  },
+  {
+    "type": "coaptic::App<coaptic::profiles::Default, CoreIo, 1, true, coaptic::storage::AllocMemory, 0, 4>",
+    "bytes": 16240,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".io",
+        "bytes": 2976
+      },
+      {
+        "name": ".inbox",
+        "bytes": 3072
+      },
+      {
+        "name": ".lives",
+        "bytes": 4544
+      },
+      {
+        "name": ".site",
+        "bytes": 232
+      },
+      {
+        "name": ".oscore",
+        "bytes": 456
+      },
+      {
+        "name": ".engine",
+        "bytes": 736
+      },
+      {
+        "name": ".ids",
+        "bytes": 40
+      },
+      {
+        "name": ".assembled",
+        "bytes": 4112
+      },
+      {
+        "name": ".dedup_closed",
+        "bytes": 40
+      },
+      {
+        "name": ".echo_policy",
+        "bytes": 8
+      },
+      {
+        "name": ".deferred_lifetime_ms",
+        "bytes": 8
+      },
+      {
+        "name": ".deferred",
+        "bytes": 8
+      },
+      {
+        "name": ".full_responses",
+        "bytes": 1
+      },
+      {
+        "name": ".oscore_checkpoint",
+        "bytes": 1
+      }
+    ]
+  },
+  {
+    "type": "{async fn body of coaptic::app::async_server::<impl coaptic::App<coaptic::profiles::Constrained, CoreIo, 4, false, coaptic::storage::Memory<coaptic::profiles::Constrained>, 0, 1>>::progress_async<(), {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>()}",
+    "bytes": 15952,
+    "alignment": 8,
+    "fields": []
+  },
+  {
+    "type": "{async fn body of coaptic::app::async_server::<impl coaptic::App<coaptic::profiles::Service, ServiceIo, 32, true, coaptic::storage::AllocMemory, 8, 4>>::progress_async<(), {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>()}",
+    "bytes": 15496,
+    "alignment": 8,
+    "fields": []
+  },
+  {
+    "type": "{async fn body of coaptic::app::async_server::<impl coaptic::App<coaptic::profiles::Service, ServiceIo, 32, true, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, 8, 4>>::progress_async<(), {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>()}",
+    "bytes": 15496,
+    "alignment": 8,
+    "fields": []
+  },
+  {
+    "type": "{async fn body of coaptic::app::async_server::<impl coaptic::App<coaptic::profiles::Default, CoreIo, 1, true, coaptic::storage::AllocMemory, 0, 4>>::progress_async<(), {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>()}",
+    "bytes": 14856,
+    "alignment": 8,
+    "fields": []
+  },
+  {
+    "type": "coaptic::App<coaptic::profiles::Constrained, CoreIo, 4, false, coaptic::storage::Memory<coaptic::profiles::Constrained>, 0, 1>",
+    "bytes": 14192,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".io",
+        "bytes": 2976
+      },
+      {
+        "name": ".inbox",
+        "bytes": 768
+      },
+      {
+        "name": ".engine",
+        "bytes": 7864
+      },
+      {
+        "name": ".lives",
+        "bytes": 1136
+      },
+      {
+        "name": ".site",
+        "bytes": 880
+      },
+      {
+        "name": ".oscore",
+        "bytes": 456
+      },
+      {
+        "name": ".ids",
+        "bytes": 40
+      },
+      {
+        "name": ".dedup_closed",
+        "bytes": 40
+      },
+      {
+        "name": ".echo_policy",
+        "bytes": 8
+      },
+      {
+        "name": ".deferred_lifetime_ms",
+        "bytes": 8
+      },
+      {
+        "name": ".deferred",
+        "bytes": 8
+      },
+      {
+        "name": ".full_responses",
+        "bytes": 1
+      },
+      {
+        "name": ".oscore_checkpoint",
+        "bytes": 1
+      },
+      {
+        "name": ".assembled",
+        "bytes": 0
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::Engine<coaptic::storage::Memory<coaptic::profiles::Constrained>>",
+    "bytes": 7864,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".storage",
+        "bytes": 7768
+      },
+      {
+        "name": ".metrics",
+        "bytes": 92
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::Memory<coaptic::profiles::Constrained>",
+    "bytes": 7768,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".observe",
+        "bytes": 1320
+      },
+      {
+        "name": ".exchange",
+        "bytes": 296
+      },
+      {
+        "name": ".rx",
+        "bytes": 2448
+      },
+      {
+        "name": ".tx",
+        "bytes": 2448
+      },
+      {
+        "name": ".dedup",
+        "bytes": 1248
+      },
+      {
+        "name": ".retransmit_cursor",
+        "bytes": 8
+      },
+      {
+        "name": ".bodies",
+        "bytes": 0
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::BodyPool<1, 4096>",
+    "bytes": 4816,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".transfers",
+        "bytes": 688
+      },
+      {
+        "name": ".occ",
+        "bytes": 24
+      },
+      {
+        "name": ".bytes",
+        "bytes": 4096
+      },
+      {
+        "name": ".lens",
+        "bytes": 8
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::client::ClientLives<4>",
+    "bytes": 4544,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".rows",
+        "bytes": 4544
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::response::SharedScratch<coaptic::storage::DatagramScratch<1152>>",
+    "bytes": 4112,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".capacity",
+        "bytes": 8
+      },
+      {
+        "name": ".storage",
+        "bytes": 4100
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::response::SharedScratch<coaptic::storage::DatagramScratch<1472>>",
+    "bytes": 4112,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".capacity",
+        "bytes": 8
+      },
+      {
+        "name": ".storage",
+        "bytes": 4100
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::response::ScratchStorage<coaptic::storage::DatagramScratch<1152>>",
+    "bytes": 4100,
+    "alignment": 2,
+    "fields": []
+  },
+  {
+    "type": "coaptic::app::response::ScratchStorage<coaptic::storage::DatagramScratch<1472>>",
+    "bytes": 4100,
+    "alignment": 2,
+    "fields": []
+  },
+  {
+    "type": "coaptic::app::client::ClientInbox<4>",
+    "bytes": 3072,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".rows",
+        "bytes": 3072
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::DatagramPool<2, 1152>",
+    "bytes": 2448,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".bytes",
+        "bytes": 2304
+      },
+      {
+        "name": ".lens",
+        "bytes": 16
+      },
+      {
+        "name": ".pending",
+        "bytes": 48
+      },
+      {
+        "name": ".endpoints",
+        "bytes": 56
+      },
+      {
+        "name": ".occ",
+        "bytes": 24
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::DatagramScratch<1472>",
+    "bytes": 1472,
+    "alignment": 1,
+    "fields": [
+      {
+        "name": ".0",
+        "bytes": 1472
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::DedupTable<4>",
+    "bytes": 1248,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".entries",
+        "bytes": 1216
+      },
+      {
+        "name": ".occ",
+        "bytes": 32
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::DatagramScratch<1152>",
+    "bytes": 1152,
+    "alignment": 1,
+    "fields": [
+      {
+        "name": ".0",
+        "bytes": 1152
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::client::ClientLives<1>",
+    "bytes": 1136,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".rows",
+        "bytes": 1136
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::client::ClientInbox<1>",
+    "bytes": 768,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".rows",
+        "bytes": 768
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::Engine<coaptic::storage::AllocMemory>",
+    "bytes": 736,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".storage",
+        "bytes": 640
+      },
+      {
+        "name": ".metrics",
+        "bytes": 92
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::DedupEntry",
+    "bytes": 304,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".key",
+        "bytes": 32
+      },
+      {
+        "name": ".due_ms",
+        "bytes": 8
+      },
+      {
+        "name": ".replay",
+        "bytes": 264
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::client::asynchronous::Continuation<'_, coaptic::storage::Memory<coaptic::profiles::Constrained>, 1, 4>",
+    "bytes": 104,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".rx",
+        "bytes": 16
+      },
+      {
+        "name": ".call",
+        "bytes": 40
+      },
+      {
+        "name": ".engine",
+        "bytes": 8
+      },
+      {
+        "name": ".inbox",
+        "bytes": 8
+      },
+      {
+        "name": ".lives",
+        "bytes": 8
+      },
+      {
+        "name": ".oscore",
+        "bytes": 16
+      },
+      {
+        "name": ".cancel",
+        "bytes": 1
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::client::asynchronous::Continuation<'_, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, 4, 4>",
+    "bytes": 104,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".rx",
+        "bytes": 16
+      },
+      {
+        "name": ".call",
+        "bytes": 40
+      },
+      {
+        "name": ".engine",
+        "bytes": 8
+      },
+      {
+        "name": ".inbox",
+        "bytes": 8
+      },
+      {
+        "name": ".lives",
+        "bytes": 8
+      },
+      {
+        "name": ".oscore",
+        "bytes": 16
+      },
+      {
+        "name": ".cancel",
+        "bytes": 1
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::send::SendOwner<'_, coaptic::storage::Memory<coaptic::profiles::Constrained, coaptic::storage::WithBodies<coaptic::profiles::Constrained>>>",
+    "bytes": 80,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".reserved",
+        "bytes": 56
+      },
+      {
+        "name": ".engine",
+        "bytes": 8
+      },
+      {
+        "name": ".tx",
+        "bytes": 8
+      },
+      {
+        "name": ".release",
+        "bytes": 1
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::send::SendOwner<'_, coaptic::storage::Memory<coaptic::profiles::Constrained>>",
+    "bytes": 80,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".reserved",
+        "bytes": 56
+      },
+      {
+        "name": ".engine",
+        "bytes": 8
+      },
+      {
+        "name": ".tx",
+        "bytes": 8
+      },
+      {
+        "name": ".release",
+        "bytes": 1
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::send::SendOwner<'_, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>>",
+    "bytes": 80,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".reserved",
+        "bytes": 56
+      },
+      {
+        "name": ".engine",
+        "bytes": 8
+      },
+      {
+        "name": ".tx",
+        "bytes": 8
+      },
+      {
+        "name": ".release",
+        "bytes": 1
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::async_server::NotifyOwner<'_, coaptic::storage::Memory<coaptic::profiles::Constrained>>",
+    "bytes": 56,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".engine",
+        "bytes": 8
+      },
+      {
+        "name": ".seq",
+        "bytes": 4
+      },
+      {
+        "name": ".key",
+        "bytes": 40
+      },
+      {
+        "name": ".armed",
+        "bytes": 1
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::async_server::NotifyOwner<'_, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>>",
+    "bytes": 56,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".engine",
+        "bytes": 8
+      },
+      {
+        "name": ".seq",
+        "bytes": 4
+      },
+      {
+        "name": ".key",
+        "bytes": 40
+      },
+      {
+        "name": ".armed",
+        "bytes": 1
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::async_server::BodyOwner<'_, coaptic::storage::Memory<coaptic::profiles::Constrained, coaptic::storage::WithBodies<coaptic::profiles::Constrained>>>",
+    "bytes": 32,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".before_release",
+        "bytes": 8
+      },
+      {
+        "name": ".engine",
+        "bytes": 8
+      },
+      {
+        "name": ".body",
+        "bytes": 16
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::async_server::BodyOwner<'_, coaptic::storage::Memory<coaptic::profiles::Constrained>>",
+    "bytes": 32,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".before_release",
+        "bytes": 8
+      },
+      {
+        "name": ".engine",
+        "bytes": 8
+      },
+      {
+        "name": ".body",
+        "bytes": 16
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::async_server::BodyOwner<'_, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>>",
+    "bytes": 32,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".before_release",
+        "bytes": 8
+      },
+      {
+        "name": ".engine",
+        "bytes": 8
+      },
+      {
+        "name": ".body",
+        "bytes": 16
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::async_server::RxOwner<'_, coaptic::storage::Memory<coaptic::profiles::Constrained>>",
+    "bytes": 24,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".engine",
+        "bytes": 8
+      },
+      {
+        "name": ".rx",
+        "bytes": 8
+      },
+      {
+        "name": ".armed",
+        "bytes": 1
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::async_server::RxOwner<'_, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>>",
+    "bytes": 24,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".engine",
+        "bytes": 8
+      },
+      {
+        "name": ".rx",
+        "bytes": 8
+      },
+      {
+        "name": ".armed",
+        "bytes": 1
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::async_io::ReceiveReservation<'_, coaptic::storage::Memory<coaptic::profiles::Constrained>>",
+    "bytes": 24,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".id",
+        "bytes": 16
+      },
+      {
+        "name": ".engine",
+        "bytes": 8
+      }
+    ]
+  },
+  {
+    "type": "coaptic::storage::async_io::ReceiveReservation<'_, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>>",
+    "bytes": 24,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".id",
+        "bytes": 16
+      },
+      {
+        "name": ".engine",
+        "bytes": 8
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::async_server::PacketOwner<'_, coaptic::storage::Memory<coaptic::profiles::Constrained>>",
+    "bytes": 16,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".engine",
+        "bytes": 8
+      },
+      {
+        "name": ".tx",
+        "bytes": 8
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::async_server::PacketOwner<'_, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>>",
+    "bytes": 16,
+    "alignment": 8,
+    "fields": [
+      {
+        "name": ".engine",
+        "bytes": 8
+      },
+      {
+        "name": ".tx",
+        "bytes": 8
+      }
+    ]
+  },
+  {
+    "type": "coaptic::app::response::DatagramDispatch<coaptic::storage::DatagramScratch<1152>>",
+    "bytes": 0,
+    "alignment": 1,
+    "fields": [
+      {
+        "name": ".0",
+        "bytes": 0
+      }
+    ]
+  }
+]

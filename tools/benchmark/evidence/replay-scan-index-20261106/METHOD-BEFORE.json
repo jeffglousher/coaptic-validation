@@ -1,0 +1,18 @@
+{
+  "baseline": "bd63199b652193b4c0a882e5840e72d992cf1362",
+  "candidate": "c181cdf3ae223043dabaad58f1aed83c901c98b9",
+  "authorization": "User now accepts improvement in either CPU or memory with preservation of the other within measurement tolerance; old experiments remain failed under original rules.",
+  "cohort": "Same28 cells and capacities;64 pairs per cell, AB BA BA AB repeated16times; no early stopping or replacement.",
+  "runtime_rule": "Memory improvement route: BOTH ordinary/all sync/async aggregate one-sided95 upper CPU ratios <=1.02 AND EVERY cell upper95<=1.02. Improvement route for CPU additionally requires aggregate upper95<1 with memory nongrowth. Equivalence is not inferred from a nonsignificant difference.",
+  "memory_rule": "Same owner-only shrink rules as prior; no capacities reduced, no undeclared owner growth; complete selected future must shrink or stay equal and report physical overlap separately.",
+  "interval": "Student t df63 one-sided95, conservatively rounded critical factor1.67,64 process log ratios; no trimming. Numerical t CDF at1.67=0.9500594225584145",
+  "limits": "CPU cycles of complete memory-transport App operations; not network throughput/latency, peak stack or hardware qualification. Runtime-neutral within2% is scoped noninferiority, not exact equality.",
+  "budget_seconds": 1200,
+  "reason_for_precision": "Same predeclared64pairs for memory route; distinct source integration, no unchanged failed cohort repeated.",
+  "harness_correction": "Replace subprocess capture pipes/reader threads with direct stdout/stderr files, parsed after child completion. Original incomplete383-output run retained, no verdict, no samples reused. Same binaries,64 fixed pairs,28cells,gate and baseline.",
+  "source_hypothesis": "Compact MID/deadline scan cache reduces traversal working set while exclusive replay owners offset cache bytes. Allocated Dedup drops its unused pin Vec header to offset the scan Vec header. Exact endpoint checks and all capacities retained.",
+  "hypothesis": "Compact MID/deadline scan cache reduces traversal working set while exclusive replay owners offset cache bytes. Allocated Dedup drops its unused pin Vec header to offset the scan Vec header. Exact endpoint checks and all capacities retained.",
+  "tradeoffs": "One additional bounded startup allocation when Dedup capacity is nonzero; actual budget bytes and every allocation-failure recovery checked. The hot index duplicates metadata but combined owner bytes must shrink; no undeclared growth or runtime expansion.",
+  "capture_failure": "Parent run stopped after353 paired rows on a15-second process-exit timeout. The last stdout contains all1024 operations and1152 verified exchanges. One bounded diagnostic A/B returned0 in0.173/0.168seconds. Root cause unknown; no performance verdict or samples reused.",
+  "capture_change": "Explicit Popen wait retains per-process exit code, wall elapsed and stdout size. On timeout records child poll/CPU/thread/RSS state before kill; a process already exited with code0 is accepted and marked as a timeout race. Same15-second timeout and1200-second total, source/binaries/workloads/64pairs/CPU gates. One fresh cohort only; repeated unexplained failure stops qualification."
+}

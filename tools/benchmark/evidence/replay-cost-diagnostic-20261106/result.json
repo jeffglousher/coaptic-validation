@@ -1,0 +1,2743 @@
+{
+  "status": "complete",
+  "rows": [
+    {
+      "pair": 0,
+      "mode": "sync",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1345.5381944444443,
+          "B_cycles_per_call": 1415.1909722222222,
+          "ratio": 1.0517657381004606
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 836.5595134665508,
+          "B_cycles_per_call": 857.5325803649001,
+          "ratio": 1.0250706214689265
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 978.5268120212139,
+          "B_cycles_per_call": 920.6246317030053,
+          "ratio": 0.9408271908271908
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 827.421875,
+        "B": 843.359375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13603.984375,
+        "B": 13399.12109375
+      }
+    },
+    {
+      "pair": 0,
+      "mode": "sync",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1369.167751736111,
+          "B_cycles_per_call": 1429.0809461805557,
+          "ratio": 1.0437588413607275
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 833.7941511583745,
+          "B_cycles_per_call": 845.3974282458901,
+          "ratio": 1.0139162370848913
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 984.2911974508455,
+          "B_cycles_per_call": 899.7744143100265,
+          "ratio": 0.9141343706418347
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 822.3583984375,
+        "B": 838.37890625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 227507.48046875,
+        "B": 224464.74609375
+      }
+    },
+    {
+      "pair": 0,
+      "mode": "async",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1392.170138888889,
+          "B_cycles_per_call": 1445.8854166666667,
+          "ratio": 1.0385838456646173
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 871.4161598609904,
+          "B_cycles_per_call": 870.2345786272806,
+          "ratio": 0.9986440677966102
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 1016.7943429581615,
+          "B_cycles_per_call": 939.5580436063642,
+          "ratio": 0.9240394088669951
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 855.478515625,
+        "B": 845.01953125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 16750.64453125,
+        "B": 16393.7109375
+      }
+    },
+    {
+      "pair": 0,
+      "mode": "async",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1342.6605902777778,
+          "B_cycles_per_call": 1433.0284288194443,
+          "ratio": 1.0673050502830137
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 839.7710379252346,
+          "B_cycles_per_call": 844.364386088655,
+          "ratio": 1.0054697625376183
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 961.2199007857479,
+          "B_cycles_per_call": 903.1784770250208,
+          "ratio": 0.9396169141803231
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 820.6982421875,
+        "B": 842.861328125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 262458.0859375,
+        "B": 265272.05078125
+      }
+    },
+    {
+      "pair": 1,
+      "mode": "sync",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1334.9131944444443,
+          "B_cycles_per_call": 1398.6631944444443,
+          "ratio": 1.0477559142162283
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 837.7410947002606,
+          "B_cycles_per_call": 836.5595134665508,
+          "ratio": 0.998589562764457
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 964.7024160282853,
+          "B_cycles_per_call": 921.1255156157926,
+          "ratio": 0.9548286604361371
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 824.267578125,
+        "B": 823.935546875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13318.4375,
+        "B": 13456.89453125
+      }
+    },
+    {
+      "pair": 1,
+      "mode": "sync",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1355.9418402777778,
+          "B_cycles_per_call": 1416.076388888889,
+          "ratio": 1.0443489144038745
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 836.8563832673213,
+          "B_cycles_per_call": 835.325267212848,
+          "ratio": 0.9981703956794886
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 980.8071115617192,
+          "B_cycles_per_call": 893.5326067277401,
+          "ratio": 0.9110176671792136
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 824.931640625,
+        "B": 840.9521484375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 224994.66796875,
+        "B": 220556.73828125
+      }
+    },
+    {
+      "pair": 1,
+      "mode": "async",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1326.6493055555557,
+          "B_cycles_per_call": 1427.8819444444443,
+          "ratio": 1.0763070077864294
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 834.4917463075586,
+          "B_cycles_per_call": 853.6924413553431,
+          "ratio": 1.023008849557522
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 963.1997642899235,
+          "B_cycles_per_call": 917.4189746611668,
+          "ratio": 0.9524700988039522
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 823.10546875,
+        "B": 844.7705078125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15871.42578125,
+        "B": 16362.83203125
+      }
+    },
+    {
+      "pair": 1,
+      "mode": "async",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1373.61328125,
+          "B_cycles_per_call": 1424.248046875,
+          "ratio": 1.0368624607203287
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 851.355867831371,
+          "B_cycles_per_call": 851.355867831371,
+          "ratio": 1.0
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 979.4898070029329,
+          "B_cycles_per_call": 897.9031031610964,
+          "ratio": 0.9167048975308099
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 828.5009765625,
+        "B": 823.3544921875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 271267.87109375,
+        "B": 269194.00390625
+      }
+    },
+    {
+      "pair": 2,
+      "mode": "sync",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1327.829861111111,
+          "B_cycles_per_call": 1396.3020833333333,
+          "ratio": 1.0515670148921983
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 830.3562119895743,
+          "B_cycles_per_call": 846.3075586446569,
+          "ratio": 1.0192102454642475
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 966.8061284619918,
+          "B_cycles_per_call": 914.4136711844432,
+          "ratio": 0.9458087244845094
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 828.8330078125,
+        "B": 826.923828125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13223.4765625,
+        "B": 13334.70703125
+      }
+    },
+    {
+      "pair": 2,
+      "mode": "sync",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1404.621310763889,
+          "B_cycles_per_call": 1414.0104166666667,
+          "ratio": 1.0066844393081802
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 845.5265585155445,
+          "B_cycles_per_call": 842.1138299603928,
+          "ratio": 0.9959637831351588
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 982.9985154071767,
+          "B_cycles_per_call": 901.9965962993808,
+          "ratio": 0.9175971094175627
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 832.9833984375,
+        "B": 825.09765625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 226418.0859375,
+        "B": 225548.49609375
+      }
+    },
+    {
+      "pair": 2,
+      "mode": "async",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1333.4375,
+          "B_cycles_per_call": 1396.3020833333333,
+          "ratio": 1.047144754316069
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 845.4213727193744,
+          "B_cycles_per_call": 829.7654213727194,
+          "ratio": 0.9814814814814815
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 962.5987035945786,
+          "B_cycles_per_call": 924.9322333529758,
+          "ratio": 0.9608700176917473
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 823.6865234375,
+        "B": 826.259765625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15738.28125,
+        "B": 15705.078125
+      }
+    },
+    {
+      "pair": 2,
+      "mode": "async",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1359.963107638889,
+          "B_cycles_per_call": 1437.068142361111,
+          "ratio": 1.05669641646095
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 840.9885518962617,
+          "B_cycles_per_call": 844.1430199121046,
+          "ratio": 1.003750904823532
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 976.4243038708042,
+          "B_cycles_per_call": 898.1862620849477,
+          "ratio": 0.9198729061989749
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 845.185546875,
+        "B": 825.3466796875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 266226.97265625,
+        "B": 267236.34765625
+      }
+    },
+    {
+      "pair": 3,
+      "mode": "sync",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1329.6006944444443,
+          "B_cycles_per_call": 1410.46875,
+          "ratio": 1.0608213096559378
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 833.3101650738488,
+          "B_cycles_per_call": 840.1042571676803,
+          "ratio": 1.0081531371853953
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 975.5215085444903,
+          "B_cycles_per_call": 929.4401885680613,
+          "ratio": 0.9527623742041487
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 829.580078125,
+        "B": 839.7900390625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13271.2890625,
+        "B": 13692.3046875
+      }
+    },
+    {
+      "pair": 3,
+      "mode": "sync",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1374.0928819444443,
+          "B_cycles_per_call": 1403.4407552083333,
+          "ratio": 1.0213579981743006
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 851.1160544734415,
+          "B_cycles_per_call": 838.4612880473115,
+          "ratio": 0.9851315618362304
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 996.0976934496867,
+          "B_cycles_per_call": 886.4597892602383,
+          "ratio": 0.8899325789925782
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 827.6708984375,
+        "B": 837.9638671875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 227912.890625,
+        "B": 217863.30078125
+      }
+    },
+    {
+      "pair": 3,
+      "mode": "async",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1349.079861111111,
+          "B_cycles_per_call": 1402.204861111111,
+          "ratio": 1.0393786917523518
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 851.9200695047784,
+          "B_cycles_per_call": 847.4891398783666,
+          "ratio": 0.9947988904299584
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 972.7165586328815,
+          "B_cycles_per_call": 918.5209192692988,
+          "ratio": 0.9442842430484037
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 828.75,
+        "B": 851.4111328125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 16040.4296875,
+        "B": 16120.78125
+      }
+    },
+    {
+      "pair": 3,
+      "mode": "async",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1356.2369791666667,
+          "B_cycles_per_call": 1418.3637152777778,
+          "ratio": 1.0458081714814211
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 845.4527697900277,
+          "B_cycles_per_call": 845.0284846183062,
+          "ratio": 0.9994981562697738
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 969.413042691096,
+          "B_cycles_per_call": 894.7514212260564,
+          "ratio": 0.9229826522059383
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 831.6552734375,
+        "B": 828.3349609375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 266360.1171875,
+        "B": 266603.1640625
+      }
+    },
+    {
+      "pair": 4,
+      "mode": "sync",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1351.1458333333333,
+          "B_cycles_per_call": 1525.5729166666667,
+          "ratio": 1.1290956749672345
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 857.5325803649001,
+          "B_cycles_per_call": 898.8879235447437,
+          "ratio": 1.0482259731312435
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 999.8644667059517,
+          "B_cycles_per_call": 974.9204478491456,
+          "ratio": 0.9750525999398858
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 846.015625,
+        "B": 855.9765625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13967.890625,
+        "B": 14592.44140625
+      }
+    },
+    {
+      "pair": 4,
+      "mode": "sync",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1346.423611111111,
+          "B_cycles_per_call": 1434.9283854166667,
+          "ratio": 1.065733231039018
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 832.4659540990722,
+          "B_cycles_per_call": 842.8701643969399,
+          "ratio": 1.012498061027766
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 979.637542093638,
+          "B_cycles_per_call": 898.832603106782,
+          "ratio": 0.917515473310503
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 834.4775390625,
+        "B": 843.4423828125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 225531.5625,
+        "B": 226794.609375
+      }
+    },
+    {
+      "pair": 4,
+      "mode": "async",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1345.8333333333333,
+          "B_cycles_per_call": 1446.7708333333333,
+          "ratio": 1.075
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 846.6029539530842,
+          "B_cycles_per_call": 876.1424847958297,
+          "ratio": 1.0348918353105374
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 968.0082498526812,
+          "B_cycles_per_call": 948.3736004714201,
+          "ratio": 0.9797164441684777
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 834.6435546875,
+        "B": 866.435546875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15716.69921875,
+        "B": 16172.91015625
+      }
+    },
+    {
+      "pair": 4,
+      "mode": "async",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1353.1195746527778,
+          "B_cycles_per_call": 1434.6332465277778,
+          "ratio": 1.0602412923454434
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 845.5081113341653,
+          "B_cycles_per_call": 844.6226466279637,
+          "ratio": 0.9989527425055635
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 966.8276786037585,
+          "B_cycles_per_call": 901.3010102473114,
+          "ratio": 0.9322250802220751
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 848.0078125,
+        "B": 816.8798828125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 265584.82421875,
+        "B": 268863.6328125
+      }
+    },
+    {
+      "pair": 5,
+      "mode": "sync",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1341.9965277777778,
+          "B_cycles_per_call": 1446.4756944444443,
+          "ratio": 1.0778535297998681
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 838.627280625543,
+          "B_cycles_per_call": 848.6707211120764,
+          "ratio": 1.0119760479041917
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 992.7519151443724,
+          "B_cycles_per_call": 933.1467295226871,
+          "ratio": 0.9399596367305751
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 842.36328125,
+        "B": 860.7080078125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13468.515625,
+        "B": 13668.73046875
+      }
+    },
+    {
+      "pair": 5,
+      "mode": "sync",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1353.562282986111,
+          "B_cycles_per_call": 1421.4073350694443,
+          "ratio": 1.0501233322885295
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 842.2983017741848,
+          "B_cycles_per_call": 842.6303510390104,
+          "ratio": 1.0003942181340342
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 975.6733171597205,
+          "B_cycles_per_call": 895.7732556034326,
+          "ratio": 0.9181077721907117
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 855.810546875,
+        "B": 868.92578125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 227637.96875,
+        "B": 226535.29296875
+      }
+    },
+    {
+      "pair": 5,
+      "mode": "async",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1350.2604166666667,
+          "B_cycles_per_call": 1399.2534722222222,
+          "ratio": 1.0362841530054645
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 850.1476976542137,
+          "B_cycles_per_call": 844.2397914856647,
+          "ratio": 0.9930507296733843
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 971.1137301119622,
+          "B_cycles_per_call": 919.5226870948733,
+          "ratio": 0.9468743552713018
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 841.9482421875,
+        "B": 831.6552734375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15870.76171875,
+        "B": 15769.4921875
+      }
+    },
+    {
+      "pair": 5,
+      "mode": "async",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1393.9778645833333,
+          "B_cycles_per_call": 1420.1714409722222,
+          "ratio": 1.0187905253407437
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 866.5194509250719,
+          "B_cycles_per_call": 842.8148228528023,
+          "ratio": 0.9726438592382858
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 997.8951370532643,
+          "B_cycles_per_call": 898.3155302893146,
+          "ratio": 0.9002103496986633
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 820.8642578125,
+        "B": 822.8564453125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 269636.93359375,
+        "B": 265586.81640625
+      }
+    },
+    {
+      "pair": 6,
+      "mode": "sync",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1350.5555555555557,
+          "B_cycles_per_call": 1402.5,
+          "ratio": 1.0384615384615385
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 834.7871416159861,
+          "B_cycles_per_call": 840.1042571676803,
+          "ratio": 1.0063694267515924
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 988.3441367118444,
+          "B_cycles_per_call": 910.9074837949322,
+          "ratio": 0.9216501114940199
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 833.232421875,
+        "B": 826.0107421875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13732.1484375,
+        "B": 13280.5859375
+      }
+    },
+    {
+      "pair": 6,
+      "mode": "sync",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1345.6119791666667,
+          "B_cycles_per_call": 1408.642578125,
+          "ratio": 1.046841585787136
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 838.2030275080028,
+          "B_cycles_per_call": 833.2960772611361,
+          "ratio": 0.994145869096351
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 974.6453271535648,
+          "B_cycles_per_call": 897.7738349567295,
+          "ratio": 0.9211287531420921
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 827.587890625,
+        "B": 825.263671875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 225978.4765625,
+        "B": 219182.79296875
+      }
+    },
+    {
+      "pair": 6,
+      "mode": "async",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1332.5520833333333,
+          "B_cycles_per_call": 1380.3645833333333,
+          "ratio": 1.0358803986710963
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 843.0582102519548,
+          "B_cycles_per_call": 833.9009556907038,
+          "ratio": 0.9891380518570427
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 956.5880966411314,
+          "B_cycles_per_call": 915.0147318797879,
+          "ratio": 0.9565399518274165
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 830.4931640625,
+        "B": 827.8369140625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15446.7578125,
+        "B": 15670.21484375
+      }
+    },
+    {
+      "pair": 6,
+      "mode": "async",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1354.2632378472222,
+          "B_cycles_per_call": 1424.1927083333333,
+          "ratio": 1.051636541945326
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 844.4935163583094,
+          "B_cycles_per_call": 847.8877977320818,
+          "ratio": 1.004019310164049
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 970.7857479088967,
+          "B_cycles_per_call": 900.3161096426114,
+          "ratio": 0.9274096901215545
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 823.8525390625,
+        "B": 845.4345703125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 263420.9765625,
+        "B": 265808.61328125
+      }
+    },
+    {
+      "pair": 7,
+      "mode": "sync",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1339.6354166666667,
+          "B_cycles_per_call": 1423.75,
+          "ratio": 1.0627891606080635
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 835.0825369244136,
+          "B_cycles_per_call": 847.7845351867941,
+          "ratio": 1.0152104704633889
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 983.7360047142015,
+          "B_cycles_per_call": 918.8214496169711,
+          "ratio": 0.9340122199592668
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 824.1845703125,
+        "B": 825.263671875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13285.234375,
+        "B": 13856.328125
+      }
+    },
+    {
+      "pair": 7,
+      "mode": "sync",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1339.3402777777778,
+          "B_cycles_per_call": 1433.6002604166667,
+          "ratio": 1.070377919788453
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 834.8456404969887,
+          "B_cycles_per_call": 849.8431989582768,
+          "ratio": 1.0179644687997171
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 966.803056088641,
+          "B_cycles_per_call": 903.8371293044139,
+          "ratio": 0.9348720234305361
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 829.4140625,
+        "B": 843.6083984375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 224894.39453125,
+        "B": 221594.66796875
+      }
+    },
+    {
+      "pair": 7,
+      "mode": "async",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1356.4583333333333,
+          "B_cycles_per_call": 1406.0416666666667,
+          "ratio": 1.0365535248041775
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 846.0121633362294,
+          "B_cycles_per_call": 836.8549087749783,
+          "ratio": 0.9891759776536313
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 970.81319976429,
+          "B_cycles_per_call": 907.0005892751915,
+          "ratio": 0.9342689092972861
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 831.07421875,
+        "B": 825.263671875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15758.203125,
+        "B": 15768.828125
+      }
+    },
+    {
+      "pair": 7,
+      "mode": "async",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1369.8133680555557,
+          "B_cycles_per_call": 1425.5208333333333,
+          "ratio": 1.040667923511985
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 839.2914112093755,
+          "B_cycles_per_call": 844.6410938093429,
+          "ratio": 1.0063740466404378
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 963.4543940326611,
+          "B_cycles_per_call": 892.184524025057,
+          "ratio": 0.9260267320912878
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 838.544921875,
+        "B": 834.9755859375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 266469.35546875,
+        "B": 264002.03125
+      }
+    },
+    {
+      "pair": 8,
+      "mode": "sync",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1330.1909722222222,
+          "B_cycles_per_call": 1396.5972222222222,
+          "ratio": 1.0499223430219657
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 827.6976542137272,
+          "B_cycles_per_call": 832.128583840139,
+          "ratio": 1.0053533190578159
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 984.4372421921037,
+          "B_cycles_per_call": 911.5085444902769,
+          "ratio": 0.9259183881143788
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 833.3984375,
+        "B": 819.78515625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13274.609375,
+        "B": 13194.2578125
+      }
+    },
+    {
+      "pair": 8,
+      "mode": "sync",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1333.603515625,
+          "B_cycles_per_call": 1425.945095486111,
+          "ratio": 1.0692421538929693
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 829.4775107156421,
+          "B_cycles_per_call": 844.3459389072758,
+          "ratio": 1.017925052818859
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 969.4807546076692,
+          "B_cycles_per_call": 901.3133215048701,
+          "ratio": 0.929686656719261
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 846.845703125,
+        "B": 824.267578125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 224350.1953125,
+        "B": 223086.484375
+      }
+    },
+    {
+      "pair": 8,
+      "mode": "async",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1328.125,
+          "B_cycles_per_call": 1405.451388888889,
+          "ratio": 1.0582222222222222
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 836.2641181581233,
+          "B_cycles_per_call": 838.9226759339705,
+          "ratio": 1.0031790886612504
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 965.4036535061874,
+          "B_cycles_per_call": 922.8285209192693,
+          "ratio": 0.9558991387361212
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 822.3583984375,
+        "B": 826.6748046875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15548.02734375,
+        "B": 15768.49609375
+      }
+    },
+    {
+      "pair": 8,
+      "mode": "async",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1381.286892361111,
+          "B_cycles_per_call": 1432.2352430555557,
+          "ratio": 1.036884698592452
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 860.7085887906245,
+          "B_cycles_per_call": 851.8170473658511,
+          "ratio": 0.9896695100518668
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 981.1826049172611,
+          "B_cycles_per_call": 899.7682586812471,
+          "ratio": 0.9170242666064393
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 830.9912109375,
+        "B": 825.263671875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 270735.625,
+        "B": 269847.7734375
+      }
+    },
+    {
+      "pair": 9,
+      "mode": "sync",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1336.388888888889,
+          "B_cycles_per_call": 1404.2708333333333,
+          "ratio": 1.0507950530035335
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 843.9443961772372,
+          "B_cycles_per_call": 845.125977410947,
+          "ratio": 1.0014000700035002
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 970.612846199175,
+          "B_cycles_per_call": 926.5350618738951,
+          "ratio": 0.9545876767468263
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 859.5458984375,
+        "B": 823.76953125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13273.61328125,
+        "B": 13654.453125
+      }
+    },
+    {
+      "pair": 9,
+      "mode": "sync",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1329.0288628472222,
+          "B_cycles_per_call": 1414.8036024305557,
+          "ratio": 1.0645394106788435
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 827.8726059356519,
+          "B_cycles_per_call": 846.4858119472627,
+          "ratio": 1.0224831766121485
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 963.4913278053373,
+          "B_cycles_per_call": 905.2467682948908,
+          "ratio": 0.9395484340859432
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 823.603515625,
+        "B": 825.4296875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 222776.3671875,
+        "B": 222412.4609375
+      }
+    },
+    {
+      "pair": 9,
+      "mode": "async",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1334.3229166666667,
+          "B_cycles_per_call": 1394.236111111111,
+          "ratio": 1.0449015704490157
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 842.7628149435274,
+          "B_cycles_per_call": 840.1042571676803,
+          "ratio": 0.9968454258675079
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 965.2032999410725,
+          "B_cycles_per_call": 912.9110194460814,
+          "ratio": 0.9458225220550078
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 818.7890625,
+        "B": 856.0595703125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15574.921875,
+        "B": 15807.01171875
+      }
+    },
+    {
+      "pair": 9,
+      "mode": "async",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1373.9637586805557,
+          "B_cycles_per_call": 1428.9702690972222,
+          "ratio": 1.0400349063569847
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 848.3305300851825,
+          "B_cycles_per_call": 843.6264988334871,
+          "ratio": 0.9944549546610999
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 969.5176883803455,
+          "B_cycles_per_call": 894.1666364920158,
+          "ratio": 0.9222798585405807
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 839.541015625,
+        "B": 846.34765625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 269465.60546875,
+        "B": 264939.0234375
+      }
+    },
+    {
+      "pair": 10,
+      "mode": "sync",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1372.986111111111,
+          "B_cycles_per_call": 1462.7083333333333,
+          "ratio": 1.065348237317283
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 856.0556038227628,
+          "B_cycles_per_call": 885.5951346655082,
+          "ratio": 1.0345065562456868
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 1011.8856806128462,
+          "B_cycles_per_call": 963.099587507366,
+          "ratio": 0.9517869517869518
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 893.2470703125,
+        "B": 867.6806640625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13955.9375,
+        "B": 14260.078125
+      }
+    },
+    {
+      "pair": 10,
+      "mode": "sync",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1444.9077690972222,
+          "B_cycles_per_call": 1409.7124565972222,
+          "ratio": 0.975641827628908
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 868.9360316857468,
+          "B_cycles_per_call": 837.003960718355,
+          "ratio": 0.9632515285326086
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 1024.0319368504906,
+          "B_cycles_per_call": 896.4442191403846,
+          "ratio": 0.875406505286823
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 827.0068359375,
+        "B": 828.1689453125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 242053.76953125,
+        "B": 222978.57421875
+      }
+    },
+    {
+      "pair": 10,
+      "mode": "async",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1521.4409722222222,
+          "B_cycles_per_call": 1472.7430555555557,
+          "ratio": 0.967992240543162
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 928.4274543874891,
+          "B_cycles_per_call": 870.8253692441356,
+          "ratio": 0.9379573655742921
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 1068.7860931054802,
+          "B_cycles_per_call": 943.26458456099,
+          "ratio": 0.8825569406692286
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 829.8291015625,
+        "B": 866.435546875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 17680.6640625,
+        "B": 17158.046875
+      }
+    },
+    {
+      "pair": 10,
+      "mode": "async",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1367.599826388889,
+          "B_cycles_per_call": 1430.5750868055557,
+          "ratio": 1.0460480172646345
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 849.3266778796593,
+          "B_cycles_per_call": 853.4957408713581,
+          "ratio": 1.0049086683608088
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 974.2021218814498,
+          "B_cycles_per_call": 897.6691892674802,
+          "ratio": 0.9214403963048615
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 823.3544921875,
+        "B": 826.259765625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 269012.3828125,
+        "B": 268564.8046875
+      }
+    },
+    {
+      "pair": 11,
+      "mode": "sync",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1343.767361111111,
+          "B_cycles_per_call": 1408.9930555555557,
+          "ratio": 1.0485394245552384
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 856.6463944396178,
+          "B_cycles_per_call": 844.2397914856647,
+          "ratio": 0.9855172413793103
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 995.8573954036535,
+          "B_cycles_per_call": 914.0129640542133,
+          "ratio": 0.9178151091439493
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 825.595703125,
+        "B": 826.42578125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13832.421875,
+        "B": 13276.93359375
+      }
+    },
+    {
+      "pair": 11,
+      "mode": "sync",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1343.0479600694443,
+          "B_cycles_per_call": 1451.105685763889,
+          "ratio": 1.0804570863492151
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 831.6542781183875,
+          "B_cycles_per_call": 852.6840648906733,
+          "ratio": 1.025286693432114
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 966.2798276423941,
+          "B_cycles_per_call": 910.780678567549,
+          "ratio": 0.9425641025641026
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 836.3037109375,
+        "B": 818.2080078125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 224338.2421875,
+        "B": 225664.375
+      }
+    },
+    {
+      "pair": 11,
+      "mode": "async",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1376.5277777777778,
+          "B_cycles_per_call": 1397.1875,
+          "ratio": 1.015008576329331
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 864.9174630755864,
+          "B_cycles_per_call": 834.1963509991311,
+          "ratio": 0.9644808743169399
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 986.0400707130229,
+          "B_cycles_per_call": 929.4401885680613,
+          "ratio": 0.9425988011785025
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 855.146484375,
+        "B": 832.236328125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15969.04296875,
+        "B": 15798.37890625
+      }
+    },
+    {
+      "pair": 11,
+      "mode": "async",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1365.9950086805557,
+          "B_cycles_per_call": 1440.314670138889,
+          "ratio": 1.0544069787854644
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 850.23058976724,
+          "B_cycles_per_call": 837.2622212576637,
+          "ratio": 0.984747233673248
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 981.3918962957598,
+          "B_cycles_per_call": 894.646775536807,
+          "ratio": 0.9116101110205106
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 854.2333984375,
+        "B": 851.2451171875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 265505.80078125,
+        "B": 266326.9140625
+      }
+    },
+    {
+      "pair": 12,
+      "mode": "sync",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1331.3715277777778,
+          "B_cycles_per_call": 1411.0590277777778,
+          "ratio": 1.0598536909776104
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 835.377932232841,
+          "B_cycles_per_call": 852.2154648132059,
+          "ratio": 1.02015558698727
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 969.9116087212728,
+          "B_cycles_per_call": 931.7442545668828,
+          "ratio": 0.9606486263168766
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 823.5205078125,
+        "B": 835.224609375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13239.74609375,
+        "B": 13761.3671875
+      }
+    },
+    {
+      "pair": 12,
+      "mode": "sync",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1346.0546875,
+          "B_cycles_per_call": 1427.9926215277778,
+          "ratio": 1.060872663487365
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 842.7410341272855,
+          "B_cycles_per_call": 848.1460582713906,
+          "ratio": 1.0064136240259172
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 982.5799326501792,
+          "B_cycles_per_call": 903.0676757069921,
+          "ratio": 0.9190780777206292
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 833.4814453125,
+        "B": 850.6640625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 229092.265625,
+        "B": 226489.8046875
+      }
+    },
+    {
+      "pair": 12,
+      "mode": "async",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1348.1944444444443,
+          "B_cycles_per_call": 1397.7777777777778,
+          "ratio": 1.0367775831873904
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 862.2589052997394,
+          "B_cycles_per_call": 840.1042571676803,
+          "ratio": 0.9743062692702981
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 969.7112551561579,
+          "B_cycles_per_call": 895.6806128461992,
+          "ratio": 0.9236570247933884
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 825.0146484375,
+        "B": 819.12109375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 15982.98828125,
+        "B": 15604.8046875
+      }
+    },
+    {
+      "pair": 12,
+      "mode": "async",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1392.7973090277778,
+          "B_cycles_per_call": 1435.241970486111,
+          "ratio": 1.0304743993854792
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 854.787043567902,
+          "B_cycles_per_call": 847.1683576582931,
+          "ratio": 0.9910870362777047
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 971.5305789912011,
+          "B_cycles_per_call": 898.5555998117102,
+          "ratio": 0.924886585396761
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 835.05859375,
+        "B": 830.1611328125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 268143.7890625,
+        "B": 268524.296875
+      }
+    },
+    {
+      "pair": 13,
+      "mode": "sync",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1333.142361111111,
+          "B_cycles_per_call": 1486.3194444444443,
+          "ratio": 1.1148992694266107
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 825.0390964378801,
+          "B_cycles_per_call": 871.120764552563,
+          "ratio": 1.0558539205155746
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 983.0347672362993,
+          "B_cycles_per_call": 965.103123158515,
+          "ratio": 0.981758891266687
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 828.1689453125,
+        "B": 863.9453125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13616.6015625,
+        "B": 14496.484375
+      }
+    },
+    {
+      "pair": 13,
+      "mode": "sync",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1360.036892361111,
+          "B_cycles_per_call": 1419.2860243055557,
+          "ratio": 1.0435643564356436
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 843.6633931962455,
+          "B_cycles_per_call": 842.7225869459063,
+          "ratio": 0.9988848559058906
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 978.6464858601586,
+          "B_cycles_per_call": 900.1006626353333,
+          "ratio": 0.9197403512303125
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 841.69921875,
+        "B": 843.69140625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 227381.30859375,
+        "B": 223921.875
+      }
+    },
+    {
+      "pair": 13,
+      "mode": "async",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1355.2777777777778,
+          "B_cycles_per_call": 1428.1770833333333,
+          "ratio": 1.0537891986062717
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 859.0095569070373,
+          "B_cycles_per_call": 861.0773240660295,
+          "ratio": 1.0024071526822558
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 982.3335297583972,
+          "B_cycles_per_call": 933.1467295226871,
+          "ratio": 0.9499286151335917
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 838.37890625,
+        "B": 837.71484375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 16178.22265625,
+        "B": 16382.08984375
+      }
+    },
+    {
+      "pair": 13,
+      "mode": "async",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1372.0453559027778,
+          "B_cycles_per_call": 1463.962673611111,
+          "ratio": 1.0669929148572888
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 848.9761814334545,
+          "B_cycles_per_call": 843.4604742010742,
+          "ratio": 0.9935031072095954
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 974.1959662526705,
+          "B_cycles_per_call": 901.1963645580621,
+          "ratio": 0.9250668199998736
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 851.9921875,
+        "B": 839.9560546875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 267197.83203125,
+        "B": 268986.15234375
+      }
+    },
+    {
+      "pair": 14,
+      "mode": "sync",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1399.548611111111,
+          "B_cycles_per_call": 1532.951388888889,
+          "ratio": 1.0953184310417545
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 865.8036490008689,
+          "B_cycles_per_call": 907.4543874891399,
+          "ratio": 1.0481064483111566
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 1027.2127283441366,
+          "B_cycles_per_call": 978.2262816735415,
+          "ratio": 0.9523112931538912
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 860.5419921875,
+        "B": 867.3486328125
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13875.25390625,
+        "B": 14713.96484375
+      }
+    },
+    {
+      "pair": 14,
+      "mode": "sync",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1363.3756510416667,
+          "B_cycles_per_call": 1454.6473524305557,
+          "ratio": 1.0669453802546305
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 843.2206608431447,
+          "B_cycles_per_call": 865.1174651402529,
+          "ratio": 1.0259680595055787
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 982.6845783394286,
+          "B_cycles_per_call": 930.1770648513597,
+          "ratio": 0.9465672763718367
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 839.873046875,
+        "B": 863.1982421875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 226537.94921875,
+        "B": 227690.4296875
+      }
+    },
+    {
+      "pair": 14,
+      "mode": "async",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1359.704861111111,
+          "B_cycles_per_call": 1434.670138888889,
+          "ratio": 1.0551334925113958
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 849.8523023457863,
+          "B_cycles_per_call": 858.4187662901825,
+          "ratio": 1.0100799443865138
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 973.6181496758986,
+          "B_cycles_per_call": 927.6370064820271,
+          "ratio": 0.952772919024591
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 833.8134765625,
+        "B": 836.3037109375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 16147.67578125,
+        "B": 15998.26171875
+      }
+    },
+    {
+      "pair": 14,
+      "mode": "async",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1382.3567708333333,
+          "B_cycles_per_call": 1470.695529513889,
+          "ratio": 1.0639044568988525
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 862.6455428354403,
+          "B_cycles_per_call": 869.8030492105692,
+          "ratio": 1.0082971580095375
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 985.3684324872361,
+          "B_cycles_per_call": 926.5513995003078,
+          "ratio": 0.9403096029386042
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 823.4375,
+        "B": 874.3212890625
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 274837.20703125,
+        "B": 270698.10546875
+      }
+    },
+    {
+      "pair": 15,
+      "mode": "sync",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1341.701388888889,
+          "B_cycles_per_call": 1568.0729166666667,
+          "ratio": 1.1687197536295644
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 844.535186794092,
+          "B_cycles_per_call": 918.9748045178106,
+          "ratio": 1.0881427072402938
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 1001.7678255745433,
+          "B_cycles_per_call": 1002.3688862698881,
+          "ratio": 1.0006
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 838.7939453125,
+        "B": 843.193359375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 13387.5,
+        "B": 15968.046875
+      }
+    },
+    {
+      "pair": 15,
+      "mode": "sync",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1336.9053819444443,
+          "B_cycles_per_call": 1428.2508680555557,
+          "ratio": 1.0683260665599648
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 832.0601161087299,
+          "B_cycles_per_call": 849.1975476100049,
+          "ratio": 1.0205963862099545
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 965.621175363001,
+          "B_cycles_per_call": 908.0660462758445,
+          "ratio": 0.9403957467424842
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 841.2841796875,
+        "B": 842.2802734375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 226265.01953125,
+        "B": 228151.62109375
+      }
+    },
+    {
+      "pair": 15,
+      "mode": "async",
+      "payload": 1024,
+      "phases": {
+        "store": {
+          "calls": 1152,
+          "A_cycles_per_call": 1357.9340277777778,
+          "B_cycles_per_call": 1437.326388888889,
+          "ratio": 1.058465550967181
+        },
+        "expiry": {
+          "calls": 1151,
+          "A_cycles_per_call": 855.7602085143353,
+          "B_cycles_per_call": 874.0747176368375,
+          "ratio": 1.0214014497756299
+        },
+        "lookup": {
+          "calls": 3394,
+          "A_cycles_per_call": 984.8379493223335,
+          "B_cycles_per_call": 938.9569829110194,
+          "ratio": 0.9534126741938765
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 847.34375,
+        "B": 846.9287109375
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 16409.6484375,
+        "B": 16443.515625
+      }
+    },
+    {
+      "pair": 15,
+      "mode": "async",
+      "payload": 16384,
+      "phases": {
+        "store": {
+          "calls": 18432,
+          "A_cycles_per_call": 1369.0386284722222,
+          "B_cycles_per_call": 1503.2530381944443,
+          "ratio": 1.0980355169904874
+        },
+        "expiry": {
+          "calls": 18431,
+          "A_cycles_per_call": 848.5887906244914,
+          "B_cycles_per_call": 873.9167706581303,
+          "ratio": 1.0298471772352775
+        },
+        "lookup": {
+          "calls": 55234,
+          "A_cycles_per_call": 972.6632146866061,
+          "B_cycles_per_call": 938.6718325668973,
+          "ratio": 0.9650532870921196
+        }
+      },
+      "empty_interval_cycles": {
+        "A": 831.73828125,
+        "B": 848.671875
+      },
+      "instrumented_App_mean_cycles": {
+        "A": 266788.76953125,
+        "B": 278047.94921875
+      }
+    }
+  ],
+  "summary": [
+    {
+      "mode": "sync",
+      "payload": 1024,
+      "phase": "store",
+      "A_mean_cycles_per_call": 1344.39453125,
+      "B_mean_cycles_per_call": 1443.1184895833333,
+      "paired_geomean_ratio": 1.0727953681477782,
+      "calls_per_process": 1152
+    },
+    {
+      "mode": "sync",
+      "payload": 1024,
+      "phase": "expiry",
+      "A_mean_cycles_per_call": 841.1935273675065,
+      "B_mean_cycles_per_call": 860.8003909643788,
+      "paired_geomean_ratio": 1.0229330067654507,
+      "calls_per_process": 1151
+    },
+    {
+      "mode": "sync",
+      "payload": 1024,
+      "phase": "lookup",
+      "A_mean_cycles_per_call": 987.1858426635239,
+      "B_mean_cycles_per_call": 938.4999263406011,
+      "paired_geomean_ratio": 0.9504093813986866,
+      "calls_per_process": 3394
+    },
+    {
+      "mode": "sync",
+      "payload": 16384,
+      "phase": "store",
+      "A_mean_cycles_per_call": 1359.107666015625,
+      "B_mean_cycles_per_call": 1424.5581732855903,
+      "paired_geomean_ratio": 1.0483330312605446,
+      "calls_per_process": 18432
+    },
+    {
+      "mode": "sync",
+      "payload": 16384,
+      "phase": "expiry",
+      "A_mean_cycles_per_call": 839.6707313764853,
+      "B_mean_cycles_per_call": 844.727564972058,
+      "paired_geomean_ratio": 1.0060523753458332,
+      "calls_per_process": 18431
+    },
+    {
+      "mode": "sync",
+      "payload": 16384,
+      "phase": "lookup",
+      "A_mean_cycles_per_call": 979.6106112177282,
+      "B_mean_cycles_per_call": 902.073541659123,
+      "paired_geomean_ratio": 0.9208976413711788,
+      "calls_per_process": 55234
+    },
+    {
+      "mode": "async",
+      "payload": 1024,
+      "phase": "store",
+      "A_mean_cycles_per_call": 1360.498046875,
+      "B_mean_cycles_per_call": 1417.0171440972222,
+      "paired_geomean_ratio": 1.0419221387189044,
+      "calls_per_process": 1152
+    },
+    {
+      "mode": "async",
+      "payload": 1024,
+      "phase": "expiry",
+      "A_mean_cycles_per_call": 855.520199826238,
+      "B_mean_cycles_per_call": 850.6277150304084,
+      "paired_geomean_ratio": 0.9944145133039571,
+      "calls_per_process": 1151
+    },
+    {
+      "mode": "async",
+      "payload": 1024,
+      "phase": "lookup",
+      "A_mean_cycles_per_call": 979.86041543901,
+      "B_mean_cycles_per_call": 924.6379640542133,
+      "paired_geomean_ratio": 0.9438761725414143,
+      "calls_per_process": 3394
+    },
+    {
+      "mode": "async",
+      "payload": 16384,
+      "phase": "store",
+      "A_mean_cycles_per_call": 1369.2957221137153,
+      "B_mean_cycles_per_call": 1438.9046902126736,
+      "paired_geomean_ratio": 1.050771939012049,
+      "calls_per_process": 18432
+    },
+    {
+      "mode": "async",
+      "payload": 16384,
+      "phase": "expiry",
+      "A_mean_cycles_per_call": 849.8109163908632,
+      "B_mean_cycles_per_call": 849.0880174705659,
+      "paired_geomean_ratio": 0.9991291773207964,
+      "calls_per_process": 18431
+    },
+    {
+      "mode": "async",
+      "payload": 16384,
+      "phase": "lookup",
+      "A_mean_cycles_per_call": 974.7226572401057,
+      "B_mean_cycles_per_call": 902.3351558822465,
+      "paired_geomean_ratio": 0.9256921595253153,
+      "calls_per_process": 55234
+    }
+  ],
+  "process_exits": [
+    {
+      "label": "0-sync-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "0-sync-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "0-sync-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "0-sync-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "0-async-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "0-async-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "0-async-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "0-async-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "1-sync-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "1-sync-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "1-sync-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "1-sync-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "1-async-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "1-async-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "1-async-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "1-async-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "2-sync-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "2-sync-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "2-sync-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "2-sync-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "2-async-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "2-async-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "2-async-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "2-async-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "3-sync-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "3-sync-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "3-sync-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "3-sync-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "3-async-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "3-async-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "3-async-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "3-async-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "4-sync-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "4-sync-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "4-sync-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "4-sync-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "4-async-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "4-async-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "4-async-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "4-async-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "5-sync-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "5-sync-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "5-sync-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "5-sync-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "5-async-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "5-async-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "5-async-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "5-async-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "6-sync-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "6-sync-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "6-sync-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "6-sync-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "6-async-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "6-async-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "6-async-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "6-async-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "7-sync-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "7-sync-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "7-sync-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "7-sync-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "7-async-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "7-async-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "7-async-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "7-async-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "8-sync-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "8-sync-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "8-sync-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "8-sync-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "8-async-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "8-async-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "8-async-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "8-async-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "9-sync-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "9-sync-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "9-sync-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "9-sync-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "9-async-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "9-async-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "9-async-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "9-async-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "10-sync-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "10-sync-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "10-sync-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "10-sync-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "10-async-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "10-async-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "10-async-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "10-async-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "11-sync-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "11-sync-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "11-sync-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "11-sync-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "11-async-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "11-async-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "11-async-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "11-async-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "12-sync-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "12-sync-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "12-sync-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "12-sync-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "12-async-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "12-async-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "12-async-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "12-async-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "13-sync-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "13-sync-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "13-sync-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "13-sync-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "13-async-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "13-async-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "13-async-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "13-async-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "14-sync-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "14-sync-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "14-sync-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "14-sync-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "14-async-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "14-async-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "14-async-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "14-async-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "15-sync-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "15-sync-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "15-sync-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "15-sync-16384-B",
+      "exit_code": 0
+    },
+    {
+      "label": "15-async-1024-A",
+      "exit_code": 0
+    },
+    {
+      "label": "15-async-1024-B",
+      "exit_code": 0
+    },
+    {
+      "label": "15-async-16384-A",
+      "exit_code": 0
+    },
+    {
+      "label": "15-async-16384-B",
+      "exit_code": 0
+    }
+  ],
+  "seconds": 11.956331300083548,
+  "acceptance_claim": false
+}

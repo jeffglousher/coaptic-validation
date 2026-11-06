@@ -1,0 +1,16 @@
+{
+  "candidate.patch": "5f9ca82151acfd9193457552ab50fe5eae520a8bbd3d601437c0559caa775c23",
+  "clippy-all.log": "f9bc9b80a4c016e821ecbb990d841891384b3e3d34428cecb0dc7c7e320c0942",
+  "encoder-frames.json": "ef7720b3b64f0b3b0f4ed55a26a421d3b2fff8da24aeffe6a6e8569b01949b2f",
+  "fmt.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "focused-checks.json": "13be44910eba2b67cb0fe325cd4333722dc50b78354593eb8b42678c59b1cfac",
+  "METHOD-BEFORE.json": "9e742fde647cae95d4550f9d6a10b282b4e48831de45e9287f013392637ae82f",
+  "nested-comparison.json": "c8c7bb0855ba487fbe37404a5820eb3e12c8d1889ada4fcca92a0850a367e258",
+  "owner-layout.txt": "989803627df39fbeb4cc92a12005f88cda5fc9c7ca3f4466e139dc740c23d04e",
+  "preflight-copy.json": "1c75ee66fb041bcb5d24e4e53deaccc8d0824a25f8c1fa83cc3119c5cd1ab40b",
+  "preflight-host.json": "5b8fcf3719e8144a1a8128ee3d1a94f391dbf21495f05e90efc58e881ea597ca",
+  "reclaim-frames.json": "045ddf4e6f6d5f43653988b248f13037c69611df27ea16d875ea6be0ded29e28",
+  "review.txt": "55468de0d4fcec16817dde9f470967fbdd1ece9ab5d33ea3eee9694a8465a933",
+  "source-verification.json": "f528f23e61c5ecfd447c82c632570a3c0706ba3988428549a3871792919aa63a",
+  "tests.log": "7737f737cdaab061f5492b7187b238336a58d5e929dfc0b687e00d2ebe64d70c"
+}

@@ -1,0 +1,185 @@
+[
+  {
+    "name": "clippy-no-default",
+    "exit_code": 0,
+    "command": [
+      "C:\\Users\\jeffg\\.cargo\\bin\\agent-resources.exe",
+      "run",
+      "--id",
+      "coaptic-core-reusable",
+      "--directory",
+      "C:\\Users\\jeffg\\.t3\\worktrees\\coaptic\\t3-a578955c",
+      "--",
+      "cargo",
+      "clippy",
+      "--locked",
+      "--offline",
+      "--all-targets",
+      "--no-default-features",
+      "--",
+      "-D",
+      "warnings"
+    ]
+  },
+  {
+    "name": "test-all",
+    "exit_code": 0,
+    "command": [
+      "C:\\Users\\jeffg\\.cargo\\bin\\agent-resources.exe",
+      "run",
+      "--id",
+      "coaptic-core-reusable",
+      "--directory",
+      "C:\\Users\\jeffg\\.t3\\worktrees\\coaptic\\t3-a578955c",
+      "--",
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "--all-features"
+    ]
+  },
+  {
+    "name": "test-no-default",
+    "exit_code": 0,
+    "command": [
+      "C:\\Users\\jeffg\\.cargo\\bin\\agent-resources.exe",
+      "run",
+      "--id",
+      "coaptic-core-reusable",
+      "--directory",
+      "C:\\Users\\jeffg\\.t3\\worktrees\\coaptic\\t3-a578955c",
+      "--",
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "--no-default-features",
+      "--lib"
+    ]
+  },
+  {
+    "name": "test-alloc",
+    "exit_code": 0,
+    "command": [
+      "C:\\Users\\jeffg\\.cargo\\bin\\agent-resources.exe",
+      "run",
+      "--id",
+      "coaptic-core-reusable",
+      "--directory",
+      "C:\\Users\\jeffg\\.t3\\worktrees\\coaptic\\t3-a578955c",
+      "--",
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "--no-default-features",
+      "--features",
+      "alloc",
+      "--lib"
+    ]
+  },
+  {
+    "name": "test-oscore",
+    "exit_code": 0,
+    "command": [
+      "C:\\Users\\jeffg\\.cargo\\bin\\agent-resources.exe",
+      "run",
+      "--id",
+      "coaptic-core-reusable",
+      "--directory",
+      "C:\\Users\\jeffg\\.t3\\worktrees\\coaptic\\t3-a578955c",
+      "--",
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "--no-default-features",
+      "--features",
+      "oscore",
+      "--lib"
+    ]
+  },
+  {
+    "name": "test-std",
+    "exit_code": 0,
+    "command": [
+      "C:\\Users\\jeffg\\.cargo\\bin\\agent-resources.exe",
+      "run",
+      "--id",
+      "coaptic-core-reusable",
+      "--directory",
+      "C:\\Users\\jeffg\\.t3\\worktrees\\coaptic\\t3-a578955c",
+      "--",
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "--no-default-features",
+      "--features",
+      "std",
+      "--lib"
+    ]
+  },
+  {
+    "name": "msrv-no-default",
+    "exit_code": 0,
+    "command": [
+      "C:\\Users\\jeffg\\.cargo\\bin\\agent-resources.exe",
+      "run",
+      "--id",
+      "coaptic-core-reusable",
+      "--directory",
+      "C:\\Users\\jeffg\\.t3\\worktrees\\coaptic\\t3-a578955c",
+      "--",
+      "cargo",
+      "+1.89.0",
+      "check",
+      "--locked",
+      "--offline",
+      "-p",
+      "coaptic",
+      "--no-default-features"
+    ]
+  },
+  {
+    "name": "msrv-all",
+    "exit_code": 0,
+    "command": [
+      "C:\\Users\\jeffg\\.cargo\\bin\\agent-resources.exe",
+      "run",
+      "--id",
+      "coaptic-core-reusable",
+      "--directory",
+      "C:\\Users\\jeffg\\.t3\\worktrees\\coaptic\\t3-a578955c",
+      "--",
+      "cargo",
+      "+1.89.0",
+      "check",
+      "--locked",
+      "--offline",
+      "-p",
+      "coaptic",
+      "--all-features"
+    ]
+  },
+  {
+    "name": "docs",
+    "exit_code": 0,
+    "command": [
+      "C:\\Users\\jeffg\\.cargo\\bin\\agent-resources.exe",
+      "run",
+      "--id",
+      "coaptic-core-reusable",
+      "--directory",
+      "C:\\Users\\jeffg\\.t3\\worktrees\\coaptic\\t3-a578955c",
+      "--",
+      "cargo",
+      "doc",
+      "--locked",
+      "--offline",
+      "--no-deps",
+      "--all-features"
+    ]
+  }
+]

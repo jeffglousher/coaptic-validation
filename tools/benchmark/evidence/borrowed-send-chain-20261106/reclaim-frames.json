@@ -1,0 +1,72 @@
+{
+  "rows": [
+    {
+      "symbol": "735132 | S_LPROC32 [size = 184] `coaptic::app::evict_one_dedup_pin<coaptic::storage::memory::Memory<coaptic::storage::profiles::Constrained,coaptic::storage::memory::NoBodies> >`",
+      "baseline": 800,
+      "candidate": 544,
+      "code_bytes": 1929,
+      "assembly": "reclaim-1.asm",
+      "command": [
+        "llvm-objdump",
+        "-d",
+        "--no-show-raw-insn",
+        "--start-address=0x14009d240",
+        "--stop-address=0x14009d9c9",
+        "D:\\CoapticCurrent\\borrowed-send-chain-20261106\\B\\dispatch-probe.exe"
+      ],
+      "sha256": "cb90b2a8d161c3e277c6936c5e506b5ee3d58f3c3b22668d0636468eb94d2a32"
+    },
+    {
+      "symbol": "738088 | S_LPROC32 [size = 228] `coaptic::app::evict_one_dedup_pin<coaptic::storage::memory::Memory<coaptic::storage::profiles::Constrained,coaptic::storage::memory::WithBodies<coaptic::storage::profiles::Constrained> > >`",
+      "baseline": 800,
+      "candidate": 544,
+      "code_bytes": 1929,
+      "assembly": "reclaim-2.asm",
+      "command": [
+        "llvm-objdump",
+        "-d",
+        "--no-show-raw-insn",
+        "--start-address=0x14009d9d0",
+        "--stop-address=0x14009e159",
+        "D:\\CoapticCurrent\\borrowed-send-chain-20261106\\B\\dispatch-probe.exe"
+      ],
+      "sha256": "9f5beae18469905b4c3fd99982dea46251e7abae50f3710a70a2421cefe67afc"
+    },
+    {
+      "symbol": "741088 | S_LPROC32 [size = 220] `coaptic::app::evict_one_dedup_pin<coaptic::storage::memory::Memory<coaptic::storage::profiles::Service,coaptic::storage::memory::WithBodies<coaptic::storage::profiles::Service> > >`",
+      "baseline": 784,
+      "candidate": 544,
+      "code_bytes": 1583,
+      "assembly": "reclaim-3.asm",
+      "command": [
+        "llvm-objdump",
+        "-d",
+        "--no-show-raw-insn",
+        "--start-address=0x14009e160",
+        "--stop-address=0x14009e78f",
+        "D:\\CoapticCurrent\\borrowed-send-chain-20261106\\B\\dispatch-probe.exe"
+      ],
+      "sha256": "836affa310e67b3256f61f3e1fb9051af5171408bf2d2597816c5e069e912586"
+    },
+    {
+      "symbol": "744064 | S_LPROC32 [size = 144] `coaptic::app::evict_one_dedup_pin<coaptic::storage::alloc_memory::AllocMemory<coaptic::message::Token> >`",
+      "baseline": 800,
+      "candidate": 544,
+      "code_bytes": 842,
+      "assembly": "reclaim-4.asm",
+      "command": [
+        "llvm-objdump",
+        "-d",
+        "--no-show-raw-insn",
+        "--start-address=0x14009e790",
+        "--stop-address=0x14009eada",
+        "D:\\CoapticCurrent\\borrowed-send-chain-20261106\\B\\dispatch-probe.exe"
+      ],
+      "sha256": "87fa2a35385c11bd1e7cdfa6e3e18469e4fd9b18baba30fc3f1caaf3f7a3f117"
+    }
+  ],
+  "nongrowth": true,
+  "baseline": "bd63199b652193b4c0a882e5840e72d992cf1362",
+  "candidate": "995ae9379c6ab5c8d0608edfda970a674efbbc9b",
+  "scope": "Selected compiler frame reservations, not peak stack"
+}

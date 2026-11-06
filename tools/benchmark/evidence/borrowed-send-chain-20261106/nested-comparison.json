@@ -1,0 +1,223 @@
+{
+  "predecessor": "ecf1747849fdd5f95224ff58995cbb4ef6d38f59",
+  "candidate": "995ae9379c6ab5c8d0608edfda970a674efbbc9b",
+  "rows": [
+    {
+      "helper": "issue_q_selection_async/allocated",
+      "before": {
+        "bytes": 1432,
+        "record": "print-type-size type: `{async fn body of coaptic::app::issue_q_selection_async<coaptic::storage::AllocMemory, coaptic::app::async_server::ProtocolTransport<'_, ServiceIo, {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>, 4>()}`: 1432 bytes, alignment: 8 bytes",
+        "metadata_fields": [
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         local `.meta`: 160 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         local `.meta`: 160 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes"
+        ]
+      },
+      "candidate": {
+        "bytes": 976,
+        "record": "print-type-size type: `{async fn body of coaptic::app::issue_q_selection_async<coaptic::storage::AllocMemory, coaptic::app::async_server::ProtocolTransport<'_, ServiceIo, {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>, 4>()}`: 976 bytes, alignment: 8 bytes",
+        "metadata_fields": [
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         local `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         local `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes"
+        ]
+      }
+    },
+    {
+      "helper": "issue_q_selection_async/fixed",
+      "before": {
+        "bytes": 1432,
+        "record": "print-type-size type: `{async fn body of coaptic::app::issue_q_selection_async<coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, coaptic::app::async_server::ProtocolTransport<'_, ServiceIo, {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>, 4>()}`: 1432 bytes, alignment: 8 bytes",
+        "metadata_fields": [
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         local `.meta`: 160 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         local `.meta`: 160 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes"
+        ]
+      },
+      "candidate": {
+        "bytes": 976,
+        "record": "print-type-size type: `{async fn body of coaptic::app::issue_q_selection_async<coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, coaptic::app::async_server::ProtocolTransport<'_, ServiceIo, {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>, 4>()}`: 976 bytes, alignment: 8 bytes",
+        "metadata_fields": [
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         local `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         local `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes"
+        ]
+      }
+    },
+    {
+      "helper": "issue_q_window_async/allocated",
+      "before": {
+        "bytes": 1280,
+        "record": "print-type-size type: `{async fn body of coaptic::app::issue_q_window_async<coaptic::storage::AllocMemory, coaptic::app::async_server::ProtocolTransport<'_, ServiceIo, {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>, 4>()}`: 1280 bytes, alignment: 8 bytes",
+        "metadata_fields": [
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         local `.meta`: 160 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         local `.meta`: 160 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         local `.meta`: 160 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes"
+        ]
+      },
+      "candidate": {
+        "bytes": 824,
+        "record": "print-type-size type: `{async fn body of coaptic::app::issue_q_window_async<coaptic::storage::AllocMemory, coaptic::app::async_server::ProtocolTransport<'_, ServiceIo, {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>, 4>()}`: 824 bytes, alignment: 8 bytes",
+        "metadata_fields": [
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         local `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         local `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         local `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes"
+        ]
+      }
+    },
+    {
+      "helper": "issue_q_window_async/fixed",
+      "before": {
+        "bytes": 1280,
+        "record": "print-type-size type: `{async fn body of coaptic::app::issue_q_window_async<coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, coaptic::app::async_server::ProtocolTransport<'_, ServiceIo, {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>, 4>()}`: 1280 bytes, alignment: 8 bytes",
+        "metadata_fields": [
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         local `.meta`: 160 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         local `.meta`: 160 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         local `.meta`: 160 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes"
+        ]
+      },
+      "candidate": {
+        "bytes": 824,
+        "record": "print-type-size type: `{async fn body of coaptic::app::issue_q_window_async<coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, coaptic::app::async_server::ProtocolTransport<'_, ServiceIo, {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>, 4>()}`: 824 bytes, alignment: 8 bytes",
+        "metadata_fields": [
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         local `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         local `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         local `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes"
+        ]
+      }
+    },
+    {
+      "helper": "q_response_mid_async/allocated",
+      "before": {
+        "bytes": 760,
+        "record": "print-type-size type: `{async fn body of coaptic::app::q_response_mid_async<coaptic::storage::AllocMemory, coaptic::app::async_server::ProtocolTransport<'_, ServiceIo, {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>>()}`: 760 bytes, alignment: 8 bytes",
+        "metadata_fields": [
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes"
+        ]
+      },
+      "candidate": {
+        "bytes": 608,
+        "record": "print-type-size type: `{async fn body of coaptic::app::q_response_mid_async<coaptic::storage::AllocMemory, coaptic::app::async_server::ProtocolTransport<'_, ServiceIo, {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>>()}`: 608 bytes, alignment: 8 bytes",
+        "metadata_fields": [
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes"
+        ]
+      }
+    },
+    {
+      "helper": "q_response_mid_async/fixed",
+      "before": {
+        "bytes": 760,
+        "record": "print-type-size type: `{async fn body of coaptic::app::q_response_mid_async<coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, coaptic::app::async_server::ProtocolTransport<'_, ServiceIo, {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>>()}`: 760 bytes, alignment: 8 bytes",
+        "metadata_fields": [
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes, offset: 0 bytes, alignment: 8 bytes"
+        ]
+      },
+      "candidate": {
+        "bytes": 608,
+        "record": "print-type-size type: `{async fn body of coaptic::app::q_response_mid_async<coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, coaptic::app::async_server::ProtocolTransport<'_, ServiceIo, {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>>()}`: 608 bytes, alignment: 8 bytes",
+        "metadata_fields": [
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes"
+        ]
+      }
+    },
+    {
+      "helper": "send_issued_async/allocated",
+      "before": {
+        "bytes": 752,
+        "record": "print-type-size type: `{async fn body of coaptic::app::send_issued_async<coaptic::storage::AllocMemory, coaptic::app::async_server::ProtocolTransport<'_, ServiceIo, {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>, 4>()}`: 752 bytes, alignment: 8 bytes",
+        "metadata_fields": [
+          "print-type-size         upvar `.meta`: 160 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes"
+        ]
+      },
+      "candidate": {
+        "bytes": 600,
+        "record": "print-type-size type: `{async fn body of coaptic::app::send_issued_async<coaptic::storage::AllocMemory, coaptic::app::async_server::ProtocolTransport<'_, ServiceIo, {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>, 4>()}`: 600 bytes, alignment: 8 bytes",
+        "metadata_fields": [
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes"
+        ]
+      }
+    },
+    {
+      "helper": "send_issued_async/fixed",
+      "before": {
+        "bytes": 752,
+        "record": "print-type-size type: `{async fn body of coaptic::app::send_issued_async<coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, coaptic::app::async_server::ProtocolTransport<'_, ServiceIo, {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>, 4>()}`: 752 bytes, alignment: 8 bytes",
+        "metadata_fields": [
+          "print-type-size         upvar `.meta`: 160 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes",
+          "print-type-size         upvar `.meta`: 160 bytes"
+        ]
+      },
+      "candidate": {
+        "bytes": 600,
+        "record": "print-type-size type: `{async fn body of coaptic::app::send_issued_async<coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, coaptic::app::async_server::ProtocolTransport<'_, ServiceIo, {closure@..\\tools\\benchmark\\native\\servers\\src\\bin\\bench-core.rs:2134:21: 2134:23}, NeverTimer>, 4>()}`: 600 bytes, alignment: 8 bytes",
+        "metadata_fields": [
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes",
+          "print-type-size         upvar `.meta`: 8 bytes"
+        ]
+      }
+    }
+  ],
+  "scope": "Selected compiler future owners; alternatives overlap and child fields are nested. Do not sum with complete futures or infer CPU cost/peak stack."
+}

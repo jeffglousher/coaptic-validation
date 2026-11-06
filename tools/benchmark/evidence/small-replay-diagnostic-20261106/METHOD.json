@@ -1,0 +1,61 @@
+{
+  "purpose": "Diagnostic only; no production qualification or repeated acceptance hypothesis",
+  "sources": {
+    "A": "bd63199b652193b4c0a882e5840e72d992cf1362",
+    "B": "6760b72a8ed07b6a108cde24eeb36e552a0f076d"
+  },
+  "cells": [
+    [
+      "sync",
+      "unprotected"
+    ],
+    [
+      "sync",
+      "oscore"
+    ],
+    [
+      "async",
+      "unprotected"
+    ],
+    [
+      "async",
+      "oscore"
+    ]
+  ],
+  "storage": "SmallDevice fixed, unchanged4 replay rows",
+  "operations": 1024,
+  "warmup": 128,
+  "pairs": 16,
+  "orders": [
+    "AB",
+    "BA",
+    "BA",
+    "AB",
+    "AB",
+    "BA",
+    "BA",
+    "AB",
+    "AB",
+    "BA",
+    "BA",
+    "AB",
+    "AB",
+    "BA",
+    "BA",
+    "AB"
+  ],
+  "cpu": 0,
+  "phases": [
+    "store",
+    "construct_replay",
+    "lookup",
+    "expiry"
+  ],
+  "counter": "Existing QueryThreadCycleTime passed as safe function pointer; RAII inclusive phase intervals; SmallDevice server only, no client App",
+  "limits": "Phase counts/sums include128 warmups; outer App samples exclude warmup. Clock/call overhead retained. Do not sum nested phases or infer uninstrumented CPU shares. Instrumentation changes code placement and execution. No replacement samples. Original black_box denotes optimizer barriers, not absence of instrumentation. Wire lengths recorded during response verification outside outer App clock.",
+  "empty_intervals": 4096,
+  "binaries": {
+    "A": "aed2d00725d02a62b6027dbcf8b727b96857ccae62efc98133b26f1c607d6120",
+    "B": "c2088be0d77a01eb76bbfc674fd62dd8f5a80c0f4f0f3b5c4bde7b0cfb397309"
+  }
+}

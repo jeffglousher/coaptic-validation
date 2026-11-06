@@ -1,0 +1,16 @@
+diff --git a/src/storage/table.rs b/src/storage/table.rs
+index 1dc563f..1aac6e8 100644
+--- a/src/storage/table.rs
++++ b/src/storage/table.rs
+@@ -101,10 +101,7 @@ impl DedupEntry {
+         *slot = Some(Self {
+             key: source.key,
+             due_ms: source.due_ms,
+-            replay: DedupReplay::Short {
+-                bytes: *bytes,
+-                len,
+-            },
++            replay: DedupReplay::Short { bytes: *bytes, len },
+         });
+     }
+ 
