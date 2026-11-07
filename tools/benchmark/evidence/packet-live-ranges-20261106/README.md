@@ -134,6 +134,21 @@ passing prequalification and removed staging do not establish acceptance.
   Memory guards, 1,225 library tests and both strict Clippy lanes passed;
   this source remains rejected without final qualification. Both selection
   diagnostics and the explicit coverage correction are retained.
+- `failed-cohort8.zip`: `eb9000aee5e7d1b373753f85fd46102139e09436`. Added
+  ordinary static response-body retention in the existing role-exclusive timer
+  owner, with copy-on-write into reserved backing for mutable access and sidecar
+  replacement. Slot counts and byte admission bounds remain unchanged. The
+  actual retained-fixture diagnostic verifies zero snapshot-copy bytes and zero
+  byte-comparison candidates across all eight cases, each with 136 verified
+  operations and 136 equality calls. Chunk staging remains 1,531,904 bytes per
+  case; this is not a total-zero-copy claim. Memory guards, 1,232 library tests
+  and both strict Clippy lanes passed. One CPU bound still failed: ordinary fixed
+  Service unprotected sync1024 has upper95 1.02025494 against the unchanged 1.02
+  limit. Aggregate ratios 0.984594 sync and 0.978381 async, and retained ratios
+  0.952294 sync and 0.959987 async, do not override this refusal. The initial
+  `ffda2f91` test-wiring compile failure and exact patch/log are retained, along
+  with the ordinary-encoder diagnostic. This source remains rejected without
+  final qualification.
 
 Earlier response-ownership and replay/chunk experiments retain their original
 rejections in their sibling evidence directories. Combining selected source
@@ -202,7 +217,7 @@ integration acceptance. The original two preflight rejections remain failures.
 
 `prepare.py CORE_REPO NEW_OUTPUT VARIANT` reconstructs exact sources and probes
 without modifying a checkout. Variants include baseline, candidate, precursor,
-precursor2, precursor3 and failed-cohort through failed-cohort7. Reconstruction checks every
+precursor2, precursor3 and failed-cohort through failed-cohort8. Reconstruction checks every
 complete source-file hash: 148 for staged-body variants, 149 for the direct-body
 variants including their new test module. Baseline membership stays fixed at 148;
 added Rust inputs require complete creation patches and matching hashes.
@@ -214,5 +229,5 @@ host; keep toolchain, features, force-frame-pointers, fixtures, capacities and
 cohort settings fixed. Matching source/input hashes does not promise identical
 performance on another machine.
 
-The prospective evidence-corpus budget is 160 MiB. Earlier rejected evidence
+The prospective evidence-corpus budget is 192 MiB. Earlier rejected evidence
 is retained unchanged when adding an untimed precursor or a final integration.

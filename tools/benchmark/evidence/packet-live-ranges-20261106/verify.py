@@ -403,6 +403,7 @@ def verify_cohort(archive, pin, reuse, baseline_binaries):
 def verify_retained_diagnostic(archive, pin):
     """Check instrumented work counters without treating their cycles as timing."""
     result = record(archive, "diagnostic/result.json")
+    static_body = pin == "eb9000aee5e7d1b373753f85fd46102139e09436"
     assert result["source"] == pin and result["build_exit_code"] == 0
     assert digest(archive.read("diagnostic/retained-probe.exe")) == result["binary_sha256"]
     cases = [(storage, security, mode) for storage in ("fixed", "allocated")
@@ -419,8 +420,20 @@ def verify_retained_diagnostic(archive, pin):
         metrics = {key: int(value) for key, value in re.findall(
             r"(\w+): (\d+)", archive.read(name + ".stderr").decode())}
         assert metrics == row["metrics"]
-        assert metrics["block_tx_staged_bytes"] == 0
+        if static_body:
+            assert metrics["block_tx_staged_bytes"] == 136 * 11264
+            assert metrics["body_snapshot_bytes"] == 0
+            assert metrics["body_compare_candidate_bytes"] == 0
+            assert metrics["body_compare_calls"] == 136
+        else:
+            assert metrics["block_tx_staged_bytes"] == 0
         assert metrics["tx_payload_encoded_bytes"] == (136 * 11264 if case[1] == "unprotected" else 0)
+    if static_body:
+        return {"cases": 8, "verified_operations_each": 136,
+                "block_tx_staged_bytes_each": 136 * 11264,
+                "body_snapshot_bytes_each": 0, "body_compare_candidate_bytes_each": 0,
+                "body_compare_calls_each": 136,
+                "scope": "Instrumented actual-path work counts only; chunk staging remains; no timing or total-zero-copy claim"}
     return {"cases": 8, "verified_operations_each": 136, "block_tx_staged_bytes_each": 0,
             "scope": "Instrumented actual-path work counts only; no timing or total-zero-copy claim"}
 
