@@ -122,6 +122,18 @@ passing prequalification and removed staging do not establish acceptance.
   688-byte BlockTransfer copy, in the inspected synchronous fixed/allocated
   deferred and selection paths; no implementation followed that disproved copy
   hypothesis. This source is rejected without final qualification.
+- `failed-cohort7.zip`: `eefc387d7ba8fc3a3da5585dc27ccf47a41ab9db`. Replaced
+  completed-deferred follow-up selection construction with bounded matching of
+  the admitted canonical selection. Assembly records removed work on that
+  supported path, but the frozen retained fixture returns immediate
+  `Response::content(&BODY)` and never runs this matcher. No CPU gain for the
+  matcher can be inferred from this cohort. Six workload bounds failed:
+  SmallDevice unprotected sync32 and OSCORE sync/async32, retained fixed
+  unprotected sync11264, and retained allocated OSCORE sync/async11264. Aggregate
+  ratios 0.994061 sync and 0.994073 async do not override those failures.
+  Memory guards, 1,225 library tests and both strict Clippy lanes passed;
+  this source remains rejected without final qualification. Both selection
+  diagnostics and the explicit coverage correction are retained.
 
 Earlier response-ownership and replay/chunk experiments retain their original
 rejections in their sibling evidence directories. Combining selected source
@@ -132,6 +144,12 @@ changes in a new measured integration does not reclassify an old result.
 The fixed cohort contains 20 ordinary cells and eight retained Q-Block2 cells.
 Ordinary responses use SmallDevice 32-byte and Service 1,024/16,384-byte payloads;
 retained transfers select eleven 1,024-byte packets from an 11,264-byte body.
+The frozen retained handler returns immediate `Response::content(&BODY)`; it
+never defers a response or completes a deferred handle. Its two configured
+deferred rows remain unused. Consequently this cohort provides no runtime
+coverage or CPU credit for completed-deferred selection matching. Supported-path
+assembly and focused regression checks are separate evidence. The original
+fixture and its historical leading comment remain unchanged.
 Each storage/security/mode combination has 64 paired processes, with AB, BA, BA,
 AB repeated sixteen times. Each process performs 128 warmups, then 8,192 measured
 ordinary small/1,024-byte operations or 1,024 large/retained operations. No
@@ -184,7 +202,7 @@ integration acceptance. The original two preflight rejections remain failures.
 
 `prepare.py CORE_REPO NEW_OUTPUT VARIANT` reconstructs exact sources and probes
 without modifying a checkout. Variants include baseline, candidate, precursor,
-precursor2, precursor3 and failed-cohort through failed-cohort6. Reconstruction checks every
+precursor2, precursor3 and failed-cohort through failed-cohort7. Reconstruction checks every
 complete source-file hash: 148 for staged-body variants, 149 for the direct-body
 variants including their new test module. Baseline membership stays fixed at 148;
 added Rust inputs require complete creation patches and matching hashes.
