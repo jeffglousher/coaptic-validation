@@ -1,0 +1,2448 @@
+{
+  "precursor": {
+    "source": "572036f9d6af2c3d48e957ea531974edeb137bc8",
+    "archive_members": 60,
+    "source_manifest_files": 148,
+    "candidate_binary_sha256": {
+      "ordinary": "17f5d622af0876cd317723ab4f90ca5959eac20ee5480e3c0d3ed6a7060313f3",
+      "retained": "c295c2816710cf8e94bb2f68488f3470f2c042d6f422232d6de96e67c4874dd3"
+    },
+    "memory_preflight_accepted": false,
+    "complete_future_reductions_bytes": {
+      "SmallDevice": 2296,
+      "Service allocated": 2296,
+      "Service fixed": 2296
+    },
+    "dispatch_frame_deltas_bytes": {
+      "SmallDevice fixed": 16,
+      "Service fixed": -16,
+      "Default allocated": 0,
+      "Service allocated": 16
+    },
+    "host_owner_records": 48,
+    "thumb_owner_records": 7,
+    "no_runtime_cohort": true,
+    "integration_gate_accepted": false
+  },
+  "precursor2": {
+    "source": "1705cbb27f7e3d2bd832410aacfe11aef4281e32",
+    "archive_members": 55,
+    "source_manifest_files": 148,
+    "candidate_binary_sha256": {
+      "ordinary": "73d90c72ab9f501f38324efd97ca664b408143b044f36f74fe5ca51f4b753cc0",
+      "retained": "35d3e6cbccc54b8f36cc0d2d9fc3b43c15c0f6822b155617c9068b6c60b9631e"
+    },
+    "memory_preflight_accepted": false,
+    "complete_future_reductions_bytes": {
+      "SmallDevice": 2296,
+      "Service allocated": 2296,
+      "Service fixed": 2296
+    },
+    "dispatch_frame_deltas_bytes": {
+      "SmallDevice fixed": 16,
+      "Service fixed": -16,
+      "Default allocated": 0,
+      "Service allocated": 16
+    },
+    "host_owner_records": 48,
+    "thumb_owner_records": 7,
+    "no_runtime_cohort": true,
+    "integration_gate_accepted": false
+  },
+  "precursor3": {
+    "source": "5ef69ac78cdedd013cecb58f3b7a2b1aa8f0d824",
+    "archive_members": 91,
+    "source_manifest_files": 149,
+    "candidate_binary_sha256": {
+      "ordinary": "74dcdb48f8319cd43b74987a900eebd5f3b82a6f7edb27aa35203fc0bab2e8a1",
+      "retained": "dd72bd6ccc2dc5263c132a7dd3acafa52ff997281ad81f1eb438b1c3ae787b29"
+    },
+    "memory_preflight_accepted": true,
+    "complete_future_reductions_bytes": {
+      "SmallDevice": 2536,
+      "Service allocated": 2536,
+      "Service fixed": 2536
+    },
+    "dispatch_frame_deltas_bytes": {
+      "SmallDevice fixed": -208,
+      "Service fixed": -304,
+      "Default allocated": -288,
+      "Service allocated": -288
+    },
+    "host_owner_records": 48,
+    "thumb_owner_records": 7,
+    "no_runtime_cohort": true,
+    "integration_gate_accepted": false,
+    "cohort_status": "superseded-before-timing",
+    "reason": "The guard source passes native/Thumb memory guards but has no CPU observation; a separate emitted-code finding shows256bytes of unused Location descriptors eagerly initialized by ordinary Response construction. New378515e integrates safe lazy initialization before measurement, preserving both8-entry capacities.",
+    "prequalification_exit_codes": {
+      "clippy-all": 0,
+      "clippy-no-default": 0
+    }
+  },
+  "failed-cohort": {
+    "source": "b9985804ed1c31e44d461850e03a2080cb85099b",
+    "archive_members": 7345,
+    "source_manifest_files": 148,
+    "candidate_binary_sha256": {
+      "ordinary": "aff9e88e753c60f305abaa26bc5d2f8bab092e665dad377e0b88f35fa339e8f0",
+      "retained": "2fb5f553449dfa5fc25081aa9b62f5ffc9a2f01dceb3bb782875ab751e74ea7b"
+    },
+    "memory_preflight_accepted": true,
+    "complete_future_reductions_bytes": {
+      "SmallDevice": 2320,
+      "Service allocated": 2320,
+      "Service fixed": 2320
+    },
+    "dispatch_frame_deltas_bytes": {
+      "SmallDevice fixed": -256,
+      "Service fixed": -240,
+      "Default allocated": -288,
+      "Service allocated": -272
+    },
+    "host_owner_records": 48,
+    "thumb_owner_records": 7,
+    "runtime_accepted": false,
+    "cells": 28,
+    "pairs_per_cell": 64,
+    "timing_outputs": 3584,
+    "process_exits": 3640,
+    "failed_cells": [
+      [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ]
+    ],
+    "groups": {
+      "ordinary-sync": {
+        "ratio": 0.9967732222114397,
+        "upper95": 0.9992006980320531
+      },
+      "ordinary-async": {
+        "ratio": 0.9776146299339428,
+        "upper95": 0.9798563714581725
+      },
+      "ordinary-all": {
+        "ratio": 0.9871474483380386,
+        "upper95": 0.98885743989035
+      },
+      "retained-sync": {
+        "ratio": 1.0069314305018755,
+        "upper95": 1.011752977543504
+      },
+      "retained-async": {
+        "ratio": 0.9952110968266138,
+        "upper95": 0.9982623506559742
+      },
+      "retained-all": {
+        "ratio": 1.0010541111143607,
+        "upper95": 1.003781217958803
+      },
+      "all-sync": {
+        "ratio": 0.9996650649358277,
+        "upper95": 1.0017215213442188
+      },
+      "all-async": {
+        "ratio": 0.9826102013631872,
+        "upper95": 0.9843688704508139
+      },
+      "all-all": {
+        "ratio": 0.9911009488202185,
+        "upper95": 0.9925542428061395
+      }
+    },
+    "resident_requested_owners": {
+      "ordinary-small-device-unprotected-sync-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-unprotected-async-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-oscore-sync-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-oscore-async-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-service-fixed-unprotected-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-allocated-unprotected-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "retained-fixed-unprotected-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-unprotected-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-oscore-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-oscore-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-allocated-unprotected-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-unprotected-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-oscore-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-oscore-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      }
+    },
+    "integration_gate_accepted": false
+  },
+  "failed-cohort2": {
+    "source": "0ec8618cfac85929922ff2f96d70a7403be654ec",
+    "archive_members": 7349,
+    "source_manifest_files": 148,
+    "candidate_binary_sha256": {
+      "ordinary": "93cbf47ef6bf745bea9125dfadd9aeb9f439b45f2db1f29a59092dc42ea46dc1",
+      "retained": "0273d788c894dee49bc095fb60fe5f87a3558afb5cead3a32805ba8e97936899"
+    },
+    "memory_preflight_accepted": true,
+    "complete_future_reductions_bytes": {
+      "SmallDevice": 2536,
+      "Service allocated": 2536,
+      "Service fixed": 2536
+    },
+    "dispatch_frame_deltas_bytes": {
+      "SmallDevice fixed": -256,
+      "Service fixed": -304,
+      "Default allocated": -304,
+      "Service allocated": -288
+    },
+    "host_owner_records": 48,
+    "thumb_owner_records": 7,
+    "runtime_accepted": false,
+    "cells": 28,
+    "pairs_per_cell": 64,
+    "timing_outputs": 3584,
+    "process_exits": 3640,
+    "failed_cells": [
+      [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ]
+    ],
+    "groups": {
+      "ordinary-sync": {
+        "ratio": 0.9805223156013225,
+        "upper95": 0.982722781663106
+      },
+      "ordinary-async": {
+        "ratio": 0.9793690354050474,
+        "upper95": 0.9819319115806732
+      },
+      "ordinary-all": {
+        "ratio": 0.9799455058438662,
+        "upper95": 0.9814840157302859
+      },
+      "retained-sync": {
+        "ratio": 1.0047989573437404,
+        "upper95": 1.0090033446174969
+      },
+      "retained-async": {
+        "ratio": 1.0036136806959783,
+        "upper95": 1.008778009869013
+      },
+      "retained-all": {
+        "ratio": 1.0042061441453307,
+        "upper95": 1.0073957692567268
+      },
+      "all-sync": {
+        "ratio": 0.9873980194523189,
+        "upper95": 0.9893019920743537
+      },
+      "all-async": {
+        "ratio": 0.9862356855803505,
+        "upper95": 0.9885258174512339
+      },
+      "all-all": {
+        "ratio": 0.9868166813827368,
+        "upper95": 0.9882394042706676
+      }
+    },
+    "resident_requested_owners": {
+      "ordinary-small-device-unprotected-sync-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-unprotected-async-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-oscore-sync-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-oscore-async-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-service-fixed-unprotected-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-allocated-unprotected-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "retained-fixed-unprotected-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-unprotected-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-oscore-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-oscore-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-allocated-unprotected-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-unprotected-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-oscore-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-oscore-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      }
+    },
+    "integration_gate_accepted": false
+  },
+  "failed-cohort3": {
+    "source": "717156e906b3449821b9bf66b997f3735dbee240",
+    "archive_members": 7346,
+    "source_manifest_files": 148,
+    "candidate_binary_sha256": {
+      "ordinary": "baf5bb64cd613f2535199d853509d14b4841d16b956c272db86c1487a67ed5e2",
+      "retained": "8d964d9281a2fe520c3ea4ed2d8e7b760be8d810bada7634b128306692206ee6"
+    },
+    "memory_preflight_accepted": true,
+    "complete_future_reductions_bytes": {
+      "SmallDevice": 2536,
+      "Service allocated": 2536,
+      "Service fixed": 2536
+    },
+    "dispatch_frame_deltas_bytes": {
+      "SmallDevice fixed": -256,
+      "Service fixed": -304,
+      "Default allocated": -304,
+      "Service allocated": -288
+    },
+    "host_owner_records": 48,
+    "thumb_owner_records": 7,
+    "runtime_accepted": false,
+    "cells": 28,
+    "pairs_per_cell": 64,
+    "timing_outputs": 3584,
+    "process_exits": 3640,
+    "failed_cells": [
+      [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ]
+    ],
+    "groups": {
+      "ordinary-sync": {
+        "ratio": 0.9858169772588926,
+        "upper95": 0.9886331479551143
+      },
+      "ordinary-async": {
+        "ratio": 0.989222079277029,
+        "upper95": 0.9916091099707264
+      },
+      "ordinary-all": {
+        "ratio": 0.9875180606098489,
+        "upper95": 0.9895443014257446
+      },
+      "retained-sync": {
+        "ratio": 0.9961367461937161,
+        "upper95": 1.002506033467777
+      },
+      "retained-async": {
+        "ratio": 0.9907141066626353,
+        "upper95": 0.997119633567804
+      },
+      "retained-all": {
+        "ratio": 0.9934217264682365,
+        "upper95": 0.9972402952181675
+      },
+      "all-sync": {
+        "ratio": 0.9887545246936493,
+        "upper95": 0.9915027290555848
+      },
+      "all-async": {
+        "ratio": 0.9896481433807969,
+        "upper95": 0.9919751290857027
+      },
+      "all-all": {
+        "ratio": 0.9892012331282408,
+        "upper95": 0.9908379982323189
+      }
+    },
+    "resident_requested_owners": {
+      "ordinary-small-device-unprotected-sync-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-unprotected-async-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-oscore-sync-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-oscore-async-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-service-fixed-unprotected-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-allocated-unprotected-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "retained-fixed-unprotected-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-unprotected-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-oscore-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-oscore-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-allocated-unprotected-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-unprotected-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-oscore-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-oscore-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      }
+    },
+    "integration_gate_accepted": false,
+    "prequalification_exit_codes": {
+      "clippy-all": 0
+    }
+  },
+  "failed-cohort4": {
+    "source": "bf8581249fbbb591067c46e85ef4c9dc19be120a",
+    "archive_members": 7365,
+    "source_manifest_files": 149,
+    "candidate_binary_sha256": {
+      "ordinary": "5ea69dd9b7f0722eecd0d6daa751b6d9127c0c1943c09ddcc5400cdede1ba83f",
+      "retained": "35e629c8a96512685bec3ac3c5d8e984a630164564523c2bbc8d0c746a350b80"
+    },
+    "memory_preflight_accepted": true,
+    "complete_future_reductions_bytes": {
+      "SmallDevice": 2536,
+      "Service allocated": 2536,
+      "Service fixed": 2536
+    },
+    "dispatch_frame_deltas_bytes": {
+      "SmallDevice fixed": -192,
+      "Service fixed": -304,
+      "Default allocated": -288,
+      "Service allocated": -288
+    },
+    "host_owner_records": 48,
+    "thumb_owner_records": 7,
+    "runtime_accepted": false,
+    "cells": 28,
+    "pairs_per_cell": 64,
+    "timing_outputs": 3584,
+    "process_exits": 3640,
+    "failed_cells": [
+      [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ]
+    ],
+    "groups": {
+      "ordinary-sync": {
+        "ratio": 0.99094233156285,
+        "upper95": 0.9927970168485032
+      },
+      "ordinary-async": {
+        "ratio": 0.9988444808598669,
+        "upper95": 1.0013644659792833
+      },
+      "ordinary-all": {
+        "ratio": 0.9948855606208993,
+        "upper95": 0.9964794207535504
+      },
+      "retained-sync": {
+        "ratio": 1.0010650205300773,
+        "upper95": 1.0047792286424206
+      },
+      "retained-async": {
+        "ratio": 1.0042949784980972,
+        "upper95": 1.007914297424893
+      },
+      "retained-all": {
+        "ratio": 1.002678698920273,
+        "upper95": 1.0050495464225802
+      },
+      "all-sync": {
+        "ratio": 0.9938240380033186,
+        "upper95": 0.9955625299573336
+      },
+      "all-async": {
+        "ratio": 1.0003987404001067,
+        "upper95": 1.0022642348838016
+      },
+      "all-all": {
+        "ratio": 0.9971059701946768,
+        "upper95": 0.998348918944742
+      }
+    },
+    "resident_requested_owners": {
+      "ordinary-small-device-unprotected-sync-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-unprotected-async-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-oscore-sync-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-oscore-async-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-service-fixed-unprotected-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-allocated-unprotected-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "retained-fixed-unprotected-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-unprotected-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-oscore-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-oscore-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-allocated-unprotected-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-unprotected-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-oscore-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-oscore-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      }
+    },
+    "integration_gate_accepted": false,
+    "retained_path_diagnostic": {
+      "cases": 8,
+      "verified_operations_each": 136,
+      "block_tx_staged_bytes_each": 0,
+      "scope": "Instrumented actual-path work counts only; no timing or total-zero-copy claim"
+    },
+    "prequalification_exit_codes": {
+      "clippy-all": 0,
+      "clippy-no-default": 0
+    }
+  },
+  "failed-cohort5": {
+    "source": "378515e10b0980a3deb0442d3aa1d7f152cb3d38",
+    "archive_members": 7369,
+    "source_manifest_files": 149,
+    "candidate_binary_sha256": {
+      "ordinary": "8b07ffd389cb7511839a8662064451166eaeff24f0fabd9189a63cbb0a0ba868",
+      "retained": "d3f1c8734c16229be484669bba438b780c628cad97f1c6cdc88fa23d684c8df1"
+    },
+    "memory_preflight_accepted": true,
+    "complete_future_reductions_bytes": {
+      "SmallDevice": 2536,
+      "Service allocated": 2536,
+      "Service fixed": 2536
+    },
+    "dispatch_frame_deltas_bytes": {
+      "SmallDevice fixed": -160,
+      "Service fixed": -320,
+      "Default allocated": -288,
+      "Service allocated": -288
+    },
+    "host_owner_records": 48,
+    "thumb_owner_records": 7,
+    "runtime_accepted": false,
+    "cells": 28,
+    "pairs_per_cell": 64,
+    "timing_outputs": 3584,
+    "process_exits": 3640,
+    "failed_cells": [
+      [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ]
+    ],
+    "groups": {
+      "ordinary-sync": {
+        "ratio": 0.9979915500742472,
+        "upper95": 1.0006513400447778
+      },
+      "ordinary-async": {
+        "ratio": 0.9921873599883294,
+        "upper95": 0.9948238044943838
+      },
+      "ordinary-all": {
+        "ratio": 0.9950852231637388,
+        "upper95": 0.9966787628869079
+      },
+      "retained-sync": {
+        "ratio": 1.0150936015172929,
+        "upper95": 1.0217822403833332
+      },
+      "retained-async": {
+        "ratio": 1.0094046923706819,
+        "upper95": 1.014093852942892
+      },
+      "retained-all": {
+        "ratio": 1.012245150428991,
+        "upper95": 1.016374031980897
+      },
+      "all-sync": {
+        "ratio": 1.002848234984367,
+        "upper95": 1.0056473993162052
+      },
+      "all-async": {
+        "ratio": 0.997076409794537,
+        "upper95": 0.9992950944652589
+      },
+      "all-all": {
+        "ratio": 0.9999581579781232,
+        "upper95": 1.0015105969397895
+      }
+    },
+    "resident_requested_owners": {
+      "ordinary-small-device-unprotected-sync-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-unprotected-async-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-oscore-sync-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-oscore-async-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-service-fixed-unprotected-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-allocated-unprotected-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "retained-fixed-unprotected-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-unprotected-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-oscore-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-oscore-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-allocated-unprotected-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-unprotected-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-oscore-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-oscore-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      }
+    },
+    "integration_gate_accepted": false,
+    "retained_path_diagnostic": {
+      "cases": 8,
+      "verified_operations_each": 136,
+      "block_tx_staged_bytes_each": 0,
+      "scope": "Instrumented actual-path work counts only; no timing or total-zero-copy claim"
+    },
+    "prequalification_exit_codes": {
+      "tests-all-lib": 0,
+      "clippy-all": 0,
+      "clippy-no-default": 0
+    }
+  },
+  "failed-cohort6": {
+    "source": "97d0c9b03171993e67378e2be6d8992f8114bfa0",
+    "archive_members": 7366,
+    "source_manifest_files": 148,
+    "candidate_binary_sha256": {
+      "ordinary": "e3e53586f88a0ccda37f53dec739b56cd05bbd28633fa3b33aacb0342466bd30",
+      "retained": "2250a8f0898bea70a58edb92b98ad54cd14f9d6adc8b434217cc2935a795c899"
+    },
+    "memory_preflight_accepted": true,
+    "complete_future_reductions_bytes": {
+      "SmallDevice": 2536,
+      "Service allocated": 2536,
+      "Service fixed": 2536
+    },
+    "dispatch_frame_deltas_bytes": {
+      "SmallDevice fixed": -256,
+      "Service fixed": -320,
+      "Default allocated": -304,
+      "Service allocated": -288
+    },
+    "host_owner_records": 48,
+    "thumb_owner_records": 7,
+    "runtime_accepted": false,
+    "cells": 28,
+    "pairs_per_cell": 64,
+    "timing_outputs": 3584,
+    "process_exits": 3640,
+    "failed_cells": [
+      [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ]
+    ],
+    "groups": {
+      "ordinary-sync": {
+        "ratio": 0.9884858969839008,
+        "upper95": 0.9911343988553094
+      },
+      "ordinary-async": {
+        "ratio": 0.9915234794723193,
+        "upper95": 0.9941838453360522
+      },
+      "ordinary-all": {
+        "ratio": 0.9900035232193843,
+        "upper95": 0.9917905246554546
+      },
+      "retained-sync": {
+        "ratio": 1.0095574083000456,
+        "upper95": 1.0143102755169797
+      },
+      "retained-async": {
+        "ratio": 0.9980088584310088,
+        "upper95": 1.0017176548700066
+      },
+      "retained-all": {
+        "ratio": 1.0037665249340089,
+        "upper95": 1.0063091886646673
+      },
+      "all-sync": {
+        "ratio": 0.9944610444117584,
+        "upper95": 0.9970571156613302
+      },
+      "all-async": {
+        "ratio": 0.9933721324540224,
+        "upper95": 0.9955135341259777
+      },
+      "all-all": {
+        "ratio": 0.9939164393095441,
+        "upper95": 0.9954332845864594
+      }
+    },
+    "resident_requested_owners": {
+      "ordinary-small-device-unprotected-sync-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-unprotected-async-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-oscore-sync-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-small-device-oscore-async-32": {
+        "baseline": {
+          "app_inline_bytes": 14936
+        },
+        "candidate": {
+          "app_inline_bytes": 14936
+        }
+      },
+      "ordinary-service-fixed-unprotected-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-unprotected-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-fixed-oscore-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 315656,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315656
+        },
+        "candidate": {
+          "app_inline_bytes": 315336,
+          "pool_requested_heap_bytes": 0,
+          "server_resident_requested_bytes": 315336
+        }
+      },
+      "ordinary-service-allocated-unprotected-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-unprotected-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-sync-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-sync-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-async-1024": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "ordinary-service-allocated-oscore-async-16384": {
+        "baseline": {
+          "app_inline_bytes": 35672,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 318184
+        },
+        "candidate": {
+          "app_inline_bytes": 35352,
+          "pool_requested_heap_bytes": 282512,
+          "server_resident_requested_bytes": 317864
+        }
+      },
+      "retained-fixed-unprotected-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-unprotected-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-oscore-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-fixed-oscore-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 112728
+        },
+        "candidate": {
+          "app_inline_bytes": 112648
+        }
+      },
+      "retained-allocated-unprotected-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-unprotected-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-oscore-sync-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      },
+      "retained-allocated-oscore-async-11264": {
+        "baseline": {
+          "app_inline_bytes": 42704
+        },
+        "candidate": {
+          "app_inline_bytes": 42624
+        }
+      }
+    },
+    "integration_gate_accepted": false,
+    "prequalification_exit_codes": {
+      "tests-all-lib": 0,
+      "clippy-all": 0,
+      "clippy-no-default": 0
+    }
+  }
+}
