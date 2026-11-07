@@ -1,0 +1,20 @@
+{
+  "source": "8d9e08232865bd41049d3d8062bd4b87328c28b0",
+  "reviewer": "/root/scratch_original_inbox_review",
+  "kind": "Independent read-only general/security review",
+  "compared_to": "eb9000aee5e7d1b373753f85fd46102139e09436",
+  "findings": [],
+  "scope": [
+    "complete selector across all extra metadata and both block inputs",
+    "all four ETag/CF presence slice ranges including present empty CF zero",
+    "sticky validation before bounded access and TX effects",
+    "caller-supplied payload preserved",
+    "same OSCORE association/RequestRef/transactional encoding path, no fresh-PIV bypass",
+    "wire/error/occupied-TX/subsequent-notification state oracles"
+  ],
+  "limits": [
+    "Read-only review, no reviewer test/build execution",
+    "Runtime and emitted-code effect require separate evidence",
+    "Earlier static-body implementation retains its independent review and regression evidence"
+  ]
+}

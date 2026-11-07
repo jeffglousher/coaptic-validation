@@ -18,6 +18,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parent
 BASELINE = "fd7d18a72f795779e352443ebdeef9533be7fb27"
 MEASURED_BASELINE = "3e592adb1fd52c5e6918af1b4e810bb874413bad"
+BASIC_RESPONSE_SOURCE = "8d9e08232865bd41049d3d8062bd4b87328c28b0"
 PHASE = ROOT.parent / "phase-sharing-static-20261106"
 OWNERSHIP = ROOT.parent / "response-ownership-20261106"
 CELLS = [["ordinary", p, s, m, n]
@@ -37,7 +38,8 @@ REDUCIBLE = {"app_including_transport_inline_bytes",
 EXPORTED = ("source-verification.json", "candidate.patch", "METHOD-BEFORE.json",
             "METHOD.json", "measurement.json", "preflight-host.json",
             "dispatch-preflight.json", "memory-preflight.json", "review.json",
-            "qualification.json")
+            "qualification.json", "TRADEOFF-BEFORE.json", "result.json",
+            "fmt-check.json", "test-counts.json")
 
 
 def digest(data):
@@ -403,7 +405,7 @@ def verify_cohort(archive, pin, reuse, baseline_binaries):
 def verify_retained_diagnostic(archive, pin):
     """Check instrumented work counters without treating their cycles as timing."""
     result = record(archive, "diagnostic/result.json")
-    static_body = pin == "eb9000aee5e7d1b373753f85fd46102139e09436"
+    static_body = pin in ("eb9000aee5e7d1b373753f85fd46102139e09436", BASIC_RESPONSE_SOURCE)
     assert result["source"] == pin and result["build_exit_code"] == 0
     assert digest(archive.read("diagnostic/retained-probe.exe")) == result["binary_sha256"]
     cases = [(storage, security, mode) for storage in ("fixed", "allocated")
@@ -459,6 +461,96 @@ def verify_untimed(archive, pin, bundle, memory_accepted):
     else:
         assert not memory_accepted, "Missing cohort cannot establish acceptance"
     return summary
+
+
+def verify_encoder_tradeoff(archive, pin):
+    """Recompute extra local-frame observations without changing original guards."""
+    prefix = "ordinary-encoder-diagnostic/"
+    before = record(archive, "TRADEOFF-BEFORE.json")
+    findings = record(archive, prefix + "findings.json")
+    assert before["source"] == findings["source_pin"] == pin == BASIC_RESPONSE_SOURCE
+    assert before["timing_started"] is False and before["decision"].strip()
+    assert findings["accepted_pin"] == BASELINE
+    for name, expected in record(archive, prefix + "manifest.json").items():
+        data = archive.read(prefix + name)
+        assert len(data) == expected["bytes"] and digest(data) == expected["sha256"]
+    for suffix in ("exe", "pdb"):
+        filename = "dispatch-probe." + suffix
+        assert digest(archive.read("B/" + filename)) == findings["inputs"]["candidate"][suffix]["sha256"]
+        baseline = checked_member(PHASE, "observations.zip", "observation-sha256.json", "candidate/B/" + filename)
+        assert digest(baseline) == findings["inputs"]["accepted"][suffix]["sha256"]
+    candidate = symbols(archive.read(prefix + "symbols.txt"), "coaptic::app::encode_response<")
+    baseline = symbols(archive.read(prefix + "accepted-encoder-symbols.txt"), "coaptic::app::encode_response<")
+    assert candidate.keys() == baseline.keys() and len(candidate) == 2
+    rows = {}
+    for symbol, (frame, code) in candidate.items():
+        mode = "async" if "AsyncIoError<" in symbol else "sync"
+        assert mode not in rows
+        a_frame, a_code = baseline[symbol]
+        assert before["local_encode_response_frames"][mode] == {"baseline": a_frame, "candidate": frame}
+        assert before["local_encode_response_code_bytes"][mode] == {"baseline": a_code, "candidate": code}
+        declared = findings["local_procedures"]["fixed_service_" + mode]
+        assert (declared["accepted_frame"], declared["accepted_code"]) == (a_frame, a_code)
+        assert (declared["candidate_frame"], declared["candidate_code"]) == (frame, code)
+        assert declared["delta_from_accepted_frame"] == frame - a_frame
+        assert declared["delta_from_accepted_code"] == code - a_code
+        rows[mode] = {"baseline_frame": a_frame, "candidate_frame": frame,
+                      "frame_delta": frame - a_frame, "code_delta": code - a_code}
+    assert set(rows) == {"sync", "async"}
+    for row in record(archive, prefix + "records.json"):
+        assert digest(archive.read(prefix + row["assembly"])) == row["sha256"]
+        name = row["symbol"].split("`", 1)[1].rstrip("`")
+        if name in candidate:
+            assert candidate[name] == (row["frame"], row["code_bytes"])
+    return {"local_encode_response": rows,
+            "scope": "Extra local frames/code; not additive peak memory; original memory guards unchanged"}
+
+
+def verify_final_qualification(archive, pin):
+    """Require the exact final lanes and recompute test totals from their logs."""
+    locked = ["--locked", "--offline"]
+    commands = {
+        "clippy-all": ["clippy", *locked, "--all-targets", "--all-features", "--", "-D", "warnings"],
+        "clippy-no-default": ["clippy", *locked, "--all-targets", "--no-default-features", "--", "-D", "warnings"],
+        "test-all": ["test", *locked, "--all-features"],
+        "test-no-default": ["test", *locked, "--no-default-features", "--lib"],
+        "msrv-no-default": ["+1.89.0", "check", *locked, "-p", "coaptic", "--no-default-features"],
+        "msrv-all": ["+1.89.0", "check", *locked, "-p", "coaptic", "--all-features"],
+        "docs": ["doc", *locked, "--no-deps", "--all-features"],
+    }
+    for features in ("alloc", "oscore", "alloc,oscore", "std"):
+        commands["test-" + features] = ["test", *locked, "--no-default-features", "--features", features, "--lib"]
+    checks = record(archive, "qualification.json")
+    assert len(checks) == 11 and {row["name"] for row in checks} == set(commands)
+    totals = {}
+    for row in checks:
+        assert row["exit_code"] == 0, row["name"]
+        args = row["command"]
+        assert args[args.index("cargo") + 1:] == commands[row["name"]]
+        log = archive.read(row["name"] + ".log").decode()
+        if row["name"].startswith("test-"):
+            summaries = re.findall(r"test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored;", log)
+            assert summaries and "test result: FAILED" not in log
+            numbers = [tuple(map(int, row)) for row in summaries]
+            totals[row["name"]] = dict(zip(("passed", "failed", "ignored"), map(sum, zip(*numbers))))
+            totals[row["name"]]["summaries"] = len(numbers)
+            assert totals[row["name"]]["failed"] == 0
+            if row["name"] == "test-all":
+                assert totals[row["name"]]["ignored"] == 1
+                assert re.search(r"Running tests[\\/]idle_poll_bench\.rs[^\n]*\n\s*running 1 test\s*\n"
+                                 r"test bench_idle_progress_and_poll \.\.\. ignored", log)
+            else:
+                assert totals[row["name"]]["ignored"] == 0
+    assert totals == record(archive, "test-counts.json")
+    assert {name: row["passed"] for name, row in totals.items()} == {
+        "test-all": 1697, "test-no-default": 730, "test-alloc": 780,
+        "test-oscore": 887, "test-alloc,oscore": 941, "test-std": 738}
+    fmt = record(archive, "fmt-check.json")
+    assert fmt["source"] == pin and fmt["exit_code"] == 0
+    assert fmt["command"][fmt["command"].index("cargo") + 1:] == ["fmt", "--all", "--", "--check"]
+    archive.read("fmt-check.log")
+    return {"required_checks": 11, "all_exit_codes_zero": True,
+            "fmt_check_exit_code": 0, "test_counts": totals}
 
 
 def main(failures_only=False):
@@ -519,6 +611,9 @@ def main(failures_only=False):
                 summary["qualification_exit_codes"] = {row["name"]: row["exit_code"] for row in checks}
             if "diagnostic/result.json" in archive.namelist():
                 summary["retained_path_diagnostic"] = verify_retained_diagnostic(archive, pin)
+            if pin == BASIC_RESPONSE_SOURCE:
+                summary["extra_encoder_tradeoff"] = verify_encoder_tradeoff(archive, pin)
+                summary["final_qualification"] = verify_final_qualification(archive, pin)
             if "prequalification.json" in archive.namelist():
                 prequalification = record(archive, "prequalification.json")
                 assert prequalification["source"] == pin

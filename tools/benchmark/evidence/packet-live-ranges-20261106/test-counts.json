@@ -1,0 +1,38 @@
+{
+  "test-all": {
+    "passed": 1697,
+    "failed": 0,
+    "ignored": 1,
+    "summaries": 51
+  },
+  "test-no-default": {
+    "passed": 730,
+    "failed": 0,
+    "ignored": 0,
+    "summaries": 1
+  },
+  "test-alloc": {
+    "passed": 780,
+    "failed": 0,
+    "ignored": 0,
+    "summaries": 1
+  },
+  "test-oscore": {
+    "passed": 887,
+    "failed": 0,
+    "ignored": 0,
+    "summaries": 1
+  },
+  "test-alloc,oscore": {
+    "passed": 941,
+    "failed": 0,
+    "ignored": 0,
+    "summaries": 1
+  },
+  "test-std": {
+    "passed": 738,
+    "failed": 0,
+    "ignored": 0,
+    "summaries": 1
+  }
+}

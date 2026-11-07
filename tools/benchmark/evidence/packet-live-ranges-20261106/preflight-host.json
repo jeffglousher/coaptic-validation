@@ -1,0 +1,336 @@
+{
+  "future_rows": [
+    {
+      "owner": "SmallDevice complete progress future",
+      "baseline": 15952,
+      "candidate": 13416
+    },
+    {
+      "owner": "Service fixed complete progress future",
+      "baseline": 15496,
+      "candidate": 12960
+    },
+    {
+      "owner": "Service allocated complete progress future",
+      "baseline": 15496,
+      "candidate": 12960
+    }
+  ],
+  "app_rows": [
+    {
+      "owner": "coaptic::App<coaptic::profiles::Constrained, CoreIo, 4, false, coaptic::storage::Memory<coaptic::profiles::Constrained>, 0, 1>",
+      "baseline": 14936,
+      "candidate": 14936
+    },
+    {
+      "owner": "coaptic::App<coaptic::profiles::Constrained, incoming_rx::UploadIo, 4, true, coaptic::storage::Memory<coaptic::profiles::Constrained, coaptic::storage::WithBodies<coaptic::profiles::Constrained>>, 0, 1>",
+      "baseline": 28712,
+      "candidate": 28712
+    },
+    {
+      "owner": "coaptic::App<coaptic::profiles::Default, CoreIo, 1, true, coaptic::storage::AllocMemory, 0, 4>",
+      "baseline": 16936,
+      "candidate": 16936
+    },
+    {
+      "owner": "coaptic::App<coaptic::profiles::Default, ServiceIo, 1, true, coaptic::storage::AllocMemory, 0, 4>",
+      "baseline": 16944,
+      "candidate": 16944
+    },
+    {
+      "owner": "coaptic::App<coaptic::profiles::Service, ServiceIo, 32, true, coaptic::storage::AllocMemory, 8, 4>",
+      "baseline": 35672,
+      "candidate": 35352
+    },
+    {
+      "owner": "coaptic::App<coaptic::profiles::Service, ServiceIo, 32, true, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, 8, 4>",
+      "baseline": 315656,
+      "candidate": 315336
+    },
+    {
+      "owner": "coaptic::app::SendResponse<'_>",
+      "baseline": 160,
+      "candidate": 120
+    },
+    {
+      "owner": "coaptic::app::async_server::BodyOwner<'_, coaptic::storage::Memory<coaptic::profiles::Constrained, coaptic::storage::WithBodies<coaptic::profiles::Constrained>>>",
+      "baseline": 32,
+      "candidate": 32
+    },
+    {
+      "owner": "coaptic::app::async_server::BodyOwner<'_, coaptic::storage::Memory<coaptic::profiles::Constrained>>",
+      "baseline": 32,
+      "candidate": 32
+    },
+    {
+      "owner": "coaptic::app::async_server::BodyOwner<'_, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>>",
+      "baseline": 32,
+      "candidate": 32
+    },
+    {
+      "owner": "coaptic::app::async_server::NotifyOwner<'_, coaptic::storage::Memory<coaptic::profiles::Constrained>>",
+      "baseline": 56,
+      "candidate": 56
+    },
+    {
+      "owner": "coaptic::app::async_server::NotifyOwner<'_, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>>",
+      "baseline": 56,
+      "candidate": 56
+    },
+    {
+      "owner": "coaptic::app::async_server::PacketOwner<'_, coaptic::storage::Memory<coaptic::profiles::Constrained>>",
+      "baseline": 16,
+      "candidate": 16
+    },
+    {
+      "owner": "coaptic::app::async_server::PacketOwner<'_, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>>",
+      "baseline": 16,
+      "candidate": 16
+    },
+    {
+      "owner": "coaptic::app::async_server::RxOwner<'_, coaptic::storage::Memory<coaptic::profiles::Constrained>>",
+      "baseline": 24,
+      "candidate": 24
+    },
+    {
+      "owner": "coaptic::app::async_server::RxOwner<'_, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>>",
+      "baseline": 24,
+      "candidate": 24
+    },
+    {
+      "owner": "coaptic::app::client::ClientInbox<1>",
+      "baseline": 1456,
+      "candidate": 1456
+    },
+    {
+      "owner": "coaptic::app::client::ClientInbox<4>",
+      "baseline": 3760,
+      "candidate": 3760
+    },
+    {
+      "owner": "coaptic::app::client::ClientLives<1>",
+      "baseline": 1136,
+      "candidate": 1136
+    },
+    {
+      "owner": "coaptic::app::client::ClientLives<4>",
+      "baseline": 4544,
+      "candidate": 4544
+    },
+    {
+      "owner": "coaptic::app::client::asynchronous::Continuation<'_, coaptic::storage::Memory<coaptic::profiles::Constrained>, 1, 4>",
+      "baseline": 104,
+      "candidate": 104
+    },
+    {
+      "owner": "coaptic::app::client::asynchronous::Continuation<'_, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, 4, 4>",
+      "baseline": 104,
+      "candidate": 104
+    },
+    {
+      "owner": "coaptic::app::response::DatagramDispatch<coaptic::storage::DatagramScratch<1152>>",
+      "baseline": 0,
+      "candidate": 0
+    },
+    {
+      "owner": "coaptic::app::response::ScratchStorage<coaptic::storage::DatagramScratch<1152>>",
+      "baseline": 4098,
+      "candidate": 4098
+    },
+    {
+      "owner": "coaptic::app::response::ScratchStorage<coaptic::storage::DatagramScratch<1472>>",
+      "baseline": 4098,
+      "candidate": 4098
+    },
+    {
+      "owner": "coaptic::app::response::SharedScratch<coaptic::storage::DatagramScratch<1152>>",
+      "baseline": 4098,
+      "candidate": 4098
+    },
+    {
+      "owner": "coaptic::app::response::SharedScratch<coaptic::storage::DatagramScratch<1472>>",
+      "baseline": 4098,
+      "candidate": 4098
+    },
+    {
+      "owner": "coaptic::app::send::SendOwner<'_, coaptic::storage::Memory<coaptic::profiles::Constrained, coaptic::storage::WithBodies<coaptic::profiles::Constrained>>>",
+      "baseline": 80,
+      "candidate": 80
+    },
+    {
+      "owner": "coaptic::app::send::SendOwner<'_, coaptic::storage::Memory<coaptic::profiles::Constrained>>",
+      "baseline": 80,
+      "candidate": 80
+    },
+    {
+      "owner": "coaptic::app::send::SendOwner<'_, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>>",
+      "baseline": 80,
+      "candidate": 80
+    },
+    {
+      "owner": "coaptic::storage::BodyPool<1, 4096>",
+      "baseline": 4816,
+      "candidate": 4816
+    },
+    {
+      "owner": "coaptic::storage::BodyPool<4, 16384>",
+      "baseline": 68344,
+      "candidate": 68344
+    },
+    {
+      "owner": "coaptic::storage::DatagramPool<2, 1152>",
+      "baseline": 2448,
+      "candidate": 2448
+    },
+    {
+      "owner": "coaptic::storage::DatagramPool<32, 1472>",
+      "baseline": 49104,
+      "candidate": 49104
+    },
+    {
+      "owner": "coaptic::storage::DatagramScratch<1152>",
+      "baseline": 1152,
+      "candidate": 1152
+    },
+    {
+      "owner": "coaptic::storage::DatagramScratch<1472>",
+      "baseline": 1472,
+      "candidate": 1472
+    },
+    {
+      "owner": "coaptic::storage::DedupEntry",
+      "baseline": 320,
+      "candidate": 320
+    },
+    {
+      "owner": "coaptic::storage::DedupTable<4>",
+      "baseline": 1304,
+      "candidate": 1304
+    },
+    {
+      "owner": "coaptic::storage::DedupTable<64>",
+      "baseline": 20560,
+      "candidate": 20560
+    },
+    {
+      "owner": "coaptic::storage::Engine<coaptic::storage::AllocMemory>",
+      "baseline": 760,
+      "candidate": 760
+    },
+    {
+      "owner": "coaptic::storage::Engine<coaptic::storage::Memory<coaptic::profiles::Constrained, coaptic::storage::WithBodies<coaptic::profiles::Constrained>>>",
+      "baseline": 17552,
+      "candidate": 17552
+    },
+    {
+      "owner": "coaptic::storage::Engine<coaptic::storage::Memory<coaptic::profiles::Constrained>>",
+      "baseline": 7920,
+      "candidate": 7920
+    },
+    {
+      "owner": "coaptic::storage::Engine<coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>>",
+      "baseline": 280744,
+      "candidate": 280744
+    },
+    {
+      "owner": "coaptic::storage::Memory<coaptic::profiles::Constrained, coaptic::storage::WithBodies<coaptic::profiles::Constrained>>",
+      "baseline": 17456,
+      "candidate": 17456
+    },
+    {
+      "owner": "coaptic::storage::Memory<coaptic::profiles::Constrained>",
+      "baseline": 7824,
+      "candidate": 7824
+    },
+    {
+      "owner": "coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>",
+      "baseline": 280648,
+      "candidate": 280648
+    },
+    {
+      "owner": "coaptic::storage::async_io::ReceiveReservation<'_, coaptic::storage::Memory<coaptic::profiles::Constrained>>",
+      "baseline": 24,
+      "candidate": 24
+    },
+    {
+      "owner": "coaptic::storage::async_io::ReceiveReservation<'_, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>>",
+      "baseline": 24,
+      "candidate": 24
+    }
+  ],
+  "frames": {
+    "encoder": [
+      {
+        "symbol": "coaptic::app::encode_issued<coaptic::storage::memory::Memory<coaptic::storage::profiles::Service,coaptic::storage::memory::WithBodies<coaptic::storage::profiles::Service> >,coaptic::app::async_server::ProtocolTransport<dispatch_probe::ServiceIo,dispatch_probe::drive::closure_env$1<coaptic::storage::profiles::Service,dispatch_probe::ServiceIo,coaptic::storage::memory::Memory<coaptic::storage::profiles::Service,coaptic::storage::memory::WithBodies<coaptic::storage::profiles::Service> >,32,true,8,4>,dispatch_probe::NeverTimer>,4>`",
+        "baseline": 1296,
+        "candidate": 1296
+      },
+      {
+        "symbol": "coaptic::app::encode_issued<coaptic::storage::memory::Memory<coaptic::storage::profiles::Service,coaptic::storage::memory::WithBodies<coaptic::storage::profiles::Service> >,dispatch_probe::ServiceIo,4>`",
+        "baseline": 1280,
+        "candidate": 1280
+      }
+    ],
+    "reclaim": [
+      {
+        "symbol": "coaptic::app::evict_one_dedup_pin<coaptic::storage::memory::Memory<coaptic::storage::profiles::Constrained,coaptic::storage::memory::NoBodies> >`",
+        "baseline": 800,
+        "candidate": 800
+      },
+      {
+        "symbol": "coaptic::app::evict_one_dedup_pin<coaptic::storage::memory::Memory<coaptic::storage::profiles::Constrained,coaptic::storage::memory::WithBodies<coaptic::storage::profiles::Constrained> > >`",
+        "baseline": 800,
+        "candidate": 800
+      },
+      {
+        "symbol": "coaptic::app::evict_one_dedup_pin<coaptic::storage::memory::Memory<coaptic::storage::profiles::Service,coaptic::storage::memory::WithBodies<coaptic::storage::profiles::Service> > >`",
+        "baseline": 784,
+        "candidate": 784
+      },
+      {
+        "symbol": "coaptic::app::evict_one_dedup_pin<coaptic::storage::alloc_memory::AllocMemory<coaptic::message::Token> >`",
+        "baseline": 800,
+        "candidate": 800
+      }
+    ]
+  },
+  "layout32": [
+    {
+      "owner": "coaptic::App<coaptic::profiles::Service, (), 32, true, coaptic::storage::Memory<coaptic::profiles::Service, coaptic::storage::WithBodies<coaptic::profiles::Service>>, 8, 4>",
+      "baseline": 307504,
+      "candidate": 307248
+    },
+    {
+      "owner": "coaptic::App<coaptic::profiles::Service, (), 32, true, coaptic::storage::AllocMemory, 8, 4>",
+      "baseline": 28184,
+      "candidate": 27928
+    },
+    {
+      "owner": "coaptic::storage::DedupTable<64>",
+      "baseline": 20040,
+      "candidate": 20040
+    },
+    {
+      "owner": "coaptic::App<coaptic::profiles::Constrained, (), 4, false, coaptic::storage::Memory<coaptic::profiles::Constrained>, 0, 1>",
+      "baseline": 11304,
+      "candidate": 11304
+    },
+    {
+      "owner": "coaptic::storage::DedupTable<4>",
+      "baseline": 1264,
+      "candidate": 1264
+    },
+    {
+      "owner": "coaptic::storage::DedupEntry",
+      "baseline": 312,
+      "candidate": 312
+    },
+    {
+      "owner": "coaptic::storage::occupancy::HeapOccupancy",
+      "baseline": 32,
+      "candidate": 32
+    }
+  ],
+  "source_hashes_verified": 148,
+  "dispatch_nongrowth": true
+}

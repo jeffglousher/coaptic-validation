@@ -1,0 +1,28 @@
+{
+  "source": "8d9e08232865bd41049d3d8062bd4b87328c28b0",
+  "recorded_utc": "2026-11-07T06:30:01.570149+00:00",
+  "timing_started": false,
+  "decision": "Run the unchanged frozen CPU cohort after the original memory preflight passes. Extra encode_response observations are explicitly retained as a tradeoff; no peak-stack reduction is claimed. Do not change the original encode_issued/reclaim/poll guard or broaden it retroactively. Outlining has not been implemented or timed.",
+  "local_encode_response_frames": {
+    "sync": {
+      "baseline": 736,
+      "candidate": 784
+    },
+    "async": {
+      "baseline": 768,
+      "candidate": 800
+    }
+  },
+  "local_encode_response_code_bytes": {
+    "sync": {
+      "baseline": 6045,
+      "candidate": 7109
+    },
+    "async": {
+      "baseline": 6128,
+      "candidate": 7481
+    }
+  },
+  "limits": "These local frame/code observations are not additive peak-memory evidence. Complete futures shrink2536B, native Service App owners shrink320B, original selected guarded frames are nongrowing. All configured capacities remain unchanged.",
+  "evidence": "ordinary-encoder-diagnostic/findings.json"
+}

@@ -5,8 +5,66 @@ merged core `fd7d18a72f795779e352443ebdeef9533be7fb27`; its reused executables
 were built from `3e592adb1fd52c5e6918af1b4e810bb874413bad`, whose 148 core input
 files are identical to that merge. The seven original probe inputs are unchanged.
 
-Final integration status is pending. Do not infer acceptance from the rejected
-variants below or from a source build.
+## Integrated result
+
+Integration `8d9e08232865bd41049d3d8062bd4b87328c28b0` passes the unchanged
+runtime and memory gates. Independent recomputation of all 28 cells, 64 paired
+processes per cell and 3,640 successful process exits confirms no failed bounds.
+Software qualification, portable-archive verification and source reconstruction
+also pass. This is not a merge claim. Every earlier failed attempt remains rejected.
+
+Against the pinned baseline, equal-workload geometric mean complete-App thread
+CPU cost falls **2.91% synchronously and 3.28% asynchronously**. Ratios are
+0.970914 and 0.967248; their one-sided upper95 bounds are 0.973522 and 0.969960.
+Ordinary workloads improve 2.17% / 2.98% and retained workloads 4.74% / 4.01%
+(sync / async). Every individual cell and both original-20/all-28 aggregate
+guards pass the predeclared 1.02 limit. Aggregate improvement alone would not
+have overridden a failing cell, as the preserved attempts demonstrate.
+
+Complete progress futures shrink **2,536 bytes**: SmallDevice 15,952 to 13,416,
+and both Service storage forms 15,496 to 12,960. Native Service resident App
+owners shrink **320 bytes**: fixed 315,656 to 315,336; allocated inline 35,672 to
+35,352 with requested pool heap unchanged at 282,512 bytes. The retained fixture
+inline App owners shrink 80 bytes. Selected host/Thumb owners and the original
+guarded encoder, reclaim and polling frames do not grow; all configured
+capacities and pool counts remain unchanged. These distinct measurements are
+not added together as peak memory.
+
+The integration combines packet-preparation lifetime reductions, compact reply
+metadata, lazy Location backing, immutable static retained-body ownership and
+a direct ordered ETag/Content-Format slice for ordinary replies. General response
+metadata retains the existing encoding path. Static bodies still reserve the
+configured body slot and backing; mutable access or sidecar replacement copies
+the body into that backing. The exact-source eight-case retained diagnostic
+verifies zero snapshot-copy bytes and zero byte-comparison candidates, with 136
+equality calls per case. Chunk staging remains 1,531,904 bytes per case; no
+total-zero-copy claim applies. Timing uses separate uninstrumented binaries.
+
+There is an explicit local stack/code tradeoff. Before timing,
+`TRADEOFF-BEFORE.json` recorded fixed Service `encode_response` frames growing
+736 to 784 bytes synchronously and 768 to 800 asynchronously; procedure code
+grows 1,064 and 1,353 bytes. The independent verifier checks those deltas from
+retained PDB records. These extra observations do not alter the original frame
+guards, and cannot be combined with complete futures to claim lower peak stack.
+The helper remains inlined; no outlining experiment is included. Exact-source
+assembly shows the ordinary fixture branch removes 192 bytes of builder
+initialization, a 192-byte backing copy and 42 unique bytes of Echo descriptor
+copying. Numeric Content-Format encoding, downstream packet copies and security
+work remain. This proves branch-specific work removal, not per-change CPU share.
+
+Earlier constructor-store diagnostics remain attributed to their own archived
+source pins, rather than presented as fresh measurements of this final source.
+The completed-deferred matcher is supported and regression-tested, but the
+frozen immediate-response fixture never executes it and gives it no CPU credit.
+
+All eleven qualification lanes exit successfully, as does formatting. The
+all-feature suite passes 1,697 tests (1,234 library, 420 integration and 43
+doctests), with the existing idle-poll benchmark intentionally ignored. Other
+library lanes pass 730 no-default, 780 alloc, 887 OSCORE, 941 alloc+OSCORE and
+738 std tests. Both strict Clippy configurations, Rust 1.89 checks with and
+without default features, and all-feature documentation pass. The verifier
+requires the exact lane names/commands, zero exit codes and matching test totals
+recomputed from retained logs; it also checks the formatting result.
 
 ## Rejected direct-body integration
 
@@ -214,6 +272,19 @@ paired ratio. It recomputes failures from the raw outputs.
 An explicitly superseded precursor may have passed memory checks, but must
 contain a reason and no cohort samples or process-exit log. It cannot establish
 integration acceptance. The original two preflight rejections remain failures.
+
+After the native cohort and intended checks are complete, `python -B export.py
+NATIVE_ROOT` creates the final `observations.zip`, member manifest and matching
+top-level records without replacing any existing evidence. The default
+`python -B verify.py` additionally verifies that final archive and independently
+reports its actual runtime verdict. It checks the separate ordinary-encoder
+tradeoff against retained PDB records; original memory and CPU gates stay fixed.
+`validation.json` records the successful complete portable replay. Every prior
+bundle summary matches `failed-cohort8-validation.json` exactly, including all
+earlier failures. `native-validation.json` records the independent raw/source
+recomputation performed before archive creation. `reconstruction.json` records
+the fresh source-only reconstruction: all 148 source and seven fixture hashes
+match, with no builds or native execution.
 
 `prepare.py CORE_REPO NEW_OUTPUT VARIANT` reconstructs exact sources and probes
 without modifying a checkout. Variants include baseline, candidate, precursor,

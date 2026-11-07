@@ -1,0 +1,3209 @@
+diff --git a/PLAN.md b/PLAN.md
+index d23a916..3465f04 100644
+--- a/PLAN.md
++++ b/PLAN.md
+@@ -31,6 +31,20 @@ or infer peak-RAM savings from selected future/frame sizes. Runtime adapter work
+ is complete for this batch. Embassy firmware migration and new platforms remain
+ deferred.
+ 
++The response-ownership follow-up did not qualify another implementation. Borrowed
++handler responses reduced selected futures but increased complete-App async CPU
++cost by 2.50% and failed 17 of 28 workload bounds. A unified reply view and two
++smaller response-metadata representations failed the prospective native-frame
++guard before timing. The final borrowed-origin representation saved 216 bytes in
++each selected complete future, while one allocated Service polling frame grew
++16 bytes. That is a conservative guard refusal, not a measured CPU regression.
++All four candidates remain unmerged; the accepted implementation above is intact.
++See [sources, measurements and limits](architecture/requirements/RESPONSE-OWNERSHIP-20261106.md).
++Do not repeat these unchanged candidates. Before another ownership rewrite,
++identify the packet construction and dispatch live ranges responsible for work
++and overlapping memory; preserve independent body/packet capacities. API
++ergonomics alone is not a performance justification.
++
+ Emitted-copy follow-ups are rejected too. Direct inline fill removes a staging
+ array, and scalar TX writes remove the emitted full replay-row copy; the complete
+ App cohort still fails sync acceptance. Adding fixed-table expiry bounds reduces
+diff --git a/architecture/requirements/RESPONSE-OWNERSHIP-20261106.md b/architecture/requirements/RESPONSE-OWNERSHIP-20261106.md
+new file mode 100644
+index 0000000..b54999a
+--- /dev/null
++++ b/architecture/requirements/RESPONSE-OWNERSHIP-20261106.md
+@@ -0,0 +1,84 @@
++# Response ownership follow-up
++
++This investigation did not produce another accepted implementation. Production
++remains the phase-sharing batch merged as `fd7d18a`. The user prioritized CPU and
++memory, allowing improvement in one with preservation of the other within the
++declared tolerance. Public behavior, security and configured capacities remain
++requirements; simpler ownership alone is not evidence of lower runtime cost.
++
++The pinned baseline is merged `fd7d18a72f795779e352443ebdeef9533be7fb27`.
++Its 148 production input files match the previously measured `3e592ad` sources,
++allowing exact baseline executable reuse. These results are relative to that
++accepted implementation, not the earlier `bd63199` baseline.
++
++## Experiments
++
++- `04c1c837`: borrowed handler responses with a split reply-storage view. Selected
++  SmallDevice, fixed Service and allocated Service complete futures shrink by
++  928, 1,024 and 992 bytes. Complete-App CPU ratios are 1.005496 sync and 1.025043
++  async; one-sided upper95 bounds are 1.007985 and 1.027402. Seventeen of 28 cell
++  bounds fail. Dispatch code and selected stack frames also grow. Rejected.
++- `3a1e600`: one reply view for ordinary and assembled requests. Removes duplicate
++  dispatch paths but still increases the four selected dispatch frames by 320,
++  784, 304 and 528 bytes. Rejected before runtime measurement.
++- `6ad0bfd`: consolidate duplicate response identity and discard the unused
++  retained-header payload slice. All three selected complete futures shrink by
++  120 bytes. The allocated Service dispatch frame grows 16 bytes. Rejected before
++  timing under the prospective per-frame nongrowth guard; 1,219 library tests pass.
++- `9e5bad5`: additionally borrow peer and receive time from the existing immutable
++  client inbox hold, already borrowed by options and locations. All three selected
++  complete futures shrink by 216 bytes. Fixed Service dispatch frame shrinks
++  32 bytes, allocated Service grows 16 bytes, and the other two stay equal.
++  Rejected before timing by the same guard; 1,220 library tests pass. A later
++  visibility-only warning cleanup (`5690c31`) is retained separately and unbuilt.
++
++The last two candidates do not change public signatures or resident owners.
++Manual snapshot Debug formatting in the borrowed-origin variant avoids exposing
++the raw retained owner or bypassing token formatting. Source review found no
++actionable defect. Passing tests and source review do not override the failed
++measurement guard, nor establish full qualification.
++
++## Method and scope
++
++The only new runtime cohort is `04c1c837`: 64 paired processes for each of 28
++workloads, fixed AB/BA/BA/AB order repeated sixteen times, 128 warmup operations,
++and no discarded samples or replacement runs. Twenty ordinary cells cover
++SmallDevice32 and fixed/allocated Service1024/16384. Eight retained Q-Block2 cells
++use 11,264-byte bodies. Both synchronous poll and asynchronous wait/progress run
++in unprotected and established OSCORE modes. All ordinary/all sync/async aggregate
++and individual-cell upper95 CPU ratios must be at most 1.02 for the memory route.
++
++QueryThreadCycleTime covers complete server App work with a memory transport.
++Client preparation and verification are outside the interval. These are CPU-cost
++observations, not network throughput, latency, peak stack, hardware qualification
++or a libcoap ranking. The static benchmark handlers do not exercise dynamic
++borrowed response payloads; there is no speed claim for that new capability.
++
++Host resident App/pool owners and selected Thumbv7EM App/table layouts remain
++unchanged. Capacities are not reduced. Selected compiler future objects and
++emitted native frames are distinct measurements, not peak memory. The 16-byte
++frame refusals are conservative local guards; they do not prove the complete
++application uses more simultaneous memory or runs slower. No runtime cohort was
++started for those sources, and no reserved-stack saving is claimed.
++
++The direct higher-ranked lifetime prototype failed to compile because an incoming
++body borrow through the whole Engine prevents reply mutations. The subsequent
++view adds a storage trait and copies/restores metrics. The fixture adaptation
++adds those trait bounds and changes the retained callback return lifetime; its
++operation bodies stay unchanged. The metadata variants use the original fixture.
++Borrowed-handler's twelve focused passing checks belong to a precursor. Its
++expanded protected/counter test patch is unrun and explicitly retained as such.
++
++Exact patches, source hashes, raw outputs, binaries, assembly, layouts, methods,
++failed attempts and offline verification are retained in the
++[companion evidence package](https://github.com/jeffglousher/coaptic-validation/tree/518c7fd59d0ae29761f59b2aaa8f112c3c3f7bed/tools/benchmark/evidence/response-ownership-20261106).
++No failed source
++is adopted, no old failure is reclassified and no unchanged cohort is repeated.
++
++## Next constraint
++
++Further work should establish which packet-construction copies and dispatch live
++ranges dominate complete-App work before choosing another rewrite. Borrowing
++already-held metadata is structurally simpler, but generated frame layout can
++still move in the opposite direction. Preserve body/packet independence and
++bounded refusal/recovery; defer runtime adapters, firmware migration and platforms.
+diff --git a/src/app/async_server_tests.rs b/src/app/async_server_tests.rs
+index 4c2ad7d..108f9ae 100644
+--- a/src/app/async_server_tests.rs
++++ b/src/app/async_server_tests.rs
+@@ -319,6 +319,341 @@ fn cancelled_partial_deferred_q_keeps_immutable_snapshot() {
+     assert!(app.engine.tx_body_payload(body).is_none());
+ }
+ 
++#[test]
++fn cancelled_deferred_q_followup_keeps_snapshot_for_recovery() {
++    struct RecordingIo<'a> {
++        inner: Io<'a>,
++        packet: &'a Cell<([u8; 128], usize)>,
++    }
++    impl DatagramTransport for RecordingIo<'_> {
++        type Error = ();
++    }
++    impl AsyncDatagramIo for RecordingIo<'_> {
++        async fn recv(&mut self, bytes: &mut [u8]) -> Result<(usize, Endpoint), ()> {
++            self.inner.recv(bytes).await
++        }
++        async fn send(&mut self, peer: Endpoint, bytes: &[u8]) -> Result<usize, ()> {
++            let mut packet = [0; 128];
++            packet[..bytes.len()].copy_from_slice(bytes);
++            self.packet.set((packet, bytes.len()));
++            self.inner.send(peer, bytes).await
++        }
++    }
++
++    let ready = Cell::new(true);
++    let accepted = Cell::new(0);
++    let calls = Cell::new(0);
++    let packet = Cell::new(([0; 128], 0));
++    let mut app = App::with_resources(
++        Resources::<profiles::Constrained>::new()
++            .routes::<1>()
++            .block_wise::<true>()
++            .deferred::<1>(),
++    )
++    .allow_unprotected()
++    .deterministic_for_tests()
++    .route("q", get(handler))
++    .bind(RecordingIo {
++        inner: Io {
++            ready: &ready,
++            accepted: &accepted,
++        },
++        packet: &packet,
++    })
++    .unwrap();
++    let q = BlockValue::new(0, false, 0).unwrap().encode();
++    let opts = [Opt::uri_path("q"), Opt::q_block2(&q)];
++    let request =
++        Message::new(Type::Confirmable, Code::GET, MessageId::new(91)).with_options(&opts);
++    let mut wire = [0; 64];
++    let n = encode(&request, &mut wire).unwrap();
++    let rx = app.engine.acquire_rx().unwrap();
++    app.engine.write_rx(rx, &wire[..n], PEER).unwrap();
++    let mut clock = || Ok::<_, ()>(10);
++    let mut timer = Timer;
++    let mut handle = None;
++    {
++        let mut progress =
++            pin!(
++                app.progress_with_async(10, &mut clock, &mut timer, 100, |_, candidate| {
++                    calls.set(calls.get() + 1);
++                    handle = candidate;
++                    Response::deferred()
++                })
++            );
++        assert!(matches!(
++            progress
++                .as_mut()
++                .poll(&mut Context::from_waker(Waker::noop())),
++            Poll::Ready(Ok(()))
++        ));
++    }
++    let handle = handle.unwrap();
++    let payload = b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+-";
++    {
++        let mut complete = pin!(app.complete_async(
++            handle,
++            Response::content(payload).etag(b"v1"),
++            10,
++            &mut clock,
++            &mut timer,
++            100
++        ));
++        assert!(matches!(
++            complete
++                .as_mut()
++                .poll(&mut Context::from_waker(Waker::noop())),
++            Poll::Ready(Ok(()))
++        ));
++    }
++    let row = app.deferred.rows[0].unwrap();
++    assert!(row.completed);
++    let (body, retained) = row.snapshot.expect("completed Q snapshot");
++    assert_eq!(app.engine.tx_body_payload(body), Some(payload.as_slice()));
++    let before = accepted.get();
++    let q = BlockValue::new(2, false, 0).unwrap().encode();
++    let opts = [Opt::uri_path("q"), Opt::q_block2(&q)];
++    let request =
++        Message::new(Type::NonConfirmable, Code::GET, MessageId::new(92)).with_options(&opts);
++    let n = encode(&request, &mut wire).unwrap();
++    let rx = app.engine.acquire_rx().unwrap();
++    app.engine.write_rx(rx, &wire[..n], PEER).unwrap();
++    ready.set(false);
++    {
++        let mut progress =
++            pin!(
++                app.progress_with_async(10, &mut clock, &mut timer, 100, |_, _| {
++                    calls.set(calls.get() + 1);
++                    Response::content(b"must not replace the snapshot")
++                })
++            );
++        assert!(
++            progress
++                .as_mut()
++                .poll(&mut Context::from_waker(Waker::noop()))
++                .is_pending()
++        );
++    }
++    assert_eq!(calls.get(), 1);
++    assert_eq!(accepted.get(), before);
++    assert_eq!(app.engine.rx_occupied(), 0);
++    assert_eq!(app.engine.tx_occupied(), 0);
++    let row = app.deferred.rows[0].unwrap();
++    assert_eq!(row.handle, handle);
++    assert!(row.completed);
++    let (retained_body, metadata) = row.snapshot.unwrap();
++    assert_eq!(retained_body, body);
++    assert!(metadata.same_header(&retained));
++    assert_eq!(app.engine.tx_body_payload(body), Some(payload.as_slice()));
++    let (pending_packet, pending_len) = packet.get();
++    let pending = crate::message::decode(&pending_packet[..pending_len]).unwrap();
++    assert_eq!(pending.code(), Code::CONTENT);
++    assert_eq!(pending.payload(), &payload[32..48]);
++    assert_eq!(pending.etag().next(), Some(&b"v1"[..]));
++    assert_eq!(pending.size2(), Some(Ok(64)));
++    assert_eq!(
++        pending.q_block2().next(),
++        Some(Ok(BlockValue::new(2, true, 0).unwrap()))
++    );
++
++    let request =
++        Message::new(Type::NonConfirmable, Code::GET, MessageId::new(93)).with_options(&opts);
++    let n = encode(&request, &mut wire).unwrap();
++    let rx = app.engine.acquire_rx().unwrap();
++    app.engine.write_rx(rx, &wire[..n], PEER).unwrap();
++    ready.set(true);
++    {
++        let mut progress =
++            pin!(
++                app.progress_with_async(10, &mut clock, &mut timer, 100, |_, _| {
++                    calls.set(calls.get() + 1);
++                    Response::content(b"must not replace the snapshot")
++                })
++            );
++        assert!(matches!(
++            progress
++                .as_mut()
++                .poll(&mut Context::from_waker(Waker::noop())),
++            Poll::Ready(Ok(()))
++        ));
++    }
++    assert_eq!(calls.get(), 1);
++    assert_eq!(accepted.get(), before + 1);
++    assert_eq!(app.engine.rx_occupied(), 0);
++    assert_eq!(app.engine.tx_occupied(), 0);
++    let (retry_packet, retry_len) = packet.get();
++    // A fresh NON exchange gets a fresh MID; every other wire byte is retained.
++    assert_eq!(retry_len, pending_len);
++    assert_eq!(&retry_packet[..2], &pending_packet[..2]);
++    assert_eq!(&retry_packet[4..retry_len], &pending_packet[4..pending_len]);
++    let row = app.deferred.rows[0].unwrap();
++    assert_eq!(row.handle, handle);
++    assert!(row.completed);
++    let (retained_body, metadata) = row.snapshot.unwrap();
++    assert_eq!(retained_body, body);
++    assert!(metadata.same_header(&retained));
++    assert_eq!(app.engine.tx_body_payload(body), Some(payload.as_slice()));
++    assert!(!app.cancel_deferred(handle));
++    app.deferred.expire(&mut app.engine, row.deadline_ms);
++    assert!(app.deferred.rows[0].is_none());
++    assert!(app.engine.tx_body_payload(body).is_none());
++}
++
++#[test]
++fn cancelled_immediate_static_q_releases_snapshot_and_retries_exact_bytes() {
++    static BODY: [u8; 64] = *b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+-";
++    fn static_body(_: Request<'_>) -> Response<'static> {
++        Response::content(&BODY).etag(b"static")
++    }
++    struct RecordingIo<'a> {
++        inner: Io<'a>,
++        second: &'a Cell<([u8; 128], usize)>,
++        seen: &'a Cell<u8>,
++    }
++    impl DatagramTransport for RecordingIo<'_> {
++        type Error = ();
++    }
++    impl AsyncDatagramIo for RecordingIo<'_> {
++        async fn recv(&mut self, bytes: &mut [u8]) -> Result<(usize, Endpoint), ()> {
++            self.inner.recv(bytes).await
++        }
++        async fn send(&mut self, peer: Endpoint, bytes: &[u8]) -> Result<usize, ()> {
++            let reply = crate::message::decode(bytes).unwrap();
++            let block = reply.q_block2().next().unwrap().unwrap();
++            let num = block.num() as usize;
++            assert!(num < 4);
++            assert_eq!(reply.code(), Code::CONTENT);
++            assert_eq!(reply.payload(), &BODY[num * 16..(num + 1) * 16]);
++            assert_eq!(reply.etag().next(), Some(&b"static"[..]));
++            assert_eq!(reply.size2(), Some(Ok(BODY.len() as u32)));
++            assert_eq!(block.more(), num != 3);
++            if num == 1 {
++                let mut packet = [0; 128];
++                packet[..bytes.len()].copy_from_slice(bytes);
++                self.second.set((packet, bytes.len()));
++            }
++            let sent = self.inner.send(peer, bytes).await?;
++            self.seen.set(self.seen.get() | (1 << num));
++            Ok(sent)
++        }
++    }
++    fn exercise<S: AppStorage<Token = Token>, const CALLS: usize>(
++        mut app: App<profiles::Constrained, RecordingIo<'_>, 1, true, S, 0, CALLS>,
++        ready: &Cell<bool>,
++        accepted: &Cell<usize>,
++        second: &Cell<([u8; 128], usize)>,
++        seen: &Cell<u8>,
++    ) {
++        ready.set(true);
++        accepted.set(0);
++        second.set(([0; 128], 0));
++        seen.set(0);
++        let q = BlockValue::new(0, true, 0).unwrap().encode();
++        let opts = [Opt::uri_path("q"), Opt::q_block2(&q)];
++        let mut wire = [0; 64];
++        let mut timer = Timer;
++        for attempt in 0..2 {
++            let request = Message::new(
++                Type::NonConfirmable,
++                Code::GET,
++                MessageId::new(101 + attempt),
++            )
++            .with_token(Token::new(b"static").unwrap())
++            .with_options(&opts);
++            let n = encode(&request, &mut wire).unwrap();
++            let rx = app.engine.acquire_rx().unwrap();
++            app.engine.write_rx(rx, &wire[..n], PEER).unwrap();
++            let mut clock = || {
++                if attempt == 0 && accepted.get() != 0 {
++                    ready.set(false);
++                }
++                Ok::<_, ()>(10)
++            };
++            let (pending, pending_len) = second.get();
++            {
++                let mut progress = pin!(app.progress_async(10, &mut clock, &mut timer, 100));
++                let result = progress
++                    .as_mut()
++                    .poll(&mut Context::from_waker(Waker::noop()));
++                if attempt == 0 {
++                    assert!(result.is_pending());
++                } else {
++                    assert!(matches!(result, Poll::Ready(Ok(()))));
++                }
++            }
++            assert_eq!(app.engine.rx_occupied(), 0);
++            assert_eq!(app.engine.tx_occupied(), 0);
++            for index in 0..app.engine.capacities().tx_body_slots.unwrap() {
++                let id = SlotId::from_index(index);
++                assert!(app.engine.tx_body_payload(id).is_none());
++                assert!(app.engine.tx_body_transfer(id).is_none());
++            }
++            if attempt == 0 {
++                assert_eq!(accepted.get(), 1);
++                assert_eq!(seen.get(), 1);
++                assert_ne!(second.get().1, 0);
++                ready.set(true);
++            } else {
++                assert_eq!(accepted.get(), 5);
++                assert_eq!(seen.get(), 0b1111);
++                let (retry, retry_len) = second.get();
++                assert_eq!(retry_len, pending_len);
++                // The fresh NON exchange gets new MIDs; payload/options stay exact.
++                assert_eq!(&retry[..2], &pending[..2]);
++                assert_eq!(&retry[4..retry_len], &pending[4..pending_len]);
++            }
++        }
++    }
++
++    let ready = Cell::new(true);
++    let accepted = Cell::new(0);
++    let second = Cell::new(([0; 128], 0));
++    let seen = Cell::new(0);
++    let builder = || {
++        App::with_resources(
++            Resources::<profiles::Constrained>::new()
++                .routes::<1>()
++                .block_wise::<true>(),
++        )
++        .allow_unprotected()
++        .deterministic_for_tests()
++        .route("q", get(static_body))
++    };
++    let io = || RecordingIo {
++        inner: Io {
++            ready: &ready,
++            accepted: &accepted,
++        },
++        second: &second,
++        seen: &seen,
++    };
++    exercise(
++        builder().bind(io()).unwrap(),
++        &ready,
++        &accepted,
++        &second,
++        &seen,
++    );
++    #[cfg(feature = "alloc")]
++    exercise(
++        App::with_resources(
++            Resources::<profiles::Constrained>::new()
++                .routes::<1>()
++                .block_wise::<true>()
++                .allocated(usize::MAX),
++        )
++        .allow_unprotected()
++        .deterministic_for_tests()
++        .route("q", get(static_body))
++        .bind(io())
++        .unwrap(),
++        &ready,
++        &accepted,
++        &second,
++        &seen,
++    );
++}
++
+ #[test]
+ fn accepted_retry_with_failed_clock_retires_call_without_automatic_resend() {
+     let ready = Cell::new(true);
+diff --git a/src/app/client.rs b/src/app/client.rs
+index 92d4725..28dbfc7 100644
+--- a/src/app/client.rs
++++ b/src/app/client.rs
+@@ -253,6 +253,14 @@ pub(super) struct ReplyMeta {
+ }
+ 
+ impl ReplyMeta {
++    pub(super) const fn peer(&self) -> Endpoint {
++        self.peer
++    }
++
++    pub(super) const fn received_at_ms(&self) -> u64 {
++        self.received_at_ms
++    }
++
+     // Canonically encoded code, Token, MID and selected options. Capture time
+     // and copied payload bookkeeping are not representation-header identity.
+     pub(super) fn same_header(&self, other: &Self) -> bool {
+@@ -311,11 +319,8 @@ impl ReplyMeta {
+             crate::message::decode_with_token::<K>(&self.header[..usize::from(self.header_len)])
+                 .expect("encoded response header");
+         let mut response = Response::from_client(
+-            parsed.code(),
+-            parsed.ty(),
+-            parsed.token(),
+-            parsed.message_id(),
+-            self.peer,
++            parsed,
++            self,
+             &self.payload[..usize::from(self.payload_len)],
+             parsed.content_format().and_then(Result::ok),
+         )
+@@ -346,7 +351,7 @@ impl ReplyMeta {
+                 response = response.location_query(query);
+             }
+         }
+-        response.with_received_header(parsed, self.received_at_ms)
++        response
+     }
+ }
+ 
+diff --git a/src/app/extended_handler_tests.rs b/src/app/extended_handler_tests.rs
+index bb42627..a94e2ba 100644
+--- a/src/app/extended_handler_tests.rs
++++ b/src/app/extended_handler_tests.rs
+@@ -94,16 +94,8 @@ fn extended_token_snapshot_retains_selection_and_client_metadata() {
+     let mut wire = [0; 64];
+     let n = response_message.encode(&mut wire).unwrap();
+     let parsed = decode_with_token::<LongToken>(&wire[..n]).unwrap();
+-    let response = Response::from_client(
+-        Code::CONTENT,
+-        Type::Acknowledgement,
+-        token(),
+-        MessageId::new(9),
+-        peer,
+-        parsed.payload(),
+-        None,
+-    )
+-    .with_received_header(parsed, 123);
++    let origin = crate::app::client::ReplyMeta::from_parsed(&parsed, peer, 123).unwrap();
++    let response: Response<'_, LongToken> = origin.response();
+     assert_eq!(response.token(), Some(token()));
+     assert_eq!(response.received_at_ms(), Some(123));
+     assert_eq!(response.payload(), b"value");
+@@ -120,3 +112,68 @@ fn generic_site_and_router_do_not_reserve_token_buffers() {
+         core::mem::size_of::<Site<1, LongToken>>()
+     );
+ }
++
++#[test]
++fn app_with_deferred_rows_is_send_for_a_non_sync_token() {
++    use crate::message::{OwnedToken, Token};
++    use crate::storage;
++    use core::{cell::Cell, marker::PhantomData};
++
++    // OwnedToken permits Send without Sync. This marker must not prevent moving
++    // an idle App between threads merely because deferred metadata is retained.
++    #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
++    struct SendOnlyToken(Token, PhantomData<Cell<()>>);
++
++    impl OwnedToken for SendOnlyToken {
++        const EMPTY: Self = Self(Token::EMPTY, PhantomData);
++        const MAX_LEN: usize = Token::MAX_LEN;
++
++        fn try_from_bytes(bytes: &[u8]) -> Result<Self, extended::CapacityError> {
++            <Token as OwnedToken>::try_from_bytes(bytes).map(|token| Self(token, PhantomData))
++        }
++
++        fn try_zeroed(len: usize) -> Result<Self, extended::CapacityError> {
++            <Token as OwnedToken>::try_zeroed(len).map(|token| Self(token, PhantomData))
++        }
++
++        fn as_bytes_mut(&mut self) -> &mut [u8] {
++            <Token as OwnedToken>::as_bytes_mut(&mut self.0)
++        }
++
++        fn as_bytes(&self) -> &[u8] {
++            self.0.as_bytes()
++        }
++    }
++
++    struct Tiny;
++    impl storage::MemoryProfile for Tiny {
++        type Token = SendOnlyToken;
++        const RX_DATAGRAM_SLOTS: usize = 2;
++        const RX_DATAGRAM_BYTES: usize = 256;
++        const TX_DATAGRAM_SLOTS: usize = 2;
++        const TX_DATAGRAM_BYTES: usize = 256;
++        const DEDUP_ENTRIES: usize = 1;
++        const OBSERVE_ENTRIES: usize = 1;
++        const RX_BODY_SLOTS: usize = 1;
++        const RX_BODY_BYTES: usize = 1024;
++        const TX_BODY_SLOTS: usize = 1;
++        const TX_BODY_BYTES: usize = 1024;
++        type RxDatagram = storage::DatagramPool<2, 256>;
++        type TxDatagram = storage::DatagramPool<2, 256>;
++        type RxBody = storage::BodyPool<1, 1024, SendOnlyToken>;
++        type TxBody = storage::BodyPool<1, 1024, SendOnlyToken>;
++        type Dedup = storage::DedupTable<1>;
++        type Observe = storage::ObserveTable<1, SendOnlyToken>;
++        type Exchange = storage::ExchangeTable<2, SendOnlyToken>;
++        type RxScratch = storage::DatagramScratch<256>;
++        type ResidentRxScratch = storage::DatagramScratch<256>;
++        type TxScratch = storage::DatagramScratch<256>;
++    }
++
++    type Store = storage::Memory<Tiny, storage::WithBodies<Tiny>>;
++    type MovableApp = crate::App<Tiny, (), 1, true, Store, 1, 1, 1, 1>;
++    fn assert_send<T: Send>() {}
++
++    assert_send::<SendOnlyToken>();
++    assert_send::<MovableApp>();
++}
+diff --git a/src/app/mod.rs b/src/app/mod.rs
+index 260b4fd..33a2aad 100644
+--- a/src/app/mod.rs
++++ b/src/app/mod.rs
+@@ -380,18 +380,10 @@ impl DeferredSelection {
+         payload: &[u8],
+     ) -> Result<Self, EncodeError> {
+         let mut options = OptionsBuilder::<{ client::RESPONSE_OPTION_COUNT }>::new();
+-        for option in parsed.options().filter(|option| {
+-            (parsed.code() == Code::FETCH && option.number() == crate::message::OptionNumber::ETAG)
+-                || matches!(
+-                    option.number(),
+-                    crate::message::OptionNumber::IF_MATCH
+-                        | crate::message::OptionNumber::IF_NONE_MATCH
+-                        | crate::message::OptionNumber::URI_PATH
+-                        | crate::message::OptionNumber::URI_QUERY
+-                        | crate::message::OptionNumber::CONTENT_FORMAT
+-                        | crate::message::OptionNumber::ACCEPT
+-                )
+-        }) {
++        for option in parsed
++            .options()
++            .filter(|option| Self::selects(parsed.code(), option.number()))
++        {
+             push_opt(&mut options, option)?;
+         }
+         let message = Message::new(Type::NonConfirmable, parsed.code(), MessageId::new(0))
+@@ -409,6 +401,47 @@ impl DeferredSelection {
+         selection.len = encode(&message, &mut selection.bytes)?;
+         Ok(selection)
+     }
++
++    fn selects(code: Code, number: crate::message::OptionNumber) -> bool {
++        use crate::message::OptionNumber;
++        (code == Code::FETCH && number == OptionNumber::ETAG)
++            || matches!(
++                number,
++                OptionNumber::IF_MATCH
++                    | OptionNumber::IF_NONE_MATCH
++                    | OptionNumber::URI_PATH
++                    | OptionNumber::URI_QUERY
++                    | OptionNumber::CONTENT_FORMAT
++                    | OptionNumber::ACCEPT
++            )
++    }
++
++    fn matches_parts(&self, parsed: &ParsedMessage<'_, impl OwnedToken>, payload: &[u8]) -> bool {
++        let Some(bytes) = self.bytes.get(..self.len) else {
++            return false;
++        };
++        let Ok(stored) = crate::message::extended::decode(bytes) else {
++            return false;
++        };
++        if stored.ty() != Type::NonConfirmable || stored.message_id() != MessageId::new(0) {
++            return false;
++        }
++        // Admission already bounded and canonically encoded this prefix. Equal
++        // method, token bytes, ordered selected options and FETCH payload imply
++        // the same encoded length and option count, without rebuilding either
++        // bounded scratch array. Incoming MID and type are not identity.
++        stored.code() == parsed.code()
++            && stored.token() == parsed.token().as_bytes()
++            && stored.payload()
++                == if parsed.code() == Code::FETCH {
++                    payload
++                } else {
++                    &[]
++                }
++            && stored.options().eq(parsed
++                .options()
++                .filter(|option| Self::selects(parsed.code(), option.number())))
++    }
+ }
+ 
+ #[derive(Default)]
+@@ -3827,7 +3860,7 @@ where
+         no_response,
+         block2,
+         q_block2,
+-        q_request: q_block2.map(|_| parsed),
++        q_request: q_block2.map(|_| QBlock2Request(parsed.options_bytes())),
+         block1,
+         oscore: oscore_req,
+         request: parsed.code(),
+@@ -4122,7 +4155,7 @@ where
+                     issue_classic(
+                         engine,
+                         io,
+-                        meta,
++                        &meta,
+                         &response,
+                         ty,
+                         mid,
+@@ -4153,7 +4186,7 @@ where
+     // classic or bounded Q-Block2 follow-ups select it without re-running work.
+     if (meta.block2.is_some() || meta.q_block2.is_some())
+         && let Some(index) = deferred.rows.iter().position(|row| {
+-            row.is_some_and(|row| {
++            row.as_ref().is_some_and(|row| {
+                 row.completed
+                     && row.meta.token == meta.token
+                     && row.meta.dest == peer
+@@ -4161,10 +4194,13 @@ where
+             })
+         })
+     {
+-        let row = deferred.rows[index].expect("matched snapshot");
+-        let (body, retained) = row.snapshot.expect("completed snapshot");
+-        let outcome = 'reply: {
+-            if DeferredSelection::from_parts(
++        // Validate against the table in place, then retain only the immutable
++        // nongeneric reply metadata across sending. The table still owns the
++        // snapshot on failure or cancellation; no copied row or payload is needed.
++        let (body, retained, admissible) = {
++            let row = deferred.rows[index].as_ref().expect("matched snapshot");
++            let (body, retained) = row.snapshot.as_ref().expect("completed snapshot");
++            let admissible = row.selection.matches_parts(
+                 &parsed,
+                 match assembled {
+                     InboundBody::Complete(id) => {
+@@ -4172,16 +4208,16 @@ where
+                     }
+                     _ => parsed.payload(),
+                 },
+-            )
+-            .ok()
+-                != Some(row.selection)
+-                || (parsed.code() != Code::FETCH && !parsed.payload().is_empty())
+-                || row.meta.q_block2.is_some() != meta.q_block2.is_some()
+-                || (row.observe.is_some()
+-                    && meta
++            ) && (parsed.code() == Code::FETCH || parsed.payload().is_empty())
++                && row.meta.q_block2.is_some() == meta.q_block2.is_some()
++                && (row.observe.is_none()
++                    || meta
+                         .block2
+-                        .is_some_and(|requested| engine.requested_block2(body, requested).is_err()))
+-            {
++                        .is_none_or(|requested| engine.requested_block2(*body, requested).is_ok()));
++            (*body, retained, admissible)
++        };
++        let outcome = 'reply: {
++            if !admissible {
+                 send_response(
+                     engine,
+                     io,
+@@ -4253,7 +4289,7 @@ where
+                 issue_classic(
+                     engine,
+                     io,
+-                    meta,
++                    &meta,
+                     &response,
+                     ty,
+                     mid,
+@@ -5559,7 +5595,7 @@ where
+         )
+     } else {
+         issue_classic(
+-            engine, io, meta, response, ty, meta.mid, id, pending, true, None, oscore_ctx,
++            engine, io, &meta, response, ty, meta.mid, id, pending, true, None, oscore_ctx,
+         )
+     };
+     if outcome.is_err() {
+@@ -6243,6 +6279,18 @@ where
+         );
+     }
+     let szx = szx_for(meta.block2, meta.q_block2);
++    // Ordinary responses can retain immutable application bytes in the same
++    // bounded body slot. Observe and deferred completion keep their existing
++    // snapshot/timer ownership; their callers disable `allow_borrowed`.
++    let static_body = if allow_borrowed
++        && response.code().is_success()
++        && response.observe_seq().is_none()
++        && !response.fresh_piv()
++    {
++        response.static_payload()
++    } else {
++        None
++    };
+     let started = if meta.q_block2.is_some() {
+         let etag = response
+             .etag_bytes()
+@@ -6252,10 +6300,16 @@ where
+                 .map_err(BlockTransferError::from)
+                 .map_err(Error::Block)?,
+         );
+-        engine.start_q_block2(key, response.payload(), szx)
++        match static_body {
++            Some(body) => engine.start_static_q_block2(key, body, szx),
++            None => engine.start_q_block2(key, response.payload(), szx),
++        }
+     } else {
+         let key = response_block_key(key.token(), key.endpoint(), response)?;
+-        engine.start_block2(key, response.payload(), szx)
++        match static_body {
++            Some(body) => engine.start_static_block2(key, body, szx),
++            None => engine.start_block2(key, response.payload(), szx),
++        }
+     };
+     let id = match started {
+         Ok(id) => id,
+@@ -6339,7 +6393,7 @@ where
+         issue_classic(
+             engine,
+             io,
+-            meta,
++            &meta,
+             response,
+             ty,
+             meta.mid,
+@@ -6394,6 +6448,43 @@ fn issue_borrowed_classic<S, T, const REQUESTS: usize>(
+ where
+     S: Storage + DatagramSlots + PendingCons + BodySlots + DedupSlots,
+     T: DatagramIo,
++{
++    let (tx, selected_block) =
++        encode_borrowed_classic::<S, T, REQUESTS>(engine, &meta, response, ty, key, oscore_ctx)?;
++    let keep = if selected_block && ty == Type::Acknowledgement {
++        remember_tx_reply(
++            engine,
++            tx,
++            meta.dest,
++            meta.mid,
++            meta.ty,
++            now_ms,
++            meta.request,
++            dedup_closed,
++        )
++    } else {
++        KeepTx::No
++    };
++    match keep {
++        KeepTx::Yes => send_pinned_tx(engine, io, tx, meta.dest),
++        KeepTx::No => finish_send(engine, io, tx, meta.dest, None),
++    }
++}
++
++// Packet selection and encoding finish before transport can suspend. In
++// particular, the Gap error response must not become a send-future owner.
++#[allow(clippy::too_many_arguments)]
++fn encode_borrowed_classic<S, T, const REQUESTS: usize>(
++    engine: &mut Engine<S>,
++    meta: &SendResponse<'_, S::Token>,
++    response: &Response<'_, S::Token>,
++    ty: Type,
++    key: BlockKey<S::Token>,
++    oscore_ctx: &mut oscore::Field<REQUESTS, S::Token>,
++) -> Result<(SlotId, bool), Error<T::Error>>
++where
++    S: Storage + DatagramSlots + PendingCons + BodySlots + DedupSlots,
++    T: crate::storage::DatagramTransport,
+ {
+     let key = response_block_key(key.token(), key.endpoint(), response)?;
+     let capacity =
+@@ -6420,10 +6511,11 @@ where
+             .map_err(BlockTransferError::from)
+             .map_err(Error::Block)?,
+     );
++    let gap_response;
+     let (selected, payload, block) =
+         match crate::storage::classic_block2_range(response.payload().len(), requested) {
+             Ok((value, range)) => (
+-                *response,
++                response,
+                 &response.payload()[range],
+                 Some(BlockOpt {
+                     value,
+@@ -6431,7 +6523,10 @@ where
+                     size2: None,
+                 }),
+             ),
+-            Err(BlockTransferError::Gap) => (Response::bad_request(), &[][..], None),
++            Err(BlockTransferError::Gap) => {
++                gap_response = Response::bad_request();
++                (&gap_response, &[][..], None)
++            }
+             Err(error) => return Err(Error::Block(error)),
+         };
+     let tx = if block.is_some() {
+@@ -6447,7 +6542,7 @@ where
+         ty,
+         meta.mid,
+         meta.token,
+-        &selected,
++        selected,
+         payload,
+         block,
+         meta.block1,
+@@ -6457,24 +6552,7 @@ where
+         let _ = engine.release_tx(tx);
+         return Err(error);
+     }
+-    let keep = if block.is_some() && ty == Type::Acknowledgement {
+-        remember_tx_reply(
+-            engine,
+-            tx,
+-            meta.dest,
+-            meta.mid,
+-            meta.ty,
+-            now_ms,
+-            meta.request,
+-            dedup_closed,
+-        )
+-    } else {
+-        KeepTx::No
+-    };
+-    match keep {
+-        KeepTx::Yes => send_pinned_tx(engine, io, tx, meta.dest),
+-        KeepTx::No => finish_send(engine, io, tx, meta.dest, None),
+-    }
++    Ok((tx, block.is_some()))
+ }
+ 
+ fn retained_body_matches<S: Storage + BodySlots>(
+@@ -6482,17 +6560,20 @@ fn retained_body_matches<S: Storage + BodySlots>(
+     id: SlotId,
+     payload: &[u8],
+ ) -> bool {
++    let body = engine.tx_body_payload(id);
++    let same_storage = body.is_some_and(|body| core::ptr::eq(body, payload));
+     #[cfg(feature = "diagnostics")]
+     {
+-        let candidates = engine
+-            .tx_body_payload(id)
+-            .filter(|body| body.len() == payload.len())
++        let candidates = body
++            .filter(|body| !same_storage && body.len() == payload.len())
+             .map_or(0, <[u8]>::len);
+         let work = engine.work_metrics_mut();
+         crate::storage::WorkMetrics::add(&mut work.body_compare_calls, 1);
+         crate::storage::WorkMetrics::add(&mut work.body_compare_candidate_bytes, candidates);
+     }
+-    engine.tx_body_payload(id) == Some(payload)
++    // Equal slice addresses include length. Different storage still requires
++    // exact bytes: an ETag alone cannot establish immutable body identity.
++    same_storage || engine.tx_body_payload(id) == Some(payload)
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+@@ -6603,7 +6684,7 @@ where
+             issue_classic(
+                 engine,
+                 io,
+-                meta,
++                &meta,
+                 &retained,
+                 ty,
+                 meta.mid,
+@@ -6644,7 +6725,7 @@ where
+         let result = issue_classic(
+             engine,
+             io,
+-            selected,
++            &selected,
+             response,
+             ty,
+             meta.mid,
+@@ -6668,7 +6749,7 @@ where
+ fn issue_classic<S, T, const REQUESTS: usize>(
+     engine: &mut Engine<S>,
+     io: &mut T,
+-    meta: SendResponse<'_, S::Token>,
++    meta: &SendResponse<'_, S::Token>,
+     response: &Response<'_, S::Token>,
+     ty: Type,
+     mid: MessageId,
+@@ -6682,40 +6763,11 @@ where
+     S: Storage + DatagramSlots + PendingCons + BodySlots + DedupSlots,
+     T: DatagramIo,
+ {
+-    let range = match meta.block2 {
+-        Some(requested) => engine.requested_block2(id, requested),
+-        None => engine.next_block2(id),
+-    };
+-    let issued = match range {
+-        Ok(issued) => issued,
+-        Err(BlockTransferError::Gap) => {
+-            let _ = engine.release_tx_body(id);
+-            let tx = admission::ordinary_tx(engine).ok_or(Error::Saturated)?;
+-            let error = Response::bad_request();
+-            if let Err(e) = encode_response(
+-                engine,
+-                meta.dest,
+-                tx,
+-                ty,
+-                mid,
+-                meta.token,
+-                &error,
+-                error.payload(),
+-                None,
+-                meta.block1,
+-                oscore_ctx,
+-                meta.oscore,
+-            ) {
+-                let _ = engine.release_tx(tx);
+-                return Err(e);
+-            }
+-            return finish_send(engine, io, tx, meta.dest, pending);
+-        }
+-        Err(e) => return Err(Error::Block(e)),
++    let (tx, issued) =
++        encode_classic::<S, T, REQUESTS>(engine, meta, response, ty, mid, id, oscore_ctx)?;
++    let Some(issued) = issued else {
++        return finish_send(engine, io, tx, meta.dest, pending);
+     };
+-    let tx = encode_issued::<S, T, REQUESTS>(
+-        engine, &meta, response, ty, mid, issued, false, oscore_ctx,
+-    )?;
+     let keep = if let Some((now_ms, closed)) = replay.filter(|_| ty == Type::Acknowledgement) {
+         remember_tx_reply(
+             engine,
+@@ -6752,6 +6804,58 @@ where
+     Ok(())
+ }
+ 
++// Range errors need an encoded packet, not a Response retained across I/O.
++#[allow(clippy::too_many_arguments)]
++fn encode_classic<S, T, const REQUESTS: usize>(
++    engine: &mut Engine<S>,
++    meta: &SendResponse<'_, S::Token>,
++    response: &Response<'_, S::Token>,
++    ty: Type,
++    mid: MessageId,
++    id: SlotId,
++    oscore_ctx: &mut oscore::Field<REQUESTS, S::Token>,
++) -> Result<(SlotId, Option<OutgoingBlock>), Error<T::Error>>
++where
++    S: Storage + DatagramSlots + BodySlots + DedupSlots,
++    T: crate::storage::DatagramTransport,
++{
++    let range = match meta.block2 {
++        Some(requested) => engine.requested_block2(id, requested),
++        None => engine.next_block2(id),
++    };
++    let issued = match range {
++        Ok(issued) => issued,
++        Err(BlockTransferError::Gap) => {
++            let _ = engine.release_tx_body(id);
++            let tx = admission::ordinary_tx(engine).ok_or(Error::Saturated)?;
++            let error = Response::bad_request();
++            if let Err(e) = encode_response(
++                engine,
++                meta.dest,
++                tx,
++                ty,
++                mid,
++                meta.token,
++                &error,
++                error.payload(),
++                None,
++                meta.block1,
++                oscore_ctx,
++                meta.oscore,
++            ) {
++                let _ = engine.release_tx(tx);
++                return Err(e);
++            }
++            return Ok((tx, None));
++        }
++        Err(e) => return Err(Error::Block(e)),
++    };
++    let tx = encode_issued::<S, T, REQUESTS>(
++        engine, meta, response, ty, mid, issued, false, oscore_ctx,
++    )?;
++    Ok((tx, Some(issued)))
++}
++
+ // RFC 9177 section 4.4: M=0 asks for exactly NUM; a non-aligned
+ // M=1 asks for NUM through the end of its MAX_PAYLOADS_SET. Reissuing
+ // selections never advances or acknowledges a retained transfer's window.
+@@ -7016,7 +7120,11 @@ where
+     S: Storage + DatagramSlots + PendingCons + BodySlots + DedupSlots,
+     T: DatagramIo,
+ {
+-    let selections = || meta.q_request.into_iter().flat_map(ParsedMessage::q_block2);
++    let selections = || {
++        meta.q_request
++            .into_iter()
++            .flat_map(QBlock2Request::q_block2)
++    };
+     // Validate every requested starting range before the first send, so a
+     // bad later option cannot turn a rejected request into partial output.
+     for q in selections() {
+@@ -7270,10 +7378,19 @@ fn encode_response<S: Storage + DatagramSlots, E, const REQUESTS: usize>(
+     oscore_ctx: &mut oscore::Field<REQUESTS, S::Token>,
+     oscore_req: oscore::Request,
+ ) -> Result<(), Error<E>> {
++    if block.is_none()
++        && block1.is_none()
++        && response.has_only_etag_and_format()
++        && !response.fresh_piv()
++    {
++        return encode_response_basic(
++            engine, peer, tx, ty, mid, token, response, payload, oscore_ctx, oscore_req,
++        );
++    }
+     // Without Location options at most eight entries are reachable: ETag,
+     // Observe, Content-Format, Max-Age, Block2/Q-Block2, Size2, Block1 and Echo.
+     // The full path preserves both eight-entry Location lists and all metadata.
+-    if response.location_paths().is_empty() && response.location_queries().is_empty() {
++    if !response.has_locations() {
+         encode_response_options::<S, E, REQUESTS, 8>(
+             engine, peer, tx, ty, mid, token, response, payload, block, block1, oscore_ctx,
+             oscore_req,
+@@ -7286,6 +7403,39 @@ fn encode_response<S: Storage + DatagramSlots, E, const REQUESTS: usize>(
+     }
+ }
+ 
++#[allow(clippy::too_many_arguments)]
++fn encode_response_basic<S: Storage + DatagramSlots, E, const REQUESTS: usize>(
++    engine: &mut Engine<S>,
++    peer: Endpoint,
++    tx: SlotId,
++    ty: Type,
++    mid: MessageId,
++    token: S::Token,
++    response: &Response<'_, S::Token>,
++    payload: &[u8],
++    oscore_ctx: &oscore::Field<REQUESTS, S::Token>,
++    oscore_req: oscore::Request,
++) -> Result<(), Error<E>> {
++    response.validate().map_err(Error::Response)?;
++    let etag = response.etag_bytes();
++    let format = response.format();
++    let encoded = format.unwrap_or(ContentFormat::TEXT_PLAIN).encode();
++    // These two option numbers are already ordered. Select only present
++    // values; the both-absent case is the empty slice 1..1. This avoids
++    // initializing and moving general option scratch on ordinary replies.
++    let options = [
++        Opt::etag(etag.unwrap_or(&[])),
++        Opt::content_format(&encoded),
++    ];
++    let start = usize::from(etag.is_none());
++    let end = if format.is_some() { 2 } else { 1 };
++    let msg = Message::new(ty, response.code(), mid)
++        .with_token(token)
++        .with_options(&options[start..end])
++        .with_payload(payload);
++    oscore::encode_message(oscore_ctx, peer, oscore_req, engine, tx, &msg)
++}
++
+ #[cold]
+ #[inline(never)]
+ #[allow(clippy::too_many_arguments)]
+@@ -7993,6 +8143,17 @@ struct BlockOpt {
+     size2: Option<usize>,
+ }
+ 
++// Borrow the parsed request's existing options descriptor without retaining
++// another slice or imposing the Token's auto traits on the shared reference.
++#[derive(Clone, Copy)]
++struct QBlock2Request<'a>(&'a &'a [u8]);
++
++impl<'a> QBlock2Request<'a> {
++    fn q_block2(self) -> crate::message::BlockOptions<'a> {
++        crate::message::BlockOptions::q_block2(self.0)
++    }
++}
++
+ #[derive(Clone, Copy)]
+ struct SendResponse<'a, K: OwnedToken = crate::message::Token> {
+     dest: Endpoint,
+@@ -8002,7 +8163,7 @@ struct SendResponse<'a, K: OwnedToken = crate::message::Token> {
+     no_response: NoResponse,
+     block2: Option<BlockValue>,
+     q_block2: Option<BlockValue>,
+-    q_request: Option<ParsedMessage<'a, K>>,
++    q_request: Option<QBlock2Request<'a>>,
+     /// Echo of the request Block1 (RFC 7959 §2.5 Continue / final).
+     block1: Option<BlockOpt>,
+     /// Request Partial IV when the inbound request was OSCORE-protected.
+diff --git a/src/app/notification_scratch_tests.rs b/src/app/notification_scratch_tests.rs
+index 84db031..42da9a7 100644
+--- a/src/app/notification_scratch_tests.rs
++++ b/src/app/notification_scratch_tests.rs
+@@ -173,37 +173,37 @@ fn notification_four_metadata_options_match_legacy_unprotected() {
+ #[cfg(feature = "oscore")]
+ #[test]
+ fn notification_four_metadata_options_match_legacy_protected() {
+-    let contexts = || {
+-        let mut store = oscore::Store::<4, 1>::new();
+-        let mut context = Some(
+-            crate::oscore::BoundedSecurityContext::derive(crate::oscore::DeriveParams {
+-                master_secret: &[0x11; 16],
+-                master_salt: &[],
+-                sender_id: &[1],
+-                recipient_id: &[2],
+-                id_context: &[],
+-            })
+-            .unwrap(),
+-        );
+-        store
+-            .install(
+-                Endpoint::v4([192, 0, 2, 1], 5683),
+-                [0x22; 32],
+-                1,
+-                &mut context,
+-            )
+-            .unwrap();
+-        let request = crate::oscore::RequestRef::from_kid(
+-            &[2],
+-            crate::oscore::PartialIv::from_seq(0).unwrap(),
++    notification_cases::<128>(protected_response_context);
++    notification_cases::<32>(protected_response_context);
++    notification_cases::<16>(protected_response_context);
++    notification_cases::<1>(protected_response_context);
++}
++
++#[cfg(feature = "oscore")]
++fn protected_response_context() -> (oscore::Store<4, 1>, oscore::Request) {
++    let mut store = oscore::Store::<4, 1>::new();
++    let mut context = Some(
++        crate::oscore::BoundedSecurityContext::derive(crate::oscore::DeriveParams {
++            master_secret: &[0x11; 16],
++            master_salt: &[],
++            sender_id: &[1],
++            recipient_id: &[2],
++            id_context: &[],
++        })
++        .unwrap(),
++    );
++    store
++        .install(
++            Endpoint::v4([192, 0, 2, 1], 5683),
++            [0x22; 32],
++            1,
++            &mut context,
+         )
+         .unwrap();
+-        (store, Some(request))
+-    };
+-    notification_cases::<128>(contexts);
+-    notification_cases::<32>(contexts);
+-    notification_cases::<16>(contexts);
+-    notification_cases::<1>(contexts);
++    let request =
++        crate::oscore::RequestRef::from_kid(&[2], crate::oscore::PartialIv::from_seq(0).unwrap())
++            .unwrap();
++    (store, Some(request))
+ }
+ 
+ #[test]
+@@ -230,3 +230,259 @@ fn notification_response_validation_precedes_slot_or_encoding_failure() {
+         Err(Error::Response(ResponseError::EtagLength)),
+     );
+ }
++
++// Force the original general builder as an oracle; do not let both sides choose
++// the specialization. The caller-provided payload intentionally differs from
++// Response's payload, as it can after App selects a representation range.
++#[allow(clippy::too_many_arguments)]
++fn response_encoding_oracle<const BYTES: usize>(
++    contexts: impl Fn() -> (oscore::Store<4, 1>, oscore::Request),
++    response: &Response<'_, Token>,
++    ty: Type,
++    block: Option<BlockOpt>,
++    block1: Option<BlockOpt>,
++    occupied: bool,
++) -> Result<(), Error<Infallible>> {
++    type Base = profiles::Constrained;
++    let mut candidate =
++        Engine::from_storage(Memory::<profiles::WithTxDatagram<Base, 1, BYTES>>::new());
++    let mut general =
++        Engine::from_storage(Memory::<profiles::WithTxDatagram<Base, 1, BYTES>>::new());
++    let tx = candidate.acquire_tx().unwrap();
++    let old_tx = general.acquire_tx().unwrap();
++    if occupied {
++        for engine in [&mut candidate, &mut general] {
++            let mut access = engine.access_tx_mut(tx).unwrap();
++            access.bytes_mut()[0] = 0xa5;
++            access.set_len(1).unwrap();
++        }
++    }
++    let (mut context, request) = contexts();
++    let (mut old_context, old_request) = contexts();
++    let peer =
++        oscore::resolve::<Infallible, 4, Token>(&context, Endpoint::v4([192, 0, 2, 1], 5683))
++            .unwrap();
++    let token = Token::new(b"12345678").unwrap();
++    let result = encode_response::<_, Infallible, 4>(
++        &mut candidate,
++        peer,
++        tx,
++        ty,
++        MessageId::new(0x1234),
++        token,
++        response,
++        b"selected",
++        block,
++        block1,
++        &mut context,
++        request,
++    );
++    let old_result = encode_response_options::<_, Infallible, 4, 24>(
++        &mut general,
++        peer,
++        old_tx,
++        ty,
++        MessageId::new(0x1234),
++        token,
++        response,
++        b"selected",
++        block,
++        block1,
++        &mut old_context,
++        old_request,
++    );
++    assert_eq!(
++        result, old_result,
++        "capacity={BYTES}, occupied={occupied}, response={response:?}"
++    );
++    assert_eq!(
++        candidate.storage().tx_payload(tx),
++        general.storage().tx_payload(old_tx)
++    );
++    assert!(!candidate.tx_is_pinned(tx));
++    assert!(!general.tx_is_pinned(old_tx));
++    if result.is_ok() && !oscore::is_active(&context) {
++        assert_eq!(candidate.decode_tx(tx).unwrap().payload(), b"selected");
++    }
++    // A subsequent fresh-PIV notification observes sequence/binding state left
++    // by either success or refusal, including replacement of a retained packet.
++    let probe = Response::content(b"").observe(0);
++    let next = encode_notification::<_, Infallible, 4>(
++        &mut candidate,
++        peer,
++        tx,
++        Type::NonConfirmable,
++        MessageId::new(0x1235),
++        token,
++        &probe,
++        b"",
++        &mut context,
++        request,
++    );
++    let old_next = encode_notification::<_, Infallible, 4>(
++        &mut general,
++        peer,
++        old_tx,
++        Type::NonConfirmable,
++        MessageId::new(0x1235),
++        token,
++        &probe,
++        b"",
++        &mut old_context,
++        old_request,
++    );
++    assert_eq!(next, old_next);
++    assert_eq!(
++        candidate.storage().tx_payload(tx),
++        general.storage().tx_payload(old_tx)
++    );
++    assert!(!candidate.tx_is_pinned(tx));
++    assert!(!general.tx_is_pinned(old_tx));
++    result
++}
++
++fn ordinary_response_cases(contexts: impl Copy + Fn() -> (oscore::Store<4, 1>, oscore::Request)) {
++    for mask in 0..4 {
++        // Zero has an empty encoded value but must retain the Content-Format
++        // option. The other values exercise both integer-width boundaries.
++        for format in [0, 255, 256, 65535] {
++            let mut response = Response::content(b"original");
++            if mask & 1 != 0 {
++                response = response.etag(b"12345678");
++            }
++            if mask & 2 != 0 {
++                response = response.content_format(ContentFormat::new(format));
++            }
++            for ty in [Type::Acknowledgement, Type::NonConfirmable] {
++                assert!(
++                    response_encoding_oracle::<128>(contexts, &response, ty, None, None, false)
++                        .is_ok()
++                );
++            }
++        }
++    }
++    let base = Response::content(b"original")
++        .etag(b"fixture")
++        .content_format(ContentFormat::OCTET_STREAM);
++    for occupied in [false, true] {
++        assert!(
++            response_encoding_oracle::<16>(
++                contexts,
++                &base,
++                Type::Acknowledgement,
++                None,
++                None,
++                occupied
++            )
++            .is_err()
++        );
++        assert!(
++            response_encoding_oracle::<128>(
++                contexts,
++                &base,
++                Type::Acknowledgement,
++                None,
++                None,
++                occupied
++            )
++            .is_ok()
++        );
++    }
++    // Each excluded owner independently forces the general route, including
++    // present-but-zero/empty values that must not be mistaken for absence.
++    for response in [
++        base.max_age(0),
++        base.observe(0),
++        base.echo(crate::message::Echo::new(b"echo").unwrap()),
++        base.location_path(""),
++        base.location_query(""),
++        base.with_fresh_piv(),
++    ] {
++        assert!(
++            response_encoding_oracle::<128>(
++                contexts,
++                &response,
++                Type::NonConfirmable,
++                None,
++                None,
++                false
++            )
++            .is_ok()
++        );
++    }
++    for q_block in [false, true] {
++        let block = BlockOpt {
++            value: BlockValue::new(0, true, 0).unwrap(),
++            q_block,
++            size2: Some(1234),
++        };
++        assert!(
++            response_encoding_oracle::<128>(
++                contexts,
++                &base,
++                Type::Acknowledgement,
++                Some(block),
++                None,
++                false
++            )
++            .is_ok()
++        );
++        assert!(
++            response_encoding_oracle::<128>(
++                contexts,
++                &base,
++                Type::Acknowledgement,
++                None,
++                Some(block),
++                false
++            )
++            .is_ok()
++        );
++    }
++    for response in [
++        Response::content(b"original").etag(&[]),
++        Response::content(b"original").location_path("."),
++        Response::content_copy(&[0; INLINE_PAYLOAD + 1]),
++    ] {
++        let expected = response.validate().unwrap_err();
++        assert_eq!(
++            response_encoding_oracle::<1>(
++                contexts,
++                &response,
++                Type::Acknowledgement,
++                None,
++                None,
++                false
++            ),
++            Err(Error::Response(expected))
++        );
++    }
++}
++
++#[test]
++fn ordinary_response_direct_options_match_general_unprotected() {
++    ordinary_response_cases(|| (oscore::Store::<4, 1>::new(), oscore::no_request()));
++}
++
++#[cfg(feature = "oscore")]
++#[test]
++fn ordinary_response_direct_options_match_general_protected() {
++    ordinary_response_cases(protected_response_context);
++    let contexts = || {
++        let (store, _) = protected_response_context();
++        (store, oscore::no_request())
++    };
++    for occupied in [false, true] {
++        assert_eq!(
++            response_encoding_oracle::<128>(
++                contexts,
++                &Response::content(b"original"),
++                Type::Acknowledgement,
++                None,
++                None,
++                occupied
++            ),
++            Err(Error::Oscore(crate::oscore::Error::Context)),
++        );
++    }
++}
+diff --git a/src/app/response.rs b/src/app/response.rs
+index 5865731..c177016 100644
+--- a/src/app/response.rs
++++ b/src/app/response.rs
+@@ -96,6 +96,27 @@ impl<T: OwnedToken> IntoResponse<T> for Response<'static, T> {
+     }
+ }
+ 
++#[derive(Clone, Copy)]
++struct Received<'a, T: OwnedToken> {
++    header: crate::message::Header,
++    token: T,
++    options: &'a [u8],
++    origin: &'a super::client::ReplyMeta,
++}
++
++impl<T: OwnedToken> core::fmt::Debug for Received<'_, T> {
++    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
++        // Keep the retained raw header/payload private and respect Token::Debug.
++        f.debug_struct("Received")
++            .field("header", &self.header)
++            .field("token", &self.token)
++            .field("options", &self.options)
++            .field("at_ms", &self.origin.received_at_ms())
++            .field("peer", &self.origin.peer())
++            .finish()
++    }
++}
++
+ /// Owned response: handler intent, or a client snapshot from
+ /// [`App::take_response`](super::App::take_response).
+ ///
+@@ -144,8 +165,7 @@ impl<T: OwnedToken> IntoResponse<T> for Response<'static, T> {
+ #[derive(Clone, Copy, Debug)]
+ pub struct Response<'a, T: OwnedToken = Token> {
+     invalid: Option<ResponseError>,
+-    received_header: Option<crate::message::ParsedMessage<'a, T>>,
+-    received_at_ms: Option<u64>,
++    received: Option<Received<'a, T>>,
+     code: Code,
+     payload: Payload<'a>,
+     content_format: Option<ContentFormat>,
+@@ -153,15 +173,13 @@ pub struct Response<'a, T: OwnedToken = Token> {
+     etag_len: u8,
+     max_age: Option<u32>,
+     observe: Option<u32>,
+-    ty: Option<Type>,
+-    token: Option<T>,
+-    mid: Option<MessageId>,
+-    peer: Option<Endpoint>,
+     assembled: Option<&'a [u8]>,
+     echo: Option<Echo>,
+-    location_path: [&'a str; LOCATION_MAX],
++    // Ordinary responses need no Location backing initialized. Materialize each
++    // bounded array on its first valid append; empty strings remain valid values.
++    location_path: Option<[&'a str; LOCATION_MAX]>,
+     location_path_len: u8,
+-    location_query: [&'a str; LOCATION_MAX],
++    location_query: Option<[&'a str; LOCATION_MAX]>,
+     location_query_len: u8,
+     separate: bool,
+     deferred: bool,
+@@ -177,8 +195,7 @@ impl<'a, T: OwnedToken> Response<'a, T> {
+     pub const fn new(code: Code) -> Self {
+         Self {
+             invalid: None,
+-            received_header: None,
+-            received_at_ms: None,
++            received: None,
+             code,
+             payload: Payload::Empty,
+             content_format: None,
+@@ -186,15 +203,11 @@ impl<'a, T: OwnedToken> Response<'a, T> {
+             etag_len: 0,
+             max_age: None,
+             observe: None,
+-            ty: None,
+-            token: None,
+-            mid: None,
+-            peer: None,
+             assembled: None,
+             echo: None,
+-            location_path: [""; LOCATION_MAX],
++            location_path: None,
+             location_path_len: 0,
+-            location_query: [""; LOCATION_MAX],
++            location_query: None,
+             location_query_len: 0,
+             separate: false,
+             deferred: false,
+@@ -209,7 +222,10 @@ impl<'a, T: OwnedToken> Response<'a, T> {
+     /// assembly time does not extend Max-Age. Handler-created intents return `None`.
+     #[must_use]
+     pub const fn received_at_ms(&self) -> Option<u64> {
+-        self.received_at_ms
++        match self.received {
++            Some(ref received) => Some(received.origin.received_at_ms()),
++            None => None,
++        }
+     }
+ 
+     /// All received options in wire order, including unknown elective options.
+@@ -218,19 +234,11 @@ impl<'a, T: OwnedToken> Response<'a, T> {
+     /// elective values. Handler-created responses have no received header and
+     /// yield an empty iterator. These bytes borrow App's completed-reply hold.
+     pub fn received_options(&self) -> impl Iterator<Item = crate::message::Opt<'_>> {
+-        self.received_header
+-            .into_iter()
+-            .flat_map(|header| header.options())
+-    }
+-
+-    pub(crate) fn with_received_header(
+-        mut self,
+-        header: crate::message::ParsedMessage<'a, T>,
+-        received_at_ms: u64,
+-    ) -> Self {
+-        self.received_header = Some(header);
+-        self.received_at_ms = Some(received_at_ms);
+-        self
++        crate::message::Options::new(
++            self.received
++                .as_ref()
++                .map_or(&[], |received| received.options),
++        )
+     }
+ 
+     /// Check payload and option bounds before returning or sending this response.
+@@ -608,7 +616,14 @@ impl<'a, T: OwnedToken> Response<'a, T> {
+         {
+             return self.invalid(ResponseError::LocationDotSegment);
+         }
+-        self.location_path[n] = segment;
++        match &mut self.location_path {
++            Some(values) => values[n] = segment,
++            None => {
++                let mut values = [""; LOCATION_MAX];
++                values[n] = segment;
++                self.location_path = Some(values);
++            }
++        }
+         self.location_path_len += 1;
+         self
+     }
+@@ -632,21 +647,46 @@ impl<'a, T: OwnedToken> Response<'a, T> {
+         if n >= LOCATION_MAX || query.len() > 255 {
+             return self.invalid(ResponseError::LocationQueryBounds);
+         }
+-        self.location_query[n] = query;
++        match &mut self.location_query {
++            Some(values) => values[n] = query,
++            None => {
++                let mut values = [""; LOCATION_MAX];
++                values[n] = query;
++                self.location_query = Some(values);
++            }
++        }
+         self.location_query_len += 1;
+         self
+     }
+ 
++    // Counts decide ordinary encoding without borrowing either optional array.
++    pub(crate) const fn has_locations(&self) -> bool {
++        self.location_path_len != 0 || self.location_query_len != 0
++    }
++
++    pub(crate) const fn has_only_etag_and_format(&self) -> bool {
++        !self.has_locations()
++            && self.observe.is_none()
++            && self.max_age.is_none()
++            && self.echo.is_none()
++    }
++
+     /// Location-Path segments in insertion order.
+     #[must_use]
+     pub fn location_paths(&self) -> &[&str] {
+-        &self.location_path[..usize::from(self.location_path_len)]
++        match &self.location_path {
++            Some(values) => &values[..usize::from(self.location_path_len)],
++            None => &[],
++        }
+     }
+ 
+     /// Location-Query values in insertion order.
+     #[must_use]
+     pub fn location_queries(&self) -> &[&str] {
+-        &self.location_query[..usize::from(self.location_query_len)]
++        match &self.location_query {
++            Some(values) => &values[..usize::from(self.location_query_len)],
++            None => &[],
++        }
+     }
+ 
+     /// Defer application work accepted by [`super::App::poll_with`].
+@@ -852,6 +892,16 @@ impl<'a, T: OwnedToken> Response<'a, T> {
+         }
+     }
+ 
++    // Preserve the stronger lifetime only for the explicit static variant.
++    // A Response<'static> can also own inline bytes; borrowing those past the
++    // response's lifetime would not be valid.
++    pub(crate) fn static_payload(&self) -> Option<&'static [u8]> {
++        match self.payload {
++            Payload::Static(bytes) => Some(bytes),
++            _ => None,
++        }
++    }
++
+     /// Whether [`Self::payload`] is shorter than the source that produced it.
+     ///
+     /// `true` after [`Self::payload_copy`] / [`super::App::take_response`]
+@@ -905,25 +955,37 @@ impl<'a, T: OwnedToken> Response<'a, T> {
+     /// populated it.
+     #[must_use]
+     pub const fn ty(&self) -> Option<Type> {
+-        self.ty
++        match self.received {
++            Some(ref received) => Some(received.header.ty()),
++            None => None,
++        }
+     }
+ 
+     /// Token on a client snapshot, if populated (same as [`Call::token`](super::Call::token)).
+     #[must_use]
+     pub const fn token(&self) -> Option<T> {
+-        self.token
++        match self.received {
++            Some(ref received) => Some(received.token),
++            None => None,
++        }
+     }
+ 
+     /// Message ID of the matched datagram on a client snapshot, if populated.
+     #[must_use]
+     pub const fn message_id(&self) -> Option<MessageId> {
+-        self.mid
++        match self.received {
++            Some(ref received) => Some(received.header.message_id()),
++            None => None,
++        }
+     }
+ 
+     /// Remote endpoint that sent a client-snapshot response, if populated.
+     #[must_use]
+     pub const fn peer(&self) -> Option<Endpoint> {
+-        self.peer
++        match self.received {
++            Some(ref received) => Some(received.origin.peer()),
++            None => None,
++        }
+     }
+ 
+     /// Complete assembled response body, if Block2 / Q-Block2 filled an RX body area.
+@@ -946,21 +1008,23 @@ impl<'a, T: OwnedToken> Response<'a, T> {
+         self.assembled.is_some()
+     }
+ 
+-    pub(crate) fn from_client(
+-        code: Code,
+-        ty: Type,
+-        token: T,
+-        mid: MessageId,
+-        peer: Endpoint,
++    pub(super) fn from_client(
++        header: crate::message::ParsedMessage<'a, T>,
++        origin: &'a super::client::ReplyMeta,
+         payload: &[u8],
+         content_format: Option<ContentFormat>,
+     ) -> Self {
+-        let mut response = Self::new(code).payload_copy(payload);
++        let mut response = Self::new(header.code()).payload_copy(payload);
+         response.content_format = content_format;
+-        response.ty = Some(ty);
+-        response.token = Some(token);
+-        response.mid = Some(mid);
+-        response.peer = Some(peer);
++        // The retained header already owns type, Token, and Message ID. Keep
++        // their identity together instead of copying each into another field.
++        // Options already borrow this immutable inbox hold; origin can too.
++        response.received = Some(Received {
++            header: header.header(),
++            token: header.token(),
++            options: header.options_bytes(),
++            origin,
++        });
+         response
+     }
+ 
+@@ -1469,4 +1533,106 @@ mod assembled_hold_tests {
+         assert!(!full.payload_truncated());
+         assert_eq!(full.payload_src_len(), 200);
+     }
++    #[cfg(feature = "std")]
++    #[test]
++    fn edited_snapshot_debug_does_not_reveal_retained_payload() {
++        use crate::message::{Message, MessageId, Token, decode, encode};
++        use crate::storage::Endpoint;
++        let payload = [165; INLINE_PAYLOAD];
++        let message =
++            Message::con(Code::CONTENT, MessageId::new(1), Token::EMPTY).with_payload(&payload);
++        let mut wire = [0; 256];
++        let len = encode(&message, &mut wire).unwrap();
++        let parsed = decode(&wire[..len]).unwrap();
++        let origin = super::super::client::ReplyMeta::from_parsed(
++            &parsed,
++            Endpoint::v4([192, 0, 2, 8], 5683),
++            0,
++        )
++        .unwrap();
++        let response: Response<'_, Token> = origin.response().payload_copy(b"edited");
++        let debug = std::format!("{response:?}");
++        assert!(
++            !debug.contains("165, 165"),
++            "retained payload leaked: {debug}"
++        );
++    }
++
++    #[test]
++    fn location_empty_first_values_and_overflow_preserve_both_arrays() {
++        const FIRST: Response<'static, crate::message::Token> = Response::created()
++            .with_static(b"payload")
++            .location_path("")
++            .location_query("");
++        assert_eq!(FIRST.location_paths(), &[""]);
++        assert_eq!(FIRST.location_queries(), &[""]);
++        assert_eq!(FIRST.validate(), Ok(()));
++        let values = ["", "one", "two", "three", "four", "five", "six", "seven"];
++        let mut full = FIRST;
++        for value in &values[1..] {
++            full = full.location_path(value).location_query(value);
++        }
++        assert_eq!(full.location_paths(), &values);
++        assert_eq!(full.location_queries(), &values);
++        assert_eq!(full.validate(), Ok(()));
++        // Count refusal precedes dot-segment validation and changes no entries.
++        let path_overflow = full.location_path(".");
++        let query_overflow = full.location_query("overflow");
++        assert_eq!(
++            path_overflow.validate(),
++            Err(ResponseError::LocationPathBounds)
++        );
++        assert_eq!(
++            query_overflow.validate(),
++            Err(ResponseError::LocationQueryBounds)
++        );
++        for response in [path_overflow, query_overflow] {
++            assert_eq!(response.location_paths(), &values);
++            assert_eq!(response.location_queries(), &values);
++            assert_eq!(response.payload(), b"payload");
++        }
++    }
++
++    #[test]
++    fn received_identity_is_atomic_and_survives_response_edits() {
++        use crate::message::{ContentFormat, Message, MessageId, Opt, Token, Type, decode, encode};
++        use crate::storage::Endpoint;
++        let token = Token::new(b"identity").unwrap();
++        let mid = MessageId::new(0x1234);
++        let peer = Endpoint::v4([192, 0, 2, 8], 5683);
++        let format = ContentFormat::TEXT_PLAIN.encode();
++        let options = [Opt::content_format(&format)];
++        let message = Message::new(Type::Acknowledgement, Code::CONTENT, mid)
++            .with_token(token)
++            .with_options(&options)
++            .with_payload(b"original");
++        let mut wire = [0; 64];
++        let len = encode(&message, &mut wire).unwrap();
++        let header = decode(&wire[..len]).unwrap();
++        let origin = super::super::client::ReplyMeta::from_parsed(&header, peer, 0).unwrap();
++        let response: Response<'_, Token> = origin
++            .response()
++            .content_format(ContentFormat::OCTET_STREAM)
++            .location_path("receipt")
++            .payload_copy(b"edited");
++        assert_eq!(response.received_at_ms(), Some(0));
++        assert_eq!(response.ty(), Some(Type::Acknowledgement));
++        assert_eq!(response.token(), Some(token));
++        assert_eq!(response.message_id(), Some(mid));
++        assert_eq!(response.peer(), Some(peer));
++        assert_eq!(response.format(), Some(ContentFormat::OCTET_STREAM));
++        assert_eq!(response.payload(), b"edited");
++        assert_eq!(response.location_paths(), &["receipt"]);
++        assert_eq!(
++            response.received_options().next().unwrap().value(),
++            format.as_bytes()
++        );
++        let handler = Response::<Token>::content(b"handler");
++        assert_eq!(handler.received_at_ms(), None);
++        assert_eq!(handler.ty(), None);
++        assert_eq!(handler.token(), None);
++        assert_eq!(handler.message_id(), None);
++        assert_eq!(handler.peer(), None);
++        assert!(handler.received_options().next().is_none());
++    }
+ }
+diff --git a/src/app/tests.rs b/src/app/tests.rs
+index 06fb0c8..4bd3246 100644
+--- a/src/app/tests.rs
++++ b/src/app/tests.rs
+@@ -6704,6 +6704,52 @@ fn qblock2_continuation_refuses_changed_identity_or_body_then_recovers() {
+     }
+ }
+ 
++#[test]
++fn static_body_matching_checks_length_and_distinct_storage_bytes() {
++    use super::retained_body_matches;
++    use crate::storage::BodySlots;
++    static BODY: [u8; 64] = [b'A'; 64];
++    static OTHER: [u8; 32] = [b'B'; 32];
++    let mut app = App::profile::<profiles::Default>()
++        .deterministic_for_tests()
++        .block_wise::<true>()
++        .allow_unprotected()
++        .bind(WideLoopback::default())
++        .unwrap();
++    let key = BlockKey::new(
++        Token::new(b"same").unwrap(),
++        Endpoint::v4([192, 0, 2, 1], 5683),
++    )
++    .with_identity(crate::storage::BodyTag::new(b"v1").unwrap());
++    let first = &BODY[..32];
++    let equal = &BODY[32..];
++    assert_ne!(first.as_ptr(), equal.as_ptr());
++    let id = app.engine.start_static_q_block2(key, first, 0).unwrap();
++    assert!(core::ptr::eq(
++        app.engine.tx_body_payload(id).unwrap(),
++        first
++    ));
++    assert!(retained_body_matches(&mut app.engine, id, first));
++    assert!(!retained_body_matches(&mut app.engine, id, &first[..16]));
++    assert!(retained_body_matches(&mut app.engine, id, equal));
++    assert!(!retained_body_matches(&mut app.engine, id, &OTHER));
++
++    // Advanced mutation must break the address shortcut and preserve exact
++    // comparison even when a caller restores an earlier transfer descriptor.
++    let before = app.engine.tx_body_transfer(id).unwrap();
++    {
++        let mut access = app.engine.storage_mut().access_tx_body_mut(id).unwrap();
++        access.bytes_mut()[0] = b'B';
++    }
++    app.engine
++        .storage_mut()
++        .set_tx_body_transfer(id, before)
++        .unwrap();
++    assert!(!retained_body_matches(&mut app.engine, id, first));
++    assert_eq!(app.engine.tx_body_payload(id).unwrap()[0], b'B');
++    app.engine.release_tx_body(id).unwrap();
++}
++
+ #[test]
+ fn response_option_bounds_are_typed_sticky_and_preserve_exact_values() {
+     use crate::ResponseError;
+@@ -11756,10 +11802,23 @@ fn qblock2_repeated_aligned_requests_reselect_without_advancing_or_losing_state(
+         let token = Token::new(b"q").unwrap();
+         let key =
+             BlockKey::new(token, peer).with_identity(crate::storage::BodyTag::new(b"v1").unwrap());
+-        let id = app.engine.start_q_block2(key, &BODY, 0).unwrap();
+-        for _ in 0..10 {
+-            app.engine.next_q_block2(id).unwrap();
+-        }
++        // Admit through the handler so this also checks the static-payload
++        // retention path, rather than preloading a copied Engine snapshot.
++        let q = BlockValue::from_size(0, true, 16).unwrap().encode();
++        let opts = [Opt::uri_path("large"), Opt::q_block2(&q)];
++        let request = Message::new(Type::NonConfirmable, Code::GET, MessageId::new(99))
++            .with_token(token)
++            .with_options(&opts);
++        let mut wire = [0; 64];
++        let n = encode(&request, &mut wire).unwrap();
++        app.transport_mut().inbox = Some((peer, wire, n));
++        app.poll(0).unwrap();
++        assert_eq!(app.transport().count, 10);
++        let id = super::response_body_for(&app.engine, key).unwrap();
++        assert!(core::ptr::eq(
++            app.engine.tx_body_payload(id).unwrap(),
++            BODY.as_slice()
++        ));
+         let mut previous = app.engine.tx_body_transfer(id).unwrap();
+         // Initial/full-body reselection, valid Continue, repeated Continue,
+         // old-set reselection, an invalid future Continue, then completion.
+@@ -14634,6 +14693,182 @@ fn deferred_selection_preserves_get_validator_behavior() {
+     }
+ }
+ 
++#[test]
++fn deferred_selection_borrowed_match_agrees_with_serialized_identity() {
++    use crate::message::{OwnedToken, decode_with_token};
++
++    fn selection<K: OwnedToken>(
++        message: &Message<'_, K>,
++        payload: &[u8],
++    ) -> super::DeferredSelection {
++        let mut wire = [0; 2048];
++        let n = encode(message, &mut wire).unwrap();
++        let parsed = decode_with_token::<K>(&wire[..n]).unwrap();
++        super::DeferredSelection::from_parts(&parsed, payload).unwrap()
++    }
++    fn check<K: OwnedToken>(
++        stored: &super::DeferredSelection,
++        message: &Message<'_, K>,
++        payload: &[u8],
++        expected: bool,
++    ) {
++        let mut wire = [0; 2048];
++        let n = encode(message, &mut wire).unwrap();
++        let parsed = decode_with_token::<K>(&wire[..n]).unwrap();
++        let old = super::DeferredSelection::from_parts(&parsed, payload);
++        assert_eq!(old.ok().as_ref() == Some(stored), expected);
++        assert_eq!(stored.matches_parts(&parsed, payload), expected);
++    }
++
++    let token = Token::new(b"token").unwrap();
++    let options = [
++        Opt::new(OptionNumber::IF_MATCH, b"v0"),
++        Opt::etag(b"v1"),
++        Opt::uri_path(""),
++        Opt::uri_path("a"),
++        Opt::uri_path("b"),
++        Opt::new(OptionNumber::CONTENT_FORMAT, &[0]),
++        Opt::uri_query(""),
++        Opt::new(OptionNumber::ACCEPT, &[0]),
++    ];
++    let message = Message::con(Code::FETCH, MessageId::new(1), token)
++        .with_options(&options)
++        .with_payload(b"wire fragment");
++    let stored = selection(&message, b"assembled selection");
++    check(&stored, &message, b"assembled selection", true);
++    check(&stored, &message, b"changed selection", false);
++    check(
++        &stored,
++        &message.with_token(Token::new(b"other").unwrap()),
++        b"assembled selection",
++        false,
++    );
++    let changed_method = Message::con(Code::GET, MessageId::new(1), token).with_options(&options);
++    check(&stored, &changed_method, b"assembled selection", false);
++    let changed_transport = Message::non(Code::FETCH, MessageId::new(999), token)
++        .with_options(&options)
++        .with_payload(b"another fragment");
++    check(&stored, &changed_transport, b"assembled selection", true);
++
++    let mut reordered = options;
++    reordered.swap(3, 4);
++    check(
++        &stored,
++        &message.with_options(&reordered),
++        b"assembled selection",
++        false,
++    );
++    let mut changed = options;
++    changed[5] = Opt::new(OptionNumber::CONTENT_FORMAT, &[]);
++    check(
++        &stored,
++        &message.with_options(&changed),
++        b"assembled selection",
++        false,
++    );
++    let no_empty_path = [
++        options[0], options[1], options[3], options[4], options[5], options[6], options[7],
++    ];
++    check(
++        &stored,
++        &message.with_options(&no_empty_path),
++        b"assembled selection",
++        false,
++    );
++    let ignored = [
++        options[0],
++        options[1],
++        Opt::observe_register(),
++        options[2],
++        options[3],
++        options[4],
++        options[5],
++        options[6],
++        options[7],
++        Opt::new(OptionNumber::BLOCK2, &[0]),
++        Opt::new(OptionNumber::ECHO, b"fresh"),
++    ];
++    check(
++        &stored,
++        &message.with_options(&ignored),
++        b"assembled selection",
++        true,
++    );
++    let mut changed_tag = options;
++    changed_tag[1] = Opt::etag(b"v2");
++    check(
++        &stored,
++        &message.with_options(&changed_tag),
++        b"assembled selection",
++        false,
++    );
++    let get = selection(&changed_method, b"ignored body");
++    check(
++        &get,
++        &changed_method.with_options(&changed_tag),
++        b"different body",
++        true,
++    );
++
++    type LongToken = crate::message::extended::Token<32>;
++    let long = LongToken::new(&[7; 16]).unwrap();
++    let extended = message.with_token(long);
++    let stored = selection(&extended, b"assembled selection");
++    check(&stored, &extended, b"assembled selection", true);
++    let mut other = [7; 16];
++    other[15] = 8;
++    check(
++        &stored,
++        &extended.with_token(LongToken::new(&other).unwrap()),
++        b"assembled selection",
++        false,
++    );
++
++    // Equality cannot hide admission overflow: an extra selected empty option
++    // changes the sequence, and a byte beyond the admitted 512 changes its value.
++    let repeated = [Opt::uri_path(""); super::client::RESPONSE_OPTION_COUNT + 1];
++    let request = Message::con(Code::GET, MessageId::new(1), Token::EMPTY)
++        .with_options(&repeated[..super::client::RESPONSE_OPTION_COUNT]);
++    let stored = selection(&request, &[]);
++    check(&stored, &request, &[], true);
++    check(&stored, &request.with_options(&repeated), &[], false);
++    let value = [b'x'; 505];
++    let fits = [Opt::new(OptionNumber::URI_QUERY, &value[..504])];
++    let too_large = [Opt::new(OptionNumber::URI_QUERY, &value)];
++    let request = request.with_options(&fits);
++    let stored = selection(&request, &[]);
++    assert_eq!(stored.len, super::client::RESPONSE_OPTION_BYTES);
++    check(&stored, &request, &[], true);
++    check(&stored, &request.with_options(&too_large), &[], false);
++}
++
++#[test]
++fn deferred_selection_borrowed_match_refuses_invalid_retained_prefix() {
++    let message = Message::con(Code::GET, MessageId::new(1), Token::EMPTY);
++    let mut wire = [0; 16];
++    let n = encode(&message, &mut wire).unwrap();
++    let parsed = decode(&wire[..n]).unwrap();
++    let stored = super::DeferredSelection::from_request(&parsed).unwrap();
++    for len in [0, 3, super::client::RESPONSE_OPTION_BYTES + 1] {
++        let mut invalid = stored;
++        invalid.len = len;
++        assert!(!invalid.matches_parts(&parsed, &[]));
++    }
++    let mut invalid = stored;
++    invalid.bytes[0] = 0;
++    assert!(!invalid.matches_parts(&parsed, &[]));
++    let mut invalid = stored;
++    invalid.bytes[0] &= !0x30; // Valid CON, but admission always retains NON.
++    assert!(!invalid.matches_parts(&parsed, &[]));
++    let mut invalid = stored;
++    invalid.bytes[3] = 1; // Admission always canonicalizes the MID to zero.
++    assert!(!invalid.matches_parts(&parsed, &[]));
++    let mut invalid = stored;
++    invalid.bytes[invalid.len] = 0xf0; // Reserved option delta.
++    invalid.len += 1;
++    assert!(!invalid.matches_parts(&parsed, &[]));
++}
++
+ fn terminal_q_app(
+     peer: Endpoint,
+     token: Token,
+diff --git a/src/message/decode.rs b/src/message/decode.rs
+index 864d370..152e631 100644
+--- a/src/message/decode.rs
++++ b/src/message/decode.rs
+@@ -62,6 +62,11 @@ impl<'a, T: OwnedToken> ParsedMessage<'a, T> {
+         }
+     }
+ 
++    /// Borrow the validated options descriptor without copying the packet view.
++    pub(crate) const fn options_bytes(&self) -> &&'a [u8] {
++        &self.options
++    }
++
+     /// Parsed header.
+     #[must_use]
+     pub const fn header(self) -> Header {
+diff --git a/src/message/value.rs b/src/message/value.rs
+index 7366a1d..0f19eb6 100644
+--- a/src/message/value.rs
++++ b/src/message/value.rs
+@@ -500,6 +500,17 @@ pub struct BlockOptions<'a> {
+     inner: OptionsByNumber<'a>,
+ }
+ 
++impl<'a> BlockOptions<'a> {
++    pub(crate) const fn q_block2(bytes: &'a [u8]) -> Self {
++        Self {
++            inner: OptionsByNumber {
++                inner: Options::new(bytes),
++                number: OptionNumber::Q_BLOCK2,
++            },
++        }
++    }
++}
++
+ impl<'a> Iterator for BlockOptions<'a> {
+     type Item = Result<BlockValue, ValueError>;
+ 
+@@ -955,9 +966,7 @@ impl<'a, T: super::OwnedToken> ParsedMessage<'a, T> {
+     /// Q-Block2 values in wire order. Repeatable; same format as [`BlockValue`].
+     #[must_use]
+     pub fn q_block2(self) -> BlockOptions<'a> {
+-        BlockOptions {
+-            inner: self.get_options(OptionNumber::Q_BLOCK2),
+-        }
++        BlockOptions::q_block2(self.options_bytes())
+     }
+ 
+     /// Observe, if present.
+diff --git a/src/storage/alloc_memory.rs b/src/storage/alloc_memory.rs
+index 884a356..052d3ee 100644
+--- a/src/storage/alloc_memory.rs
++++ b/src/storage/alloc_memory.rs
+@@ -1084,6 +1084,18 @@ impl<T: OwnedToken> BodySlots for AllocMemory<T> {
+             .start_outgoing(key, BlockRole::OutgoingBlock2, body, szx)
+     }
+ 
++    fn start_static_block2(
++        &mut self,
++        key: BlockKey<T>,
++        body: &'static [u8],
++        szx: u8,
++    ) -> Result<SlotId, BlockTransferError> {
++        self.tx_body
++            .as_mut()
++            .ok_or(BlockTransferError::NoBodyPools)?
++            .start_outgoing_static(key, BlockRole::OutgoingBlock2, body, szx)
++    }
++
+     fn next_block2(&mut self, id: SlotId) -> Result<OutgoingBlock, BlockTransferError> {
+         self.tx_body
+             .as_mut()
+@@ -1147,6 +1159,18 @@ impl<T: OwnedToken> BodySlots for AllocMemory<T> {
+             .start_outgoing(key, BlockRole::OutgoingQBlock2, body, szx)
+     }
+ 
++    fn start_static_q_block2(
++        &mut self,
++        key: BlockKey<T>,
++        body: &'static [u8],
++        szx: u8,
++    ) -> Result<SlotId, BlockTransferError> {
++        self.tx_body
++            .as_mut()
++            .ok_or(BlockTransferError::NoBodyPools)?
++            .start_outgoing_static(key, BlockRole::OutgoingQBlock2, body, szx)
++    }
++
+     fn next_q_block2(&mut self, id: SlotId) -> Result<OutgoingBlock, BlockTransferError> {
+         self.tx_body
+             .as_mut()
+@@ -1237,6 +1261,26 @@ struct AllocBodySlot<T: OwnedToken = Token> {
+     transfer: Option<BlockTransfer<T>>,
+ }
+ 
++impl<T: OwnedToken> AllocBodySlot<T> {
++    fn payload(&self) -> &[u8] {
++        let bytes = match self.transfer.as_ref().and_then(BlockTransfer::static_body) {
++            Some(body) => body,
++            None => &self.buf,
++        };
++        &bytes[..self.len]
++    }
++
++    fn materialize(&mut self) {
++        if let Some(body) = self.transfer.as_ref().and_then(BlockTransfer::static_body) {
++            self.buf[..body.len()].copy_from_slice(body);
++            self.transfer
++                .as_mut()
++                .expect("static body owner")
++                .clear_static_body();
++        }
++    }
++}
++
+ struct AllocBodyPool<T: OwnedToken = Token> {
+     slots: Vec<AllocBodySlot<T>>,
+     slot_bytes: usize,
+@@ -1271,7 +1315,7 @@ impl<T: OwnedToken> AllocBodyPool<T> {
+             return None;
+         }
+         let slot = self.slots.get(id.index())?;
+-        Some(&slot.buf[..slot.len])
++        Some(slot.payload())
+     }
+ 
+     fn access(&mut self, id: SlotId) -> Result<Access<'_>, SlotError> {
+@@ -1279,7 +1323,7 @@ impl<T: OwnedToken> AllocBodyPool<T> {
+         let idx = id.index();
+         let pin = self.occ.pin_flag_mut(id).ok_or(SlotError::InvalidSlot)?;
+         let slot = self.slots.get(idx).ok_or(SlotError::InvalidSlot)?;
+-        let bytes = &slot.buf[..slot.len];
++        let bytes = slot.payload();
+         Ok(Access::new(id, bytes, pin))
+     }
+ 
+@@ -1288,6 +1332,7 @@ impl<T: OwnedToken> AllocBodyPool<T> {
+         let idx = id.index();
+         let pin = self.occ.pin_flag_mut(id).ok_or(SlotError::InvalidSlot)?;
+         let slot = self.slots.get_mut(idx).ok_or(SlotError::InvalidSlot)?;
++        slot.materialize();
+         Ok(AccessMut::new(id, slot.buf.as_mut(), &mut slot.len, pin))
+     }
+ 
+@@ -1295,7 +1340,10 @@ impl<T: OwnedToken> AllocBodyPool<T> {
+         if !self.occ.is_occupied(id) {
+             return None;
+         }
+-        self.slots.get(id.index())?.transfer
++        self.slots
++            .get(id.index())?
++            .transfer
++            .map(BlockTransfer::without_static_body)
+     }
+ 
+     fn set_transfer(&mut self, id: SlotId, transfer: BlockTransfer<T>) -> Result<(), SlotError> {
+@@ -1310,7 +1358,8 @@ impl<T: OwnedToken> AllocBodyPool<T> {
+             .slots
+             .get_mut(id.index())
+             .ok_or(SlotError::InvalidSlot)?;
+-        slot.transfer = Some(transfer);
++        slot.materialize();
++        slot.transfer = Some(transfer.without_static_body());
+         Ok(())
+     }
+ 
+@@ -1476,6 +1525,29 @@ impl<T: OwnedToken> AllocBodyPool<T> {
+         Ok(id)
+     }
+ 
++    fn start_outgoing_static(
++        &mut self,
++        key: BlockKey<T>,
++        role: BlockRole,
++        body: &'static [u8],
++        szx: u8,
++    ) -> Result<SlotId, BlockTransferError> {
++        if !matches!(role, BlockRole::OutgoingBlock2 | BlockRole::OutgoingQBlock2) {
++            return Err(BlockTransferError::IdentityMismatch);
++        }
++        let mut transfer = if role.is_q_block() {
++            BlockTransfer::outgoing_q(key, role, body.len(), szx, self.slot_bytes)?
++        } else {
++            BlockTransfer::outgoing(key, role, body.len(), szx, self.slot_bytes)?
++        };
++        let id = self.acquire().ok_or(BlockTransferError::Saturated)?;
++        transfer.retain_static_body(body);
++        let slot = &mut self.slots[id.index()];
++        slot.len = body.len();
++        slot.transfer = Some(transfer);
++        Ok(id)
++    }
++
+     fn next_outgoing(
+         &mut self,
+         id: SlotId,
+@@ -1646,6 +1718,16 @@ impl<T: OwnedToken> BodyOps<T> for AllocBodyPool<T> {
+         AllocBodyPool::start_outgoing(self, key, role, body, szx)
+     }
+ 
++    fn start_outgoing_static(
++        &mut self,
++        key: BlockKey<T>,
++        role: BlockRole,
++        body: &'static [u8],
++        szx: u8,
++    ) -> Result<SlotId, BlockTransferError> {
++        AllocBodyPool::start_outgoing_static(self, key, role, body, szx)
++    }
++
+     fn next_outgoing(
+         &mut self,
+         id: SlotId,
+@@ -2044,6 +2126,13 @@ impl<T: OwnedToken> SlotPool for AllocObserveTable<T> {
+ 
+ #[cfg(test)]
+ mod tests {
++    #[test]
++    fn allocated_static_body_preserves_progress_capacity_and_copy_on_write() {
++        crate::storage::tests::static_body_pool_contract(|| {
++            super::AllocBodyPool::<crate::message::Token>::new(1, 1024).unwrap()
++        });
++    }
++
+     use super::*;
+ 
+     // Compare the accelerator against the public row view after mixed mutations.
+diff --git a/src/storage/block.rs b/src/storage/block.rs
+index 5d82103..6a94918 100644
+--- a/src/storage/block.rs
++++ b/src/storage/block.rs
+@@ -523,6 +523,44 @@ struct NotificationSnapshot {
+     max_age: Option<u32>,
+ }
+ 
++// Ordinary outgoing response bodies do not use a receive/retention timer.
++// Keep their immutable backing in that same role-exclusive owner.
++#[derive(Clone, Copy, Eq, PartialEq)]
++enum BodyRetention {
++    None,
++    Wait(QBlockReceiveWait),
++    Static(&'static [u8]),
++}
++
++impl BodyRetention {
++    const fn wait(self) -> Option<QBlockReceiveWait> {
++        match self {
++            Self::Wait(wait) => Some(wait),
++            Self::None | Self::Static(_) => None,
++        }
++    }
++
++    fn wait_mut(&mut self) -> Option<&mut QBlockReceiveWait> {
++        match self {
++            Self::Wait(wait) => Some(wait),
++            Self::None | Self::Static(_) => None,
++        }
++    }
++}
++
++impl core::fmt::Debug for BodyRetention {
++    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
++        match self {
++            Self::None => f.write_str("None"),
++            Self::Wait(wait) => wait.fmt(f),
++            Self::Static(bytes) => f
++                .debug_struct("StaticBody")
++                .field("len", &bytes.len())
++                .finish(),
++        }
++    }
++}
++
+ /// Exact bounded request matchability context, not a hash. Token/MID and block
+ /// control options may change, but method and cache-key options may not.
+ /// Block1/Q-Block1 retain the NUM0-only If-None-Match separately from the
+@@ -629,7 +667,7 @@ pub struct BlockTransfer<T: OwnedToken = Token> {
+     complete: bool,
+     expected_len: Option<u32>,
+     q: Option<QWindow>,
+-    q_receive: Option<QBlockReceiveWait>,
++    q_receive: BodyRetention,
+     pub(crate) request_binding: Option<RequestBinding>,
+     // Highest authenticated request PIV and its Token for timed Q-Block1 reports.
+     #[cfg(feature = "oscore")]
+@@ -662,6 +700,35 @@ pub(crate) struct IssueCheckpoint {
+ const _: () = assert!(core::mem::size_of::<IssueCheckpoint>() <= 16);
+ 
+ impl<T: OwnedToken> BlockTransfer<T> {
++    pub(crate) fn retain_static_body(&mut self, body: &'static [u8]) {
++        debug_assert!(matches!(
++            self.role,
++            BlockRole::OutgoingBlock2 | BlockRole::OutgoingQBlock2
++        ));
++        debug_assert!(matches!(self.q_receive, BodyRetention::None));
++        self.q_receive = BodyRetention::Static(body);
++    }
++
++    pub(crate) const fn static_body(&self) -> Option<&'static [u8]> {
++        match self.q_receive {
++            BodyRetention::Static(body) => Some(body),
++            _ => None,
++        }
++    }
++
++    // Body backing belongs to the pool, not a copied protocol sidecar. Removing
++    // it from snapshots prevents stale set_transfer calls from reviving it.
++    pub(crate) fn without_static_body(mut self) -> Self {
++        self.clear_static_body();
++        self
++    }
++
++    pub(crate) fn clear_static_body(&mut self) {
++        if matches!(self.q_receive, BodyRetention::Static(_)) {
++            self.q_receive = BodyRetention::None;
++        }
++    }
++
+     /// Outgoing uploads reuse the incoming request-binding area for the control
+     /// options that must survive fragmentation. `role` distinguishes the layouts.
+     pub(crate) fn retain_upload_controls(
+@@ -768,7 +835,7 @@ impl<T: OwnedToken> BlockTransfer<T> {
+             complete: false,
+             expected_len,
+             q: None,
+-            q_receive: None,
++            q_receive: BodyRetention::None,
+             request_binding: None,
+             #[cfg(feature = "oscore")]
+             oscore_request: None,
+@@ -851,7 +918,7 @@ impl<T: OwnedToken> BlockTransfer<T> {
+                 continue_trigger: None,
+                 continue_ack: None,
+             }),
+-            q_receive: None,
++            q_receive: BodyRetention::None,
+             request_binding: None,
+             #[cfg(feature = "oscore")]
+             oscore_request: None,
+@@ -974,7 +1041,7 @@ impl<T: OwnedToken> BlockTransfer<T> {
+                 complete: false,
+                 expected_len: Some(len),
+                 q,
+-                q_receive: None,
++                q_receive: BodyRetention::None,
+                 request_binding: None,
+                 #[cfg(feature = "oscore")]
+                 oscore_request: None,
+@@ -1172,7 +1239,7 @@ impl<T: OwnedToken> BlockTransfer<T> {
+         if self.role == BlockRole::OutgoingBlock2
+             && self.notification.is_some_and(|n| !n.code.is_success())
+         {
+-            self.q_receive = Some(QBlockReceiveWait {
++            self.q_receive = BodyRetention::Wait(QBlockReceiveWait {
+                 attempts: 0,
+                 timeout_ms: 0,
+                 next_timeout_ms: deadline,
+@@ -1185,7 +1252,7 @@ impl<T: OwnedToken> BlockTransfer<T> {
+             self.role,
+             BlockRole::OutgoingBlock2 | BlockRole::OutgoingQBlock2
+         ) {
+-            match self.q_receive {
++            match self.q_receive.wait() {
+                 Some(wait) => Some(wait.next_timeout_ms),
+                 None => None,
+             }
+@@ -1198,7 +1265,7 @@ impl<T: OwnedToken> BlockTransfer<T> {
+     // Reuse that storage for the representation epoch and bounded retention.
+     pub(crate) fn remember_q_observe(&mut self, sequence: u32, deadline: u64) {
+         debug_assert_eq!(self.role, BlockRole::OutgoingQBlock2);
+-        self.q_receive = Some(QBlockReceiveWait {
++        self.q_receive = BodyRetention::Wait(QBlockReceiveWait {
+             attempts: 0,
+             timeout_ms: sequence,
+             next_timeout_ms: deadline,
+@@ -1207,7 +1274,7 @@ impl<T: OwnedToken> BlockTransfer<T> {
+ 
+     pub(crate) const fn q_observe_sequence(self) -> Option<u32> {
+         if matches!(self.role, BlockRole::OutgoingQBlock2) {
+-            match self.q_receive {
++            match self.q_receive.wait() {
+                 Some(state) => Some(state.timeout_ms),
+                 None => None,
+             }
+@@ -1230,18 +1297,25 @@ impl<T: OwnedToken> BlockTransfer<T> {
+ 
+     pub(crate) fn set_q_observe_confirmable(&mut self) {
+         debug_assert!(self.q_observe_sequence().is_some());
+-        if let Some(state) = self.q_receive.as_mut() {
++        if let Some(state) = self.q_receive.wait_mut() {
+             state.attempts |= 1;
+         }
+     }
+ 
+     pub(crate) fn q_observe_confirmable(self) -> bool {
+         self.q_observe_sequence().is_some()
+-            && self.q_receive.is_some_and(|state| state.attempts & 1 != 0)
++            && self
++                .q_receive
++                .wait()
++                .is_some_and(|state| state.attempts & 1 != 0)
+     }
+ 
+     pub(crate) fn q_observe_recovery(self) -> bool {
+-        self.q_observe_confirmable() && self.q_receive.is_some_and(|state| state.attempts & 2 != 0)
++        self.q_observe_confirmable()
++            && self
++                .q_receive
++                .wait()
++                .is_some_and(|state| state.attempts & 2 != 0)
+     }
+ 
+     // After the original CON stream completes, its existing window bitmap can
+@@ -1283,7 +1357,7 @@ impl<T: OwnedToken> BlockTransfer<T> {
+         window.base = base;
+         window.mask = mask;
+         self.complete = false;
+-        self.q_receive.as_mut().expect("Q Observe").attempts |= 2;
++        self.q_receive.wait_mut().expect("Q Observe").attempts |= 2;
+         Ok(())
+     }
+ 
+@@ -1404,7 +1478,7 @@ impl<T: OwnedToken> BlockTransfer<T> {
+         if matches!(self.role, BlockRole::OutgoingBlock2) {
+             None
+         } else {
+-            self.q_receive
++            self.q_receive.wait()
+         }
+     }
+ 
+@@ -1419,17 +1493,20 @@ impl<T: OwnedToken> BlockTransfer<T> {
+             return;
+         }
+         if self.q_holes().is_some() {
+-            self.q_receive = Some(QBlockReceiveWait::new(now_ms));
++            self.q_receive = BodyRetention::Wait(QBlockReceiveWait::new(now_ms));
+         } else {
+-            self.q_receive = None;
++            self.q_receive = BodyRetention::None;
+         }
+     }
+ 
+     /// Record a due recover: doubled wait, or `None` when max retransmit is
+     /// already reached (caller should drop the partial body).
+     pub fn note_q_recover(&mut self, now_ms: u64) -> Option<QBlockReceiveWait> {
+-        let next = self.q_receive.and_then(|wait| wait.next_attempt(now_ms))?;
+-        self.q_receive = Some(next);
++        let next = self
++            .q_receive
++            .wait()
++            .and_then(|wait| wait.next_attempt(now_ms))?;
++        self.q_receive = BodyRetention::Wait(next);
+         Some(next)
+     }
+ 
+@@ -2110,6 +2187,13 @@ pub(crate) trait BodyOps<T: OwnedToken = Token> {
+         body: &[u8],
+         szx: u8,
+     ) -> Result<SlotId, BlockTransferError>;
++    fn start_outgoing_static(
++        &mut self,
++        key: BlockKey<T>,
++        role: BlockRole,
++        body: &'static [u8],
++        szx: u8,
++    ) -> Result<SlotId, BlockTransferError>;
+     fn next_outgoing(
+         &mut self,
+         id: SlotId,
+diff --git a/src/storage/engine.rs b/src/storage/engine.rs
+index 0da13db..162e4ee 100644
+--- a/src/storage/engine.rs
++++ b/src/storage/engine.rs
+@@ -1908,6 +1908,21 @@ impl<S: Storage + BodySlots> Engine<S> {
+         result
+     }
+ 
++    /// Reserve an outgoing Block2 slot backed by immutable static bytes.
++    ///
++    /// Capacity and occupied-slot admission are the same as [`Self::start_block2`].
++    /// Existing body backing remains reserved; writable access or sidecar
++    /// replacement materializes the bytes there. Read-only progress does not copy.
++    #[inline]
++    pub fn start_static_block2(
++        &mut self,
++        key: BlockKey<S::Token>,
++        body: &'static [u8],
++        szx: u8,
++    ) -> Result<SlotId, BlockTransferError> {
++        self.storage.start_static_block2(key, body, szx)
++    }
++
+     /// Select a classic Block2 response range without advancing a transfer cursor.
+     /// Used by App for independently tokened RFC 7959 requests.
+     pub(crate) fn requested_block2(
+@@ -2136,6 +2151,19 @@ impl<S: Storage + BodySlots> Engine<S> {
+         result
+     }
+ 
++    /// Reserve an outgoing Q-Block2 slot backed by immutable static bytes.
++    /// Same capacity, reservation and materialization contract as
++    /// [`Self::start_static_block2`]; Q-Block validation is unchanged.
++    #[inline]
++    pub fn start_static_q_block2(
++        &mut self,
++        key: BlockKey<S::Token>,
++        body: &'static [u8],
++        szx: u8,
++    ) -> Result<SlotId, BlockTransferError> {
++        self.storage.start_static_q_block2(key, body, szx)
++    }
++
+     /// Issue the next unsent outgoing Q-Block2 range in the current window.
+     #[inline]
+     pub fn next_q_block2(&mut self, id: SlotId) -> Result<OutgoingBlock, BlockTransferError> {
+diff --git a/src/storage/memory.rs b/src/storage/memory.rs
+index f61e199..bc50071 100644
+--- a/src/storage/memory.rs
++++ b/src/storage/memory.rs
+@@ -889,6 +889,15 @@ impl<P: MemoryProfile> BodySlots for Memory<P> {
+         Err(BlockTransferError::NoBodyPools)
+     }
+ 
++    fn start_static_block2(
++        &mut self,
++        _key: BlockKey<P::Token>,
++        _body: &'static [u8],
++        _szx: u8,
++    ) -> Result<SlotId, BlockTransferError> {
++        Err(BlockTransferError::NoBodyPools)
++    }
++
+     fn next_bert2(
+         &mut self,
+         _id: SlotId,
+@@ -931,6 +940,15 @@ impl<P: MemoryProfile> BodySlots for Memory<P> {
+         Err(BlockTransferError::NoBodyPools)
+     }
+ 
++    fn start_static_q_block2(
++        &mut self,
++        _key: BlockKey<P::Token>,
++        _body: &'static [u8],
++        _szx: u8,
++    ) -> Result<SlotId, BlockTransferError> {
++        Err(BlockTransferError::NoBodyPools)
++    }
++
+     fn ack_q_block2(
+         &mut self,
+         _id: SlotId,
+@@ -1205,6 +1223,17 @@ where
+         self.bodies.tx.next_outgoing(id, BlockRole::OutgoingBlock2)
+     }
+ 
++    fn start_static_block2(
++        &mut self,
++        key: BlockKey<P::Token>,
++        body: &'static [u8],
++        szx: u8,
++    ) -> Result<SlotId, BlockTransferError> {
++        self.bodies
++            .tx
++            .start_outgoing_static(key, BlockRole::OutgoingBlock2, body, szx)
++    }
++
+     fn next_bert2(
+         &mut self,
+         id: SlotId,
+@@ -1255,6 +1284,17 @@ where
+         self.bodies.tx.next_outgoing(id, BlockRole::OutgoingQBlock2)
+     }
+ 
++    fn start_static_q_block2(
++        &mut self,
++        key: BlockKey<P::Token>,
++        body: &'static [u8],
++        szx: u8,
++    ) -> Result<SlotId, BlockTransferError> {
++        self.bodies
++            .tx
++            .start_outgoing_static(key, BlockRole::OutgoingQBlock2, body, szx)
++    }
++
+     fn ack_q_block2(&mut self, id: SlotId, num: u32) -> Result<BlockProgress, BlockTransferError> {
+         self.bodies
+             .tx
+diff --git a/src/storage/mod.rs b/src/storage/mod.rs
+index 5fc199c..b79ac4a 100644
+--- a/src/storage/mod.rs
++++ b/src/storage/mod.rs
+@@ -611,6 +611,18 @@ pub trait BodySlots: Storage {
+         szx: u8,
+     ) -> Result<SlotId, crate::error::BlockTransferError>;
+ 
++    /// Reserve an outgoing Block2 slot backed by immutable static bytes.
++    ///
++    /// The same body capacity and slot admission limits apply as for
++    /// [`Self::start_block2`]. Existing backing remains allocated. Writable
++    /// access or sidecar replacement materializes the bytes in that backing.
++    fn start_static_block2(
++        &mut self,
++        key: BlockKey<Self::Token>,
++        body: &'static [u8],
++        szx: u8,
++    ) -> Result<SlotId, crate::error::BlockTransferError>;
++
+     /// Issue the next in-order outgoing Block2 range from `id`.
+     fn next_block2(
+         &mut self,
+@@ -659,6 +671,16 @@ pub trait BodySlots: Storage {
+         szx: u8,
+     ) -> Result<SlotId, crate::error::BlockTransferError>;
+ 
++    /// Reserve an outgoing Q-Block2 slot backed by immutable static bytes.
++    /// Same capacity, reservation and materialization contract as
++    /// [`Self::start_static_block2`]; Q-Block validation is unchanged.
++    fn start_static_q_block2(
++        &mut self,
++        key: BlockKey<Self::Token>,
++        body: &'static [u8],
++        szx: u8,
++    ) -> Result<SlotId, crate::error::BlockTransferError>;
++
+     /// Issue the next unsent outgoing Q-Block2 range in the current window.
+     fn next_q_block2(
+         &mut self,
+diff --git a/src/storage/pool.rs b/src/storage/pool.rs
+index d91661a..aa0b567 100644
+--- a/src/storage/pool.rs
++++ b/src/storage/pool.rs
+@@ -504,14 +504,23 @@ impl<const SLOTS: usize, const BYTES: usize, T: OwnedToken> BodyPool<SLOTS, BYTE
+             return None;
+         }
+         let idx = id.index();
+-        Some(&self.bytes[idx][..self.lens[idx]])
++        let bytes = match self.transfers[idx]
++            .as_ref()
++            .and_then(BlockTransfer::static_body)
++        {
++            Some(body) => body,
++            None => &self.bytes[idx],
++        };
++        Some(&bytes[..self.lens[idx]])
+     }
+ 
+     /// Writable complete-body buffer (full capacity).
++    /// A borrowed static body is first copied into the existing backing.
+     pub fn payload_mut(&mut self, id: SlotId) -> Option<&mut [u8]> {
+         if !self.occ.is_occupied(id) {
+             return None;
+         }
++        self.materialize(id.index());
+         Some(&mut self.bytes[id.index()])
+     }
+ 
+@@ -527,20 +536,27 @@ impl<const SLOTS: usize, const BYTES: usize, T: OwnedToken> BodyPool<SLOTS, BYTE
+         if len > BYTES {
+             return Err(SlotError::LengthExceedsSlot);
+         }
++        self.materialize(id.index());
+         self.lens[id.index()] = len;
+         Ok(())
+     }
+ 
+     /// [`BlockTransfer`] sidecar for an occupied slot.
++    /// Pool-owned static backing is omitted from this protocol snapshot.
+     #[must_use]
+     pub fn transfer(&self, id: SlotId) -> Option<BlockTransfer<T>> {
+         if !self.occ.is_occupied(id) {
+             return None;
+         }
+-        self.transfers.get(id.index()).copied().flatten()
++        self.transfers
++            .get(id.index())
++            .copied()
++            .flatten()
++            .map(BlockTransfer::without_static_body)
+     }
+ 
+     /// Replace the sidecar on an occupied slot.
++    /// Preserves payload bytes, materializing borrowed backing before replacement.
+     pub fn set_transfer(
+         &mut self,
+         id: SlotId,
+@@ -553,7 +569,8 @@ impl<const SLOTS: usize, const BYTES: usize, T: OwnedToken> BodyPool<SLOTS, BYTE
+                 SlotError::InvalidSlot
+             });
+         }
+-        self.transfers[id.index()] = Some(transfer);
++        self.materialize(id.index());
++        self.transfers[id.index()] = Some(transfer.without_static_body());
+         Ok(())
+     }
+ 
+@@ -562,14 +579,23 @@ impl<const SLOTS: usize, const BYTES: usize, T: OwnedToken> BodyPool<SLOTS, BYTE
+         self.occ.try_pin(id)?;
+         let idx = id.index();
+         let pin = self.occ.pin_flag_mut(id).ok_or(SlotError::InvalidSlot)?;
+-        let bytes = &self.bytes[idx][..self.lens[idx]];
++        let bytes = match self.transfers[idx]
++            .as_ref()
++            .and_then(BlockTransfer::static_body)
++        {
++            Some(body) => body,
++            None => &self.bytes[idx],
++        };
++        let bytes = &bytes[..self.lens[idx]];
+         Ok(Access::new(id, bytes, pin))
+     }
+ 
+     /// Write access to the full body buffer. Pins `id` until the guard is dropped.
++    /// Static bytes are materialized only after pin admission succeeds.
+     pub fn access_mut(&mut self, id: SlotId) -> Result<AccessMut<'_>, SlotError> {
+         self.occ.try_pin(id)?;
+         let idx = id.index();
++        self.materialize(idx);
+         let pin = self.occ.pin_flag_mut(id).ok_or(SlotError::InvalidSlot)?;
+         let bytes = &mut self.bytes[idx];
+         let len = &mut self.lens[idx];
+@@ -770,6 +796,34 @@ impl<const SLOTS: usize, const BYTES: usize, T: OwnedToken> BodyPool<SLOTS, BYTE
+         Ok(id)
+     }
+ 
++    /// Reserve an outgoing Block2/Q-Block2 slot backed by immutable static bytes.
++    ///
++    /// Byte limits, occupied-slot counts and backing allocation are unchanged.
++    /// Writable access or sidecar replacement copies into that existing backing;
++    /// ordinary reads and outgoing progress do not copy the body. Other roles
++    /// are refused with [`BlockTransferError::IdentityMismatch`].
++    pub fn start_outgoing_static(
++        &mut self,
++        key: BlockKey<T>,
++        role: BlockRole,
++        body: &'static [u8],
++        szx: u8,
++    ) -> Result<SlotId, BlockTransferError> {
++        if !matches!(role, BlockRole::OutgoingBlock2 | BlockRole::OutgoingQBlock2) {
++            return Err(BlockTransferError::IdentityMismatch);
++        }
++        let mut transfer = if role.is_q_block() {
++            BlockTransfer::outgoing_q(key, role, body.len(), szx, BYTES)?
++        } else {
++            BlockTransfer::outgoing(key, role, body.len(), szx, BYTES)?
++        };
++        let id = self.acquire().ok_or(BlockTransferError::Saturated)?;
++        transfer.retain_static_body(body);
++        self.lens[id.index()] = body.len();
++        self.transfers[id.index()] = Some(transfer);
++        Ok(id)
++    }
++
+     /// Issue the next outgoing range from `id`.
+     ///
+     /// Classic Block is in-order. Q-Block issues the next unsent NUM in the
+@@ -883,6 +937,19 @@ impl<const SLOTS: usize, const BYTES: usize, T: OwnedToken> BodyPool<SLOTS, BYTE
+         Ok(BlockProgress::new(id, filled, complete))
+     }
+ 
++    fn materialize(&mut self, idx: usize) {
++        if let Some(body) = self.transfers[idx]
++            .as_ref()
++            .and_then(BlockTransfer::static_body)
++        {
++            self.bytes[idx][..body.len()].copy_from_slice(body);
++            self.transfers[idx]
++                .as_mut()
++                .expect("static body owner")
++                .clear_static_body();
++        }
++    }
++
+     fn reset(&mut self, id: SlotId) {
+         let idx = id.index();
+         self.lens[idx] = 0;
+@@ -957,6 +1024,16 @@ impl<const SLOTS: usize, const BYTES: usize, T: OwnedToken> super::block::BodyOp
+         BodyPool::start_outgoing(self, key, role, body, szx)
+     }
+ 
++    fn start_outgoing_static(
++        &mut self,
++        key: BlockKey<T>,
++        role: BlockRole,
++        body: &'static [u8],
++        szx: u8,
++    ) -> Result<SlotId, BlockTransferError> {
++        BodyPool::start_outgoing_static(self, key, role, body, szx)
++    }
++
+     fn next_outgoing(
+         &mut self,
+         id: SlotId,
+diff --git a/src/storage/tests.rs b/src/storage/tests.rs
+index 5c0c76f..1e4eaf5 100644
+--- a/src/storage/tests.rs
++++ b/src/storage/tests.rs
+@@ -5998,3 +5998,223 @@ fn custom_dedup_expiry_defaults_to_inspection() {
+         );
+     }
+ }
++
++// Run the same storage contract against fixed and allocated owned body pools.
++pub(super) fn static_body_pool_contract<P>(make: impl Fn() -> P)
++where
++    P: SlotPool + super::block::BodyOps<Token>,
++{
++    static BODY: [u8; 320] = [0x37; 320];
++    static OTHER: [u8; 48] = [0x62; 48];
++    static TOO_LARGE: [u8; 1025] = [0; 1025];
++    let key = BlockKey::new(Token::EMPTY, Endpoint::v4([192, 0, 2, 7], 5683));
++    for role in [BlockRole::OutgoingBlock2, BlockRole::OutgoingQBlock2] {
++        let mut pool = make();
++        assert_eq!(pool.slot_count(), 1);
++        let cursor = pool.cursor();
++        assert_eq!(
++            pool.start_outgoing_static(key, BlockRole::IncomingBlock1, &BODY, 0),
++            Err(BlockTransferError::IdentityMismatch)
++        );
++        assert_eq!(
++            pool.start_outgoing_static(key, role, &TOO_LARGE, 0),
++            pool.start_outgoing(key, role, &TOO_LARGE, 0)
++        );
++        assert_eq!(pool.cursor(), cursor);
++        assert_eq!(pool.occupied_count(), 0);
++        let id = pool.start_outgoing_static(key, role, &BODY, 0).unwrap();
++        assert_eq!(pool.payload(id).unwrap().as_ptr(), BODY.as_ptr());
++        assert_eq!(pool.payload(id), Some(BODY.as_slice()));
++        let snapshot = pool.transfer(id).unwrap();
++        assert!(snapshot.static_body().is_none());
++        assert!(snapshot.q_receive().is_none());
++        assert!(snapshot.terminal_deadline().is_none());
++        assert!(snapshot.q_observe_sequence().is_none());
++        assert_eq!(pool.occupied_count(), 1);
++        assert_eq!(
++            pool.start_outgoing_static(key, role, &OTHER, 0),
++            Err(BlockTransferError::Saturated)
++        );
++        assert_eq!(
++            pool.start_outgoing(key, role, &OTHER, 0),
++            Err(BlockTransferError::Saturated)
++        );
++        assert_eq!(pool.payload(id).unwrap().as_ptr(), BODY.as_ptr());
++        {
++            let guard = pool.access(id).unwrap();
++            assert_eq!(guard.as_bytes().as_ptr(), BODY.as_ptr());
++            assert!(guard.is_pinned());
++        }
++        assert!(!pool.is_pinned(id));
++        for num in 0..20 {
++            if role == BlockRole::OutgoingQBlock2 && num == 10 {
++                pool.ack_outgoing(id, role, num).unwrap();
++            }
++            let issued = pool.next_outgoing(id, role).unwrap();
++            assert_eq!(issued.offset(), num as usize * 16);
++            assert_eq!(issued.len(), 16);
++            assert_eq!(pool.payload(id).unwrap().as_ptr(), BODY.as_ptr());
++        }
++        pool.release(id).unwrap();
++        assert!(pool.payload(id).is_none());
++        assert!(pool.transfer(id).is_none());
++        let id = pool.start_outgoing_static(key, role, &OTHER, 0).unwrap();
++        assert_eq!(pool.payload(id).unwrap().as_ptr(), OTHER.as_ptr());
++        let stale = pool.transfer(id).unwrap();
++        {
++            let mut guard = pool.access_mut(id).unwrap();
++            assert_eq!(guard.capacity(), 1024);
++            assert_ne!(guard.payload().as_ptr(), OTHER.as_ptr());
++            assert_eq!(guard.payload(), OTHER.as_slice());
++            guard.bytes_mut()[0] = 0x99;
++            guard.set_len(1).unwrap();
++            guard.set_len(OTHER.len()).unwrap();
++            assert_eq!(&guard.payload()[1..], &OTHER[1..]);
++            assert_eq!(guard.set_len(1025), Err(SlotError::LengthExceedsSlot));
++            assert_eq!(guard.payload().len(), OTHER.len());
++        }
++        pool.set_transfer(id, stale).unwrap();
++        assert_eq!(pool.payload(id).unwrap()[0], 0x99);
++        assert_ne!(pool.payload(id).unwrap().as_ptr(), OTHER.as_ptr());
++        pool.release(id).unwrap();
++
++        // Replacing a still-borrowed sidecar preserves bytes before incoming
++        // writes begin. An old outgoing snapshot cannot resurrect static bytes.
++        let id = pool.start_outgoing_static(key, role, &OTHER, 0).unwrap();
++        let outgoing = pool.transfer(id).unwrap();
++        let incoming = BlockTransfer::incoming(
++            key,
++            BlockRole::IncomingBlock1,
++            BlockValue::new(0, true, 0).unwrap(),
++            16,
++            1024,
++            None,
++        )
++        .unwrap();
++        pool.set_transfer(id, incoming).unwrap();
++        assert_eq!(pool.payload(id), Some(OTHER.as_slice()));
++        assert_ne!(pool.payload(id).unwrap().as_ptr(), OTHER.as_ptr());
++        pool.write_incoming(
++            id,
++            BlockRole::IncomingBlock1,
++            BlockValue::new(1, false, 0).unwrap(),
++            &[0x81; 16],
++        )
++        .unwrap();
++        assert_eq!(&pool.payload(id).unwrap()[..16], &OTHER[..16]);
++        assert_eq!(&pool.payload(id).unwrap()[16..], &[0x81; 16]);
++        pool.set_transfer(id, outgoing).unwrap();
++        assert_eq!(&pool.payload(id).unwrap()[16..], &[0x81; 16]);
++        pool.release(id).unwrap();
++        let copied = pool.start_outgoing(key, role, &[0x23; 32], 0).unwrap();
++        assert_eq!(pool.payload(copied), Some([0x23; 32].as_slice()));
++        pool.release(copied).unwrap();
++
++        let id = pool.start_outgoing_static(key, role, &BODY, 0).unwrap();
++        // Retain a pin after ending the Rust borrow to exercise runtime refusal.
++        core::mem::forget(pool.access(id).unwrap());
++        assert_eq!(pool.access_mut(id).unwrap_err(), SlotError::Pinned);
++        assert_eq!(pool.release(id), Err(SlotError::Pinned));
++        assert_eq!(pool.payload(id).unwrap().as_ptr(), BODY.as_ptr());
++        assert_eq!(pool.payload(id), Some(BODY.as_slice()));
++        assert_eq!(pool.transfer(id), Some(snapshot));
++        assert!(pool.is_pinned(id));
++    }
++}
++
++#[test]
++fn fixed_static_body_preserves_progress_capacity_and_copy_on_write() {
++    static_body_pool_contract(super::BodyPool::<1, 1024>::new);
++}
++
++#[test]
++fn fixed_static_body_direct_writes_and_length_changes_materialize() {
++    static BODY: [u8; 48] = [0x51; 48];
++    let key = BlockKey::new(Token::EMPTY, Endpoint::v4([192, 0, 2, 7], 5683));
++    let mut pool = super::BodyPool::<1, 1024>::new();
++    let seeded = pool
++        .start_outgoing(key, BlockRole::OutgoingBlock2, &[0x77; 1024], 0)
++        .unwrap();
++    pool.release(seeded).unwrap();
++    let id = pool
++        .start_outgoing_static(key, BlockRole::OutgoingBlock2, &BODY, 0)
++        .unwrap();
++    assert_eq!(pool.set_len(id, 1025), Err(SlotError::LengthExceedsSlot));
++    assert_eq!(pool.payload(id).unwrap().as_ptr(), BODY.as_ptr());
++    pool.set_len(id, 1).unwrap();
++    pool.set_len(id, 64).unwrap();
++    assert_eq!(&pool.payload(id).unwrap()[..48], BODY.as_slice());
++    assert_eq!(&pool.payload(id).unwrap()[48..], &[0x77; 16]);
++    pool.release(id).unwrap();
++    let id = pool
++        .start_outgoing_static(key, BlockRole::OutgoingBlock2, &BODY, 0)
++        .unwrap();
++    let stale = pool.transfer(id).unwrap();
++    pool.payload_mut(id).unwrap()[0] = 0x29;
++    pool.set_transfer(id, stale).unwrap();
++    assert_eq!(pool.payload(id).unwrap()[0], 0x29);
++    assert_eq!(&pool.payload(id).unwrap()[1..], &BODY[1..]);
++}
++
++fn static_body_engine_admission<S: Storage<Token = Token> + BodySlots>(mut engine: Engine<S>) {
++    static BODY: [u8; 48] = [0x41; 48];
++    let key = BlockKey::new(Token::EMPTY, Endpoint::v4([192, 0, 2, 7], 5683));
++    let classic = engine.start_static_block2(key, &BODY, 0).unwrap();
++    assert_eq!(
++        engine.tx_body_payload(classic).unwrap().as_ptr(),
++        BODY.as_ptr()
++    );
++    engine.release_tx_body(classic).unwrap();
++    let q = engine.start_static_q_block2(key, &BODY, 0).unwrap();
++    assert_eq!(engine.tx_body_payload(q).unwrap().as_ptr(), BODY.as_ptr());
++    #[cfg(feature = "diagnostics")]
++    assert_eq!(engine.work_metrics().body_snapshot_bytes, 0);
++    engine.release_tx_body(q).unwrap();
++    let copied = engine.start_block2(key, &BODY, 0).unwrap();
++    assert_ne!(
++        engine.tx_body_payload(copied).unwrap().as_ptr(),
++        BODY.as_ptr()
++    );
++    #[cfg(feature = "diagnostics")]
++    assert_eq!(engine.work_metrics().body_snapshot_bytes, BODY.len() as u64);
++}
++
++#[test]
++fn fixed_static_body_engine_admission_keeps_copy_accounting_exact() {
++    static_body_engine_admission(Engine::from_storage(
++        Memory::<profiles::Constrained>::with_block_wise(),
++    ));
++    let mut absent = Memory::<profiles::Constrained>::new();
++    let key = BlockKey::new(Token::EMPTY, Endpoint::v4([192, 0, 2, 7], 5683));
++    assert_eq!(
++        absent.start_static_block2(key, b"body", 0),
++        Err(BlockTransferError::NoBodyPools)
++    );
++    assert_eq!(
++        absent.start_static_q_block2(key, b"body", 0),
++        Err(BlockTransferError::NoBodyPools)
++    );
++}
++
++#[cfg(feature = "alloc")]
++#[test]
++fn allocated_static_body_engine_admission_keeps_copy_accounting_exact() {
++    let caps = Capacities::from_profile::<profiles::Constrained>();
++    static_body_engine_admission(Engine::from_storage(
++        super::AllocMemory::<Token>::try_new(
++            caps.with_block_wise::<profiles::Constrained>(),
++            usize::MAX,
++        )
++        .unwrap(),
++    ));
++    let mut absent = super::AllocMemory::<Token>::try_new(caps, usize::MAX).unwrap();
++    let key = BlockKey::new(Token::EMPTY, Endpoint::v4([192, 0, 2, 7], 5683));
++    assert_eq!(
++        absent.start_static_block2(key, b"body", 0),
++        Err(BlockTransferError::NoBodyPools)
++    );
++    assert_eq!(
++        absent.start_static_q_block2(key, b"body", 0),
++        Err(BlockTransferError::NoBodyPools)
++    );
++}
+diff --git a/src/storage/work_metrics.rs b/src/storage/work_metrics.rs
+index 97893ca..ba605b3 100644
+--- a/src/storage/work_metrics.rs
++++ b/src/storage/work_metrics.rs
+@@ -30,10 +30,11 @@ pub struct WorkMetrics {
+     pub block_tx_staged_bytes: u64,
+     /// Payload bytes in successful Engine TX encodings, including protection.
+     pub tx_payload_encoded_bytes: u64,
+-    /// Complete bodies passed to successful outgoing transfer starts.
++    /// Complete bodies passed to successful copying outgoing transfer starts.
+     ///
+     /// Built-in storage copies these bytes into a fresh body slot. A custom
+-    /// storage implementation may retain them differently.
++    /// storage implementation may retain them differently. Explicit static
++    /// body admission borrows its bytes and does not increment this counter.
+     pub body_snapshot_bytes: u64,
+     /// Bytes passed to successful Engine raw RX slot writes.
+     pub raw_rx_copied_bytes: u64,
+@@ -41,7 +42,8 @@ pub struct WorkMetrics {
+     pub raw_tx_copied_bytes: u64,
+     /// Retained body equality checks after representation identity matches.
+     pub body_compare_calls: u64,
+-    /// Lengths of equally sized bodies presented to equality checks.
++    /// Lengths of equally sized bodies passed to byte equality checks after
++    /// the App's equal-address-and-length shortcut.
+     ///
+     /// This is a candidate-byte bound: comparisons may stop at a differing
+     /// byte or use implementation-specific pointer or vectorized shortcuts.
