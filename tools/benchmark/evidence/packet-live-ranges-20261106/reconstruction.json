@@ -1,0 +1,21 @@
+{
+  "source": "8d9e08232865bd41049d3d8062bd4b87328c28b0",
+  "baseline": "fd7d18a72f795779e352443ebdeef9533be7fb27",
+  "status": "verified",
+  "source_files": 148,
+  "fixture_files": 7,
+  "source_sha256_match": true,
+  "fixture_sha256_match": true,
+  "output_bytes": 14261070,
+  "output_files": 384,
+  "budget_bytes": 67108864,
+  "command": [
+    "python",
+    "-B",
+    "prepare.py",
+    "CORE_REPO",
+    "NEW_OUTPUT",
+    "candidate"
+  ],
+  "builds_or_native_execution": false
+}

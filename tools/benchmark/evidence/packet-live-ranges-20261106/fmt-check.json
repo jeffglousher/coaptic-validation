@@ -1,0 +1,18 @@
+{
+  "source": "8d9e08232865bd41049d3d8062bd4b87328c28b0",
+  "command": [
+    "C:\\Users\\jeffg\\.cargo\\bin\\agent-resources.exe",
+    "run",
+    "--id",
+    "coaptic-core-reusable",
+    "--directory",
+    "C:/Users/jeffg/.t3/worktrees/coaptic/t3-a578955c",
+    "--",
+    "cargo",
+    "fmt",
+    "--all",
+    "--",
+    "--check"
+  ],
+  "exit_code": 0
+}

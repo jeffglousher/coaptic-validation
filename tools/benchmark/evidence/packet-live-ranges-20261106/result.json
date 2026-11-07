@@ -1,0 +1,125 @@
+{
+  "candidate": "8d9e08232865bd41049d3d8062bd4b87328c28b0",
+  "baseline": "fd7d18a72f795779e352443ebdeef9533be7fb27",
+  "decision": "Accepted by the unchanged runtime and memory gates and completed software qualification. All prior attempts retain their original verdicts. Portable verification and reconstruction are recorded separately; no merge, hardware or peak-memory claim.",
+  "cohort_status": "complete",
+  "no_runtime_cohort": false,
+  "memory_preflight_accepted": true,
+  "runtime_accepted": true,
+  "groups": {
+    "ordinary-sync": {
+      "ratio": 0.9783202644114888,
+      "upper95": 0.981229009105749
+    },
+    "ordinary-async": {
+      "ratio": 0.9702043319268434,
+      "upper95": 0.9739759645562656
+    },
+    "ordinary-all": {
+      "ratio": 0.9742538470767469,
+      "upper95": 0.976143298250513
+    },
+    "retained-sync": {
+      "ratio": 0.9526436058146478,
+      "upper95": 0.9576362712185104
+    },
+    "retained-async": {
+      "ratio": 0.9598953508328442,
+      "upper95": 0.9628437909563539
+    },
+    "retained-all": {
+      "ratio": 0.9562626042160789,
+      "upper95": 0.9586910511739031
+    },
+    "all-sync": {
+      "ratio": 0.9709142608114927,
+      "upper95": 0.9735215787137884
+    },
+    "all-async": {
+      "ratio": 0.9672476629609672,
+      "upper95": 0.9699599751311941
+    },
+    "all-all": {
+      "ratio": 0.9690792277752069,
+      "upper95": 0.9705903957417943
+    }
+  },
+  "failed_point_guards": [],
+  "library_tests_passed": 1234,
+  "prequalification_checks": {
+    "tests-all-lib": 0,
+    "clippy-all": 0,
+    "clippy-no-default": 0
+  },
+  "qualification": {
+    "required_checks": 11,
+    "all_exit_codes_zero": true,
+    "fmt_check_exit_code": 0,
+    "test_counts": {
+      "test-all": {
+        "passed": 1697,
+        "failed": 0,
+        "ignored": 1,
+        "summaries": 51
+      },
+      "test-no-default": {
+        "passed": 730,
+        "failed": 0,
+        "ignored": 0,
+        "summaries": 1
+      },
+      "test-alloc": {
+        "passed": 780,
+        "failed": 0,
+        "ignored": 0,
+        "summaries": 1
+      },
+      "test-oscore": {
+        "passed": 887,
+        "failed": 0,
+        "ignored": 0,
+        "summaries": 1
+      },
+      "test-alloc,oscore": {
+        "passed": 941,
+        "failed": 0,
+        "ignored": 0,
+        "summaries": 1
+      },
+      "test-std": {
+        "passed": 738,
+        "failed": 0,
+        "ignored": 0,
+        "summaries": 1
+      }
+    }
+  },
+  "diagnostic": {
+    "cases": 8,
+    "verified_operations_each": 136,
+    "block_tx_staged_bytes_each": 1531904,
+    "body_snapshot_bytes_each": 0,
+    "body_compare_candidate_bytes_each": 0,
+    "body_compare_calls_each": 136,
+    "scope": "Instrumented actual-path work counts only; chunk staging remains; no timing or total-zero-copy claim"
+  },
+  "extra_encoder_tradeoff": {
+    "local_encode_response": {
+      "async": {
+        "baseline_frame": 768,
+        "candidate_frame": 800,
+        "frame_delta": 32,
+        "code_delta": 1353
+      },
+      "sync": {
+        "baseline_frame": 736,
+        "candidate_frame": 784,
+        "frame_delta": 48,
+        "code_delta": 1064
+      }
+    },
+    "scope": "Extra local frames/code; not additive peak memory; original memory guards unchanged"
+  },
+  "coverage": "Frozen retained fixture returns immediate static responses; completed-deferred matcher is not exercised and receives no CPU attribution. Earlier constructor-store diagnostics are pinned to their own archived sources; this result does not claim those are new exact-current-source measurements. Current ordinary encoder branch is documented by its exact-source diagnostic.",
+  "limits": "Complete in-memory App thread CPU cycles and selected owners/futures/frames only; no latency, throughput, peak-stack/RAM, hardware or libcoap claim; no per-change causal CPU attribution."
+}

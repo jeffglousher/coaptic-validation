@@ -1,0 +1,37 @@
+{
+  "rows": [
+    {
+      "profile": "SmallDevice",
+      "storage": "fixed",
+      "frame_bytes": 19312,
+      "code_bytes": 66780,
+      "baseline_frame_bytes": 19568,
+      "baseline_code_bytes": 66444
+    },
+    {
+      "profile": "Service",
+      "storage": "fixed",
+      "frame_bytes": 17824,
+      "code_bytes": 68328,
+      "baseline_frame_bytes": 18144,
+      "baseline_code_bytes": 69560
+    },
+    {
+      "profile": "Default",
+      "storage": "allocated",
+      "frame_bytes": 25936,
+      "code_bytes": 82732,
+      "baseline_frame_bytes": 26208,
+      "baseline_code_bytes": 84124
+    },
+    {
+      "profile": "Service",
+      "storage": "allocated",
+      "frame_bytes": 26016,
+      "code_bytes": 87000,
+      "baseline_frame_bytes": 26240,
+      "baseline_code_bytes": 87480
+    }
+  ],
+  "nongrowth": true
+}
