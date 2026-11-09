@@ -18,7 +18,7 @@ use core::cell::{Cell, RefCell};
 use core::ffi::c_void;
 use core::future::{Future, poll_fn};
 use core::pin::Pin;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 unsafe extern "C" {
@@ -41,6 +41,29 @@ unsafe extern "C" {
 }
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
+const NOTIFIED: u32 = 1;
+const PARKED: u32 = 2;
+// No context pointer survives a Runtime. One atomic word joins notification and
+// parking so a wake racing the decision to sleep cannot be lost.
+static WAKE_STATE: AtomicU32 = AtomicU32::new(0);
+
+struct Park;
+impl Park {
+    fn begin() -> Option<Self> {
+        let previous = WAKE_STATE.fetch_or(PARKED, Ordering::AcqRel);
+        if previous & NOTIFIED != 0 {
+            WAKE_STATE.fetch_and(!PARKED, Ordering::AcqRel);
+            None
+        } else {
+            Some(Self)
+        }
+    }
+}
+impl Drop for Park {
+    fn drop(&mut self) {
+        WAKE_STATE.fetch_and(!PARKED, Ordering::AcqRel);
+    }
+}
 const READ: u32 = 1;
 const WRITE: u32 = 2;
 #[cfg(feature = "pairing")]
@@ -167,11 +190,15 @@ impl Drop for Runtime {
 // No borrowed data lives behind this waker. ESP-IDF owns the retained eventfd
 // until process termination. An old waker can at worst spuriously wake a later
 // driver; it can never access an old Runtime or a reused native descriptor.
+// While the task is polling, its next poll consumes the notification directly.
+// Only a parked driver needs the process-lifetime eventfd to interrupt select.
 unsafe fn clone_waker(_: *const ()) -> RawWaker {
     raw_waker()
 }
 unsafe fn wake(_: *const ()) {
-    unsafe { coaptic_async_wake() }
+    if WAKE_STATE.fetch_or(NOTIFIED, Ordering::AcqRel) & PARKED != 0 {
+        unsafe { coaptic_async_wake() }
+    }
 }
 unsafe fn drop_waker(_: *const ()) {}
 static VTABLE: RawWakerVTable = RawWakerVTable::new(clone_waker, wake, wake, drop_waker);
@@ -184,6 +211,10 @@ pub struct Driver<'a>(&'a Runtime);
 impl Driver<'_> {
     /// Sleep in select until socket readiness, deadline, external wake or stop.
     /// Ready/self-waking traffic yields to FreeRTOS after 32 root polls.
+    /// A wake during polling is consumed before parking; only a wake while
+    /// parked enters the native eventfd path. Registered child readiness and
+    /// deadlines still receive a nonblocking probe during local work. This adds
+    /// one shared atomic word.
     /// The caller pins and owns the root future; returning releases its borrow.
     /// Borrowing avoids moving the large root through another task stack frame.
     #[inline(never)]
@@ -205,6 +236,9 @@ impl Driver<'_> {
         let mut burst = 0;
         loop {
             self.0.now()?;
+            // This poll observes every notification published before this clear.
+            // A wake during the poll remains set until Park::begin checks it.
+            WAKE_STATE.fetch_and(!NOTIFIED, Ordering::AcqRel);
             if let Poll::Ready(result) = future.as_mut().poll(&mut context) {
                 return Ok(result);
             }
@@ -213,18 +247,24 @@ impl Driver<'_> {
                 unsafe { coaptic_async_yield() };
                 burst = 0;
             }
-            match unsafe {
-                coaptic_async_wait(
-                    self.0.context,
-                    self.0.interests.get(),
-                    self.0
-                        .deadlines
-                        .iter()
-                        .filter_map(Cell::get)
-                        .min()
-                        .unwrap_or(u64::MAX),
-                )
-            } {
+            let ready = {
+                let park = Park::begin();
+                let interests = self.0.interests.get();
+                let registered_deadline = self.0.deadlines.iter().filter_map(Cell::get).min();
+                let deadline = if park.is_none() {
+                    if interests == 0 && registered_deadline.is_none() {
+                        continue;
+                    }
+                    // A composed root can leave an I/O child unpolled until
+                    // its own waker fires. Local work must not hide native
+                    // readiness or due timers: probe them without blocking.
+                    self.0.now()?
+                } else {
+                    registered_deadline.unwrap_or(u64::MAX)
+                };
+                unsafe { coaptic_async_wait(self.0.context, interests, deadline) }
+            };
+            match ready {
                 -2 => return Err(Error::Stopped),
                 ready if ready >= 0 => self.0.wake_ready(ready as u32),
                 _ => return Err(Error::Io),
