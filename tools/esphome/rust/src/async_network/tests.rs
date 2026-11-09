@@ -446,3 +446,37 @@ fn external_notification_racing_parking_is_not_lost() {
         assert_eq!(WAKE_STATE.load(Ordering::Acquire) & PARKED, 0);
     }
 }
+
+#[test]
+fn local_work_probes_now_without_advancing_a_future_deadline() {
+    let _serial = SERIAL.lock().unwrap();
+    let mut runtime = runtime();
+    let (_, mut timer, _, mut driver) = runtime.split();
+    {
+        let mut timeout = pin!(timer.wait_until(100));
+        let mut polls = 0;
+        let result = driver.run(pin!(poll_fn(|cx| {
+            polls += 1;
+            if timeout.as_mut().poll(cx).is_ready() {
+                return Poll::Ready(false);
+            }
+            if polls == 3 {
+                return Poll::Ready(true);
+            }
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        })));
+        assert_eq!(result, Ok(true));
+        let state = STATE.lock().unwrap();
+        assert_eq!((state.now, state.waits, state.wakes), (10, 2, 0));
+        assert_eq!(driver.0.deadlines[0].get(), Some(100));
+    }
+    assert!(
+        driver
+            .0
+            .deadlines
+            .iter()
+            .all(|deadline| deadline.get().is_none())
+    );
+    assert_eq!(WAKE_STATE.load(Ordering::Acquire) & PARKED, 0);
+}
