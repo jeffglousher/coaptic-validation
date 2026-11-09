@@ -47,3 +47,4 @@ tools/benchmark/evidence/mcu-processing-span-20261109/sources/mcu_processing_spa
 # Preserve the exact completed target-CPU screen, vectors and source-patch hashes.
 tools/benchmark/evidence/esp-target-cpu-20261109/** -text whitespace=cr-at-eol
 tools/benchmark/evidence/esp-target-cpu-20261109/sources/*.patch whitespace=cr-at-eol,-blank-at-eol
+tools/benchmark/evidence/async-client-cpu-20261109/** -text
