@@ -1,0 +1,223 @@
+{
+  "adopted": false,
+  "goal_complete": false,
+  "host_decisions": [
+    {
+      "all_completion_capacity_failure_gates": true,
+      "geometric_goodput_ratio_vs_C": 1.302143252107133,
+      "host_gate_passed": true,
+      "peer": "H-Mio",
+      "round_geometric_goodput_ratios_vs_C": [
+        1.2913123863671607,
+        1.2863800461720307,
+        1.3016047473744343
+      ]
+    },
+    {
+      "all_completion_capacity_failure_gates": true,
+      "geometric_goodput_ratio_vs_C": 1.1206900023067026,
+      "host_gate_passed": true,
+      "peer": "H-async",
+      "round_geometric_goodput_ratios_vs_C": [
+        1.0992031095641328,
+        1.1398934472657263,
+        1.1190889462322584
+      ]
+    }
+  ],
+  "host_operations": 403200,
+  "scope": "Offline regrade of full exported latency vectors, numeric guards/memory ledgers and original digest commitments. Physical identity/restoration/API, source-to-binary finalizer/producer proofs and missing configurations remain private attestations. Instruction-cache records are per-image; data-cache defaults are reconstructed only. Startup qualification is excluded from speed statistics.",
+  "source_inputs": {
+    "added": 1,
+    "baseline": 679,
+    "effective": 680,
+    "replaced": 3,
+    "unchanged": 676
+  },
+  "startup": [
+    {
+      "mode": "sync",
+      "performance_reads_imported": 0,
+      "qualification_reads": 48,
+      "qualified": true
+    },
+    {
+      "mode": "async",
+      "performance_reads_imported": 0,
+      "qualification_reads": 48,
+      "qualified": true
+    }
+  ],
+  "verified": true,
+  "wifi_decisions": [
+    {
+      "all_boot_pairwise_geomeans_below_one": false,
+      "all_six_cell_medians_below_best_C": false,
+      "boot_best_C_geometric_ratios": [
+        1.1442235284608473,
+        1.01746606610709
+      ],
+      "boot_pairwise_C_geometric_ratios": {
+        "libcoap-floating-full-iram-cache32-server": [
+          0.9959579999557913,
+          0.9911257940605255
+        ],
+        "libcoap-pin-full-iram-cache32-server": [
+          1.1363245054819806,
+          0.9282303675042003
+        ]
+      },
+      "cells": [
+        {
+          "best_C": "libcoap-floating-full-iram-cache32-server",
+          "boot_best_C_ratios": [
+            0.9974678041623649,
+            0.987232612834584
+          ],
+          "client": "sync",
+          "median_ratio": 0.9761134552273794,
+          "path": "identity"
+        },
+        {
+          "best_C": "libcoap-pin-full-iram-cache32-server",
+          "boot_best_C_ratios": [
+            1.3715944834260827,
+            0.9921328249432888
+          ],
+          "client": "sync",
+          "median_ratio": 1.1580140156872827,
+          "path": "test"
+        },
+        {
+          "best_C": "libcoap-floating-full-iram-cache32-server",
+          "boot_best_C_ratios": [
+            1.1299863538319321,
+            1.1864197999815502
+          ],
+          "client": "sync",
+          "median_ratio": 1.0949208284308862,
+          "path": "large"
+        },
+        {
+          "best_C": "libcoap-pin-full-iram-cache32-server",
+          "boot_best_C_ratios": [
+            1.0819615817966968,
+            0.9156048533352052
+          ],
+          "client": "async",
+          "median_ratio": 1.019782110091743,
+          "path": "identity"
+        },
+        {
+          "best_C": "libcoap-pin-full-iram-cache32-server",
+          "boot_best_C_ratios": [
+            1.3289834719671598,
+            0.980258840939869
+          ],
+          "client": "async",
+          "median_ratio": 1.149318230181205,
+          "path": "test"
+        },
+        {
+          "best_C": "libcoap-pin-full-iram-cache32-server",
+          "boot_best_C_ratios": [
+            1.0095690031449007,
+            1.0637585180919475
+          ],
+          "client": "async",
+          "median_ratio": 1.0102171814671814,
+          "path": "large"
+        }
+      ],
+      "name": "integrated-idle-observe-O3Thin-cache32-sync-iram-server",
+      "promising": false,
+      "strict_best_C_geometric_median_ratio": 1.0657611327330696
+    },
+    {
+      "all_boot_pairwise_geomeans_below_one": false,
+      "all_six_cell_medians_below_best_C": false,
+      "boot_best_C_geometric_ratios": [
+        1.595094877008989,
+        1.455469230973423
+      ],
+      "boot_pairwise_C_geometric_ratios": {
+        "libcoap-floating-full-iram-cache32-server": [
+          1.3884066040685,
+          1.4177898854145814
+        ],
+        "libcoap-pin-full-iram-cache32-server": [
+          1.5840833125955962,
+          1.3278189653308003
+        ]
+      },
+      "cells": [
+        {
+          "best_C": "libcoap-floating-full-iram-cache32-server",
+          "boot_best_C_ratios": [
+            1.2893115252947889,
+            1.967121578164248
+          ],
+          "client": "sync",
+          "median_ratio": 1.4278832630098452,
+          "path": "identity"
+        },
+        {
+          "best_C": "libcoap-pin-full-iram-cache32-server",
+          "boot_best_C_ratios": [
+            1.8542785708524878,
+            1.9002686744855766
+          ],
+          "client": "sync",
+          "median_ratio": 1.8912819853413911,
+          "path": "test"
+        },
+        {
+          "best_C": "libcoap-floating-full-iram-cache32-server",
+          "boot_best_C_ratios": [
+            1.3799973588061805,
+            1.6610267903170666
+          ],
+          "client": "sync",
+          "median_ratio": 1.4471362620434816,
+          "path": "large"
+        },
+        {
+          "best_C": "libcoap-pin-full-iram-cache32-server",
+          "boot_best_C_ratios": [
+            1.523221303141059,
+            1.0304796003135712
+          ],
+          "client": "async",
+          "median_ratio": 1.4209627814845704,
+          "path": "identity"
+        },
+        {
+          "best_C": "libcoap-pin-full-iram-cache32-server",
+          "boot_best_C_ratios": [
+            2.0313492492168086,
+            1.1944378516481213
+          ],
+          "client": "async",
+          "median_ratio": 1.4125321242081486,
+          "path": "test"
+        },
+        {
+          "best_C": "libcoap-pin-full-iram-cache32-server",
+          "boot_best_C_ratios": [
+            1.6134682320287408,
+            1.243919761973318
+          ],
+          "client": "async",
+          "median_ratio": 1.308219111969112,
+          "path": "large"
+        }
+      ],
+      "name": "integrated-idle-observe-OsFat-cache32-async-iram-server",
+      "promising": false,
+      "strict_best_C_geometric_median_ratio": 1.4741329605218676
+    }
+  ],
+  "wifi_operations": 1152,
+  "wifi_resources_passed": true,
+  "wifi_stability_passed": true
+}
