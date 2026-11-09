@@ -1,0 +1,515 @@
+diff --git a/crates/coaptic-io/src/lib.rs b/crates/coaptic-io/src/lib.rs
+index d572921..cdae661 100644
+--- a/crates/coaptic-io/src/lib.rs
++++ b/crates/coaptic-io/src/lib.rs
+@@ -1,6 +1,6 @@
+ //! Explicit, local transformation of shared protocol bodies.
+ //!
+-//! The sync item is emitted unchanged. Only declared call sites and the
++//! By default the sync item is emitted unchanged. Only declared call sites and the
+ //! `DatagramIo` bound change in its async twin; this does not drive an executor,
+ //! allocate protocol memory, or manufacture transport completion.
+ 
+@@ -35,6 +35,8 @@ struct Options {
+     bound: Option<Path>,
+     renames: Vec<Mapping>,
+     visibility: Option<syn::Visibility>,
++    outline_if: Option<syn::Meta>,
++    sync_outline_if: Option<syn::Meta>,
+ }
+ 
+ impl Parse for Options {
+@@ -47,6 +49,8 @@ impl Parse for Options {
+             bound: None,
+             renames: Vec::new(),
+             visibility: None,
++            outline_if: None,
++            sync_outline_if: None,
+         };
+         while !input.is_empty() {
+             input.parse::<Token![,]>()?;
+@@ -56,6 +60,24 @@ impl Parse for Options {
+             let section: Ident = input.parse()?;
+             let content;
+             parenthesized!(content in input);
++            if section == "outline_if" || section == "sync_outline_if" {
++                let condition = content.parse()?;
++                if !content.is_empty() {
++                    return Err(content.error("expected one cfg condition"));
++                }
++                let selected = if section == "outline_if" {
++                    &mut result.outline_if
++                } else {
++                    &mut result.sync_outline_if
++                };
++                if selected.replace(condition).is_some() {
++                    return Err(syn::Error::new_spanned(
++                        section,
++                        "duplicate outline condition",
++                    ));
++                }
++                continue;
++            }
+             if section == "visibility" {
+                 result.visibility = Some(content.parse()?);
+                 continue;
+@@ -82,11 +104,14 @@ impl Parse for Options {
+                 _ => {
+                     return Err(syn::Error::new_spanned(
+                         section,
+-                        "expected calls(...) or methods(...)",
++                        "expected calls(...), methods(...), bound(...), renames(...), visibility(...), outline_if(...) or sync_outline_if(...)",
+                     ));
+                 }
+             }
+         }
++        if result.outline_if.is_some() && result.sync_outline_if.is_some() {
++            return Err(input.error("choose outline_if or sync_outline_if"));
++        }
+         Ok(result)
+     }
+ }
+@@ -179,10 +204,21 @@ impl VisitMut for Transform<'_> {
+ /// preserves `foo` and emits `foo_async`. The compiler checks every resulting
+ /// await, including rejection of awaits inside synchronous closures. Ownership
+ /// and cancellation remain the responsibility of the protocol implementation.
++///
++/// `outline_if(target_arch = "xtensa")` keeps the synchronous function and the
++/// async body's polling implementation out of line on matching targets. The
++/// async constructor remains eligible for inlining. Other targets receive the
++/// original generated async body, without an extra future or polling wrapper.
++/// The outlined body is pinned locally without allocation or unsafe projection;
++/// cancellation still drops its live owners. Use this only for measured target
++/// code-generation improvements, not as a substitute for runtime measurements.
++/// `sync_outline_if(condition)` adds only the synchronous hint, leaving the
++/// async body and constructor unchanged even on matching targets. The two
++/// options are mutually exclusive on a function.
+ #[proc_macro_attribute]
+ pub fn dual_io(args: TokenStream, input: TokenStream) -> TokenStream {
+     let options = parse_macro_input!(args as Options);
+-    let original = parse_macro_input!(input as ItemFn);
++    let mut original = parse_macro_input!(input as ItemFn);
+     if original.sig.asyncness.is_some() {
+         return syn::Error::new_spanned(
+             &original.sig,
+@@ -198,5 +234,36 @@ pub fn dual_io(args: TokenStream, input: TokenStream) -> TokenStream {
+         asynchronous.vis = visibility.clone();
+     }
+     Transform { options: &options }.visit_item_fn_mut(&mut asynchronous);
++    if let Some(condition) = &options.sync_outline_if {
++        original
++            .attrs
++            .push(syn::parse_quote!(#[cfg_attr(#condition, inline(never))]));
++    }
++    if let Some(condition) = &options.outline_if {
++        let mut outlined = asynchronous.clone();
++        let body = outlined.block;
++        outlined.block = Box::new(syn::parse_quote!({
++            #[inline(never)]
++            fn __coaptic_poll_outlined<F: ::core::future::Future>(
++                future: ::core::pin::Pin<&mut F>,
++                context: &mut ::core::task::Context<'_>,
++            ) -> ::core::task::Poll<F::Output> {
++                ::core::future::Future::poll(future, context)
++            }
++            let mut operation = ::core::pin::pin!(async move #body);
++            ::core::future::poll_fn(|context| __coaptic_poll_outlined(operation.as_mut(), context))
++                .await
++        }));
++        asynchronous
++            .attrs
++            .push(syn::parse_quote!(#[cfg(not(#condition))]));
++        outlined.attrs.push(syn::parse_quote!(#[cfg(#condition)]));
++        // Add the sync hint after cloning: it must not prevent async constructor
++        // inlining and introduce a large temporary future on the selected target.
++        original
++            .attrs
++            .push(syn::parse_quote!(#[cfg_attr(#condition, inline(never))]));
++        return quote! { #original #asynchronous #outlined }.into();
++    }
+     quote! { #original #asynchronous }.into()
+ }
+diff --git a/crates/coaptic-io/tests/conditional_outline.rs b/crates/coaptic-io/tests/conditional_outline.rs
+new file mode 100644
+index 0000000..675c9b4
+--- /dev/null
++++ b/crates/coaptic-io/tests/conditional_outline.rs
+@@ -0,0 +1,191 @@
++use core::cell::Cell;
++use core::future::{Future, poll_fn};
++use core::pin::pin;
++use core::task::{Context, Poll, Waker};
++
++struct Owner<'a>(&'a Cell<usize>);
++
++impl Drop for Owner<'_> {
++    fn drop(&mut self) {
++        self.0.set(self.0.get() + 1);
++    }
++}
++
++fn wait(polls: &Cell<usize>) -> usize {
++    polls.set(polls.get() + 1);
++    42
++}
++
++async fn wait_async(polls: &Cell<usize>) -> usize {
++    poll_fn(|context| {
++        polls.set(polls.get() + 1);
++        if polls.get() == 1 {
++            context.waker().wake_by_ref();
++            Poll::Pending
++        } else {
++            Poll::Ready(42)
++        }
++    })
++    .await
++}
++
++#[coaptic_io::dual_io(outlined_async, outline_if(all()), calls(wait => wait_async))]
++fn outlined(polls: &Cell<usize>, drops: &Cell<usize>) -> usize {
++    let _owner = Owner(drops);
++    wait(polls)
++}
++
++#[coaptic_io::dual_io(ordinary_async, outline_if(any()), calls(wait => wait_async))]
++fn ordinary(polls: &Cell<usize>, drops: &Cell<usize>) -> usize {
++    let _owner = Owner(drops);
++    wait(polls)
++}
++
++#[coaptic_io::dual_io(original_async, calls(wait => wait_async))]
++fn original(polls: &Cell<usize>, drops: &Cell<usize>) -> usize {
++    let _owner = Owner(drops);
++    wait(polls)
++}
++
++#[coaptic_io::dual_io(sync_only_async, sync_outline_if(all()), calls(wait => wait_async))]
++fn sync_only(polls: &Cell<usize>, drops: &Cell<usize>) -> usize {
++    let _owner = Owner(drops);
++    wait(polls)
++}
++
++async fn selected(outline: bool, polls: &Cell<usize>, drops: &Cell<usize>) -> usize {
++    if outline {
++        outlined_async(polls, drops).await
++    } else {
++        ordinary_async(polls, drops).await
++    }
++}
++
++#[test]
++fn preserves_synchronous_owners_with_either_condition() {
++    for run in [outlined, ordinary, original, sync_only] {
++        let polls = Cell::new(0);
++        let drops = Cell::new(0);
++        assert_eq!(run(&polls, &drops), 42);
++        assert_eq!((polls.get(), drops.get()), (1, 1));
++    }
++}
++
++#[test]
++fn unpolled_bodies_do_not_start() {
++    let polls = Cell::new(0);
++    let drops = Cell::new(0);
++    drop(outlined_async(&polls, &drops));
++    drop(ordinary_async(&polls, &drops));
++    assert_eq!((polls.get(), drops.get()), (0, 0));
++}
++
++#[test]
++fn either_condition_releases_live_owner_on_pending_cancellation() {
++    for outline in [false, true] {
++        let polls = Cell::new(0);
++        let drops = Cell::new(0);
++        {
++            let mut operation = pin!(selected(outline, &polls, &drops));
++            assert!(
++                operation
++                    .as_mut()
++                    .poll(&mut Context::from_waker(Waker::noop()))
++                    .is_pending()
++            );
++            assert_eq!((polls.get(), drops.get()), (1, 0));
++        }
++        assert_eq!((polls.get(), drops.get()), (1, 1));
++    }
++}
++
++#[test]
++fn either_condition_resumes_and_releases_owner_before_ready() {
++    for outline in [false, true] {
++        let polls = Cell::new(0);
++        let drops = Cell::new(0);
++        let mut operation = pin!(selected(outline, &polls, &drops));
++        let mut context = Context::from_waker(Waker::noop());
++        assert!(operation.as_mut().poll(&mut context).is_pending());
++        assert_eq!(operation.as_mut().poll(&mut context), Poll::Ready(42));
++        assert_eq!((polls.get(), drops.get()), (2, 1));
++    }
++}
++
++#[test]
++fn disabled_boundary_keeps_original_future_layout() {
++    let polls = Cell::new(0);
++    let drops = Cell::new(0);
++    let ordinary = ordinary_async(&polls, &drops);
++    let original = original_async(&polls, &drops);
++    assert_eq!(
++        core::mem::size_of_val(&ordinary),
++        core::mem::size_of_val(&original)
++    );
++    assert_eq!(
++        core::mem::align_of_val(&ordinary),
++        core::mem::align_of_val(&original)
++    );
++}
++
++#[test]
++fn synchronous_hint_does_not_wrap_the_async_future() {
++    let polls = Cell::new(0);
++    let drops = Cell::new(0);
++    let sync_only = sync_only_async(&polls, &drops);
++    let original = original_async(&polls, &drops);
++    assert_eq!(
++        core::mem::size_of_val(&sync_only),
++        core::mem::size_of_val(&original)
++    );
++    assert_eq!(
++        core::mem::align_of_val(&sync_only),
++        core::mem::align_of_val(&original)
++    );
++    drop(sync_only);
++    assert_eq!((polls.get(), drops.get()), (0, 0));
++}
++
++#[test]
++fn synchronous_hint_preserves_async_cancellation_and_completion() {
++    for complete in [false, true] {
++        let polls = Cell::new(0);
++        let drops = Cell::new(0);
++        {
++            let mut operation = pin!(sync_only_async(&polls, &drops));
++            let mut context = Context::from_waker(Waker::noop());
++            assert!(operation.as_mut().poll(&mut context).is_pending());
++            assert_eq!((polls.get(), drops.get()), (1, 0));
++            if complete {
++                assert_eq!(operation.as_mut().poll(&mut context), Poll::Ready(42));
++                assert_eq!((polls.get(), drops.get()), (2, 1));
++            }
++        }
++        assert_eq!(drops.get(), 1);
++    }
++}
++
++#[coaptic_io::dual_io(owned_outlined_async, outline_if(all()), calls(wait => wait_async))]
++fn owned_outlined(owner: Owner<'_>, polls: &Cell<usize>) -> usize {
++    let _owner = owner;
++    wait(polls)
++}
++
++#[coaptic_io::dual_io(owned_ordinary_async, outline_if(any()), calls(wait => wait_async))]
++fn owned_ordinary(owner: Owner<'_>, polls: &Cell<usize>) -> usize {
++    let _owner = owner;
++    wait(polls)
++}
++
++#[test]
++fn unpolled_future_releases_owned_arguments_with_either_condition() {
++    let polls = Cell::new(0);
++    let drops = Cell::new(0);
++    drop(owned_outlined_async(Owner(&drops), &polls));
++    assert_eq!((polls.get(), drops.get()), (0, 1));
++    drop(owned_ordinary_async(Owner(&drops), &polls));
++    assert_eq!((polls.get(), drops.get()), (0, 2));
++    assert_eq!(owned_outlined(Owner(&drops), &polls), 42);
++    assert_eq!(owned_ordinary(Owner(&drops), &polls), 42);
++    assert_eq!((polls.get(), drops.get()), (2, 4));
++}
+diff --git a/src/app/client.rs b/src/app/client.rs
+index 28dbfc7..3fbb3b8 100644
+--- a/src/app/client.rs
++++ b/src/app/client.rs
+@@ -3708,7 +3708,7 @@ where
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+-#[coaptic_io::dual_io(complete_client_io_async, bound(crate::app::async_server::ProtocolIo), calls(send_block2_continue => send_block2_continue_async, send_q_block2_continue => send_q_block2_continue_async, reissue_qblock1_missing => reissue_qblock1_missing_async, continue_block1_tx => continue_block1_tx_async, super::send_empty_rst => super::send_empty_rst_async, super::send_empty_ack => super::send_empty_ack_async))]
++#[coaptic_io::dual_io(complete_client_io_async, outline_if(target_arch = "xtensa"), bound(crate::app::async_server::ProtocolIo), calls(send_block2_continue => send_block2_continue_async, send_q_block2_continue => send_q_block2_continue_async, reissue_qblock1_missing => reissue_qblock1_missing_async, continue_block1_tx => continue_block1_tx_async, super::send_empty_rst => super::send_empty_rst_async, super::send_empty_ack => super::send_empty_ack_async))]
+ pub(crate) fn complete_client<Mem, T, const CALLS: usize, const REQUESTS: usize>(
+     engine: &mut Engine<Mem>,
+     io: &mut T,
+@@ -4715,7 +4715,7 @@ fn arm_q_pacing<Mem: Storage + BodySlots, const CALLS: usize>(
+ /// not accumulate send credit. Ingress runs first so valid Continue/recovery can
+ /// disarm or rearm this opportunity before selection.
+ #[allow(clippy::too_many_arguments)]
+-#[coaptic_io::dual_io(pace_qblock1_io_async, bound(crate::app::async_server::ProtocolIo), calls(continue_block1_tx => continue_block1_tx_async))]
++#[coaptic_io::dual_io(pace_qblock1_io_async, outline_if(target_arch = "xtensa"), bound(crate::app::async_server::ProtocolIo), calls(continue_block1_tx => continue_block1_tx_async))]
+ pub(crate) fn pace_qblock1<Mem, T, const CALLS: usize, const REQUESTS: usize>(
+     engine: &mut Engine<Mem>,
+     io: &mut T,
+@@ -4784,7 +4784,7 @@ where
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+-#[coaptic_io::dual_io(continue_qblock1_ack_io_async, bound(crate::app::async_server::ProtocolIo), calls(continue_block1_tx => continue_block1_tx_async))]
++#[coaptic_io::dual_io(continue_qblock1_ack_io_async, outline_if(target_arch = "xtensa"), bound(crate::app::async_server::ProtocolIo), calls(continue_block1_tx => continue_block1_tx_async))]
+ pub(crate) fn continue_qblock1_ack<Mem, T, const CALLS: usize, const REQUESTS: usize>(
+     engine: &mut Engine<Mem>,
+     io: &mut T,
+diff --git a/src/app/mod.rs b/src/app/mod.rs
+index 33a2aad..becaa80 100644
+--- a/src/app/mod.rs
++++ b/src/app/mod.rs
+@@ -2696,7 +2696,7 @@ fn complete_engine<S: AppStorage, T: DatagramIo, const DEFERRED: usize, const RE
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+-#[coaptic_io::dual_io(poll_engine_async, bound(crate::app::async_server::ProtocolIo), calls(progress_q_observe => progress_q_observe_async, refresh_progress_deadlines => async_server::refresh_progress_deadlines_async, send_retransmit_packet => async_server::send_retransmit_packet_async, send_qblock_recover => async_server::send_qblock_recover_async, dispatch_rx => dispatch_rx_async, send_notification => send_notification_async, client::pace_qblock1 => client::pace_qblock1_async), methods(recv_from => receive_retained_async), renames(progress_before_dispatch => progress_before_dispatch_async, next_qblock_recovery => next_qblock_recovery_async))]
++#[coaptic_io::dual_io(poll_engine_async, outline_if(target_arch = "xtensa"), bound(crate::app::async_server::ProtocolIo), calls(progress_q_observe => progress_q_observe_async, refresh_progress_deadlines => async_server::refresh_progress_deadlines_async, send_retransmit_packet => async_server::send_retransmit_packet_async, send_qblock_recover => async_server::send_qblock_recover_async, dispatch_rx => dispatch_rx_async, send_notification => send_notification_async, client::pace_qblock1 => client::pace_qblock1_async), methods(recv_from => receive_retained_async), renames(progress_before_dispatch => progress_before_dispatch_async, next_qblock_recovery => next_qblock_recovery_async))]
+ fn poll_engine<
+     Mem,
+     T,
+@@ -2915,6 +2915,8 @@ where
+ 
+ // Only an exact retained CON packet can advance a Q Observe representation.
+ // The body remains the owner when terminal delivery has removed its observer.
++// Xtensa keeps advanced control paths outside the ordinary dispatch working set.
++#[cfg_attr(target_arch = "xtensa", inline(never))]
+ fn control_q_observe<S: Storage + BodySlots>(
+     engine: &mut Engine<S>,
+     peer: Endpoint,
+@@ -2947,7 +2949,7 @@ fn control_q_observe<S: Storage + BodySlots>(
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+-#[coaptic_io::dual_io(progress_q_observe_async, bound(crate::app::async_server::ProtocolIo), calls(issue_q_window => issue_q_window_async, completion_time => async_server::completion_time_async))]
++#[coaptic_io::dual_io(progress_q_observe_async, outline_if(target_arch = "xtensa"), bound(crate::app::async_server::ProtocolIo), calls(issue_q_window => issue_q_window_async, completion_time => async_server::completion_time_async))]
+ fn progress_q_observe<S, T, const REQUESTS: usize>(
+     engine: &mut Engine<S>,
+     io: &mut T,
+@@ -3036,6 +3038,7 @@ enum InboundBody {
+     Complete(SlotId),
+ }
+ 
++#[cfg_attr(target_arch = "xtensa", inline(never))]
+ fn assemble_inbound_body<Mem>(
+     engine: &mut Engine<Mem>,
+     rx: SlotId,
+@@ -3200,7 +3203,7 @@ where
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+-#[coaptic_io::dual_io(send_qblock_recover_io_async, bound(crate::app::async_server::ProtocolIo), calls(send_response => send_response_async, client::recover_qblock2 => client::recover_qblock2_async, oscore::send_qblock1_recover => oscore::send_qblock1_recover_async), methods(send_tx => send_owned_packet_async))]
++#[coaptic_io::dual_io(send_qblock_recover_io_async, outline_if(target_arch = "xtensa"), bound(crate::app::async_server::ProtocolIo), calls(send_response => send_response_async, client::recover_qblock2 => client::recover_qblock2_async, oscore::send_qblock1_recover => oscore::send_qblock1_recover_async), methods(send_tx => send_owned_packet_async))]
+ fn send_qblock_recover<Mem, T, const CALLS: usize, const REQUESTS: usize>(
+     engine: &mut Engine<Mem>,
+     io: &mut T,
+@@ -3395,7 +3398,7 @@ fn valid_q_selections(parsed: &ParsedMessage<'_, impl OwnedToken>) -> bool {
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+-#[coaptic_io::dual_io(dispatch_rx_io_async, bound(crate::app::async_server::ProtocolIo), calls(send_token_capacity_refusal => send_token_capacity_refusal_async, oscore::send_token_capacity_refusal => oscore::send_token_capacity_refusal_async, admission::send_refusal => admission::send_refusal_async, issue_q_observe_followup => issue_q_observe_followup_async, send_separate => send_separate_async, send_response => send_response_async, issue_classic => issue_classic_async, issue_deferred_q => issue_deferred_q_async, replay_con_request => replay_con_request_async, oscore_inbound_error => oscore_inbound_error_async, send_empty_ack => send_empty_ack_async, send_empty_rst => send_empty_rst_async, send_empty => send_empty_async, client::complete_client => client::complete_client_async, client::continue_qblock1_ack => client::continue_qblock1_ack_async))]
++#[coaptic_io::dual_io(dispatch_rx_io_async, sync_outline_if(target_arch = "xtensa"), bound(crate::app::async_server::ProtocolIo), calls(send_token_capacity_refusal => send_token_capacity_refusal_async, oscore::send_token_capacity_refusal => oscore::send_token_capacity_refusal_async, admission::send_refusal => admission::send_refusal_async, issue_q_observe_followup => issue_q_observe_followup_async, send_separate => send_separate_async, send_response => send_response_async, issue_classic => issue_classic_async, issue_deferred_q => issue_deferred_q_async, replay_con_request => replay_con_request_async, oscore_inbound_error => oscore_inbound_error_async, send_empty_ack => send_empty_ack_async, send_empty_rst => send_empty_rst_async, send_empty => send_empty_async, client::complete_client => client::complete_client_async, client::continue_qblock1_ack => client::continue_qblock1_ack_async))]
+ fn dispatch_rx<
+     Mem,
+     T,
+@@ -4694,6 +4697,7 @@ impl<K: OwnedToken> ObservePlan<K> {
+     }
+ }
+ 
++#[cfg_attr(target_arch = "xtensa", inline(never))]
+ fn apply_observe<S: Storage + ObserveSlots + BodySlots + PendingCons>(
+     engine: &mut Engine<S>,
+     now_ms: u64,
+@@ -4843,6 +4847,8 @@ fn bind_cancelled_q_format<S: Storage + ObserveSlots + BodySlots>(
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
++// Keep notification replacement outside Xtensa's ordinary request poll.
++#[cfg_attr(target_arch = "xtensa", inline(never))]
+ fn supersede_notification<S, T, const N: usize, const REQUESTS: usize, const DEFERRED: usize>(
+     engine: &mut Engine<S>,
+     io: &mut T,
+@@ -5345,7 +5351,7 @@ fn control_route<S: Storage + PendingCons + ObserveSlots + Exchanges, const D: u
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+-#[coaptic_io::dual_io(send_notification_io_async, bound(crate::app::async_server::ProtocolIo), calls(completion_time => async_server::completion_time_async, send_may_have_reached_peer => async_server::send_may_have_reached_peer_async, start_outgoing => start_outgoing_async, start_notify_block2 => start_notify_block2_async, finish_send => finish_send_async))]
++#[coaptic_io::dual_io(send_notification_io_async, outline_if(target_arch = "xtensa"), bound(crate::app::async_server::ProtocolIo), calls(completion_time => async_server::completion_time_async, send_may_have_reached_peer => async_server::send_may_have_reached_peer_async, start_outgoing => start_outgoing_async, start_notify_block2 => start_notify_block2_async, finish_send => finish_send_async))]
+ fn send_notification<S, T, const REQUESTS: usize>(
+     engine: &mut Engine<S>,
+     io: &mut T,
+@@ -5606,7 +5612,7 @@ where
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+-#[coaptic_io::dual_io(send_separate_async, bound(crate::app::async_server::ProtocolIo), calls(send_response => send_response_async, start_outgoing => start_outgoing_async, continue_outgoing => continue_outgoing_async, send_empty_ack => send_empty_ack_async, finish_send => finish_send_async))]
++#[coaptic_io::dual_io(send_separate_async, outline_if(target_arch = "xtensa"), bound(crate::app::async_server::ProtocolIo), calls(send_response => send_response_async, start_outgoing => start_outgoing_async, continue_outgoing => continue_outgoing_async, send_empty_ack => send_empty_ack_async, finish_send => finish_send_async))]
+ fn send_separate<S, T, const REQUESTS: usize>(
+     engine: &mut Engine<S>,
+     io: &mut T,
+@@ -5763,7 +5769,8 @@ where
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+-#[coaptic_io::dual_io(send_response_async, bound(crate::app::async_server::ProtocolIo), calls(admission::send_control_response => admission::send_control_response_async, start_outgoing => start_outgoing_async, continue_outgoing => continue_outgoing_async, send_pinned_tx => send_pinned_tx_async, send_empty_ack => send_empty_ack_async, finish_send => finish_send_async))]
++// The sync split must not force a temporary async send future.
++#[coaptic_io::dual_io(send_response_async, sync_outline_if(target_arch = "xtensa"), bound(crate::app::async_server::ProtocolIo), calls(admission::send_control_response => admission::send_control_response_async, start_outgoing => start_outgoing_async, continue_outgoing => continue_outgoing_async, send_pinned_tx => send_pinned_tx_async, send_empty_ack => send_empty_ack_async, finish_send => finish_send_async))]
+ fn send_response<S, T, const REQUESTS: usize>(
+     engine: &mut Engine<S>,
+     io: &mut T,
+@@ -6119,7 +6126,7 @@ where
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+-#[coaptic_io::dual_io(issue_q_observe_followup_async, bound(crate::app::async_server::ProtocolIo), calls(admission::send_refusal => admission::send_refusal_async, q_response_mid => q_response_mid_async, issue_q_window => issue_q_window_async, issue_q_selection => issue_q_selection_async))]
++#[coaptic_io::dual_io(issue_q_observe_followup_async, outline_if(target_arch = "xtensa"), bound(crate::app::async_server::ProtocolIo), calls(admission::send_refusal => admission::send_refusal_async, q_response_mid => q_response_mid_async, issue_q_window => issue_q_window_async, issue_q_selection => issue_q_selection_async))]
+ fn issue_q_observe_followup<S, T, const REQUESTS: usize>(
+     engine: &mut Engine<S>,
+     io: &mut T,
+@@ -6745,7 +6752,7 @@ where
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+-#[coaptic_io::dual_io(issue_classic_async, bound(crate::app::async_server::ProtocolIo), calls(send_pinned_tx => send_pinned_tx_async, finish_send => finish_send_async))]
++#[coaptic_io::dual_io(issue_classic_async, sync_outline_if(target_arch = "xtensa"), bound(crate::app::async_server::ProtocolIo), calls(send_pinned_tx => send_pinned_tx_async, finish_send => finish_send_async))]
+ fn issue_classic<S, T, const REQUESTS: usize>(
+     engine: &mut Engine<S>,
+     io: &mut T,
+@@ -7006,7 +7013,7 @@ fn plan_deferred_q(
+     Ok(plan)
+ }
+ #[allow(clippy::too_many_arguments)]
+-#[coaptic_io::dual_io(issue_deferred_q_async, bound(crate::app::async_server::ProtocolIo), calls(q_response_mid => q_response_mid_async, finish_send => finish_send_async))]
++#[coaptic_io::dual_io(issue_deferred_q_async, outline_if(target_arch = "xtensa"), bound(crate::app::async_server::ProtocolIo), calls(q_response_mid => q_response_mid_async, finish_send => finish_send_async))]
+ fn issue_deferred_q<S, T, const REQUESTS: usize>(
+     engine: &mut Engine<S>,
+     io: &mut T,
+@@ -7671,7 +7678,7 @@ fn request_may_rerun_on_duplicate(code: Code) -> bool {
+     matches!(code, Code::GET | Code::PUT | Code::DELETE | Code::IPATCH)
+ }
+ 
+-#[coaptic_io::dual_io(replay_con_request_async, bound(crate::app::async_server::ProtocolIo), calls(replay_closed => replay_closed_async, send_replay_bytes => send_replay_bytes_async, send_empty_ack => send_empty_ack_async), methods(send_tx => send_tx_async))]
++#[coaptic_io::dual_io(replay_con_request_async, outline_if(target_arch = "xtensa"), bound(crate::app::async_server::ProtocolIo), calls(replay_closed => replay_closed_async, send_replay_bytes => send_replay_bytes_async, send_empty_ack => send_empty_ack_async), methods(send_tx => send_tx_async))]
+ fn replay_con_request<S, T>(
+     engine: &mut Engine<S>,
+     io: &mut T,
+@@ -8220,7 +8227,7 @@ where
+     send_empty(engine, io, dest, Message::empty_rst(mid))
+ }
+ 
+-#[coaptic_io::dual_io(send_empty_async, bound(crate::app::async_server::ProtocolIo), methods(send_tx => send_owned_packet_async))]
++#[coaptic_io::dual_io(send_empty_async, outline_if(target_arch = "xtensa"), bound(crate::app::async_server::ProtocolIo), methods(send_tx => send_owned_packet_async))]
+ fn send_empty<S, T>(
+     engine: &mut Engine<S>,
+     io: &mut T,
+@@ -8249,7 +8256,7 @@ where
+ }
+ 
+ // RFC 8974 capacity refusal: called only after a syntactically valid request exceeds S::Token capacity.
+-#[coaptic_io::dual_io(send_token_capacity_refusal_async, bound(crate::app::async_server::ProtocolIo), methods(send_tx => send_owned_packet_async), calls(send_empty_ack => send_empty_ack_async))]
++#[coaptic_io::dual_io(send_token_capacity_refusal_async, outline_if(target_arch = "xtensa"), bound(crate::app::async_server::ProtocolIo), methods(send_tx => send_owned_packet_async), calls(send_empty_ack => send_empty_ack_async))]
+ fn send_token_capacity_refusal<S, T>(
+     engine: &mut Engine<S>,
+     io: &mut T,

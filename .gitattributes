@@ -43,3 +43,7 @@ tools/benchmark/evidence/admission-stage-b-20261030/** -text
 tools/benchmark/evidence/mcu-processing-span-20261109/** -text whitespace=cr-at-eol
 # The matcher changes only its private address; retain its original terminal blank line.
 tools/benchmark/evidence/mcu-processing-span-20261109/sources/mcu_processing_span_v2.py whitespace=cr-at-eol,-blank-at-eof
+
+# Preserve the exact completed target-CPU screen, vectors and source-patch hashes.
+tools/benchmark/evidence/esp-target-cpu-20261109/** -text whitespace=cr-at-eol
+tools/benchmark/evidence/esp-target-cpu-20261109/sources/*.patch whitespace=cr-at-eol,-blank-at-eol
