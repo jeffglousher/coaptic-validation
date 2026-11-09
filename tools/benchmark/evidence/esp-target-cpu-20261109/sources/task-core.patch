@@ -1,0 +1,112 @@
+--- a/tools/esphome/components/coaptic_network/coaptic_network.cpp
++++ b/tools/esphome/components/coaptic_network/coaptic_network.cpp
+@@ -194,6 +194,21 @@
+     // Application::setup may dispatch loops while another component is still
+     // setting up. Wait until it publishes the main owner before seeding.
+     if (esphome_main_task_handle == nullptr) return;
++    // Explicit affinity is qualified only for dual-core ESP32-S3.
++#if defined(CONFIG_IDF_TARGET_ESP32S3) && CONFIG_IDF_TARGET_ESP32S3
++    constexpr bool explicit_core_supported = portNUM_PROCESSORS >= 2;
++#else
++    constexpr bool explicit_core_supported = false;
++#endif
++    if (task_core_ < -1 || task_core_ > 1 ||
++        (task_core_ != -1 && !explicit_core_supported)) {
++      started_ = true;
++      ::esphome::esp_log_printf_(1, TAG, __LINE__,
++          "COAPTIC_TASK_POLICY_REFUSED run_id=%s core=%d available_cores=%u; worker not started",
++          run_id_.c_str(), static_cast<int>(task_core_), static_cast<unsigned>(portNUM_PROCESSORS));
++      mark_failed();
++      return;
++    }
+     // Pairing qualification and read campaigns reuse the telemetry timer before
+     // their worker exists. Zero preserves ordinary pairing startup.
+     if ((security_mode_ == 5 || security_mode_ == 6 || security_mode_ == 7) && millis() < telemetry_timeout_) return;
+@@ -236,7 +251,10 @@
+       return;
+     }
+     }
+-    if (xTaskCreate(run_, "coaptic_udp", STACK_BYTES, this, 1, &task_) != pdPASS) {
++    const BaseType_t created = task_core_ == -1
++        ? xTaskCreate(run_, "coaptic_udp", STACK_BYTES, this, 1, &task_)
++        : xTaskCreatePinnedToCore(run_, "coaptic_udp", STACK_BYTES, this, 1, &task_, task_core_);
++    if (created != pdPASS) {
+       std::memset(entropy_seed_, 0, sizeof(entropy_seed_));
+       log_resources(run_id_.c_str(), "task_allocation_refused", 0);
+       close(socket_);
+@@ -333,6 +351,13 @@
+ 
+ void CoapticNetwork::run_(void *argument) {
+   auto *self = static_cast<CoapticNetwork *>(argument);
++  // Direct ESPHome logging survives the SDK's lower compile-time log ceiling.
++  // One startup witness only; the packet-processing path remains untouched.
++  ::esphome::esp_log_printf_(3, TAG, __LINE__,
++      "COAPTIC_TASK_POLICY {\"run_id\":\"%s\",\"requested_core\":%d,\"actual_core\":%d,"
++      "\"priority\":%lu,\"stack_reserved_bytes\":%lu}",
++      self->run_id_.c_str(), static_cast<int>(self->task_core_), static_cast<int>(xPortGetCoreID()),
++      static_cast<unsigned long>(uxTaskPriorityGet(nullptr)), static_cast<unsigned long>(STACK_BYTES));
+   int32_t result = coaptic_network_run(self, reinterpret_cast<const uint8_t *>(self->run_id_.data()),
+                                       self->entropy_seed_);
+   std::memset(self->entropy_seed_, 0, sizeof(self->entropy_seed_));
+--- a/tools/esphome/components/coaptic_network/coaptic_network.h
++++ b/tools/esphome/components/coaptic_network/coaptic_network.h
+@@ -14,6 +14,11 @@
+  public:
+   void set_run_id(const std::string &value) { run_id_ = value; }
+   void set_port(uint16_t value) { port_ = value; }
++  // Configure before worker creation. Invalid direct callers remain invalid;
++  // do not truncate a wider integer into an accepted CPU index.
++  void set_task_core(int value) {
++    task_core_ = value >= -1 && value <= 1 ? static_cast<int8_t>(value) : int8_t{2};
++  }
+   void set_oscore(const std::string &secret, const std::string &salt, const std::string &context,
+                   uint8_t sender, uint8_t recipient, bool provision) {
+     secret_ = secret; salt_ = salt; context_ = context;
+@@ -91,6 +96,8 @@
+   uint32_t ready_burst_{0};
+   uint32_t logged_{0};
+   bool started_{false};
++  // -1 preserves the existing floating task; explicit pins require dual core.
++  int8_t task_core_{-1};
+   std::string run_id_;
+   std::string secret_, salt_, context_;
+   uint8_t sender_{1}, recipient_{2};
+--- a/tools/esphome/components/coaptic_network/__init__.py
++++ b/tools/esphome/components/coaptic_network/__init__.py
+@@ -130,6 +130,12 @@
+     return config
+ 
+ 
++def validate_task_core(config):
++    if config["task_core"] != -1 and esp32.get_esp32_variant() != VARIANT_ESP32S3:
++        raise cv.Invalid("task_core 0/1 requires dual-core ESP32-S3; use -1 on single-core targets")
++    return config
++
++
+ CONFIG_SCHEMA = cv.All(
+     cv.Schema({
+         cv.GenerateID(): cv.declare_id(CoapticNetwork),
+@@ -137,6 +143,7 @@
+         cv.Required("qualification_only"): cv.All(cv.boolean, cv.one_of(True)),
+         cv.Optional("rust_runtime", default="source"): cv.one_of("source", "bundled", "external"),
+         cv.Optional("async_network", default=False): cv.boolean,
++        cv.Optional("task_core", default=-1): cv.int_range(min=-1, max=1),
+         cv.Optional("resource_qualification", default=False): cv.boolean,
+         cv.Optional("resource_start_delay_ms", default=0): cv.int_range(min=0, max=120000),
+         cv.Optional("legacy_custody_permit"): fixed_hex(136),
+@@ -181,6 +188,7 @@
+     native_toolchain,
+     validate_security,
+     validate_runtime,
++    validate_task_core,
+ )
+ 
+ 
+@@ -203,6 +211,7 @@
+     await cg.register_component(component, config)
+     cg.add(component.set_run_id(config["run_id"]))
+     cg.add(component.set_port(config["port"]))
++    cg.add(component.set_task_core(config["task_core"]))
+     if config["resource_qualification"]:
+         esp32.add_idf_sdkconfig_option("CONFIG_FREERTOS_USE_TRACE_FACILITY", True)
+         cg.add_define("COAPTIC_RESOURCE_QUALIFICATION")
