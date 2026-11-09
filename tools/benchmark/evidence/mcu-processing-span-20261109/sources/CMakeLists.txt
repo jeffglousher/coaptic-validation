@@ -1,0 +1,11 @@
+idf_component_register(SRCS "mcu_processing_span.cpp" INCLUDE_DIRS "." REQUIRES esp_timer lwip freertos log heap)
+set(MCU_SPAN_WRAPS lwip_recvmsg lwip_recvfrom lwip_sendmsg lwip_sendto lwip_bind lwip_close lwip_select select vTaskDelay)
+if(CONFIG_VFS_SUPPORT_SELECT)
+  list(APPEND MCU_SPAN_WRAPS esp_vfs_select)
+endif()
+foreach(symbol IN LISTS MCU_SPAN_WRAPS)
+  target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=${symbol}")
+endforeach()
+
+target_include_directories(${COMPONENT_LIB} PRIVATE "${PROJECT_DIR}/src")
+target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,--undefined=mcu_span_size_witness")
