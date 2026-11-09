@@ -1,0 +1,200 @@
+{
+  "adopted": false,
+  "cpu": [
+    {
+      "async": {
+        "ratio": 1.003554811046413,
+        "upper95": 1.0051810662843679
+      },
+      "candidate": "54665f418f048a19bb86f15c636940b4230c9cbd",
+      "failed_bounds": 4,
+      "name": "body-inspection",
+      "operations": 14680064,
+      "runtime_accepted": false,
+      "sync": {
+        "ratio": 0.9977541574310408,
+        "upper95": 0.9998797744424802
+      }
+    },
+    {
+      "async": {
+        "ratio": 0.9933471857960925,
+        "upper95": 0.9952109529287366
+      },
+      "candidate": "12a05628ae3934dba6a215389e4e7d20f14b8756",
+      "failed_bounds": 2,
+      "name": "borrow-path-fill",
+      "operations": 14680064,
+      "runtime_accepted": false,
+      "sync": {
+        "ratio": 0.9947438166624447,
+        "upper95": 0.996844482382637
+      }
+    },
+    {
+      "async": {
+        "ratio": 1.0055137820404705,
+        "upper95": 1.0068897578501712
+      },
+      "candidate": "520d0b36cb8240538de4c0862f0bc1ad3fa8aee8",
+      "failed_bounds": 5,
+      "name": "cold-async",
+      "operations": 14680064,
+      "runtime_accepted": false,
+      "sync": {
+        "ratio": 0.9998792882487345,
+        "upper95": 1.0017605646471053
+      }
+    },
+    {
+      "async": {
+        "ratio": 1.002877928244296,
+        "upper95": 1.0052745970985164
+      },
+      "candidate": "a5f1dbfd7ee6456a09101a7d7b4e1ef275d13b57",
+      "failed_bounds": 7,
+      "name": "compact-expiry",
+      "operations": 14680064,
+      "runtime_accepted": false,
+      "sync": {
+        "ratio": 0.9970905600094666,
+        "upper95": 0.9996615840889067
+      }
+    },
+    {
+      "async": {
+        "ratio": 0.9902083710681987,
+        "upper95": 0.9925533861014147
+      },
+      "candidate": "6af005e470dd15ca3978597fef0f27d76f5a5e14",
+      "failed_bounds": 2,
+      "name": "handler-request",
+      "operations": 14680064,
+      "runtime_accepted": false,
+      "sync": {
+        "ratio": 0.9921098353071669,
+        "upper95": 0.9948608008954944
+      }
+    },
+    {
+      "async": {
+        "ratio": 1.0918736865132341,
+        "upper95": 1.093771851161735
+      },
+      "candidate": "acc9cb8492924c89b4d412414b846429d03c4e6c",
+      "failed_bounds": 14,
+      "name": "outlined-async",
+      "operations": 14680064,
+      "runtime_accepted": false,
+      "sync": {
+        "ratio": 0.9984416045816994,
+        "upper95": 1.0003584462965196
+      }
+    },
+    {
+      "async": {
+        "ratio": 0.988197159242359,
+        "upper95": 0.9900866274441121
+      },
+      "candidate": "dc1e66549b5cd7115003452ddbd42b1e9c079af0",
+      "failed_bounds": 1,
+      "name": "request-context",
+      "operations": 14680064,
+      "runtime_accepted": false,
+      "sync": {
+        "ratio": 0.9855822354898296,
+        "upper95": 0.9878251975884854
+      }
+    },
+    {
+      "async": {
+        "ratio": 1.0051683202370716,
+        "upper95": 1.0067632284315793
+      },
+      "candidate": "1500cd393bf2d223a7e3ca1fe55b1ff104be88b9",
+      "failed_bounds": 9,
+      "name": "snapshot-only",
+      "operations": 14680064,
+      "runtime_accepted": false,
+      "sync": {
+        "ratio": 1.0075134463891304,
+        "upper95": 1.0097909350225456
+      }
+    }
+  ],
+  "goal_complete": false,
+  "host": {
+    "cells": 252,
+    "geometric_goodput_ratio_vs_libcoap": {
+      "Coaptic-Mio": 1.2961971392155713,
+      "Coaptic-async": 1.1196637795257298,
+      "Coaptic-spin": 1.4900141204961728,
+      "aiocoap": 0.09630560919510828,
+      "coap-rs": 0.9464774825430677,
+      "go-coap": 0.5264673839388202,
+      "libcoap": 1.0
+    },
+    "operations": 564480
+  },
+  "provenance": {
+    "cpu_methods": 8,
+    "host_method": 1,
+    "wifi_methods": 2
+  },
+  "scope": "Portable sufficient-statistic and latency regrade only. Hardware/source execution and excluded private witnesses remain producer attestations.",
+  "sources": {
+    "cohort_input_maps": 8,
+    "files_per_arm": 181,
+    "fixture_exact_files": 41,
+    "fixture_omitted_files": 1
+  },
+  "verified": true,
+  "wifi": [
+    {
+      "boots": 16,
+      "decisions": [
+        {
+          "name": "hot-packet-O3Thin-cache32-sync-iram-server",
+          "promising": false,
+          "strict_best_C_ratio": 1.046937787139053
+        },
+        {
+          "name": "sender-inline-O3Thin-cache32-async-flash-server",
+          "promising": false,
+          "strict_best_C_ratio": 1.3767625017732683
+        },
+        {
+          "name": "hot-packet-OsFat-cache32-async-flash-server",
+          "promising": false,
+          "strict_best_C_ratio": 1.4100830672048716
+        },
+        {
+          "name": "hot-packet-OsFat-cache32-async-iram-server",
+          "promising": false,
+          "strict_best_C_ratio": 1.160778917208012
+        }
+      ],
+      "name": "native-hot",
+      "operations": 1536,
+      "stability_reported": true
+    },
+    {
+      "boots": 12,
+      "decisions": [
+        {
+          "name": "pipeline-O3Thin-cache32-sync-iram-server",
+          "promising": false,
+          "strict_best_C_ratio": 0.9185233422133537
+        },
+        {
+          "name": "pipeline-OsFat-cache16-async-iram-server",
+          "promising": false,
+          "strict_best_C_ratio": 1.5505558635641785
+        }
+      ],
+      "name": "native-pipeline",
+      "operations": 1152,
+      "stability_reported": true
+    }
+  ]
+}
