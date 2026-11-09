@@ -513,3 +513,13 @@ no finite horizon. Its schema-2 startup ledger reports nested Stage/adapter/App
 and separate Driver inline sizes; runtime allocations and whole RAM remain
 unknown. See [the control description](linux_cpu.md#explicit-staged-mio-control);
 this mode is unmeasured and leaves existing defaults and all unchanged.
+
+## Completed host and ESP32 speed investigation
+
+The [portable November speed evidence](evidence/esp-libcoap-speed-20261109/README.md)
+retains the seven-implementation host refresh, eight rejected complete-App CPU
+cohorts and both closed ESP32-S3 Wi-Fi screens. Its offline verifier reproduces
+aggregate ratios, all 28-cell CPU bounds and Wi-Fi promotion failures from exact
+process sums/counts and complete whitelisted latency vectors. Source patches,
+fixture hashes, frozen limits and explicit privacy/rebuild limitations are included;
+no candidate is adopted and no new faster-than-libcoap goal completion is claimed.

@@ -1,0 +1,84 @@
+{
+  "patches": [
+    {
+      "base": "a85c51e689607051e36e450567fe051f8f85dc2b",
+      "kind": "core",
+      "matched": true,
+      "target": "12a05628ae3934dba6a215389e4e7d20f14b8756",
+      "tree_sha1": "28d3e3fd260506d01fadd9eb42646b6675de2d24"
+    },
+    {
+      "base": "a85c51e689607051e36e450567fe051f8f85dc2b",
+      "kind": "core",
+      "matched": true,
+      "target": "1500cd393bf2d223a7e3ca1fe55b1ff104be88b9",
+      "tree_sha1": "c54b0ed8ec7f11703b62a3abe9fc35ea0e1b8ded"
+    },
+    {
+      "base": "a85c51e689607051e36e450567fe051f8f85dc2b",
+      "kind": "core",
+      "matched": true,
+      "target": "520d0b36cb8240538de4c0862f0bc1ad3fa8aee8",
+      "tree_sha1": "e0de29f4a681a7f7a92fa43ace0a821363c025bd"
+    },
+    {
+      "base": "a85c51e689607051e36e450567fe051f8f85dc2b",
+      "kind": "core",
+      "matched": true,
+      "target": "54665f418f048a19bb86f15c636940b4230c9cbd",
+      "tree_sha1": "eea73935682ba2c53124df9e70a20e6072033801"
+    },
+    {
+      "base": "a85c51e689607051e36e450567fe051f8f85dc2b",
+      "kind": "core",
+      "matched": true,
+      "target": "6af005e470dd15ca3978597fef0f27d76f5a5e14",
+      "tree_sha1": "495834fbcb4d537d79ce0e83a8ea791a7d653bf8"
+    },
+    {
+      "base": "a85c51e689607051e36e450567fe051f8f85dc2b",
+      "kind": "core",
+      "matched": true,
+      "target": "a5f1dbfd7ee6456a09101a7d7b4e1ef275d13b57",
+      "tree_sha1": "ce20466d7aec87d11e972d1707c26ef44432da97"
+    },
+    {
+      "base": "a85c51e689607051e36e450567fe051f8f85dc2b",
+      "kind": "core",
+      "matched": true,
+      "target": "acc9cb8492924c89b4d412414b846429d03c4e6c",
+      "tree_sha1": "6d31ccab6f90a8114a411d0cd407c13c8d90ecd7"
+    },
+    {
+      "base": "a85c51e689607051e36e450567fe051f8f85dc2b",
+      "kind": "core",
+      "matched": true,
+      "target": "c0151713fc187a4a2b8ed3cba1eb0b12df597d00",
+      "tree_sha1": "f26e4be2e2de57255736b101aa6863c014ea573a"
+    },
+    {
+      "base": "a85c51e689607051e36e450567fe051f8f85dc2b",
+      "kind": "core",
+      "matched": true,
+      "target": "dc1e66549b5cd7115003452ddbd42b1e9c079af0",
+      "tree_sha1": "e0222208a1b67c1811b0360abf8259a53d46e56e"
+    },
+    {
+      "base": "e602a261fac18d839e92def713ae410f7c78d15d",
+      "kind": "suite",
+      "matched": true,
+      "target": "32f8fcac22fc16b1957c35f4f145df6be3a72532",
+      "tree_sha1": "511436158418a189ead353945d2fabeb311c955b"
+    },
+    {
+      "base": "e602a261fac18d839e92def713ae410f7c78d15d",
+      "kind": "suite",
+      "matched": true,
+      "target": "35bac1e2b131979cd209a4ceb825f1ab081147b4",
+      "tree_sha1": "f2de72c3917bfb8905d4fd49fd053d0bef0b33ed"
+    }
+  ],
+  "schema": "coaptic-source-reconstruction-check/1",
+  "scope": "Producer check: apply each retained patch to its baseline using an isolated temporary Git index, then compare git write-tree with its named target tree. No application builds, worktree changes, or runtime actions.",
+  "verified": true
+}
