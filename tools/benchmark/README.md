@@ -523,3 +523,14 @@ aggregate ratios, all 28-cell CPU bounds and Wi-Fi promotion failures from exact
 process sums/counts and complete whitelisted latency vectors. Source patches,
 fixture hashes, frozen limits and explicit privacy/rebuild limitations are included;
 no candidate is adopted and no new faster-than-libcoap goal completion is claimed.
+
+
+## Exact-H comparison and ESP local wake handling
+
+The [fresh host, startup and Wi-Fi evidence](evidence/esp-idle-observe-20261109/README.md)
+retains all 403,200 host operations, 1,152 Wi-Fi performance reads and 96 separate
+startup qualification reads. Both host gates pass and both H device profile gates
+fail; all observations, memory tradeoffs and boot variation remain. The runtime
+wake-handling code delivered alongside these records matches the measured 32f8
+production source, with a separate future-deadline regression. Its source checks
+do not claim an isolated complete-App CPU gain or adoption of the failed H profiles.
