@@ -335,10 +335,47 @@ impl coaptic::storage::AsyncDatagramIo for DtlsIo {
     }
 }
 
-struct AppTimer(Instant);
+struct AppTimer {
+    epoch: Instant,
+    armed: Option<u64>,
+    sleep: Option<core::pin::Pin<Box<tokio::time::Sleep>>>,
+}
+impl AppTimer {
+    fn new(epoch: Instant) -> Self {
+        Self {
+            epoch,
+            armed: None,
+            sleep: None,
+        }
+    }
+}
 impl coaptic::platform::AsyncTimer for AppTimer {
-    async fn wait_until(&mut self, deadline_ms: u64) {
-        tokio::time::sleep_until((self.0 + Duration::from_millis(deadline_ms)).into()).await;
+    fn armed(&self) -> Option<u64> {
+        self.armed
+    }
+    fn schedule(&mut self, deadline_ms: Option<u64>) {
+        if self.armed == deadline_ms {
+            return;
+        }
+        self.armed = deadline_ms;
+        let Some(deadline) =
+            deadline_ms.and_then(|ms| self.epoch.checked_add(Duration::from_millis(ms)))
+        else {
+            self.sleep = None;
+            return;
+        };
+        if let Some(sleep) = self.sleep.as_mut() {
+            sleep.as_mut().reset(deadline.into());
+        } else {
+            self.sleep = Some(Box::pin(tokio::time::sleep_until(deadline.into())));
+        }
+    }
+    fn poll_wait(&mut self, cx: &mut core::task::Context<'_>) -> core::task::Poll<()> {
+        use core::future::Future;
+        match self.sleep.as_mut() {
+            Some(sleep) => sleep.as_mut().poll(cx),
+            None => core::task::Poll::Pending,
+        }
     }
 }
 
@@ -367,7 +404,7 @@ async fn coaptic_dtls_server(
                     let epoch = Instant::now();
                     let now = || epoch.elapsed().as_millis() as u64;
                     let mut clock = || Ok::<u64, std::io::Error>(now());
-                    let mut timer = AppTimer(epoch);
+                    let mut timer = AppTimer::new(epoch);
                     loop {
                         if app.wait_async(now(), &mut timer, std::future::pending::<()>()).await.is_err() { break; }
                         if app.progress_async(now(), &mut clock, &mut timer, now() + 1000).await.is_err() { break; }
@@ -524,7 +561,7 @@ where
 {
     let now = || epoch.elapsed().as_millis() as u64;
     let mut clock = || Ok::<u64, std::io::Error>(now());
-    let mut timer = AppTimer(epoch);
+    let mut timer = AppTimer::new(epoch);
     loop {
         for _ in 0..32 {
             // App races local work/deadlines before ingress and retains a winning
@@ -1379,6 +1416,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn timer_wait_cancellation_preserves_deadline_and_reuses_sleep() {
+        use coaptic::platform::AsyncTimer;
+        use core::{
+            future::Future,
+            task::{Context, Waker},
+        };
+        let mut timer = AppTimer::new(Instant::now());
+        timer.schedule(Some(60_000));
+        let allocation = timer.sleep.as_ref().unwrap().as_ref().get_ref() as *const _;
+        {
+            let mut wait = core::pin::pin!(timer.wait());
+            assert!(
+                wait.as_mut()
+                    .poll(&mut Context::from_waker(Waker::noop()))
+                    .is_pending()
+            );
+        }
+        assert_eq!(timer.armed(), Some(60_000));
+        timer.schedule(Some(0));
+        assert_eq!(
+            allocation,
+            timer.sleep.as_ref().unwrap().as_ref().get_ref() as *const _
+        );
+        timer.wait().await;
+        timer.schedule(None);
+        assert_eq!(timer.armed(), None);
+        assert!(
+            timer
+                .poll_wait(&mut Context::from_waker(Waker::noop()))
+                .is_pending()
+        );
+    }
+
     use coaptic::message::{Message, MessageId, Type};
 
     #[test]
@@ -1806,7 +1878,7 @@ mod tests {
             let mut app = bind_fixture(io, 64, 1472, None).unwrap();
             let epoch = Instant::now();
             let now = || epoch.elapsed().as_millis() as u64;
-            let mut timer = AppTimer(epoch);
+            let mut timer = AppTimer::new(epoch);
             assert!(
                 tokio::time::timeout(
                     Duration::from_millis(5),
@@ -1882,7 +1954,7 @@ mod tests {
             let due = app.next_timeout().unwrap();
             let epoch = Instant::now() - Duration::from_millis(due - 5);
             let now = || epoch.elapsed().as_millis() as u64;
-            let mut timer = AppTimer(epoch);
+            let mut timer = AppTimer::new(epoch);
             let before_wait = now();
             let expected = if before_wait < due {
                 coaptic::app::AppWake::Deadline
