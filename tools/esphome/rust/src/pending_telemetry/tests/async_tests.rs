@@ -37,8 +37,21 @@ impl AsyncDatagramIo for Socket {
         Ok(bytes.len())
     }
 }
-struct Timer(Rc<Cell<u64>>);
+struct Timer(Rc<Cell<u64>>, Option<u64>);
 impl AsyncTimer for Timer {
+    fn armed(&self) -> Option<u64> {
+        self.1
+    }
+    fn schedule(&mut self, deadline: Option<u64>) {
+        self.1 = deadline;
+    }
+    fn poll_wait(&mut self, _: &mut Context<'_>) -> Poll<()> {
+        if self.1.is_some_and(|deadline| self.0.get() >= deadline) {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
+    }
     async fn wait_until(&mut self, deadline: u64) {
         core::future::poll_fn(|_| {
             if self.0.get() >= deadline {
@@ -66,8 +79,8 @@ fn pending_send_deadline_and_post_accept_clock_failure_preserve_exact_operation(
         security::provision(&mut security, &credentials).unwrap();
         let now = Rc::new(Cell::new(0));
         let accepted = Rc::new(Cell::new(false));
-        let mut protocol = Timer(now.clone());
-        let mut local = Timer(now.clone());
+        let mut protocol = Timer(now.clone(), None);
+        let mut local = Timer(now.clone(), None);
         let result = {
             let mut future = core::pin::pin!(runner::run_async(
                 Socket {
@@ -189,8 +202,8 @@ fn authenticated_async_receipt_is_durable_and_restart_needs_no_network() {
         if !restart {
             security::provision(&mut security, &credentials).unwrap();
         }
-        let mut protocol = Timer(now.clone());
-        let mut local = Timer(now.clone());
+        let mut protocol = Timer(now.clone(), None);
+        let mut local = Timer(now.clone(), None);
         let mut future = core::pin::pin!(runner::run_async(
             ReceiptPeer {
                 context: coaptic::oscore::SecurityContext::derive(peer_credentials.parameters())

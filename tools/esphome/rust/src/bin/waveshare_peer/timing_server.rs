@@ -172,16 +172,25 @@ impl coaptic::storage::AsyncDatagramIo for AsyncIo<'_> {
 // Share the exact epoch used for service timestamps, including the finite stop
 // policy. Protocol and local timers are separate owners of that same epoch.
 #[cfg(feature = "async-network")]
-struct Timer<'a>(&'a Instant);
+struct Timer<'a>(&'a Instant, Option<u64>, async_io::Timer);
 
 #[cfg(feature = "async-network")]
 impl coaptic::platform::AsyncTimer for Timer<'_> {
-    async fn wait_until(&mut self, deadline_ms: u64) {
-        if let Some(deadline) = self.0.checked_add(Duration::from_millis(deadline_ms)) {
-            async_io::Timer::at(deadline).await;
-        } else {
-            core::future::pending::<()>().await;
+    fn armed(&self) -> Option<u64> {
+        self.1
+    }
+    fn schedule(&mut self, deadline_ms: Option<u64>) {
+        if self.1 == deadline_ms {
+            return;
         }
+        self.1 = deadline_ms;
+        match deadline_ms.and_then(|ms| self.0.checked_add(Duration::from_millis(ms))) {
+            Some(deadline) => self.2.set_at(deadline),
+            None => self.2.clear(),
+        }
+    }
+    fn poll_wait(&mut self, cx: &mut core::task::Context<'_>) -> core::task::Poll<()> {
+        core::future::Future::poll(core::pin::Pin::new(&mut self.2), cx).map(|_| ())
     }
 }
 struct Durable<'a> {
@@ -326,8 +335,8 @@ fn run_bound(
     };
     #[cfg(feature = "async-network")]
     let result = {
-        let mut protocol_timer = Timer(&started);
-        let mut local_timer = Timer(&started);
+        let mut protocol_timer = Timer(&started, None, async_io::Timer::never());
+        let mut local_timer = Timer(&started, None, async_io::Timer::never());
         if let Some((credentials, state)) = protection {
             let store = Durable {
                 store: FileStore::open(state, false)?,

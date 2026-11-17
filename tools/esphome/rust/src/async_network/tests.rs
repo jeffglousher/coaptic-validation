@@ -480,3 +480,46 @@ fn local_work_probes_now_without_advancing_a_future_deadline() {
     );
     assert_eq!(WAKE_STATE.load(Ordering::Acquire) & PARKED, 0);
 }
+
+#[test]
+fn scheduled_timer_survives_cancelled_wait_and_retains_registration() {
+    let _serial = SERIAL.lock().unwrap();
+    let mut runtime = runtime();
+    let (_, mut timer, _, mut driver) = runtime.split();
+    let waker = unsafe { Waker::from_raw(raw_waker()) };
+    let mut context = Context::from_waker(&waker);
+    timer.schedule(Some(25));
+    assert_eq!(timer.armed(), Some(25));
+    assert!(timer.poll_wait(&mut context).is_pending());
+    timer.schedule(Some(25));
+    assert!(driver.0.wakers[2].borrow().is_some());
+    {
+        let mut wait = pin!(timer.wait());
+        assert!(wait.as_mut().poll(&mut context).is_pending());
+    }
+    assert_eq!(timer.armed(), Some(25));
+    assert!(driver.0.wakers[2].borrow().is_none());
+    assert_eq!(driver.run(pin!(timer.wait())), Ok(()));
+    assert_eq!(timer.armed(), Some(25));
+    timer.schedule(None);
+    assert!(timer.poll_wait(&mut context).is_pending());
+    assert!(driver.0.wakers[2].borrow().is_none());
+}
+
+#[test]
+fn scheduled_timer_move_and_past_deadline_are_observed() {
+    let _serial = SERIAL.lock().unwrap();
+    let mut runtime = runtime();
+    let (_, mut timer, _, driver) = runtime.split();
+    let waker = unsafe { Waker::from_raw(raw_waker()) };
+    let mut context = Context::from_waker(&waker);
+    timer.schedule(Some(100));
+    assert!(timer.poll_wait(&mut context).is_pending());
+    timer.schedule(Some(25));
+    assert_eq!(driver.0.deadlines[0].get(), Some(25));
+    assert!(driver.0.wakers[2].borrow().is_some());
+    STATE.lock().unwrap().now = 25;
+    assert!(timer.poll_wait(&mut context).is_ready());
+    timer.schedule(None);
+    assert!(driver.0.wakers[2].borrow().is_none());
+}

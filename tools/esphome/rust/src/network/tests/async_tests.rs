@@ -29,8 +29,21 @@ impl AsyncDatagramIo for NativeOnly {
     }
 }
 
-pub(super) struct Timer(pub(super) Rc<Cell<u64>>);
+pub(super) struct Timer(pub(super) Rc<Cell<u64>>, pub(super) Option<u64>);
 impl AsyncTimer for Timer {
+    fn armed(&self) -> Option<u64> {
+        self.1
+    }
+    fn schedule(&mut self, deadline: Option<u64>) {
+        self.1 = deadline;
+    }
+    fn poll_wait(&mut self, _: &mut Context<'_>) -> Poll<()> {
+        if self.1.is_some_and(|deadline| self.0.get() >= deadline) {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
+    }
     async fn wait_until(&mut self, deadline: u64) {
         core::future::poll_fn(|_| {
             if self.0.get() >= deadline {
@@ -68,8 +81,8 @@ fn native_only_service_echoes_after_pending_io_and_releases_ownership() {
             outgoing: out.clone(),
             fail: true,
         });
-        let mut protocol = Timer(now.clone());
-        let mut local = Timer(now.clone());
+        let mut protocol = Timer(now.clone(), None);
+        let mut local = Timer(now.clone(), None);
         assert_eq!(
             drive(
                 run_async(

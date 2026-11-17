@@ -591,8 +591,8 @@ mod tests {
             })
         };
         let now = Rc::new(Cell::new(0));
-        let mut protocol = Timer(now.clone());
-        let mut local = Timer(now.clone());
+        let mut protocol = Timer(now.clone(), None);
+        let mut local = Timer(now.clone(), None);
         {
             let future = run_async(
                 idle(),
@@ -653,8 +653,8 @@ mod tests {
             &[3; 32],
         )
         .unwrap_or_else(|error| panic!("preparation: {error}"));
-        let mut protocol = Timer(now.clone());
-        let mut local = Timer(now.clone());
+        let mut protocol = Timer(now.clone(), None);
+        let mut local = Timer(now.clone(), None);
         {
             let mut future = core::pin::pin!(serve_prepared_async(
                 &mut service,
@@ -918,8 +918,8 @@ mod tests {
                     outgoing: out.clone(),
                     fail: false,
                 });
-                let mut protocol = Timer(now.clone());
-                let mut local = Timer(now.clone());
+                let mut protocol = Timer(now.clone(), None);
+                let mut local = Timer(now.clone(), None);
                 let credentials = credentials();
                 let result = drive(
                     run_protected_async(

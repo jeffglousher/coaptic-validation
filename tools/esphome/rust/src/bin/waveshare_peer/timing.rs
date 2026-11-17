@@ -112,15 +112,24 @@ impl AsyncDatagramIo for AsyncIo<'_> {
 // Use the trace/campaign epoch for both absolute protocol and local deadlines.
 // A separately initialized reactor clock would shift those deadlines.
 #[cfg(feature = "async-network")]
-struct Timer<'a>(&'a Instant);
+struct Timer<'a>(&'a Instant, Option<u64>, async_io::Timer);
 #[cfg(feature = "async-network")]
 impl coaptic::platform::AsyncTimer for Timer<'_> {
-    async fn wait_until(&mut self, deadline_ms: u64) {
-        if let Some(deadline) = self.0.checked_add(Duration::from_millis(deadline_ms)) {
-            async_io::Timer::at(deadline).await;
-        } else {
-            core::future::pending::<()>().await;
+    fn armed(&self) -> Option<u64> {
+        self.1
+    }
+    fn schedule(&mut self, deadline_ms: Option<u64>) {
+        if self.1 == deadline_ms {
+            return;
         }
+        self.1 = deadline_ms;
+        match deadline_ms.and_then(|ms| self.0.checked_add(Duration::from_millis(ms))) {
+            Some(deadline) => self.2.set_at(deadline),
+            None => self.2.clear(),
+        }
+    }
+    fn poll_wait(&mut self, cx: &mut core::task::Context<'_>) -> core::task::Poll<()> {
+        core::future::Future::poll(core::pin::Pin::new(&mut self.2), cx).map(|_| ())
     }
 }
 fn mid(bytes: &[u8]) -> u64 {
@@ -206,7 +215,10 @@ fn campaign_selected(
         #[cfg(not(feature = "async-network"))]
         let wait = || std::thread::sleep(Duration::from_millis(1));
         #[cfg(feature = "async-network")]
-        let (mut protocol_timer, mut local_timer) = (Timer(&clock), Timer(&clock));
+        let (mut protocol_timer, mut local_timer) = (
+            Timer(&clock, None, async_io::Timer::never()),
+            Timer(&clock, None, async_io::Timer::never()),
+        );
         let identity = run_id
             .as_bytes()
             .try_into()

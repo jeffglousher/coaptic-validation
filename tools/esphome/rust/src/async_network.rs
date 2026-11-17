@@ -406,18 +406,49 @@ impl Drop for Deadline<'_> {
         self.0.wakers[2 + self.1].borrow_mut().take();
     }
 }
+// Waiting borrows the registration; cancelling it releases only its waker.
+struct TimerWait<'a>(&'a Runtime, usize);
+impl Drop for TimerWait<'_> {
+    fn drop(&mut self) {
+        self.0.wakers[2 + self.1].borrow_mut().take();
+    }
+}
 impl AsyncTimer for Timer<'_> {
-    async fn wait_until(&mut self, deadline: u64) {
-        let registration = Deadline(self.0, self.1);
-        poll_fn(|context| match registration.0.now() {
+    fn armed(&self) -> Option<u64> {
+        self.0.deadlines[self.1].get()
+    }
+
+    fn schedule(&mut self, deadline: Option<u64>) {
+        if self.armed() != deadline {
+            self.0.deadlines[self.1].set(deadline);
+            if deadline.is_none() {
+                self.0.wakers[2 + self.1].borrow_mut().take();
+            }
+        }
+    }
+
+    fn poll_wait(&mut self, context: &mut Context<'_>) -> Poll<()> {
+        let Some(deadline) = self.armed() else {
+            return Poll::Pending;
+        };
+        match self.0.now() {
             Ok(now) if now < deadline => {
-                registration.0.register(2 + registration.1, context.waker());
-                registration.0.deadlines[registration.1].set(Some(deadline));
+                self.0.register(2 + self.1, context.waker());
                 Poll::Pending
             }
             _ => Poll::Ready(()),
-        })
-        .await
+        }
+    }
+
+    async fn wait(&mut self) {
+        let _registration = TimerWait(self.0, self.1);
+        poll_fn(|context| self.poll_wait(context)).await
+    }
+
+    async fn wait_until(&mut self, deadline: u64) {
+        let _registration = Deadline(self.0, self.1);
+        self.schedule(Some(deadline));
+        self.wait().await;
     }
 }
 
