@@ -33,6 +33,7 @@ impl MemoryProfile for LoopbackConstrained {
     type Dedup = <profiles::Constrained as MemoryProfile>::Dedup;
     type Observe = <profiles::Constrained as MemoryProfile>::Observe;
     type Exchange = coaptic::storage::ExchangeTable<3>;
+    type ResidentRxScratch = <profiles::Constrained as MemoryProfile>::ResidentRxScratch;
     type RxScratch = <profiles::Constrained as MemoryProfile>::RxScratch;
     type TxScratch = <profiles::Constrained as MemoryProfile>::TxScratch;
 }

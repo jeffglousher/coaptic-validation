@@ -1,0 +1,7046 @@
+{
+  "status": "complete",
+  "continuation_signal": false,
+  "cpu_preservation": false,
+  "device_speed_qualified": false,
+  "rows": [
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "means": {
+        "A": 2404.03076171875,
+        "B": 2376.015625
+      },
+      "ratio": 0.9883465980698514
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "means": {
+        "A": 3184.30419921875,
+        "B": 3170.44189453125
+      },
+      "ratio": 0.9956466770068949
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "means": {
+        "A": 5073.56201171875,
+        "B": 5105.478515625
+      },
+      "ratio": 1.0062907487545298
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "means": {
+        "A": 5874.75341796875,
+        "B": 5803.4912109375
+      },
+      "ratio": 0.9878697535094351
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "means": {
+        "A": 4564.0185546875,
+        "B": 4642.08740234375
+      },
+      "ratio": 1.0171052870887365
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "means": {
+        "A": 79915.60546875,
+        "B": 80989.0625
+      },
+      "ratio": 1.0134323831366048
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "means": {
+        "A": 6356.572265625,
+        "B": 6405.42236328125
+      },
+      "ratio": 1.007684974796939
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "means": {
+        "A": 112622.67578125,
+        "B": 111851.03515625
+      },
+      "ratio": 0.9931484435115111
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "means": {
+        "A": 11001.4404296875,
+        "B": 11116.69677734375
+      },
+      "ratio": 1.010476477911495
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "means": {
+        "A": 189082.16796875,
+        "B": 189227.265625
+      },
+      "ratio": 1.0007673788480889
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "means": {
+        "A": 12971.46484375,
+        "B": 13109.755859375
+      },
+      "ratio": 1.0106611718330047
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "means": {
+        "A": 218629.62890625,
+        "B": 216776.89453125
+      },
+      "ratio": 0.9915256940046563
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "means": {
+        "A": 4705.67138671875,
+        "B": 4586.55517578125
+      },
+      "ratio": 0.9746866703710564
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "means": {
+        "A": 82364.3359375,
+        "B": 81170.68359375
+      },
+      "ratio": 0.9855076553442285
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "means": {
+        "A": 6773.6865234375,
+        "B": 6775.595703125
+      },
+      "ratio": 1.000281852382878
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "means": {
+        "A": 119152.0703125,
+        "B": 116250.78125
+      },
+      "ratio": 0.9756505358665545
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "means": {
+        "A": 11121.9677734375,
+        "B": 11169.32373046875
+      },
+      "ratio": 1.0042578757640666
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "means": {
+        "A": 187968.8671875,
+        "B": 191067.71484375
+      },
+      "ratio": 1.016485962290547
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "means": {
+        "A": 13380.9423828125,
+        "B": 13305.94482421875
+      },
+      "ratio": 0.9943951960595778
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "means": {
+        "A": 228153.9453125,
+        "B": 224173.22265625
+      },
+      "ratio": 0.9825524706539803
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "means": {
+        "A": 15179.47265625,
+        "B": 15375.0390625
+      },
+      "ratio": 1.0128836100356542
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "means": {
+        "A": 20086.89453125,
+        "B": 19546.015625
+      },
+      "ratio": 0.9730730449443774
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "means": {
+        "A": 74662.87109375,
+        "B": 72471.46484375
+      },
+      "ratio": 0.9706493171519165
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "means": {
+        "A": 78901.58203125,
+        "B": 79009.82421875
+      },
+      "ratio": 1.0013718633354796
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "means": {
+        "A": 16661.9921875,
+        "B": 16835.64453125
+      },
+      "ratio": 1.010422063688175
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "means": {
+        "A": 22247.08984375,
+        "B": 21685.29296875
+      },
+      "ratio": 0.9747473993701774
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "means": {
+        "A": 74657.2265625,
+        "B": 77575.1171875
+      },
+      "ratio": 1.039083833666889
+    },
+    {
+      "pair": 0,
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "means": {
+        "A": 82813.90625,
+        "B": 83007.48046875
+      },
+      "ratio": 1.0023374603072779
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "means": {
+        "B": 2390.08544921875,
+        "A": 2408.09814453125
+      },
+      "ratio": 0.9925199496733941
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "means": {
+        "B": 3101.669921875,
+        "A": 3141.63818359375
+      },
+      "ratio": 0.9872778915384107
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "means": {
+        "B": 5110.41748046875,
+        "A": 5107.92724609375
+      },
+      "ratio": 1.0004875234620667
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "means": {
+        "B": 5834.57763671875,
+        "A": 5793.115234375
+      },
+      "ratio": 1.007157185843244
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "means": {
+        "B": 4570.9912109375,
+        "A": 4566.591796875
+      },
+      "ratio": 1.0009633911368014
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "means": {
+        "B": 82580.15625,
+        "A": 79973.046875
+      },
+      "ratio": 1.032599850535581
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "means": {
+        "B": 6330.38330078125,
+        "A": 6268.916015625
+      },
+      "ratio": 1.0098050899075766
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "means": {
+        "B": 112627.98828125,
+        "A": 110341.953125
+      },
+      "ratio": 1.0207177332964215
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "means": {
+        "B": 11109.43359375,
+        "A": 11090.4248046875
+      },
+      "ratio": 1.0017139820518386
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "means": {
+        "B": 188078.4375,
+        "A": 183026.25
+      },
+      "ratio": 1.0276036224312086
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "means": {
+        "B": 12908.17138671875,
+        "A": 13042.2705078125
+      },
+      "ratio": 0.9897181153378606
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "means": {
+        "B": 221616.9140625,
+        "A": 219422.8515625
+      },
+      "ratio": 1.0099992433986533
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "means": {
+        "B": 4573.10791015625,
+        "A": 4642.41943359375
+      },
+      "ratio": 0.9850699566402933
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "means": {
+        "B": 81179.31640625,
+        "A": 85837.71484375
+      },
+      "ratio": 0.9457301671418017
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "means": {
+        "B": 6709.06494140625,
+        "A": 6887.78076171875
+      },
+      "ratio": 0.9740532071947214
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "means": {
+        "B": 119349.296875,
+        "A": 118557.0703125
+      },
+      "ratio": 1.0066822380176215
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "means": {
+        "B": 11085.73486328125,
+        "A": 11236.31103515625
+      },
+      "ratio": 0.986599145270732
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "means": {
+        "B": 188278.3203125,
+        "A": 190937.55859375
+      },
+      "ratio": 0.9860727334064853
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "means": {
+        "B": 13701.89208984375,
+        "A": 13515.95458984375
+      },
+      "ratio": 1.013756889960234
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "means": {
+        "B": 226777.34375,
+        "A": 229792.8515625
+      },
+      "ratio": 0.9868772775480362
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "means": {
+        "B": 15478.30078125,
+        "A": 15394.9609375
+      },
+      "ratio": 1.0054134495104172
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "means": {
+        "B": 19360.7421875,
+        "A": 20573.65234375
+      },
+      "ratio": 0.9410454626147863
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "means": {
+        "B": 73854.375,
+        "A": 74267.75390625
+      },
+      "ratio": 0.9944339382234204
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "means": {
+        "B": 77588.06640625,
+        "A": 78409.84375
+      },
+      "ratio": 0.9895194620413971
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "means": {
+        "B": 16711.46484375,
+        "A": 16555.41015625
+      },
+      "ratio": 1.0094262048494815
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "means": {
+        "B": 21819.765625,
+        "A": 21911.73828125
+      },
+      "ratio": 0.9958025851226645
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "means": {
+        "B": 75666.26953125,
+        "A": 74471.953125
+      },
+      "ratio": 1.0160371301696003
+    },
+    {
+      "pair": 1,
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "means": {
+        "B": 82031.97265625,
+        "A": 81488.10546875
+      },
+      "ratio": 1.0066741910904846
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "means": {
+        "B": 2441.46728515625,
+        "A": 2477.40966796875
+      },
+      "ratio": 0.9854919502102495
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "means": {
+        "B": 3087.4755859375,
+        "A": 3130.93017578125
+      },
+      "ratio": 0.9861208690695548
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "means": {
+        "B": 5104.60693359375,
+        "A": 5095.97412109375
+      },
+      "ratio": 1.0016940455926309
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "means": {
+        "B": 5813.74267578125,
+        "A": 5794.8583984375
+      },
+      "ratio": 1.003258798756643
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "means": {
+        "B": 4588.837890625,
+        "A": 4530.1513671875
+      },
+      "ratio": 1.012954649564819
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "means": {
+        "B": 81093.984375,
+        "A": 78438.06640625
+      },
+      "ratio": 1.0338600642575042
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "means": {
+        "B": 6499.1796875,
+        "A": 6306.0205078125
+      },
+      "ratio": 1.0306309152417434
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "means": {
+        "B": 110648.0859375,
+        "A": 109569.98046875
+      },
+      "ratio": 1.0098394237558295
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "means": {
+        "B": 11189.0380859375,
+        "A": 11392.7392578125
+      },
+      "ratio": 0.9821200883066543
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "means": {
+        "B": 190900.37109375,
+        "A": 185281.07421875
+      },
+      "ratio": 1.0303284990045214
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "means": {
+        "B": 12873.30810546875,
+        "A": 12969.59716796875
+      },
+      "ratio": 0.9925757861826421
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "means": {
+        "B": 221389.47265625,
+        "A": 218501.46484375
+      },
+      "ratio": 1.0132173384492649
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "means": {
+        "B": 4656.94580078125,
+        "A": 4729.90966796875
+      },
+      "ratio": 0.9845739406649526
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "means": {
+        "B": 81633.8671875,
+        "A": 83251.19140625
+      },
+      "ratio": 0.9805729600810423
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "means": {
+        "B": 6734.0087890625,
+        "A": 6690.72021484375
+      },
+      "ratio": 1.0064699423722294
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "means": {
+        "B": 115778.96484375,
+        "A": 126478.0078125
+      },
+      "ratio": 0.9154078787783325
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "means": {
+        "B": 11305.12451171875,
+        "A": 11299.4384765625
+      },
+      "ratio": 1.0005032139577594
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "means": {
+        "B": 188235.8203125,
+        "A": 191735.09765625
+      },
+      "ratio": 0.981749416843735
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "means": {
+        "B": 13568.24951171875,
+        "A": 13803.9501953125
+      },
+      "ratio": 0.9829251279337571
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "means": {
+        "B": 232665.91796875,
+        "A": 231732.578125
+      },
+      "ratio": 1.004027659172059
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "means": {
+        "B": 15686.81640625,
+        "A": 15119.70703125
+      },
+      "ratio": 1.037507960559545
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "means": {
+        "B": 19798.69140625,
+        "A": 20390.703125
+      },
+      "ratio": 0.9709665863349183
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "means": {
+        "B": 74167.48046875,
+        "A": 79965.41015625
+      },
+      "ratio": 0.9274945294950526
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "means": {
+        "B": 81161.0546875,
+        "A": 78591.796875
+      },
+      "ratio": 1.0326911702577102
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "means": {
+        "B": 16716.11328125,
+        "A": 16545.1171875
+      },
+      "ratio": 1.0103351394742124
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "means": {
+        "B": 21576.71875,
+        "A": 22566.171875
+      },
+      "ratio": 0.9561532576069683
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "means": {
+        "B": 75889.0625,
+        "A": 74575.546875
+      },
+      "ratio": 1.0176132214920481
+    },
+    {
+      "pair": 2,
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "means": {
+        "B": 82041.6015625,
+        "A": 82312.20703125
+      },
+      "ratio": 0.9967124503337972
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "means": {
+        "A": 2429.43115234375,
+        "B": 2399.6728515625
+      },
+      "ratio": 0.987750918254036
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "means": {
+        "A": 3205.5126953125,
+        "B": 3136.6162109375
+      },
+      "ratio": 0.9785068752103996
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "means": {
+        "A": 5063.5595703125,
+        "B": 5063.43505859375
+      },
+      "ratio": 0.9999754102391764
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "means": {
+        "A": 5806.85302734375,
+        "B": 5833.45703125
+      },
+      "ratio": 1.004581483943364
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "means": {
+        "A": 4515.791015625,
+        "B": 4498.98193359375
+      },
+      "ratio": 0.9962777103782949
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "means": {
+        "A": 78728.26171875,
+        "B": 81295.859375
+      },
+      "ratio": 1.032613417344619
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "means": {
+        "A": 6406.25244140625,
+        "B": 6487.3095703125
+      },
+      "ratio": 1.012652815299994
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "means": {
+        "A": 110579.35546875,
+        "B": 110744.04296875
+      },
+      "ratio": 1.0014893150652027
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "means": {
+        "A": 10984.6728515625,
+        "B": 11222.61474609375
+      },
+      "ratio": 1.021661263630387
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "means": {
+        "A": 187074.70703125,
+        "B": 188456.2890625
+      },
+      "ratio": 1.0073851888006389
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "means": {
+        "A": 12830.97412109375,
+        "B": 12872.353515625
+      },
+      "ratio": 1.0032249612648836
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "means": {
+        "A": 215535.4296875,
+        "B": 219955.09765625
+      },
+      "ratio": 1.0205055288365257
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "means": {
+        "A": 4648.56201171875,
+        "B": 4600.41748046875
+      },
+      "ratio": 0.9896431345588957
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "means": {
+        "A": 83429.4921875,
+        "B": 84567.36328125
+      },
+      "ratio": 1.0136387153261432
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "means": {
+        "A": 7416.3330078125,
+        "B": 7340.92041015625
+      },
+      "ratio": 0.9898315518495718
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "means": {
+        "A": 120354.6875,
+        "B": 120922.4609375
+      },
+      "ratio": 1.0047175016552636
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "means": {
+        "A": 11359.74365234375,
+        "B": 11298.56689453125
+      },
+      "ratio": 0.9946146004976196
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "means": {
+        "A": 194207.0703125,
+        "B": 192312.16796875
+      },
+      "ratio": 0.9902428766331685
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "means": {
+        "A": 13633.7841796875,
+        "B": 13675.91064453125
+      },
+      "ratio": 1.003089858566671
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "means": {
+        "A": 228858.515625,
+        "B": 226229.16015625
+      },
+      "ratio": 0.9885110000754423
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "means": {
+        "A": 15108.0859375,
+        "B": 14989.55078125
+      },
+      "ratio": 0.9921541910245704
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "means": {
+        "A": 20129.0625,
+        "B": 19265.44921875
+      },
+      "ratio": 0.9570961995249406
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "means": {
+        "A": 73566.50390625,
+        "B": 74723.6328125
+      },
+      "ratio": 1.015729018572428
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "means": {
+        "A": 80113.49609375,
+        "B": 78985.25390625
+      },
+      "ratio": 0.9859169522925362
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "means": {
+        "A": 16836.640625,
+        "B": 16673.28125
+      },
+      "ratio": 0.9902973889721542
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "means": {
+        "A": 21922.6953125,
+        "B": 21524.921875
+      },
+      "ratio": 0.9818556326295702
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "means": {
+        "A": 75342.87109375,
+        "B": 75610.48828125
+      },
+      "ratio": 1.003551990833572
+    },
+    {
+      "pair": 3,
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "means": {
+        "A": 80209.78515625,
+        "B": 82882.3046875
+      },
+      "ratio": 1.0333191209282495
+    }
+  ],
+  "summary": [
+    {
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "ratio": 0.9885240958705869,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "ratio": 0.9868693771979501,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "ratio": 1.0021088383536958,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "ratio": 1.0006881861066805,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "ratio": 1.0067893909841,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "ratio": 1.0280910768047509,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "ratio": 1.0151530402577853,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "ratio": 1.0062470425690961,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "ratio": 1.0038882392758972,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "ratio": 1.0164417851591236,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "ratio": 0.9990098644195529,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "ratio": 1.0087551130742158,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "ratio": 0.9834782582468445,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "ratio": 0.9810645585879709,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "ratio": 0.9925829097645223,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "ratio": 0.9749028202085849,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "ratio": 0.9964713689243638,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "ratio": 0.9935464560549641,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "ratio": 0.9984774900126052,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "ratio": 0.990459042507874,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "ratio": 1.0118559988508053,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "ratio": 0.9604593329049698,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "ratio": 0.9765216515096465,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "ratio": 1.002207458936546,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "ratio": 1.0050834503172077,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "ratio": 0.9770349961221007,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "ratio": 1.018991816560959,
+      "upper95": null
+    },
+    {
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "ratio": 1.009663859729011,
+      "upper95": null
+    }
+  ],
+  "groups": {
+    "ordinary-sync": {
+      "ratio": 0.9999437271492141,
+      "upper95": null
+    },
+    "ordinary-async": {
+      "ratio": 0.997252888146607,
+      "upper95": null
+    },
+    "ordinary-all": {
+      "ratio": 0.998597401300262,
+      "upper95": null
+    },
+    "retained-sync": {
+      "ratio": 1.0029824906339455,
+      "upper95": null
+    },
+    "retained-async": {
+      "ratio": 0.9871448535713402,
+      "upper95": null
+    },
+    "retained-all": {
+      "ratio": 0.995032162219626,
+      "upper95": null
+    },
+    "all-sync": {
+      "ratio": 1.0008110046142429,
+      "upper95": null
+    },
+    "all-async": {
+      "ratio": 0.994354362825832,
+      "upper95": null
+    },
+    "all-all": {
+      "ratio": 0.9975774600512365,
+      "upper95": null
+    }
+  },
+  "memory": [
+    {
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "baseline": {
+        "app_including_transport_inline_bytes": 14936,
+        "fixed_pool_heap_bytes": 0,
+        "transport_nested_in_app_inline_bytes": 2976,
+        "transport_input_nested_bytes": 1472,
+        "transport_output_nested_bytes": 1472,
+        "separate_latency_requested_bytes": 128,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_timing_vec_headers_bytes": 48,
+        "separate_verification_buffer_bytes": 1472,
+        "separate_optional_client_context_inline_bytes": 368,
+        "separate_representation_static_bytes": 32,
+        "remaining": "allocator overhead, initialization scratch, generated peak stack and runtime memory unknown; nested owners must not be added twice"
+      },
+      "candidate": {
+        "app_including_transport_inline_bytes": 14936,
+        "fixed_pool_heap_bytes": 0,
+        "transport_nested_in_app_inline_bytes": 2976,
+        "transport_input_nested_bytes": 1472,
+        "transport_output_nested_bytes": 1472,
+        "separate_latency_requested_bytes": 128,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_timing_vec_headers_bytes": 48,
+        "separate_verification_buffer_bytes": 1472,
+        "separate_optional_client_context_inline_bytes": 368,
+        "separate_representation_static_bytes": 32,
+        "remaining": "allocator overhead, initialization scratch, generated peak stack and runtime memory unknown; nested owners must not be added twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "baseline": {
+        "app_including_transport_inline_bytes": 14936,
+        "fixed_pool_heap_bytes": 0,
+        "transport_nested_in_app_inline_bytes": 2976,
+        "transport_input_nested_bytes": 1472,
+        "transport_output_nested_bytes": 1472,
+        "separate_latency_requested_bytes": 128,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_timing_vec_headers_bytes": 48,
+        "separate_verification_buffer_bytes": 1472,
+        "separate_optional_client_context_inline_bytes": 368,
+        "separate_representation_static_bytes": 32,
+        "remaining": "allocator overhead, initialization scratch, generated peak stack and runtime memory unknown; nested owners must not be added twice"
+      },
+      "candidate": {
+        "app_including_transport_inline_bytes": 14936,
+        "fixed_pool_heap_bytes": 0,
+        "transport_nested_in_app_inline_bytes": 2976,
+        "transport_input_nested_bytes": 1472,
+        "transport_output_nested_bytes": 1472,
+        "separate_latency_requested_bytes": 128,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_timing_vec_headers_bytes": 48,
+        "separate_verification_buffer_bytes": 1472,
+        "separate_optional_client_context_inline_bytes": 368,
+        "separate_representation_static_bytes": 32,
+        "remaining": "allocator overhead, initialization scratch, generated peak stack and runtime memory unknown; nested owners must not be added twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "baseline": {
+        "app_including_transport_inline_bytes": 14936,
+        "fixed_pool_heap_bytes": 0,
+        "transport_nested_in_app_inline_bytes": 2976,
+        "transport_input_nested_bytes": 1472,
+        "transport_output_nested_bytes": 1472,
+        "separate_latency_requested_bytes": 128,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_timing_vec_headers_bytes": 48,
+        "separate_verification_buffer_bytes": 1472,
+        "separate_optional_client_context_inline_bytes": 368,
+        "separate_representation_static_bytes": 32,
+        "remaining": "allocator overhead, initialization scratch, generated peak stack and runtime memory unknown; nested owners must not be added twice"
+      },
+      "candidate": {
+        "app_including_transport_inline_bytes": 14936,
+        "fixed_pool_heap_bytes": 0,
+        "transport_nested_in_app_inline_bytes": 2976,
+        "transport_input_nested_bytes": 1472,
+        "transport_output_nested_bytes": 1472,
+        "separate_latency_requested_bytes": 128,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_timing_vec_headers_bytes": 48,
+        "separate_verification_buffer_bytes": 1472,
+        "separate_optional_client_context_inline_bytes": 368,
+        "separate_representation_static_bytes": 32,
+        "remaining": "allocator overhead, initialization scratch, generated peak stack and runtime memory unknown; nested owners must not be added twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "baseline": {
+        "app_including_transport_inline_bytes": 14936,
+        "fixed_pool_heap_bytes": 0,
+        "transport_nested_in_app_inline_bytes": 2976,
+        "transport_input_nested_bytes": 1472,
+        "transport_output_nested_bytes": 1472,
+        "separate_latency_requested_bytes": 128,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_timing_vec_headers_bytes": 48,
+        "separate_verification_buffer_bytes": 1472,
+        "separate_optional_client_context_inline_bytes": 368,
+        "separate_representation_static_bytes": 32,
+        "remaining": "allocator overhead, initialization scratch, generated peak stack and runtime memory unknown; nested owners must not be added twice"
+      },
+      "candidate": {
+        "app_including_transport_inline_bytes": 14936,
+        "fixed_pool_heap_bytes": 0,
+        "transport_nested_in_app_inline_bytes": 2976,
+        "transport_input_nested_bytes": 1472,
+        "transport_output_nested_bytes": 1472,
+        "separate_latency_requested_bytes": 128,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_timing_vec_headers_bytes": 48,
+        "separate_verification_buffer_bytes": 1472,
+        "separate_optional_client_context_inline_bytes": 368,
+        "separate_representation_static_bytes": 32,
+        "remaining": "allocator overhead, initialization scratch, generated peak stack and runtime memory unknown; nested owners must not be added twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "baseline": {
+        "server_app_including_transport_inline_bytes": 315336,
+        "server_pool_requested_heap_bytes": 0,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      },
+      "candidate": {
+        "server_app_including_transport_inline_bytes": 315336,
+        "server_pool_requested_heap_bytes": 0,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "baseline": {
+        "server_app_including_transport_inline_bytes": 315336,
+        "server_pool_requested_heap_bytes": 0,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      },
+      "candidate": {
+        "server_app_including_transport_inline_bytes": 315336,
+        "server_pool_requested_heap_bytes": 0,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "baseline": {
+        "server_app_including_transport_inline_bytes": 315336,
+        "server_pool_requested_heap_bytes": 0,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      },
+      "candidate": {
+        "server_app_including_transport_inline_bytes": 315336,
+        "server_pool_requested_heap_bytes": 0,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "baseline": {
+        "server_app_including_transport_inline_bytes": 315336,
+        "server_pool_requested_heap_bytes": 0,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      },
+      "candidate": {
+        "server_app_including_transport_inline_bytes": 315336,
+        "server_pool_requested_heap_bytes": 0,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "baseline": {
+        "server_app_including_transport_inline_bytes": 315336,
+        "server_pool_requested_heap_bytes": 0,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      },
+      "candidate": {
+        "server_app_including_transport_inline_bytes": 315336,
+        "server_pool_requested_heap_bytes": 0,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "baseline": {
+        "server_app_including_transport_inline_bytes": 315336,
+        "server_pool_requested_heap_bytes": 0,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      },
+      "candidate": {
+        "server_app_including_transport_inline_bytes": 315336,
+        "server_pool_requested_heap_bytes": 0,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "baseline": {
+        "server_app_including_transport_inline_bytes": 315336,
+        "server_pool_requested_heap_bytes": 0,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      },
+      "candidate": {
+        "server_app_including_transport_inline_bytes": 315336,
+        "server_pool_requested_heap_bytes": 0,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "baseline": {
+        "server_app_including_transport_inline_bytes": 315336,
+        "server_pool_requested_heap_bytes": 0,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      },
+      "candidate": {
+        "server_app_including_transport_inline_bytes": 315336,
+        "server_pool_requested_heap_bytes": 0,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "baseline": {
+        "server_app_including_transport_inline_bytes": 35352,
+        "server_pool_requested_heap_bytes": 282512,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      },
+      "candidate": {
+        "server_app_including_transport_inline_bytes": 35352,
+        "server_pool_requested_heap_bytes": 282512,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "baseline": {
+        "server_app_including_transport_inline_bytes": 35352,
+        "server_pool_requested_heap_bytes": 282512,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      },
+      "candidate": {
+        "server_app_including_transport_inline_bytes": 35352,
+        "server_pool_requested_heap_bytes": 282512,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "baseline": {
+        "server_app_including_transport_inline_bytes": 35352,
+        "server_pool_requested_heap_bytes": 282512,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      },
+      "candidate": {
+        "server_app_including_transport_inline_bytes": 35352,
+        "server_pool_requested_heap_bytes": 282512,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "baseline": {
+        "server_app_including_transport_inline_bytes": 35352,
+        "server_pool_requested_heap_bytes": 282512,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      },
+      "candidate": {
+        "server_app_including_transport_inline_bytes": 35352,
+        "server_pool_requested_heap_bytes": 282512,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "baseline": {
+        "server_app_including_transport_inline_bytes": 35352,
+        "server_pool_requested_heap_bytes": 282512,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      },
+      "candidate": {
+        "server_app_including_transport_inline_bytes": 35352,
+        "server_pool_requested_heap_bytes": 282512,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "baseline": {
+        "server_app_including_transport_inline_bytes": 35352,
+        "server_pool_requested_heap_bytes": 282512,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      },
+      "candidate": {
+        "server_app_including_transport_inline_bytes": 35352,
+        "server_pool_requested_heap_bytes": 282512,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "baseline": {
+        "server_app_including_transport_inline_bytes": 35352,
+        "server_pool_requested_heap_bytes": 282512,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      },
+      "candidate": {
+        "server_app_including_transport_inline_bytes": 35352,
+        "server_pool_requested_heap_bytes": 282512,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      }
+    },
+    {
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "baseline": {
+        "server_app_including_transport_inline_bytes": 35352,
+        "server_pool_requested_heap_bytes": 282512,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      },
+      "candidate": {
+        "server_app_including_transport_inline_bytes": 35352,
+        "server_pool_requested_heap_bytes": 282512,
+        "server_pool_payload_nested_bytes": 225280,
+        "server_transport_nested_bytes": 2984,
+        "client_app_including_transport_inline_bytes": 16944,
+        "client_pool_requested_heap_bytes": 37060,
+        "client_pool_payload_nested_bytes": 29184,
+        "client_transport_nested_bytes": 2984,
+        "each_transport_input_nested_bytes": 1472,
+        "each_transport_output_nested_bytes": 1472,
+        "packet_buffers_nested_count": 4,
+        "separate_static_representation_bytes": 16384,
+        "separate_verification_requested_bytes": 16384,
+        "separate_timing_requested_bytes": 128,
+        "separate_poll_counts_requested_bytes": 32,
+        "separate_calibration_requested_bytes": 65536,
+        "separate_vec_headers_bytes": 96,
+        "separate_pending_inline_bytes": 80,
+        "clock_inline_bytes": 16,
+        "remaining": "security/bindings, fixed pools, profile scratch and transport metadata nest in Apps; allocated pool metadata/alignment nest in requested heap; allocator overhead, init temporaries, generated peak stack and runtime unknown; do not add nested owners twice"
+      }
+    },
+    {
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "baseline": 112648,
+      "candidate": 112648
+    },
+    {
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "baseline": 112648,
+      "candidate": 112648
+    },
+    {
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "baseline": 112648,
+      "candidate": 112648
+    },
+    {
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "baseline": 112648,
+      "candidate": 112648
+    },
+    {
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "baseline": 42624,
+      "candidate": 42624
+    },
+    {
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "baseline": 42624,
+      "candidate": 42624
+    },
+    {
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "baseline": 42624,
+      "candidate": 42624
+    },
+    {
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "baseline": 42624,
+      "candidate": 42624
+    }
+  ],
+  "processes": [
+    {
+      "label": "qualify-A-ordinary-small-device-unprotected-sync-32",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "cycle_sum": 19040,
+      "cycle_count": 8,
+      "cycle_mean": 2380
+    },
+    {
+      "label": "qualify-B-ordinary-small-device-unprotected-sync-32",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "cycle_sum": 19380,
+      "cycle_count": 8,
+      "cycle_mean": 2422.5
+    },
+    {
+      "label": "qualify-A-ordinary-small-device-unprotected-async-32",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "cycle_sum": 24480,
+      "cycle_count": 8,
+      "cycle_mean": 3060
+    },
+    {
+      "label": "qualify-B-ordinary-small-device-unprotected-async-32",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "cycle_sum": 24820,
+      "cycle_count": 8,
+      "cycle_mean": 3102.5
+    },
+    {
+      "label": "qualify-A-ordinary-small-device-oscore-sync-32",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "cycle_sum": 40800,
+      "cycle_count": 8,
+      "cycle_mean": 5100
+    },
+    {
+      "label": "qualify-B-ordinary-small-device-oscore-sync-32",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "cycle_sum": 41480,
+      "cycle_count": 8,
+      "cycle_mean": 5185
+    },
+    {
+      "label": "qualify-A-ordinary-small-device-oscore-async-32",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "cycle_sum": 46580,
+      "cycle_count": 8,
+      "cycle_mean": 5822.5
+    },
+    {
+      "label": "qualify-B-ordinary-small-device-oscore-async-32",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "cycle_sum": 46920,
+      "cycle_count": 8,
+      "cycle_mean": 5865
+    },
+    {
+      "label": "qualify-A-ordinary-service-fixed-unprotected-sync-1024",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 36040,
+      "cycle_count": 8,
+      "cycle_mean": 4505
+    },
+    {
+      "label": "qualify-B-ordinary-service-fixed-unprotected-sync-1024",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 37060,
+      "cycle_count": 8,
+      "cycle_mean": 4632.5
+    },
+    {
+      "label": "qualify-A-ordinary-service-fixed-unprotected-sync-16384",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 655860,
+      "cycle_count": 8,
+      "cycle_mean": 81982.5
+    },
+    {
+      "label": "qualify-B-ordinary-service-fixed-unprotected-sync-16384",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 639540,
+      "cycle_count": 8,
+      "cycle_mean": 79942.5
+    },
+    {
+      "label": "qualify-A-ordinary-service-fixed-unprotected-async-1024",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 50320,
+      "cycle_count": 8,
+      "cycle_mean": 6290
+    },
+    {
+      "label": "qualify-B-ordinary-service-fixed-unprotected-async-1024",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 51000,
+      "cycle_count": 8,
+      "cycle_mean": 6375
+    },
+    {
+      "label": "qualify-A-ordinary-service-fixed-unprotected-async-16384",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 893860,
+      "cycle_count": 8,
+      "cycle_mean": 111732.5
+    },
+    {
+      "label": "qualify-B-ordinary-service-fixed-unprotected-async-16384",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 871420,
+      "cycle_count": 8,
+      "cycle_mean": 108927.5
+    },
+    {
+      "label": "qualify-A-ordinary-service-fixed-oscore-sync-1024",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 91460,
+      "cycle_count": 8,
+      "cycle_mean": 11432.5
+    },
+    {
+      "label": "qualify-B-ordinary-service-fixed-oscore-sync-1024",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 91120,
+      "cycle_count": 8,
+      "cycle_mean": 11390
+    },
+    {
+      "label": "qualify-A-ordinary-service-fixed-oscore-sync-16384",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 1492260,
+      "cycle_count": 8,
+      "cycle_mean": 186532.5
+    },
+    {
+      "label": "qualify-B-ordinary-service-fixed-oscore-sync-16384",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 1499740,
+      "cycle_count": 8,
+      "cycle_mean": 187467.5
+    },
+    {
+      "label": "qualify-A-ordinary-service-fixed-oscore-async-1024",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 105740,
+      "cycle_count": 8,
+      "cycle_mean": 13217.5
+    },
+    {
+      "label": "qualify-B-ordinary-service-fixed-oscore-async-1024",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 108460,
+      "cycle_count": 8,
+      "cycle_mean": 13557.5
+    },
+    {
+      "label": "qualify-A-ordinary-service-fixed-oscore-async-16384",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 1798260,
+      "cycle_count": 8,
+      "cycle_mean": 224782.5
+    },
+    {
+      "label": "qualify-B-ordinary-service-fixed-oscore-async-16384",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 1792820,
+      "cycle_count": 8,
+      "cycle_mean": 224102.5
+    },
+    {
+      "label": "qualify-A-ordinary-service-allocated-unprotected-sync-1024",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 38080,
+      "cycle_count": 8,
+      "cycle_mean": 4760
+    },
+    {
+      "label": "qualify-B-ordinary-service-allocated-unprotected-sync-1024",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 37060,
+      "cycle_count": 8,
+      "cycle_mean": 4632.5
+    },
+    {
+      "label": "qualify-A-ordinary-service-allocated-unprotected-sync-16384",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 676260,
+      "cycle_count": 8,
+      "cycle_mean": 84532.5
+    },
+    {
+      "label": "qualify-B-ordinary-service-allocated-unprotected-sync-16384",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 661980,
+      "cycle_count": 8,
+      "cycle_mean": 82747.5
+    },
+    {
+      "label": "qualify-A-ordinary-service-allocated-unprotected-async-1024",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 54740,
+      "cycle_count": 8,
+      "cycle_mean": 6842.5
+    },
+    {
+      "label": "qualify-B-ordinary-service-allocated-unprotected-async-1024",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 54060,
+      "cycle_count": 8,
+      "cycle_mean": 6757.5
+    },
+    {
+      "label": "qualify-A-ordinary-service-allocated-unprotected-async-16384",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 941120,
+      "cycle_count": 8,
+      "cycle_mean": 117640
+    },
+    {
+      "label": "qualify-B-ordinary-service-allocated-unprotected-async-16384",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 942140,
+      "cycle_count": 8,
+      "cycle_mean": 117767.5
+    },
+    {
+      "label": "qualify-A-ordinary-service-allocated-oscore-sync-1024",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 93160,
+      "cycle_count": 8,
+      "cycle_mean": 11645
+    },
+    {
+      "label": "qualify-B-ordinary-service-allocated-oscore-sync-1024",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 89420,
+      "cycle_count": 8,
+      "cycle_mean": 11177.5
+    },
+    {
+      "label": "qualify-A-ordinary-service-allocated-oscore-sync-16384",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 1486820,
+      "cycle_count": 8,
+      "cycle_mean": 185852.5
+    },
+    {
+      "label": "qualify-B-ordinary-service-allocated-oscore-sync-16384",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 1500420,
+      "cycle_count": 8,
+      "cycle_mean": 187552.5
+    },
+    {
+      "label": "qualify-A-ordinary-service-allocated-oscore-async-1024",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 112880,
+      "cycle_count": 8,
+      "cycle_mean": 14110
+    },
+    {
+      "label": "qualify-B-ordinary-service-allocated-oscore-async-1024",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 110840,
+      "cycle_count": 8,
+      "cycle_mean": 13855
+    },
+    {
+      "label": "qualify-A-ordinary-service-allocated-oscore-async-16384",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 1851980,
+      "cycle_count": 8,
+      "cycle_mean": 231497.5
+    },
+    {
+      "label": "qualify-B-ordinary-service-allocated-oscore-async-16384",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 1850620,
+      "cycle_count": 8,
+      "cycle_mean": 231327.5
+    },
+    {
+      "label": "qualify-A-retained-fixed-unprotected-sync-11264",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 121040,
+      "cycle_count": 8,
+      "cycle_mean": 15130
+    },
+    {
+      "label": "qualify-B-retained-fixed-unprotected-sync-11264",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 120360,
+      "cycle_count": 8,
+      "cycle_mean": 15045
+    },
+    {
+      "label": "qualify-A-retained-fixed-unprotected-async-11264",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 160480,
+      "cycle_count": 8,
+      "cycle_mean": 20060
+    },
+    {
+      "label": "qualify-B-retained-fixed-unprotected-async-11264",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 157080,
+      "cycle_count": 8,
+      "cycle_mean": 19635
+    },
+    {
+      "label": "qualify-A-retained-fixed-oscore-sync-11264",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 597040,
+      "cycle_count": 8,
+      "cycle_mean": 74630
+    },
+    {
+      "label": "qualify-B-retained-fixed-oscore-sync-11264",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 591600,
+      "cycle_count": 8,
+      "cycle_mean": 73950
+    },
+    {
+      "label": "qualify-A-retained-fixed-oscore-async-11264",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 634100,
+      "cycle_count": 8,
+      "cycle_mean": 79262.5
+    },
+    {
+      "label": "qualify-B-retained-fixed-oscore-async-11264",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 632740,
+      "cycle_count": 8,
+      "cycle_mean": 79092.5
+    },
+    {
+      "label": "qualify-A-retained-allocated-unprotected-sync-11264",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 133960,
+      "cycle_count": 8,
+      "cycle_mean": 16745
+    },
+    {
+      "label": "qualify-B-retained-allocated-unprotected-sync-11264",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 133960,
+      "cycle_count": 8,
+      "cycle_mean": 16745
+    },
+    {
+      "label": "qualify-A-retained-allocated-unprotected-async-11264",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 177820,
+      "cycle_count": 8,
+      "cycle_mean": 22227.5
+    },
+    {
+      "label": "qualify-B-retained-allocated-unprotected-async-11264",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 179860,
+      "cycle_count": 8,
+      "cycle_mean": 22482.5
+    },
+    {
+      "label": "qualify-A-retained-allocated-oscore-sync-11264",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 596020,
+      "cycle_count": 8,
+      "cycle_mean": 74502.5
+    },
+    {
+      "label": "qualify-B-retained-allocated-oscore-sync-11264",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 613360,
+      "cycle_count": 8,
+      "cycle_mean": 76670
+    },
+    {
+      "label": "qualify-A-retained-allocated-oscore-async-11264",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 654500,
+      "cycle_count": 8,
+      "cycle_mean": 81812.5
+    },
+    {
+      "label": "qualify-B-retained-allocated-oscore-async-11264",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 660280,
+      "cycle_count": 8,
+      "cycle_mean": 82535
+    },
+    {
+      "label": "measure-0-ordinary-small-device-unprotected-sync-32-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "cycle_sum": 19693820,
+      "cycle_count": 8192,
+      "cycle_mean": 2404.03076171875
+    },
+    {
+      "label": "measure-0-ordinary-small-device-unprotected-sync-32-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "cycle_sum": 19464320,
+      "cycle_count": 8192,
+      "cycle_mean": 2376.015625
+    },
+    {
+      "label": "measure-0-ordinary-small-device-unprotected-async-32-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "cycle_sum": 26085820,
+      "cycle_count": 8192,
+      "cycle_mean": 3184.30419921875
+    },
+    {
+      "label": "measure-0-ordinary-small-device-unprotected-async-32-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "cycle_sum": 25972260,
+      "cycle_count": 8192,
+      "cycle_mean": 3170.44189453125
+    },
+    {
+      "label": "measure-0-ordinary-small-device-oscore-sync-32-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "cycle_sum": 41562620,
+      "cycle_count": 8192,
+      "cycle_mean": 5073.56201171875
+    },
+    {
+      "label": "measure-0-ordinary-small-device-oscore-sync-32-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "cycle_sum": 41824080,
+      "cycle_count": 8192,
+      "cycle_mean": 5105.478515625
+    },
+    {
+      "label": "measure-0-ordinary-small-device-oscore-async-32-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "cycle_sum": 48125980,
+      "cycle_count": 8192,
+      "cycle_mean": 5874.75341796875
+    },
+    {
+      "label": "measure-0-ordinary-small-device-oscore-async-32-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "cycle_sum": 47542200,
+      "cycle_count": 8192,
+      "cycle_mean": 5803.4912109375
+    },
+    {
+      "label": "measure-0-ordinary-service-fixed-unprotected-sync-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 37388440,
+      "cycle_count": 8192,
+      "cycle_mean": 4564.0185546875
+    },
+    {
+      "label": "measure-0-ordinary-service-fixed-unprotected-sync-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 38027980,
+      "cycle_count": 8192,
+      "cycle_mean": 4642.08740234375
+    },
+    {
+      "label": "measure-0-ordinary-service-fixed-unprotected-sync-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 81833580,
+      "cycle_count": 1024,
+      "cycle_mean": 79915.60546875
+    },
+    {
+      "label": "measure-0-ordinary-service-fixed-unprotected-sync-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 82932800,
+      "cycle_count": 1024,
+      "cycle_mean": 80989.0625
+    },
+    {
+      "label": "measure-0-ordinary-service-fixed-unprotected-async-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 52073040,
+      "cycle_count": 8192,
+      "cycle_mean": 6356.572265625
+    },
+    {
+      "label": "measure-0-ordinary-service-fixed-unprotected-async-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 52473220,
+      "cycle_count": 8192,
+      "cycle_mean": 6405.42236328125
+    },
+    {
+      "label": "measure-0-ordinary-service-fixed-unprotected-async-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 115325620,
+      "cycle_count": 1024,
+      "cycle_mean": 112622.67578125
+    },
+    {
+      "label": "measure-0-ordinary-service-fixed-unprotected-async-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 114535460,
+      "cycle_count": 1024,
+      "cycle_mean": 111851.03515625
+    },
+    {
+      "label": "measure-0-ordinary-service-fixed-oscore-sync-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 90123800,
+      "cycle_count": 8192,
+      "cycle_mean": 11001.4404296875
+    },
+    {
+      "label": "measure-0-ordinary-service-fixed-oscore-sync-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 91067980,
+      "cycle_count": 8192,
+      "cycle_mean": 11116.69677734375
+    },
+    {
+      "label": "measure-0-ordinary-service-fixed-oscore-sync-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 193620140,
+      "cycle_count": 1024,
+      "cycle_mean": 189082.16796875
+    },
+    {
+      "label": "measure-0-ordinary-service-fixed-oscore-sync-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 193768720,
+      "cycle_count": 1024,
+      "cycle_mean": 189227.265625
+    },
+    {
+      "label": "measure-0-ordinary-service-fixed-oscore-async-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 106262240,
+      "cycle_count": 8192,
+      "cycle_mean": 12971.46484375
+    },
+    {
+      "label": "measure-0-ordinary-service-fixed-oscore-async-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 107395120,
+      "cycle_count": 8192,
+      "cycle_mean": 13109.755859375
+    },
+    {
+      "label": "measure-0-ordinary-service-fixed-oscore-async-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 223876740,
+      "cycle_count": 1024,
+      "cycle_mean": 218629.62890625
+    },
+    {
+      "label": "measure-0-ordinary-service-fixed-oscore-async-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 221979540,
+      "cycle_count": 1024,
+      "cycle_mean": 216776.89453125
+    },
+    {
+      "label": "measure-0-ordinary-service-allocated-unprotected-sync-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 38548860,
+      "cycle_count": 8192,
+      "cycle_mean": 4705.67138671875
+    },
+    {
+      "label": "measure-0-ordinary-service-allocated-unprotected-sync-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 37573060,
+      "cycle_count": 8192,
+      "cycle_mean": 4586.55517578125
+    },
+    {
+      "label": "measure-0-ordinary-service-allocated-unprotected-sync-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 84341080,
+      "cycle_count": 1024,
+      "cycle_mean": 82364.3359375
+    },
+    {
+      "label": "measure-0-ordinary-service-allocated-unprotected-sync-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 83118780,
+      "cycle_count": 1024,
+      "cycle_mean": 81170.68359375
+    },
+    {
+      "label": "measure-0-ordinary-service-allocated-unprotected-async-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 55490040,
+      "cycle_count": 8192,
+      "cycle_mean": 6773.6865234375
+    },
+    {
+      "label": "measure-0-ordinary-service-allocated-unprotected-async-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 55505680,
+      "cycle_count": 8192,
+      "cycle_mean": 6775.595703125
+    },
+    {
+      "label": "measure-0-ordinary-service-allocated-unprotected-async-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 122011720,
+      "cycle_count": 1024,
+      "cycle_mean": 119152.0703125
+    },
+    {
+      "label": "measure-0-ordinary-service-allocated-unprotected-async-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 119040800,
+      "cycle_count": 1024,
+      "cycle_mean": 116250.78125
+    },
+    {
+      "label": "measure-0-ordinary-service-allocated-oscore-sync-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 91111160,
+      "cycle_count": 8192,
+      "cycle_mean": 11121.9677734375
+    },
+    {
+      "label": "measure-0-ordinary-service-allocated-oscore-sync-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 91499100,
+      "cycle_count": 8192,
+      "cycle_mean": 11169.32373046875
+    },
+    {
+      "label": "measure-0-ordinary-service-allocated-oscore-sync-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 192480120,
+      "cycle_count": 1024,
+      "cycle_mean": 187968.8671875
+    },
+    {
+      "label": "measure-0-ordinary-service-allocated-oscore-sync-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 195653340,
+      "cycle_count": 1024,
+      "cycle_mean": 191067.71484375
+    },
+    {
+      "label": "measure-0-ordinary-service-allocated-oscore-async-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 109616680,
+      "cycle_count": 8192,
+      "cycle_mean": 13380.9423828125
+    },
+    {
+      "label": "measure-0-ordinary-service-allocated-oscore-async-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 109002300,
+      "cycle_count": 8192,
+      "cycle_mean": 13305.94482421875
+    },
+    {
+      "label": "measure-0-ordinary-service-allocated-oscore-async-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 233629640,
+      "cycle_count": 1024,
+      "cycle_mean": 228153.9453125
+    },
+    {
+      "label": "measure-0-ordinary-service-allocated-oscore-async-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 229553380,
+      "cycle_count": 1024,
+      "cycle_mean": 224173.22265625
+    },
+    {
+      "label": "measure-0-retained-fixed-unprotected-sync-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 15543780,
+      "cycle_count": 1024,
+      "cycle_mean": 15179.47265625
+    },
+    {
+      "label": "measure-0-retained-fixed-unprotected-sync-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 15744040,
+      "cycle_count": 1024,
+      "cycle_mean": 15375.0390625
+    },
+    {
+      "label": "measure-0-retained-fixed-unprotected-async-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 20568980,
+      "cycle_count": 1024,
+      "cycle_mean": 20086.89453125
+    },
+    {
+      "label": "measure-0-retained-fixed-unprotected-async-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 20015120,
+      "cycle_count": 1024,
+      "cycle_mean": 19546.015625
+    },
+    {
+      "label": "measure-0-retained-fixed-oscore-sync-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 76454780,
+      "cycle_count": 1024,
+      "cycle_mean": 74662.87109375
+    },
+    {
+      "label": "measure-0-retained-fixed-oscore-sync-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 74210780,
+      "cycle_count": 1024,
+      "cycle_mean": 72471.46484375
+    },
+    {
+      "label": "measure-0-retained-fixed-oscore-async-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 80795220,
+      "cycle_count": 1024,
+      "cycle_mean": 78901.58203125
+    },
+    {
+      "label": "measure-0-retained-fixed-oscore-async-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 80906060,
+      "cycle_count": 1024,
+      "cycle_mean": 79009.82421875
+    },
+    {
+      "label": "measure-0-retained-allocated-unprotected-sync-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 17061880,
+      "cycle_count": 1024,
+      "cycle_mean": 16661.9921875
+    },
+    {
+      "label": "measure-0-retained-allocated-unprotected-sync-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 17239700,
+      "cycle_count": 1024,
+      "cycle_mean": 16835.64453125
+    },
+    {
+      "label": "measure-0-retained-allocated-unprotected-async-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 22781020,
+      "cycle_count": 1024,
+      "cycle_mean": 22247.08984375
+    },
+    {
+      "label": "measure-0-retained-allocated-unprotected-async-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 22205740,
+      "cycle_count": 1024,
+      "cycle_mean": 21685.29296875
+    },
+    {
+      "label": "measure-0-retained-allocated-oscore-sync-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 76449000,
+      "cycle_count": 1024,
+      "cycle_mean": 74657.2265625
+    },
+    {
+      "label": "measure-0-retained-allocated-oscore-sync-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 79436920,
+      "cycle_count": 1024,
+      "cycle_mean": 77575.1171875
+    },
+    {
+      "label": "measure-0-retained-allocated-oscore-async-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 84801440,
+      "cycle_count": 1024,
+      "cycle_mean": 82813.90625
+    },
+    {
+      "label": "measure-0-retained-allocated-oscore-async-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 84999660,
+      "cycle_count": 1024,
+      "cycle_mean": 83007.48046875
+    },
+    {
+      "label": "measure-1-ordinary-small-device-unprotected-sync-32-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "cycle_sum": 19579580,
+      "cycle_count": 8192,
+      "cycle_mean": 2390.08544921875
+    },
+    {
+      "label": "measure-1-ordinary-small-device-unprotected-sync-32-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "cycle_sum": 19727140,
+      "cycle_count": 8192,
+      "cycle_mean": 2408.09814453125
+    },
+    {
+      "label": "measure-1-ordinary-small-device-unprotected-async-32-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "cycle_sum": 25408880,
+      "cycle_count": 8192,
+      "cycle_mean": 3101.669921875
+    },
+    {
+      "label": "measure-1-ordinary-small-device-unprotected-async-32-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "cycle_sum": 25736300,
+      "cycle_count": 8192,
+      "cycle_mean": 3141.63818359375
+    },
+    {
+      "label": "measure-1-ordinary-small-device-oscore-sync-32-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "cycle_sum": 41864540,
+      "cycle_count": 8192,
+      "cycle_mean": 5110.41748046875
+    },
+    {
+      "label": "measure-1-ordinary-small-device-oscore-sync-32-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "cycle_sum": 41844140,
+      "cycle_count": 8192,
+      "cycle_mean": 5107.92724609375
+    },
+    {
+      "label": "measure-1-ordinary-small-device-oscore-async-32-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "cycle_sum": 47796860,
+      "cycle_count": 8192,
+      "cycle_mean": 5834.57763671875
+    },
+    {
+      "label": "measure-1-ordinary-small-device-oscore-async-32-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "cycle_sum": 47457200,
+      "cycle_count": 8192,
+      "cycle_mean": 5793.115234375
+    },
+    {
+      "label": "measure-1-ordinary-service-fixed-unprotected-sync-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 37445560,
+      "cycle_count": 8192,
+      "cycle_mean": 4570.9912109375
+    },
+    {
+      "label": "measure-1-ordinary-service-fixed-unprotected-sync-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 37409520,
+      "cycle_count": 8192,
+      "cycle_mean": 4566.591796875
+    },
+    {
+      "label": "measure-1-ordinary-service-fixed-unprotected-sync-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 84562080,
+      "cycle_count": 1024,
+      "cycle_mean": 82580.15625
+    },
+    {
+      "label": "measure-1-ordinary-service-fixed-unprotected-sync-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 81892400,
+      "cycle_count": 1024,
+      "cycle_mean": 79973.046875
+    },
+    {
+      "label": "measure-1-ordinary-service-fixed-unprotected-async-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 51858500,
+      "cycle_count": 8192,
+      "cycle_mean": 6330.38330078125
+    },
+    {
+      "label": "measure-1-ordinary-service-fixed-unprotected-async-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 51354960,
+      "cycle_count": 8192,
+      "cycle_mean": 6268.916015625
+    },
+    {
+      "label": "measure-1-ordinary-service-fixed-unprotected-async-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 115331060,
+      "cycle_count": 1024,
+      "cycle_mean": 112627.98828125
+    },
+    {
+      "label": "measure-1-ordinary-service-fixed-unprotected-async-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 112990160,
+      "cycle_count": 1024,
+      "cycle_mean": 110341.953125
+    },
+    {
+      "label": "measure-1-ordinary-service-fixed-oscore-sync-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 91008480,
+      "cycle_count": 8192,
+      "cycle_mean": 11109.43359375
+    },
+    {
+      "label": "measure-1-ordinary-service-fixed-oscore-sync-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 90852760,
+      "cycle_count": 8192,
+      "cycle_mean": 11090.4248046875
+    },
+    {
+      "label": "measure-1-ordinary-service-fixed-oscore-sync-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 192592320,
+      "cycle_count": 1024,
+      "cycle_mean": 188078.4375
+    },
+    {
+      "label": "measure-1-ordinary-service-fixed-oscore-sync-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 187418880,
+      "cycle_count": 1024,
+      "cycle_mean": 183026.25
+    },
+    {
+      "label": "measure-1-ordinary-service-fixed-oscore-async-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 105743740,
+      "cycle_count": 8192,
+      "cycle_mean": 12908.17138671875
+    },
+    {
+      "label": "measure-1-ordinary-service-fixed-oscore-async-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 106842280,
+      "cycle_count": 8192,
+      "cycle_mean": 13042.2705078125
+    },
+    {
+      "label": "measure-1-ordinary-service-fixed-oscore-async-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 226935720,
+      "cycle_count": 1024,
+      "cycle_mean": 221616.9140625
+    },
+    {
+      "label": "measure-1-ordinary-service-fixed-oscore-async-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 224689000,
+      "cycle_count": 1024,
+      "cycle_mean": 219422.8515625
+    },
+    {
+      "label": "measure-1-ordinary-service-allocated-unprotected-sync-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 37462900,
+      "cycle_count": 8192,
+      "cycle_mean": 4573.10791015625
+    },
+    {
+      "label": "measure-1-ordinary-service-allocated-unprotected-sync-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 38030700,
+      "cycle_count": 8192,
+      "cycle_mean": 4642.41943359375
+    },
+    {
+      "label": "measure-1-ordinary-service-allocated-unprotected-sync-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 83127620,
+      "cycle_count": 1024,
+      "cycle_mean": 81179.31640625
+    },
+    {
+      "label": "measure-1-ordinary-service-allocated-unprotected-sync-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 87897820,
+      "cycle_count": 1024,
+      "cycle_mean": 85837.71484375
+    },
+    {
+      "label": "measure-1-ordinary-service-allocated-unprotected-async-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 54960660,
+      "cycle_count": 8192,
+      "cycle_mean": 6709.06494140625
+    },
+    {
+      "label": "measure-1-ordinary-service-allocated-unprotected-async-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 56424700,
+      "cycle_count": 8192,
+      "cycle_mean": 6887.78076171875
+    },
+    {
+      "label": "measure-1-ordinary-service-allocated-unprotected-async-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 122213680,
+      "cycle_count": 1024,
+      "cycle_mean": 119349.296875
+    },
+    {
+      "label": "measure-1-ordinary-service-allocated-unprotected-async-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 121402440,
+      "cycle_count": 1024,
+      "cycle_mean": 118557.0703125
+    },
+    {
+      "label": "measure-1-ordinary-service-allocated-oscore-sync-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 90814340,
+      "cycle_count": 8192,
+      "cycle_mean": 11085.73486328125
+    },
+    {
+      "label": "measure-1-ordinary-service-allocated-oscore-sync-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 92047860,
+      "cycle_count": 8192,
+      "cycle_mean": 11236.31103515625
+    },
+    {
+      "label": "measure-1-ordinary-service-allocated-oscore-sync-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 192797000,
+      "cycle_count": 1024,
+      "cycle_mean": 188278.3203125
+    },
+    {
+      "label": "measure-1-ordinary-service-allocated-oscore-sync-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 195520060,
+      "cycle_count": 1024,
+      "cycle_mean": 190937.55859375
+    },
+    {
+      "label": "measure-1-ordinary-service-allocated-oscore-async-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 112245900,
+      "cycle_count": 8192,
+      "cycle_mean": 13701.89208984375
+    },
+    {
+      "label": "measure-1-ordinary-service-allocated-oscore-async-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 110722700,
+      "cycle_count": 8192,
+      "cycle_mean": 13515.95458984375
+    },
+    {
+      "label": "measure-1-ordinary-service-allocated-oscore-async-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 232220000,
+      "cycle_count": 1024,
+      "cycle_mean": 226777.34375
+    },
+    {
+      "label": "measure-1-ordinary-service-allocated-oscore-async-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 235307880,
+      "cycle_count": 1024,
+      "cycle_mean": 229792.8515625
+    },
+    {
+      "label": "measure-1-retained-fixed-unprotected-sync-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 15849780,
+      "cycle_count": 1024,
+      "cycle_mean": 15478.30078125
+    },
+    {
+      "label": "measure-1-retained-fixed-unprotected-sync-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 15764440,
+      "cycle_count": 1024,
+      "cycle_mean": 15394.9609375
+    },
+    {
+      "label": "measure-1-retained-fixed-unprotected-async-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 19825400,
+      "cycle_count": 1024,
+      "cycle_mean": 19360.7421875
+    },
+    {
+      "label": "measure-1-retained-fixed-unprotected-async-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 21067420,
+      "cycle_count": 1024,
+      "cycle_mean": 20573.65234375
+    },
+    {
+      "label": "measure-1-retained-fixed-oscore-sync-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 75626880,
+      "cycle_count": 1024,
+      "cycle_mean": 73854.375
+    },
+    {
+      "label": "measure-1-retained-fixed-oscore-sync-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 76050180,
+      "cycle_count": 1024,
+      "cycle_mean": 74267.75390625
+    },
+    {
+      "label": "measure-1-retained-fixed-oscore-async-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 79450180,
+      "cycle_count": 1024,
+      "cycle_mean": 77588.06640625
+    },
+    {
+      "label": "measure-1-retained-fixed-oscore-async-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 80291680,
+      "cycle_count": 1024,
+      "cycle_mean": 78409.84375
+    },
+    {
+      "label": "measure-1-retained-allocated-unprotected-sync-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 17112540,
+      "cycle_count": 1024,
+      "cycle_mean": 16711.46484375
+    },
+    {
+      "label": "measure-1-retained-allocated-unprotected-sync-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 16952740,
+      "cycle_count": 1024,
+      "cycle_mean": 16555.41015625
+    },
+    {
+      "label": "measure-1-retained-allocated-unprotected-async-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 22343440,
+      "cycle_count": 1024,
+      "cycle_mean": 21819.765625
+    },
+    {
+      "label": "measure-1-retained-allocated-unprotected-async-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 22437620,
+      "cycle_count": 1024,
+      "cycle_mean": 21911.73828125
+    },
+    {
+      "label": "measure-1-retained-allocated-oscore-sync-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 77482260,
+      "cycle_count": 1024,
+      "cycle_mean": 75666.26953125
+    },
+    {
+      "label": "measure-1-retained-allocated-oscore-sync-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 76259280,
+      "cycle_count": 1024,
+      "cycle_mean": 74471.953125
+    },
+    {
+      "label": "measure-1-retained-allocated-oscore-async-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 84000740,
+      "cycle_count": 1024,
+      "cycle_mean": 82031.97265625
+    },
+    {
+      "label": "measure-1-retained-allocated-oscore-async-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 83443820,
+      "cycle_count": 1024,
+      "cycle_mean": 81488.10546875
+    },
+    {
+      "label": "measure-2-ordinary-small-device-unprotected-sync-32-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "cycle_sum": 20000500,
+      "cycle_count": 8192,
+      "cycle_mean": 2441.46728515625
+    },
+    {
+      "label": "measure-2-ordinary-small-device-unprotected-sync-32-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "cycle_sum": 20294940,
+      "cycle_count": 8192,
+      "cycle_mean": 2477.40966796875
+    },
+    {
+      "label": "measure-2-ordinary-small-device-unprotected-async-32-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "cycle_sum": 25292600,
+      "cycle_count": 8192,
+      "cycle_mean": 3087.4755859375
+    },
+    {
+      "label": "measure-2-ordinary-small-device-unprotected-async-32-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "cycle_sum": 25648580,
+      "cycle_count": 8192,
+      "cycle_mean": 3130.93017578125
+    },
+    {
+      "label": "measure-2-ordinary-small-device-oscore-sync-32-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "cycle_sum": 41816940,
+      "cycle_count": 8192,
+      "cycle_mean": 5104.60693359375
+    },
+    {
+      "label": "measure-2-ordinary-small-device-oscore-sync-32-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "cycle_sum": 41746220,
+      "cycle_count": 8192,
+      "cycle_mean": 5095.97412109375
+    },
+    {
+      "label": "measure-2-ordinary-small-device-oscore-async-32-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "cycle_sum": 47626180,
+      "cycle_count": 8192,
+      "cycle_mean": 5813.74267578125
+    },
+    {
+      "label": "measure-2-ordinary-small-device-oscore-async-32-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "cycle_sum": 47471480,
+      "cycle_count": 8192,
+      "cycle_mean": 5794.8583984375
+    },
+    {
+      "label": "measure-2-ordinary-service-fixed-unprotected-sync-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 37591760,
+      "cycle_count": 8192,
+      "cycle_mean": 4588.837890625
+    },
+    {
+      "label": "measure-2-ordinary-service-fixed-unprotected-sync-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 37111000,
+      "cycle_count": 8192,
+      "cycle_mean": 4530.1513671875
+    },
+    {
+      "label": "measure-2-ordinary-service-fixed-unprotected-sync-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 83040240,
+      "cycle_count": 1024,
+      "cycle_mean": 81093.984375
+    },
+    {
+      "label": "measure-2-ordinary-service-fixed-unprotected-sync-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 80320580,
+      "cycle_count": 1024,
+      "cycle_mean": 78438.06640625
+    },
+    {
+      "label": "measure-2-ordinary-service-fixed-unprotected-async-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 53241280,
+      "cycle_count": 8192,
+      "cycle_mean": 6499.1796875
+    },
+    {
+      "label": "measure-2-ordinary-service-fixed-unprotected-async-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 51658920,
+      "cycle_count": 8192,
+      "cycle_mean": 6306.0205078125
+    },
+    {
+      "label": "measure-2-ordinary-service-fixed-unprotected-async-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 113303640,
+      "cycle_count": 1024,
+      "cycle_mean": 110648.0859375
+    },
+    {
+      "label": "measure-2-ordinary-service-fixed-unprotected-async-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 112199660,
+      "cycle_count": 1024,
+      "cycle_mean": 109569.98046875
+    },
+    {
+      "label": "measure-2-ordinary-service-fixed-oscore-sync-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 91660600,
+      "cycle_count": 8192,
+      "cycle_mean": 11189.0380859375
+    },
+    {
+      "label": "measure-2-ordinary-service-fixed-oscore-sync-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 93329320,
+      "cycle_count": 8192,
+      "cycle_mean": 11392.7392578125
+    },
+    {
+      "label": "measure-2-ordinary-service-fixed-oscore-sync-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 195481980,
+      "cycle_count": 1024,
+      "cycle_mean": 190900.37109375
+    },
+    {
+      "label": "measure-2-ordinary-service-fixed-oscore-sync-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 189727820,
+      "cycle_count": 1024,
+      "cycle_mean": 185281.07421875
+    },
+    {
+      "label": "measure-2-ordinary-service-fixed-oscore-async-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 105458140,
+      "cycle_count": 8192,
+      "cycle_mean": 12873.30810546875
+    },
+    {
+      "label": "measure-2-ordinary-service-fixed-oscore-async-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 106246940,
+      "cycle_count": 8192,
+      "cycle_mean": 12969.59716796875
+    },
+    {
+      "label": "measure-2-ordinary-service-fixed-oscore-async-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 226702820,
+      "cycle_count": 1024,
+      "cycle_mean": 221389.47265625
+    },
+    {
+      "label": "measure-2-ordinary-service-fixed-oscore-async-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 223745500,
+      "cycle_count": 1024,
+      "cycle_mean": 218501.46484375
+    },
+    {
+      "label": "measure-2-ordinary-service-allocated-unprotected-sync-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 38149700,
+      "cycle_count": 8192,
+      "cycle_mean": 4656.94580078125
+    },
+    {
+      "label": "measure-2-ordinary-service-allocated-unprotected-sync-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 38747420,
+      "cycle_count": 8192,
+      "cycle_mean": 4729.90966796875
+    },
+    {
+      "label": "measure-2-ordinary-service-allocated-unprotected-sync-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 83593080,
+      "cycle_count": 1024,
+      "cycle_mean": 81633.8671875
+    },
+    {
+      "label": "measure-2-ordinary-service-allocated-unprotected-sync-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 85249220,
+      "cycle_count": 1024,
+      "cycle_mean": 83251.19140625
+    },
+    {
+      "label": "measure-2-ordinary-service-allocated-unprotected-async-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 55165000,
+      "cycle_count": 8192,
+      "cycle_mean": 6734.0087890625
+    },
+    {
+      "label": "measure-2-ordinary-service-allocated-unprotected-async-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 54810380,
+      "cycle_count": 8192,
+      "cycle_mean": 6690.72021484375
+    },
+    {
+      "label": "measure-2-ordinary-service-allocated-unprotected-async-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 118557660,
+      "cycle_count": 1024,
+      "cycle_mean": 115778.96484375
+    },
+    {
+      "label": "measure-2-ordinary-service-allocated-unprotected-async-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 129513480,
+      "cycle_count": 1024,
+      "cycle_mean": 126478.0078125
+    },
+    {
+      "label": "measure-2-ordinary-service-allocated-oscore-sync-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 92611580,
+      "cycle_count": 8192,
+      "cycle_mean": 11305.12451171875
+    },
+    {
+      "label": "measure-2-ordinary-service-allocated-oscore-sync-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 92565000,
+      "cycle_count": 8192,
+      "cycle_mean": 11299.4384765625
+    },
+    {
+      "label": "measure-2-ordinary-service-allocated-oscore-sync-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 192753480,
+      "cycle_count": 1024,
+      "cycle_mean": 188235.8203125
+    },
+    {
+      "label": "measure-2-ordinary-service-allocated-oscore-sync-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 196336740,
+      "cycle_count": 1024,
+      "cycle_mean": 191735.09765625
+    },
+    {
+      "label": "measure-2-ordinary-service-allocated-oscore-async-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 111151100,
+      "cycle_count": 8192,
+      "cycle_mean": 13568.24951171875
+    },
+    {
+      "label": "measure-2-ordinary-service-allocated-oscore-async-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 113081960,
+      "cycle_count": 8192,
+      "cycle_mean": 13803.9501953125
+    },
+    {
+      "label": "measure-2-ordinary-service-allocated-oscore-async-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 238249900,
+      "cycle_count": 1024,
+      "cycle_mean": 232665.91796875
+    },
+    {
+      "label": "measure-2-ordinary-service-allocated-oscore-async-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 237294160,
+      "cycle_count": 1024,
+      "cycle_mean": 231732.578125
+    },
+    {
+      "label": "measure-2-retained-fixed-unprotected-sync-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 16063300,
+      "cycle_count": 1024,
+      "cycle_mean": 15686.81640625
+    },
+    {
+      "label": "measure-2-retained-fixed-unprotected-sync-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 15482580,
+      "cycle_count": 1024,
+      "cycle_mean": 15119.70703125
+    },
+    {
+      "label": "measure-2-retained-fixed-unprotected-async-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 20273860,
+      "cycle_count": 1024,
+      "cycle_mean": 19798.69140625
+    },
+    {
+      "label": "measure-2-retained-fixed-unprotected-async-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 20880080,
+      "cycle_count": 1024,
+      "cycle_mean": 20390.703125
+    },
+    {
+      "label": "measure-2-retained-fixed-oscore-sync-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 75947500,
+      "cycle_count": 1024,
+      "cycle_mean": 74167.48046875
+    },
+    {
+      "label": "measure-2-retained-fixed-oscore-sync-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 81884580,
+      "cycle_count": 1024,
+      "cycle_mean": 79965.41015625
+    },
+    {
+      "label": "measure-2-retained-fixed-oscore-async-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 83108920,
+      "cycle_count": 1024,
+      "cycle_mean": 81161.0546875
+    },
+    {
+      "label": "measure-2-retained-fixed-oscore-async-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 80478000,
+      "cycle_count": 1024,
+      "cycle_mean": 78591.796875
+    },
+    {
+      "label": "measure-2-retained-allocated-unprotected-sync-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 17117300,
+      "cycle_count": 1024,
+      "cycle_mean": 16716.11328125
+    },
+    {
+      "label": "measure-2-retained-allocated-unprotected-sync-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 16942200,
+      "cycle_count": 1024,
+      "cycle_mean": 16545.1171875
+    },
+    {
+      "label": "measure-2-retained-allocated-unprotected-async-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 22094560,
+      "cycle_count": 1024,
+      "cycle_mean": 21576.71875
+    },
+    {
+      "label": "measure-2-retained-allocated-unprotected-async-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 23107760,
+      "cycle_count": 1024,
+      "cycle_mean": 22566.171875
+    },
+    {
+      "label": "measure-2-retained-allocated-oscore-sync-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 77710400,
+      "cycle_count": 1024,
+      "cycle_mean": 75889.0625
+    },
+    {
+      "label": "measure-2-retained-allocated-oscore-sync-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 76365360,
+      "cycle_count": 1024,
+      "cycle_mean": 74575.546875
+    },
+    {
+      "label": "measure-2-retained-allocated-oscore-async-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 84010600,
+      "cycle_count": 1024,
+      "cycle_mean": 82041.6015625
+    },
+    {
+      "label": "measure-2-retained-allocated-oscore-async-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 84287700,
+      "cycle_count": 1024,
+      "cycle_mean": 82312.20703125
+    },
+    {
+      "label": "measure-3-ordinary-small-device-unprotected-sync-32-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "cycle_sum": 19901900,
+      "cycle_count": 8192,
+      "cycle_mean": 2429.43115234375
+    },
+    {
+      "label": "measure-3-ordinary-small-device-unprotected-sync-32-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "sync",
+        32
+      ],
+      "cycle_sum": 19658120,
+      "cycle_count": 8192,
+      "cycle_mean": 2399.6728515625
+    },
+    {
+      "label": "measure-3-ordinary-small-device-unprotected-async-32-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "cycle_sum": 26259560,
+      "cycle_count": 8192,
+      "cycle_mean": 3205.5126953125
+    },
+    {
+      "label": "measure-3-ordinary-small-device-unprotected-async-32-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "unprotected",
+        "async",
+        32
+      ],
+      "cycle_sum": 25695160,
+      "cycle_count": 8192,
+      "cycle_mean": 3136.6162109375
+    },
+    {
+      "label": "measure-3-ordinary-small-device-oscore-sync-32-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "cycle_sum": 41480680,
+      "cycle_count": 8192,
+      "cycle_mean": 5063.5595703125
+    },
+    {
+      "label": "measure-3-ordinary-small-device-oscore-sync-32-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "sync",
+        32
+      ],
+      "cycle_sum": 41479660,
+      "cycle_count": 8192,
+      "cycle_mean": 5063.43505859375
+    },
+    {
+      "label": "measure-3-ordinary-small-device-oscore-async-32-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "cycle_sum": 47569740,
+      "cycle_count": 8192,
+      "cycle_mean": 5806.85302734375
+    },
+    {
+      "label": "measure-3-ordinary-small-device-oscore-async-32-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "small-device",
+        "oscore",
+        "async",
+        32
+      ],
+      "cycle_sum": 47787680,
+      "cycle_count": 8192,
+      "cycle_mean": 5833.45703125
+    },
+    {
+      "label": "measure-3-ordinary-service-fixed-unprotected-sync-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 36993360,
+      "cycle_count": 8192,
+      "cycle_mean": 4515.791015625
+    },
+    {
+      "label": "measure-3-ordinary-service-fixed-unprotected-sync-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 36855660,
+      "cycle_count": 8192,
+      "cycle_mean": 4498.98193359375
+    },
+    {
+      "label": "measure-3-ordinary-service-fixed-unprotected-sync-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 80617740,
+      "cycle_count": 1024,
+      "cycle_mean": 78728.26171875
+    },
+    {
+      "label": "measure-3-ordinary-service-fixed-unprotected-sync-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 83246960,
+      "cycle_count": 1024,
+      "cycle_mean": 81295.859375
+    },
+    {
+      "label": "measure-3-ordinary-service-fixed-unprotected-async-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 52480020,
+      "cycle_count": 8192,
+      "cycle_mean": 6406.25244140625
+    },
+    {
+      "label": "measure-3-ordinary-service-fixed-unprotected-async-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 53144040,
+      "cycle_count": 8192,
+      "cycle_mean": 6487.3095703125
+    },
+    {
+      "label": "measure-3-ordinary-service-fixed-unprotected-async-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 113233260,
+      "cycle_count": 1024,
+      "cycle_mean": 110579.35546875
+    },
+    {
+      "label": "measure-3-ordinary-service-fixed-unprotected-async-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 113401900,
+      "cycle_count": 1024,
+      "cycle_mean": 110744.04296875
+    },
+    {
+      "label": "measure-3-ordinary-service-fixed-oscore-sync-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 89986440,
+      "cycle_count": 8192,
+      "cycle_mean": 10984.6728515625
+    },
+    {
+      "label": "measure-3-ordinary-service-fixed-oscore-sync-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 91935660,
+      "cycle_count": 8192,
+      "cycle_mean": 11222.61474609375
+    },
+    {
+      "label": "measure-3-ordinary-service-fixed-oscore-sync-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 191564500,
+      "cycle_count": 1024,
+      "cycle_mean": 187074.70703125
+    },
+    {
+      "label": "measure-3-ordinary-service-fixed-oscore-sync-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 192979240,
+      "cycle_count": 1024,
+      "cycle_mean": 188456.2890625
+    },
+    {
+      "label": "measure-3-ordinary-service-fixed-oscore-async-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 105111340,
+      "cycle_count": 8192,
+      "cycle_mean": 12830.97412109375
+    },
+    {
+      "label": "measure-3-ordinary-service-fixed-oscore-async-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 105450320,
+      "cycle_count": 8192,
+      "cycle_mean": 12872.353515625
+    },
+    {
+      "label": "measure-3-ordinary-service-fixed-oscore-async-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 220708280,
+      "cycle_count": 1024,
+      "cycle_mean": 215535.4296875
+    },
+    {
+      "label": "measure-3-ordinary-service-fixed-oscore-async-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-fixed",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 225234020,
+      "cycle_count": 1024,
+      "cycle_mean": 219955.09765625
+    },
+    {
+      "label": "measure-3-ordinary-service-allocated-unprotected-sync-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 38081020,
+      "cycle_count": 8192,
+      "cycle_mean": 4648.56201171875
+    },
+    {
+      "label": "measure-3-ordinary-service-allocated-unprotected-sync-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 37686620,
+      "cycle_count": 8192,
+      "cycle_mean": 4600.41748046875
+    },
+    {
+      "label": "measure-3-ordinary-service-allocated-unprotected-sync-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 85431800,
+      "cycle_count": 1024,
+      "cycle_mean": 83429.4921875
+    },
+    {
+      "label": "measure-3-ordinary-service-allocated-unprotected-sync-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 86596980,
+      "cycle_count": 1024,
+      "cycle_mean": 84567.36328125
+    },
+    {
+      "label": "measure-3-ordinary-service-allocated-unprotected-async-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 60754600,
+      "cycle_count": 8192,
+      "cycle_mean": 7416.3330078125
+    },
+    {
+      "label": "measure-3-ordinary-service-allocated-unprotected-async-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        1024
+      ],
+      "cycle_sum": 60136820,
+      "cycle_count": 8192,
+      "cycle_mean": 7340.92041015625
+    },
+    {
+      "label": "measure-3-ordinary-service-allocated-unprotected-async-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 123243200,
+      "cycle_count": 1024,
+      "cycle_mean": 120354.6875
+    },
+    {
+      "label": "measure-3-ordinary-service-allocated-unprotected-async-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "unprotected",
+        "async",
+        16384
+      ],
+      "cycle_sum": 123824600,
+      "cycle_count": 1024,
+      "cycle_mean": 120922.4609375
+    },
+    {
+      "label": "measure-3-ordinary-service-allocated-oscore-sync-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 93059020,
+      "cycle_count": 8192,
+      "cycle_mean": 11359.74365234375
+    },
+    {
+      "label": "measure-3-ordinary-service-allocated-oscore-sync-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        1024
+      ],
+      "cycle_sum": 92557860,
+      "cycle_count": 8192,
+      "cycle_mean": 11298.56689453125
+    },
+    {
+      "label": "measure-3-ordinary-service-allocated-oscore-sync-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 198868040,
+      "cycle_count": 1024,
+      "cycle_mean": 194207.0703125
+    },
+    {
+      "label": "measure-3-ordinary-service-allocated-oscore-sync-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "sync",
+        16384
+      ],
+      "cycle_sum": 196927660,
+      "cycle_count": 1024,
+      "cycle_mean": 192312.16796875
+    },
+    {
+      "label": "measure-3-ordinary-service-allocated-oscore-async-1024-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 111687960,
+      "cycle_count": 8192,
+      "cycle_mean": 13633.7841796875
+    },
+    {
+      "label": "measure-3-ordinary-service-allocated-oscore-async-1024-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        1024
+      ],
+      "cycle_sum": 112033060,
+      "cycle_count": 8192,
+      "cycle_mean": 13675.91064453125
+    },
+    {
+      "label": "measure-3-ordinary-service-allocated-oscore-async-16384-A",
+      "arm": "A",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 234351120,
+      "cycle_count": 1024,
+      "cycle_mean": 228858.515625
+    },
+    {
+      "label": "measure-3-ordinary-service-allocated-oscore-async-16384-B",
+      "arm": "B",
+      "cell": [
+        "ordinary",
+        "service-allocated",
+        "oscore",
+        "async",
+        16384
+      ],
+      "cycle_sum": 231658660,
+      "cycle_count": 1024,
+      "cycle_mean": 226229.16015625
+    },
+    {
+      "label": "measure-3-retained-fixed-unprotected-sync-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 15470680,
+      "cycle_count": 1024,
+      "cycle_mean": 15108.0859375
+    },
+    {
+      "label": "measure-3-retained-fixed-unprotected-sync-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 15349300,
+      "cycle_count": 1024,
+      "cycle_mean": 14989.55078125
+    },
+    {
+      "label": "measure-3-retained-fixed-unprotected-async-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 20612160,
+      "cycle_count": 1024,
+      "cycle_mean": 20129.0625
+    },
+    {
+      "label": "measure-3-retained-fixed-unprotected-async-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 19727820,
+      "cycle_count": 1024,
+      "cycle_mean": 19265.44921875
+    },
+    {
+      "label": "measure-3-retained-fixed-oscore-sync-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 75332100,
+      "cycle_count": 1024,
+      "cycle_mean": 73566.50390625
+    },
+    {
+      "label": "measure-3-retained-fixed-oscore-sync-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 76517000,
+      "cycle_count": 1024,
+      "cycle_mean": 74723.6328125
+    },
+    {
+      "label": "measure-3-retained-fixed-oscore-async-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 82036220,
+      "cycle_count": 1024,
+      "cycle_mean": 80113.49609375
+    },
+    {
+      "label": "measure-3-retained-fixed-oscore-async-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "fixed",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 80880900,
+      "cycle_count": 1024,
+      "cycle_mean": 78985.25390625
+    },
+    {
+      "label": "measure-3-retained-allocated-unprotected-sync-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 17240720,
+      "cycle_count": 1024,
+      "cycle_mean": 16836.640625
+    },
+    {
+      "label": "measure-3-retained-allocated-unprotected-sync-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 17073440,
+      "cycle_count": 1024,
+      "cycle_mean": 16673.28125
+    },
+    {
+      "label": "measure-3-retained-allocated-unprotected-async-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 22448840,
+      "cycle_count": 1024,
+      "cycle_mean": 21922.6953125
+    },
+    {
+      "label": "measure-3-retained-allocated-unprotected-async-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "unprotected",
+        "async",
+        11264
+      ],
+      "cycle_sum": 22041520,
+      "cycle_count": 1024,
+      "cycle_mean": 21524.921875
+    },
+    {
+      "label": "measure-3-retained-allocated-oscore-sync-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 77151100,
+      "cycle_count": 1024,
+      "cycle_mean": 75342.87109375
+    },
+    {
+      "label": "measure-3-retained-allocated-oscore-sync-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "sync",
+        11264
+      ],
+      "cycle_sum": 77425140,
+      "cycle_count": 1024,
+      "cycle_mean": 75610.48828125
+    },
+    {
+      "label": "measure-3-retained-allocated-oscore-async-11264-A",
+      "arm": "A",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 82134820,
+      "cycle_count": 1024,
+      "cycle_mean": 80209.78515625
+    },
+    {
+      "label": "measure-3-retained-allocated-oscore-async-11264-B",
+      "arm": "B",
+      "cell": [
+        "retained",
+        "allocated",
+        "oscore",
+        "async",
+        11264
+      ],
+      "cycle_sum": 84871480,
+      "cycle_count": 1024,
+      "cycle_mean": 82882.3046875
+    }
+  ],
+  "seconds": 20.849819600000046,
+  "measured_operations": 917504
+}

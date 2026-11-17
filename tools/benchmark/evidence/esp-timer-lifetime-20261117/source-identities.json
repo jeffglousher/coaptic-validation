@@ -1,0 +1,95 @@
+{
+  "rejected_core": "0d31cbcfaef2ac87515f7c7801a4a119ae5d67e4",
+  "rejected_timer_cpu64": "ec9221f51a39a1265c52436af51cf3475ba0031e",
+  "rejected_guard_cpu4": "496e216d68aa47367af46adf79c7667a272f62c1",
+  "selected_esp_sources": {
+    "core": "3b62f05d41ab2e75cef97ad8c296af1c20aebfa1",
+    "adapter": "12fdc7319af51b375672cb3de1b00942d9272100",
+    "archive_sha256": "acce4721d8b2cfb11f67b945928a5122fddade679ac013d61cb2bd953d5f062a"
+  },
+  "selected_esp": {
+    "run_id": "422989bc998c4a40a37951e9a808e58d",
+    "source_head": "3b62f05d41ab2e75cef97ad8c296af1c20aebfa1",
+    "archive_sha256": "acce4721d8b2cfb11f67b945928a5122fddade679ac013d61cb2bd953d5f062a",
+    "image_sha256": "8f8066bff69a55fe22ae87b6db194bb60513285b03a68bcc6dac43d8dbe7389c",
+    "image_bytes": 1457888,
+    "elf_sha256": "bf65e4a46bdbe10f7ac7edb5ca74b4c3eaba3058f96bb5d06b7b147d463f77b1",
+    "partitions_unchanged": true,
+    "staging_restored": true
+  },
+  "selected_esp_sdk": {
+    "sdk": {
+      "ESP32S3_INSTRUCTION_CACHE_SIZE": 16384,
+      "ESP32S3_ICACHE_ASSOCIATED_WAYS": 8,
+      "ESP32S3_INSTRUCTION_CACHE_LINE_SIZE": 32,
+      "ESP_DEFAULT_CPU_FREQ_MHZ": 240,
+      "ESPTOOLPY_FLASHFREQ": "80m",
+      "FREERTOS_HZ": 1000,
+      "PM_ENABLE": false,
+      "SPIRAM": false,
+      "VFS_SUPPORT_SELECT": true
+    },
+    "sdkconfig_sha256": "e43635e8069683893d0fb90391b7eb20fc1ff9552cd3fc71cb5a98ae69dba43b"
+  },
+  "selected_functional_trial": {
+    "passed": true,
+    "restore_verified": true,
+    "operations": 48,
+    "client_modes": [
+      "sync",
+      "async"
+    ],
+    "scope": "Accepted runtime plus profile compatibility binding only. Single exact-source functional trial; not a peer speed comparison or long-term Wi-Fi soak"
+  },
+  "host_build": {
+    "sources": {
+      "core": {
+        "commit": "0d31cbcfaef2ac87515f7c7801a4a119ae5d67e4",
+        "tree": "f301524eb8d8aeefc0af82345773458febed0078"
+      },
+      "suite": {
+        "commit": "130683f4d895a4064470890b28260279a9243f6a",
+        "tree": "bbc9f5697c39a7bf35336ccc91cb96fad8861d8a"
+      }
+    },
+    "compiler": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-pc-windows-msvc\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+    "binaries": {
+      "client": {
+        "bytes": 878080,
+        "file": "bench-native-client.exe",
+        "sha256": "343aaf05b7a6b65955df08af27c2d824e9ef6894ec01debd0ce22bb5d59ace53"
+      },
+      "core": {
+        "bytes": 1330176,
+        "file": "bench-core.exe",
+        "sha256": "ea9bab10a635be252e52bede3d7c5594df930360b2081502066d2d7ee0782828"
+      },
+      "observe": {
+        "bytes": 906752,
+        "file": "bench-observe-proof.exe",
+        "sha256": "2772981f0ec9b5db1a2fe0ece5b760e19f0cb80ddcc712fdad6bfb362afc96cc"
+      },
+      "server": {
+        "bytes": 9277440,
+        "file": "bench-rust-server.exe",
+        "sha256": "be8663aaf344b74a5a9585bd697ccdf4388824515f27090c81e4aa612cb501fb"
+      }
+    },
+    "profile": "release; thin LTO; one codegen unit; incremental=0; jobs=2",
+    "tools": {
+      "cargo": {
+        "sha256": "c9b44417dc8228b81923a1068a3c09e32d2793f2cced2a816789cf433c1f0d46"
+      },
+      "rustc": {
+        "sha256": "fc40f1c8b65095a22a48c111aadc279c26a049b7e4161e8b99ffe3eb23873e86"
+      }
+    },
+    "manifest_sha256": "9cef878815cd16684a5cb6b380870e1e82f0b032da79db33b670eaae1666ba41",
+    "selected_lock_sha256": "3c25aa2229363f18f89f58783f431dafcd769a110fdb23c1b81ca343eb95f2c4"
+  },
+  "limits": [
+    "Firmware, encrypted API captures, device addresses, identity payloads and private configuration are retained privately, not in this package.",
+    "Diagnostic spans have peer addresses removed; timing vectors and wire MID/token/block correlation are unchanged.",
+    "All new CPU and clean Wi-Fi speed cohorts describe rejected runtime integrations. Selected accepted-runtime firmware has a separate functional claim only."
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "project": "Coaptic",
+  "purpose": "Portable numeric evidence and complete CPU/host vectors for ESP timer repair and rejected optimization; no firmware or private configuration",
+  "budget_bytes": 25165824,
+  "release_condition": "Repository evidence retained; source owner reviews any subsequent removal"
+}
