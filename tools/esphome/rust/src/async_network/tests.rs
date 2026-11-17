@@ -523,3 +523,73 @@ fn scheduled_timer_move_and_past_deadline_are_observed() {
     timer.schedule(None);
     assert!(driver.0.wakers[2].borrow().is_none());
 }
+
+#[test]
+fn armed_timer_without_a_waiter_does_not_probe_native_readiness_on_self_wake() {
+    let _serial = SERIAL.lock().unwrap();
+    let mut runtime = runtime();
+    let (_, mut timer, _, mut driver) = runtime.split();
+    timer.schedule(Some(100));
+    assert_eq!(
+        driver.run(pin!(async {
+            crate::cooperate().await;
+            17
+        })),
+        Ok(17)
+    );
+    assert_eq!(timer.armed(), Some(100));
+    assert_eq!(STATE.lock().unwrap().waits, 0);
+    assert_eq!(WAKE_STATE.load(Ordering::Acquire) & PARKED, 0);
+}
+
+#[test]
+fn app_ingress_cancels_esp_waiter_but_keeps_its_protocol_deadline() {
+    let _serial = SERIAL.lock().unwrap();
+    let mut runtime = runtime();
+    let (socket, mut timer, _, mut driver) = runtime.split();
+    let mut app = coaptic::App::profile::<coaptic::profiles::Constrained>()
+        .deterministic_for_tests()
+        .block_wise::<false>()
+        .allow_unprotected()
+        .bind(socket)
+        .unwrap();
+    let peer = Endpoint::v4([127, 0, 0, 1], 5683);
+    let id = coaptic::message::MessageId::new(4);
+    let engine = app.engine_mut();
+    let tx = engine.acquire_tx().unwrap();
+    engine
+        .encode_tx(
+            tx,
+            &coaptic::message::Message::new(
+                coaptic::message::Type::Confirmable,
+                coaptic::message::Code::GET,
+                id,
+            ),
+        )
+        .unwrap();
+    engine.record_pending_con(tx, peer, id, 10, 0).unwrap();
+    let due = app.next_timeout().unwrap();
+    let waker = unsafe { Waker::from_raw(raw_waker()) };
+    let mut cx = Context::from_waker(&waker);
+    {
+        let mut wait = pin!(app.wait_async(10, &mut timer, core::future::pending()));
+        assert!(wait.as_mut().poll(&mut cx).is_pending());
+        assert!(driver.0.wakers[2].borrow().is_some());
+        STATE.lock().unwrap().ready = true;
+        assert!(matches!(
+            wait.as_mut().poll(&mut cx),
+            Poll::Ready(Ok(coaptic::app::AppWake::Ingress))
+        ));
+    }
+    assert_eq!(timer.armed(), Some(due));
+    assert!(driver.0.wakers[2].borrow().is_none());
+    assert_eq!(driver.0.interests.get(), 0);
+    assert_eq!(app.engine_mut().rx_occupied(), 1);
+    assert_eq!(
+        driver.run(pin!(async {
+            crate::cooperate().await;
+        })),
+        Ok(())
+    );
+    assert_eq!(STATE.lock().unwrap().waits, 0);
+}

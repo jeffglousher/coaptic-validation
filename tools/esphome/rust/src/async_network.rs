@@ -250,7 +250,17 @@ impl Driver<'_> {
             let ready = {
                 let park = Park::begin();
                 let interests = self.0.interests.get();
-                let registered_deadline = self.0.deadlines.iter().filter_map(Cell::get).min();
+                // Armed state survives a wait; only a registered waiter can
+                // need a native wake. Inactive deadlines must not force a
+                // select round-trip between receiving and dispatching a packet.
+                let registered_deadline = self
+                    .0
+                    .deadlines
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, _)| self.0.wakers[2 + index].borrow().is_some())
+                    .filter_map(|(_, deadline)| deadline.get())
+                    .min();
                 let deadline = if park.is_none() {
                     if interests == 0 && registered_deadline.is_none() {
                         continue;
