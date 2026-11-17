@@ -34,17 +34,20 @@ mod async_read_only {
                 .send_to(bytes, std::net::SocketAddrV4::new(ip.into(), port))
         }
     }
-    struct Timer(Rc<Cell<u64>>);
+    struct Timer(Rc<Cell<u64>>, Option<u64>);
     impl AsyncTimer for Timer {
-        async fn wait_until(&mut self, deadline: u64) {
-            core::future::poll_fn(|_| {
-                if self.0.get() >= deadline {
-                    Poll::Ready(())
-                } else {
-                    Poll::Pending
-                }
-            })
-            .await
+        fn armed(&self) -> Option<u64> {
+            self.1
+        }
+        fn schedule(&mut self, deadline: Option<u64>) {
+            self.1 = deadline;
+        }
+        fn poll_wait(&mut self, _: &mut Context<'_>) -> Poll<()> {
+            if self.1.is_some_and(|deadline| self.0.get() >= deadline) {
+                Poll::Ready(())
+            } else {
+                Poll::Pending
+            }
         }
     }
     struct NoConsole;
@@ -132,8 +135,8 @@ mod async_read_only {
         host_connection.observable_manual("identity").unwrap();
         host_connection.connect(0).unwrap();
         let now = Rc::new(Cell::new(0));
-        let mut protocol = Timer(now.clone());
-        let mut local = Timer(now.clone());
+        let mut protocol = Timer(now.clone(), None);
+        let mut local = Timer(now.clone(), None);
         let stopped = Rc::new(Cell::new(false));
         let mut future = core::pin::pin!(run_async(
             Socket(device_socket),

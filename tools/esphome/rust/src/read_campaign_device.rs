@@ -490,10 +490,18 @@ mod tests {
                 DatagramIo::send(self, peer, bytes)
             }
         }
-        struct Timer;
+        #[derive(Default)]
+        struct Timer(Option<u64>);
         impl coaptic::platform::AsyncTimer for Timer {
-            async fn wait_until(&mut self, _: u64) {
-                core::future::pending().await
+            fn armed(&self) -> Option<u64> {
+                self.0
+            }
+            fn schedule(&mut self, deadline: Option<u64>) {
+                self.0 = deadline;
+            }
+            fn poll_wait(&mut self, _: &mut core::task::Context<'_>) -> core::task::Poll<()> {
+                // The test drives ingress manually and never advances time.
+                core::task::Poll::Pending
             }
         }
         fn random(bytes: &mut [u8]) -> bool {
@@ -528,8 +536,8 @@ mod tests {
                 .unwrap();
             let now = Cell::new(0u64);
             let mut rows = Vec::new();
-            let mut protocol = Timer;
-            let mut local = Timer;
+            let mut protocol = Timer::default();
+            let mut local = Timer::default();
             let result = {
                 let mut future = core::pin::pin!(run_unprotected_async(
                     Io {
