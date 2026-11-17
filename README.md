@@ -13,14 +13,16 @@ commit SHA in [library.json](library.json), or a candidate commit you want to ch
 ```sh
 git clone https://github.com/jeffglousher/coaptic.git coaptic
 git -C coaptic checkout --detach LIBRARY_COMMIT_SHA
-python tools/prepare.py --expected-revision LIBRARY_COMMIT_SHA --output target/validation-source.json
+python tools/prepare.py --select-macro-locks --expected-revision LIBRARY_COMMIT_SHA --output target/validation-source.json
 cargo test --locked -p coaptic-plugtest --features dtls,oscore
 ```
 
-Preparation rejects modified source and mismatched plugtest fixtures. It aligns
-only Coaptic's path-package version in the seven lockfiles; dependency pins stay
-fixed. Keep the preparation report with results. Reports identify the library
-and suite revisions, dirty state, prepared lock hashes, and fixture hashes.
+Preparation rejects modified source and mismatched plugtest fixtures. The explicit
+macro-lock selector chooses checked inputs for the pinned core's Syn major and
+aligns Coaptic's path-package version; unrelated dependency pins stay fixed. Use
+Python 3.13 for this preparation, as CI does. Keep its report with results.
+Reports identify the library and suite revisions, dirty state, prepared lock
+hashes, and fixture hashes.
 
 - [App plugtests and dogfood](crates/coaptic-plugtest/README.md)
 - [Independent process interoperability](tools/interop/README.md)
