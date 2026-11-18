@@ -8,6 +8,8 @@ struct DropSuffix {
     armed: bool,
     first_seen: bool,
     dropped: bool,
+    repair_sent: bool,
+    token: Option<Token>,
 }
 impl coaptic::storage::DatagramTransport for DropSuffix {
     type Error = std::io::Error;
@@ -21,6 +23,8 @@ impl DatagramIo for DropSuffix {
             && let Ok(packet) = decode(&bytes[..n])
             && packet.ty() == Type::NonConfirmable
             && packet.code() == Code::CONTENT
+            && self.token == Some(packet.token())
+            && packet.etag().next() == Some(&b"large-v1"[..])
             && packet.size2() == Some(Ok(2000))
             && let Some(Ok(block)) = packet.q_block2().next()
             && block.szx() == 6
@@ -40,7 +44,31 @@ impl DatagramIo for DropSuffix {
         Ok(received)
     }
     fn send(&mut self, peer: Endpoint, bytes: &[u8]) -> std::io::Result<usize> {
-        self.io.send(peer, bytes)
+        let sent = self.io.send(peer, bytes)?;
+        if sent == bytes.len()
+            && self.armed
+            && peer == self.peer
+            && self.token.is_none()
+            && let Ok(packet) = decode(bytes)
+            && packet.code() == Code::GET
+            && let Some(Ok(block)) = packet.q_block2().next()
+            && block.num() == 0
+        {
+            self.token = Some(packet.token());
+        }
+        if sent == bytes.len()
+            && self.dropped
+            && peer == self.peer
+            && let Ok(packet) = decode(bytes)
+            && packet.code() == Code::GET
+            && self.token == Some(packet.token())
+            && let Some(Ok(block)) = packet.q_block2().next()
+            && block.num() == 1
+            && block.szx() == 6
+        {
+            self.repair_sent = true;
+        }
+        Ok(sent)
     }
 }
 
@@ -63,6 +91,8 @@ pub(super) fn campaign(peer: SocketAddr, id: &str, path: &Path) -> Result<()> {
             armed: false,
             first_seen: false,
             dropped: false,
+            repair_sent: false,
+            token: None,
         })
         .map_err(|_| "Q2 App bind")?;
     let clock = Instant::now();
@@ -104,13 +134,13 @@ pub(super) fn campaign(peer: SocketAddr, id: &str, path: &Path) -> Result<()> {
                 std::thread::sleep(Duration::from_millis(1));
             }
         }
-        if !app.transport().first_seen || !app.transport().dropped {
+        if !app.transport().first_seen || !app.transport().dropped || !app.transport().repair_sent {
             return Err("known-size NON Q2 suffix injection absent");
         }
         Ok(())
     })();
-    writeln!(report, "{{\"passed\":{},\"case\":\"known_size_non_qblock2_suffix\",\"security\":\"unprotected\",\"run_id\":\"{}\",\"first_size2_2000\":{},\"dropped_final_976\":{},\"error\":{:?},\"scope\":\"host receive loss; device response reissue; no MCU client recovery proof\"}}",
-        outcome.is_ok(), id, app.transport().first_seen, app.transport().dropped, outcome.err().unwrap_or("")).map_err(|_| "Q2 report write")?;
+    writeln!(report, "{{\"passed\":{},\"case\":\"known_size_non_qblock2_suffix\",\"security\":\"unprotected\",\"run_id\":\"{}\",\"first_size2_2000\":{},\"dropped_final_976\":{},\"suffix_repair_sent\":{},\"error\":{:?},\"scope\":\"host receive loss; device response reissue; no MCU client recovery proof\"}}",
+        outcome.is_ok(), id, app.transport().first_seen, app.transport().dropped, app.transport().repair_sent, outcome.err().unwrap_or("")).map_err(|_| "Q2 report write")?;
     outcome
 }
 
@@ -124,6 +154,7 @@ mod tests {
 
     #[test]
     fn real_udp_fixture_reissues_dropped_non_suffix_and_remains_live() {
+        let _owner = crate::NETWORK_SERVICE_TEST_LOCK.lock().unwrap();
         let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
         socket.set_nonblocking(true).unwrap();
         let peer = socket.local_addr().unwrap();

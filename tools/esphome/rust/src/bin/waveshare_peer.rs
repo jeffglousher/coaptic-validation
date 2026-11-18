@@ -25,6 +25,10 @@ use std::time::{Duration, Instant};
 
 type Result<T> = std::result::Result<T, &'static str>;
 
+// The fixture deliberately owns one process-global service identity at a time.
+#[cfg(test)]
+static NETWORK_SERVICE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 struct CaptureIo {
     io: UdpSocketIo<[u8; 1153]>,
     first: [u8; 1152],

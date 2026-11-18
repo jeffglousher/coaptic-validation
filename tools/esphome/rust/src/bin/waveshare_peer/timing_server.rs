@@ -395,6 +395,7 @@ mod tests {
 
     #[test]
     fn unprotected_service_completes_the_matched_udp_campaign_without_state_events() {
+        let _owner = crate::NETWORK_SERVICE_TEST_LOCK.lock().unwrap();
         use coaptic_esphome_probe::read_campaign::{Observation, run_unprotected};
 
         const ID: &str = "0123456789abcdef0123456789abcdef";
