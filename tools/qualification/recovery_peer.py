@@ -29,8 +29,9 @@ class Peer:
         return packet
 
     def exchange(self, packet):
-        self.channel.send(packet.encode())
         deadline = time.monotonic() + 5
+        self.channel.settimeout(5)
+        self.channel.send(packet.encode())
         for _ in range(128):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -40,7 +41,13 @@ class Peer:
             if reply.mtype == aiocoap.CON:
                 ack = aiocoap.Message(code=aiocoap.EMPTY)
                 ack.mtype, ack.mid = aiocoap.ACK, reply.mid
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("response acknowledgment deadline exhausted")
+                self.channel.settimeout(remaining)
                 self.channel.send(ack.encode())
+            if time.monotonic() >= deadline:
+                raise TimeoutError("exchange deadline exhausted")
             if reply.mtype == aiocoap.ACK and reply.mid != packet.mid:
                 continue
             # Notifications already queued before cancellation share its token.
