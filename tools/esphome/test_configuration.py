@@ -64,6 +64,38 @@ def telemetry_config(config, provision=False):
 
 
 class ConfigurationRefusalTests(unittest.TestCase):
+    def test_wifi_interruption_is_finite_and_refuses_state_changing_modes(self):
+        for change in ["unprotected", "protected-async", "duration", "delay", "ap", "wifi-reboot", "api-reboot", "provision", "pairing"]:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                config = network_configuration(root, "external")
+                config["api"] = {"reboot_timeout": "0s"}
+                network = config["coaptic_network"]
+                network["wifi_interruption"] = {"start_delay_ms": 10000, "duration_ms": 250}
+                if change == "protected-async":
+                    protected_config(config)
+                    network["async_network"] = True
+                elif change == "duration": network["wifi_interruption"]["duration_ms"] = 5001
+                elif change == "delay": network["wifi_interruption"]["start_delay_ms"] = 9999
+                elif change == "ap": config["wifi"]["ap"] = {"ssid": "fallback"}
+                elif change == "wifi-reboot": config["wifi"]["reboot_timeout"] = "1min"
+                elif change == "api-reboot": config["api"]["reboot_timeout"] = "1min"
+                elif change == "provision":
+                    protected_config(config)
+                    network["oscore"]["provision_only"] = True
+                elif change == "pairing":
+                    del network["allow_plaintext"]
+                    network["pairing"] = {"privileged_usb": True}
+                    config["logger"]["baud_rate"] = 0
+                path = root / "network.yaml"
+                path.write_text(json.dumps(config), encoding="utf-8")
+                result = subprocess.run([sys.executable, "-m", "esphome", "compile", str(path), "--only-generate"],
+                                        capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode == 0, change in {"unprotected", "protected-async"}, result.stdout + result.stderr)
+                if result.returncode == 0:
+                    source = (root / "build/src/main.cpp").read_text()
+                    self.assertIn("set_wifi_interruption(10000, 250)", source)
+
     def test_read_campaign_selects_explicit_security_and_refuses_mixed_modes(self):
         for change in ["source", "bundled", "external", "unprotected", "unprotected-bundled", "unprotected-external",
                        "provision", "telemetry", "async", "unprotected-async", "pairing", "peer", "public", "delay"]:

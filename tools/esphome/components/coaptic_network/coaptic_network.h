@@ -14,6 +14,9 @@ class CoapticNetwork : public Component {
  public:
   void set_run_id(const std::string &value) { run_id_ = value; }
   void set_port(uint16_t value) { port_ = value; }
+  void set_wifi_interruption(uint32_t delay, uint32_t duration) {
+    wifi_delay_ms_ = delay; wifi_duration_ms_ = duration;
+  }
   void set_oscore(const std::string &secret, const std::string &salt, const std::string &context,
                   uint8_t sender, uint8_t recipient, bool provision) {
     secret_ = secret; salt_ = salt; context_ = context;
@@ -91,6 +94,12 @@ class CoapticNetwork : public Component {
   uint32_t ready_burst_{0};
   uint32_t logged_{0};
   bool started_{false};
+  // Main-loop-owned, one finite interruption; never recreates the App or NVS.
+  void wifi_interruption_();
+  uint32_t wifi_delay_ms_{0}, wifi_duration_ms_{0};
+  uint64_t wifi_epoch_us_{0};
+  uint64_t wifi_disabled_us_{0};
+  uint8_t wifi_phase_{0};
   std::string run_id_;
   std::string secret_, salt_, context_;
   uint8_t sender_{1}, recipient_{2};

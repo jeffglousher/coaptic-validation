@@ -190,6 +190,8 @@ void CoapticNetwork::trace_dump_() {
 #endif
 
 void CoapticNetwork::loop() {
+  // Recovery must run even if the protocol worker stops during the outage.
+  wifi_interruption_();
   if (!started_) {
     // Application::setup may dispatch loops while another component is still
     // setting up. Wait until it publishes the main owner before seeding.
@@ -260,6 +262,9 @@ void CoapticNetwork::loop() {
   trace_dump_();
 #endif
   if (result_.load(std::memory_order_acquire) != 0) {
+    // mark_failed removes this component from the main loop. First finish the
+    // scheduled radio recovery even when the worker failed during the outage.
+    if (wifi_phase_ == 2) return;
     log_worker_stopped_();
     vTaskDelete(task_);
     task_ = nullptr;
@@ -290,6 +295,33 @@ void CoapticNetwork::loop() {
              static_cast<unsigned long>(STACK_BYTES), static_cast<unsigned long>(polls_.load()),
              static_cast<unsigned long>(idle_waits_.load()), static_cast<unsigned long>(scheduler_yields_.load()),
              static_cast<unsigned long>(wait_errors_.load()));
+  }
+}
+
+void CoapticNetwork::wifi_interruption_() {
+  if (wifi_delay_ms_ == 0 || wifi_phase_ == 4) return;
+  const uint64_t now = esp_timer_get_time();
+  auto *wifi = wifi::global_wifi_component;
+  if (wifi_phase_ == 0) {
+    if (task_ == nullptr || result_.load(std::memory_order_acquire) != 0 || !wifi->is_connected()) return;
+    wifi_epoch_us_ = now;
+    wifi_phase_ = 1;
+  } else if (wifi_phase_ == 1 && now - wifi_epoch_us_ >= uint64_t(wifi_delay_ms_) * 1000) {
+    if (result_.load(std::memory_order_acquire) != 0) { wifi_phase_ = 4; return; }
+    wifi->disable();
+    wifi_epoch_us_ = now;
+    wifi_phase_ = 2;
+  } else if (wifi_phase_ == 2 && now - wifi_epoch_us_ >= uint64_t(wifi_duration_ms_) * 1000) {
+    wifi->enable();
+    wifi_disabled_us_ = now - wifi_epoch_us_;
+    wifi_epoch_us_ = now;
+    wifi_phase_ = 3;
+  } else if (wifi_phase_ == 3 && (wifi->is_connected() || now - wifi_epoch_us_ >= 60000000ULL)) {
+    ESP_LOGI(TAG, "COAPTIC_WIFI_RECOVERY run_id=%s requested_disabled_ms=%lu disabled_us=%llu connected=%s reconnect_us=%llu",
+             run_id_.c_str(), static_cast<unsigned long>(wifi_duration_ms_),
+             static_cast<unsigned long long>(wifi_disabled_us_), wifi->is_connected() ? "true" : "false",
+             static_cast<unsigned long long>(now - wifi_epoch_us_));
+    wifi_phase_ = 4;
   }
 }
 
@@ -726,6 +758,10 @@ bool CoapticNetwork::claim_legacy_custody(const uint8_t *claim, uint32_t length)
 }
 
 void CoapticNetwork::on_shutdown() {
+  if (wifi_phase_ == 2) {
+    wifi::global_wifi_component->enable();
+    wifi_phase_ = 4;
+  }
   stop_.store(true, std::memory_order_release);
   const int event = async_event_fd.load(std::memory_order_acquire);
   if (event >= 0) {

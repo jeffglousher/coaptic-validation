@@ -48,6 +48,9 @@ def fixed_hex(length):
 
 
 def validate_security(config):
+    if "wifi_interruption" in config and ("pairing" in config or "telemetry" in config or
+            "read_campaign" in config or ("oscore" in config and config["oscore"]["provision_only"])):
+        raise cv.Invalid("wifi_interruption requires the ordinary service with existing security state")
     if sum([bool(config.get("oscore")), config["allow_plaintext"], "pairing" in config]) != 1:
         raise cv.Invalid("select protected oscore, privileged pairing or explicit allow_plaintext; exactly one is required")
     if "oscore" in config and config["oscore"]["sender_id"] == config["oscore"]["recipient_id"]:
@@ -137,6 +140,10 @@ CONFIG_SCHEMA = cv.All(
         cv.Required("qualification_only"): cv.All(cv.boolean, cv.one_of(True)),
         cv.Optional("rust_runtime", default="source"): cv.one_of("source", "bundled", "external"),
         cv.Optional("async_network", default=False): cv.boolean,
+        cv.Optional("wifi_interruption"): cv.Schema({
+            cv.Optional("start_delay_ms", default=30000): cv.int_range(min=10000, max=120000),
+            cv.Optional("duration_ms", default=1000): cv.int_range(min=250, max=5000),
+        }),
         cv.Optional("resource_qualification", default=False): cv.boolean,
         cv.Optional("resource_start_delay_ms", default=0): cv.int_range(min=0, max=120000),
         cv.Optional("legacy_custody_permit"): fixed_hex(136),
@@ -186,6 +193,12 @@ CONFIG_SCHEMA = cv.All(
 
 def validate_runtime_environment(config):
     wifi = fv.full_config.get()["wifi"]
+    if "wifi_interruption" in config:
+        if "ap" in wifi or wifi["reboot_timeout"].total_milliseconds != 0:
+            raise cv.Invalid("wifi_interruption requires no fallback AP and wifi reboot_timeout: 0s")
+        api = fv.full_config.get().get("api", {})
+        if api and api["reboot_timeout"].total_milliseconds != 0:
+            raise cv.Invalid("wifi_interruption requires api reboot_timeout: 0s")
     if wifi["power_save_mode"] != "NONE" or not wifi["enable_on_boot"]:
         raise cv.Invalid("Coaptic hardware entropy requires wifi power_save_mode: NONE and enable_on_boot: true; association is not required")
     if "pairing" in config:
@@ -203,6 +216,9 @@ async def to_code(config):
     await cg.register_component(component, config)
     cg.add(component.set_run_id(config["run_id"]))
     cg.add(component.set_port(config["port"]))
+    if "wifi_interruption" in config:
+        control = config["wifi_interruption"]
+        cg.add(component.set_wifi_interruption(control["start_delay_ms"], control["duration_ms"]))
     if config["resource_qualification"]:
         esp32.add_idf_sdkconfig_option("CONFIG_FREERTOS_USE_TRACE_FACILITY", True)
         cg.add_define("COAPTIC_RESOURCE_QUALIFICATION")
