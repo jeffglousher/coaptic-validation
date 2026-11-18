@@ -99,6 +99,9 @@ class CoapticNetwork : public Component {
   uint32_t wifi_delay_ms_{0}, wifi_duration_ms_{0};
   uint64_t wifi_epoch_us_{0};
   uint64_t wifi_disabled_us_{0};
+  uint64_t wifi_reconnect_us_{0};
+  bool wifi_recovered_{false};
+  void log_wifi_recovery_();
   uint8_t wifi_phase_{0};
   std::string run_id_;
   std::string secret_, salt_, context_;

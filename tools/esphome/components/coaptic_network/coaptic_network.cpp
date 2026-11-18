@@ -285,6 +285,7 @@ void CoapticNetwork::loop() {
   }
   if (millis() - logged_ >= 5000) {
     logged_ = millis();
+    if (wifi_phase_ == 4 && wifi_disabled_us_ != 0) log_wifi_recovery_();
     log_resources(run_id_.c_str(), "running", STACK_BYTES);
     ESP_LOGI(TAG,
              "COAPTIC_NETWORK {\"run_id\":\"%s\",\"rx\":%lu,\"tx\":%lu,\"dropped\":%lu,"
@@ -317,12 +318,20 @@ void CoapticNetwork::wifi_interruption_() {
     wifi_epoch_us_ = now;
     wifi_phase_ = 3;
   } else if (wifi_phase_ == 3 && (wifi->is_connected() || now - wifi_epoch_us_ >= 60000000ULL)) {
-    ESP_LOGI(TAG, "COAPTIC_WIFI_RECOVERY run_id=%s requested_disabled_ms=%lu disabled_us=%llu connected=%s reconnect_us=%llu",
-             run_id_.c_str(), static_cast<unsigned long>(wifi_duration_ms_),
-             static_cast<unsigned long long>(wifi_disabled_us_), wifi->is_connected() ? "true" : "false",
-             static_cast<unsigned long long>(now - wifi_epoch_us_));
+    wifi_recovered_ = wifi->is_connected();
+    wifi_reconnect_us_ = now - wifi_epoch_us_;
     wifi_phase_ = 4;
+    log_wifi_recovery_();
   }
+}
+
+void CoapticNetwork::log_wifi_recovery_() {
+  // Repeat the same bounded receipt after the API observer reconnects. The
+  // stored result describes the original recovery deadline, not current state.
+  ESP_LOGI(TAG, "COAPTIC_WIFI_RECOVERY run_id=%s requested_disabled_ms=%lu disabled_us=%llu connected=%s reconnect_us=%llu",
+           run_id_.c_str(), static_cast<unsigned long>(wifi_duration_ms_),
+           static_cast<unsigned long long>(wifi_disabled_us_), wifi_recovered_ ? "true" : "false",
+           static_cast<unsigned long long>(wifi_reconnect_us_));
 }
 
 void CoapticNetwork::log_worker_stopped_() {
