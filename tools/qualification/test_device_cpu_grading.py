@@ -18,7 +18,7 @@ class CpuGradingTests(unittest.TestCase):
                 host.append(dict(case='complete_operation',passed=True,path=path,iteration=iteration,elapsed_ns=1000000,events=events))
         lines.append(f'COAPTIC_CPU_RESOURCE run={run} at=500 rx=16 tx=16 free=100 minimum=90 largest=80 stack_free=70')
         lines.append(f'COAPTIC_CPU_END run={run} count={index} overflow=false rows_bytes=28672')
-        host.append(dict(passed=True,run_id=run,security='durable-oscore'))
+        host.append(dict(passed=True,run_id=run,security='durable-oscore',case='timing_campaign',completed=24))
         return lines,host,run
 
     def test_complete_authenticated_cohort_and_consistent_scheduler_accounting(self):
@@ -26,7 +26,7 @@ class CpuGradingTests(unittest.TestCase):
         result=grade(lines,host,run)
         self.assertEqual(len(result['operations']),24)
         self.assertEqual(result['operations'][0]['exchanges'][0]['receive_to_send']['task_cpu_us'],10)
-        for change in ('overflow','foreign','accounting','missing','host-mid','resource','late-resource','extra-receive','unprotected'):
+        for change in ('overflow','foreign','accounting','missing','host-mid','resource','late-resource','extra-receive','inventory','summary','unprotected'):
             with self.subTest(change=change):
                 changed=copy.deepcopy(lines);peer=copy.deepcopy(host)
                 if change=='overflow': changed[-1]=changed[-1].replace('false','true')
@@ -39,6 +39,8 @@ class CpuGradingTests(unittest.TestCase):
                 elif change=='extra-receive':
                     changed.insert(-2,f'COAPTIC_CPU run={run} i=96 k=1 w=1060 c=960 b=50 r=50 mid=999 tok=0000000000000999 n=48')
                     changed[-1]=changed[-1].replace('count=96','count=97')
+                elif change=='inventory':peer[0]['path']='test'
+                elif change=='summary':peer[-1]['completed']=23
                 elif change=='unprotected':peer[-1]['security']='unprotected'
                 with self.assertRaises(ValueError):grade(changed,peer,run)
 

@@ -39,10 +39,12 @@ def grade(lines, host, run_id):
         raise ValueError('ledger ordering')
     for first,last in zip(rows,rows[1:]):
         delta(first,last)
-    if not host or not host[-1].get('passed') or host[-1].get('security')!='durable-oscore':
+    if (not host or not host[-1].get('passed') or host[-1].get('security')!='durable-oscore'
+            or host[-1].get('case')!='timing_campaign' or host[-1].get('completed')!=24 or host[-1].get('run_id')!=run_id):
         raise ValueError('host campaign failed')
     operations=[x for x in host if x.get('case')=='complete_operation']
-    if len(operations)!=24 or any(not x.get('passed') for x in operations):
+    expected=[(iteration,path) for iteration in range(8) for path in ('identity','test','large')]
+    if [(x['iteration'],x['path']) for x in operations]!=expected or any(not x.get('passed') for x in operations):
         raise ValueError('incomplete matched read cohort')
     if not any(x.get('run_id')==run_id for x in host):
         raise ValueError('host identity')
