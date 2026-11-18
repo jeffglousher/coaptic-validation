@@ -42,6 +42,14 @@ refused by the absence of Observe, cancels one and verifies slot reuse. It does
 not prove exhaustion of other pools. Never relabel this client as protected.
 
 Host tests and generated configuration checks do not establish installed-device
-execution. Missing Q-Block2 suffix-loss selectors, other pool campaigns, protected
+execution. `waveshare-peer qblock-suffix-unprotected ADDRESS - - REPORT RUN_ID`
+selects a current-source host App receiving a known-size 2,000-byte NON Q-Block2
+body. The fixture's stable `large-v1` ETag permits Q-Block2 response identity.
+The host drops exactly the first final 976-byte block after receiving block zero
+with Size2=2000, then requires complete byte recovery and a fresh small read.
+Its scope is device response reissue after host receive loss; it does not prove
+MCU client suffix recovery. A real UDP regression exercises the ordinary fixture.
+
+Other pool campaigns, protected
 duplicate campaigns, four-cell device execution and CPU measurement remain work
 for the current recovery qualification assignment.

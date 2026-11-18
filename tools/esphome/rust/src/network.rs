@@ -100,7 +100,7 @@ fn upload(request: Request<'_>) -> Response<'static> {
 }
 
 fn large(_: Request<'_>) -> Response<'static> {
-    Response::content(&LARGE)
+    Response::content(&LARGE).etag(b"large-v1")
 }
 
 fn ticks(_: Request<'_>) -> Response<'static> {

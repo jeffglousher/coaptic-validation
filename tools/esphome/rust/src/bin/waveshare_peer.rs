@@ -2,6 +2,8 @@
 //! Credentials/state live in an operator-private directory. State is exclusively
 //! locked; every update uses sync_all and authenticated readback. This qualifies
 //! normal process/device restart separately from flash/power-loss/rollback.
+#[path = "waveshare_peer/qblock_suffix.rs"]
+mod qblock_suffix;
 #[path = "waveshare_peer/raw_udp.rs"]
 mod raw_udp;
 #[path = "waveshare_peer/timing.rs"]
@@ -174,7 +176,10 @@ fn run() -> Result<()> {
     }
     if matches!(
         args[1].as_str(),
-        "timing-unprotected" | "timing-server-unprotected" | "timing-server-lan-unprotected"
+        "timing-unprotected"
+            | "timing-server-unprotected"
+            | "timing-server-lan-unprotected"
+            | "qblock-suffix-unprotected"
     ) {
         timing_server::validate_placeholders(&args[3], &args[4])?;
         let peer: SocketAddr = args[2].parse().map_err(|_| "peer address")?;
@@ -184,6 +189,9 @@ fn run() -> Result<()> {
         }
         if args[1] == "timing-unprotected" {
             return timing::campaign_unprotected(peer, &args[6], Path::new(&args[5]));
+        }
+        if args[1] == "qblock-suffix-unprotected" {
+            return qblock_suffix::campaign(peer, &args[6], Path::new(&args[5]));
         }
         let remote = if args[1] == "timing-server-lan-unprotected" {
             Some(
