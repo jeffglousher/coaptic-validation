@@ -70,6 +70,17 @@ Calls and security capacities are unchanged; timing/Q-Block2 clients retain full
 response assembly. Ordinary handler Observe queries are not supported, so the
 campaign uses elective options rather than Uri-Query to distinguish Calls.
 
+`reconnect` and `reconnect-unprotected` use the same ADDRESS/credentials/state/
+report/run arguments (literal `- -` placeholders for unprotected). They retain
+one App and its security owner while sending at most 128 finite identity Calls
+over a 70-second campaign, with a 15-second bound per Call and 250 ms between
+completed Calls. A delayed Call (at least 500 ms) must complete and a subsequent
+fresh identity must complete. The runner must also grade the source-bound Wi-Fi
+interruption/recovery receipt: a slow Call alone does not prove radio recovery.
+Reports retain monotonic operation spans with a host UTC anchor for correlation.
+This traffic exercises an outstanding Call across interruption, beyond the prior
+idle reconnection proof; it is not a CPU/latency benchmark or cold-power recovery.
+
 Other pool campaigns,
 four-cell device execution and CPU measurement remain work
 for the current recovery qualification assignment.

@@ -212,6 +212,7 @@ fn run() -> Result<()> {
             | "timing-server-unprotected"
             | "timing-server-lan-unprotected"
             | "qblock-suffix-unprotected"
+            | "reconnect-unprotected"
     ) {
         timing_server::validate_placeholders(&args[3], &args[4])?;
         let peer: SocketAddr = args[2].parse().map_err(|_| "peer address")?;
@@ -224,6 +225,36 @@ fn run() -> Result<()> {
         }
         if args[1] == "qblock-suffix-unprotected" {
             return qblock_suffix::campaign(peer, &args[6], Path::new(&args[5]));
+        }
+        if args[1] == "reconnect-unprotected" {
+            let socket = UdpSocket::bind("0.0.0.0:0").map_err(|_| "reconnect bind")?;
+            socket
+                .set_nonblocking(true)
+                .map_err(|_| "reconnect nonblocking")?;
+            let mut client = App::profile::<profiles::Constrained>()
+                .allow_unprotected()
+                .block_wise::<true>()
+                .full_responses()
+                .randomness(|b| getrandom::fill(b).is_ok())
+                .bind(CaptureIo {
+                    io: UdpSocketIo::new(socket, [0; 1153]).map_err(|_| "reconnect scratch")?,
+                    first: [0; 1152],
+                    length: 0,
+                    duplicate_next: false,
+                    duplicated: false,
+                    duplicate_peer: None,
+                    duplicate_token: None,
+                    duplicate_reply: None,
+                })
+                .map_err(|_| "reconnect App")?;
+            return protected_recovery::reconnect(
+                &mut client,
+                None,
+                &Instant::now(),
+                peer.into(),
+                &args[6],
+                Path::new(&args[5]),
+            );
         }
         let remote = if args[1] == "timing-server-lan-unprotected" {
             Some(
@@ -257,6 +288,7 @@ fn run() -> Result<()> {
         "replay",
         "raw-udp",
         "recovery",
+        "reconnect",
         "timing",
         "timing-server",
         "timing-server-lan",
@@ -326,6 +358,16 @@ fn run() -> Result<()> {
         .map_err(|_| "app bind")?;
     let clock = Instant::now();
     let mut output = [0; 4096];
+    if args[1] == "reconnect" {
+        return protected_recovery::reconnect(
+            &mut client,
+            Some(&mut state),
+            &clock,
+            peer.into(),
+            &args[6],
+            Path::new(&args[5]),
+        );
+    }
     if args[1] == "recovery" {
         return protected_recovery::campaign(
             &mut client,

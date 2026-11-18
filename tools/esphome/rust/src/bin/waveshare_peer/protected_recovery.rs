@@ -262,6 +262,93 @@ pub(super) fn campaign(
     result
 }
 
+/// Keep one App/security owner alive across a scheduled device interruption.
+/// A delayed completed Call and a subsequent fresh identity are both required;
+/// the runner must also grade the source-bound physical Wi-Fi recovery receipt.
+pub(super) fn reconnect(
+    client: &mut Client,
+    mut state: Option<&mut State<'_, FileStore>>,
+    clock: &Instant,
+    peer: Endpoint,
+    id: &str,
+    path: &Path,
+) -> Result<()> {
+    let mut report = File::create_new(path).map_err(|_| "exclusive reconnect report")?;
+    let campaign_start = Instant::now();
+    let utc_anchor_ns = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| "reconnect UTC anchor")?
+        .as_nanos();
+    writeln!(report, "{{\"case\":\"reconnect_begin\",\"utc_anchor_ns\":{utc_anchor_ns},\"deadline_clock\":\"host_monotonic\"}}")
+        .map_err(|_| "reconnect anchor report")?;
+    let overall = campaign_start + Duration::from_secs(70);
+    let protected = state.is_some();
+    let mut delayed = false;
+    let mut fresh_after_delay = false;
+    let mut completed = 0;
+    let outcome = (|| {
+        for index in 0..128 {
+            let started = Instant::now();
+            let now = clock.elapsed().as_millis() as u64;
+            let call = client
+                .get("identity")
+                .to(peer)
+                .deadline(now.saturating_add(15000))
+                .send(now)
+                .map_err(|_| "reconnect send")?;
+            let deadline = overall.min(started + Duration::from_secs(15));
+            let mut output = [0; 4096];
+            loop {
+                let poll = client.poll(clock.elapsed().as_millis() as u64);
+                if let Some(state) = state.as_deref_mut() {
+                    state
+                        .checkpoint(
+                            client
+                                .oscore()
+                                .ok_or("reconnect context")?
+                                .replay_checkpoint(),
+                        )
+                        .map_err(|_| "reconnect checkpoint")?;
+                }
+                poll.map_err(|_| "reconnect poll")?;
+                if let Some(reply) = client
+                    .take_response_into(call, &mut output)
+                    .map_err(|_| "reconnect response buffer")?
+                {
+                    let reply = reply.map_err(|_| "reconnect exchange")?;
+                    if reply.code() != Code::CONTENT || reply.payload() != id.as_bytes() {
+                        return Err("reconnect source identity");
+                    }
+                    break;
+                }
+                if Instant::now() >= deadline {
+                    return Err("reconnect response deadline");
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            let elapsed_ns = started.elapsed().as_nanos();
+            let elapsed_us = elapsed_ns / 1000;
+            let start_ns = started.duration_since(campaign_start).as_nanos();
+            completed += 1;
+            fresh_after_delay |= delayed && elapsed_us < 500000;
+            delayed |= elapsed_us >= 500000;
+            writeln!(report, "{{\"case\":\"reconnect_call\",\"index\":{index},\"start_ns\":{start_ns},\"elapsed_ns\":{elapsed_ns},\"elapsed_us\":{elapsed_us},\"identity_verified\":true}}")
+                .map_err(|_| "reconnect call report")?;
+            if fresh_after_delay {
+                return Ok(());
+            }
+            if Instant::now() >= overall {
+                return Err("reconnect campaign deadline");
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        Err("delayed Call and fresh recovery not observed")
+    })();
+    writeln!(report, "{{\"passed\":{},\"case\":\"same_app_reconnect\",\"protected\":{protected},\"run_id\":\"{id}\",\"completed\":{completed},\"operation_bound\":128,\"delayed_call_completed\":{delayed},\"fresh_after_delay\":{fresh_after_delay},\"error\":{:?}}}", outcome.is_ok(), outcome.err().unwrap_or(""))
+        .map_err(|_| "reconnect final report")?;
+    outcome
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,6 +377,93 @@ mod tests {
             sender,
             recipient,
         }
+    }
+
+    #[test]
+    fn one_app_finishes_a_call_across_udp_loss_then_verifies_fresh_identity() {
+        let _owner = crate::NETWORK_SERVICE_TEST_LOCK.lock().unwrap();
+        struct Blackout {
+            io: UdpSocketIo<[u8; 1153]>,
+            until: Instant,
+        }
+        impl coaptic::storage::DatagramTransport for Blackout {
+            type Error = std::io::Error;
+        }
+        impl DatagramIo for Blackout {
+            fn recv(&mut self, out: &mut [u8]) -> std::io::Result<Option<(usize, Endpoint)>> {
+                let received = self.io.recv(out)?;
+                Ok(if Instant::now() < self.until {
+                    None
+                } else {
+                    received
+                })
+            }
+            fn send(&mut self, peer: Endpoint, bytes: &[u8]) -> std::io::Result<usize> {
+                self.io.send(peer, bytes)
+            }
+        }
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        socket.set_nonblocking(true).unwrap();
+        let peer = socket.local_addr().unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let server_stop = Arc::clone(&stop);
+        let server = std::thread::spawn(move || {
+            let clock = Instant::now();
+            coaptic_esphome_probe::network::run(
+                Blackout {
+                    io: UdpSocketIo::new(socket, [0; 1153]).unwrap(),
+                    until: Instant::now() + Duration::from_millis(800),
+                },
+                |b| getrandom::fill(b).is_ok(),
+                || {
+                    std::thread::yield_now();
+                    (!server_stop.load(Ordering::Relaxed)
+                        && clock.elapsed() < Duration::from_secs(20))
+                    .then_some(clock.elapsed().as_millis() as u64)
+                },
+                &[b'a'; 32],
+            )
+        });
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        socket.set_nonblocking(true).unwrap();
+        let mut client = App::profile::<profiles::Constrained>()
+            .allow_unprotected()
+            .block_wise::<true>()
+            .full_responses()
+            .randomness(|b| getrandom::fill(b).is_ok())
+            .bind(CaptureIo {
+                io: UdpSocketIo::new(socket, [0; 1153]).unwrap(),
+                first: [0; 1152],
+                length: 0,
+                duplicate_next: false,
+                duplicated: false,
+                duplicate_peer: None,
+                duplicate_token: None,
+                duplicate_reply: None,
+            })
+            .unwrap();
+        let mut nonce = [0; 8];
+        getrandom::fill(&mut nonce).unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "coaptic-reconnect-{}-{}.jsonl",
+            std::process::id(),
+            u64::from_ne_bytes(nonce)
+        ));
+        let result = reconnect(
+            &mut client,
+            None,
+            &Instant::now(),
+            peer.into(),
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            &path,
+        );
+        stop.store(true, Ordering::Relaxed);
+        let server_result = server.join().unwrap();
+        let report = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(result, Ok(()), "{report}");
+        assert_eq!(server_result, Ok(()));
+        assert!(report.contains("\"delayed_call_completed\":true,\"fresh_after_delay\":true"));
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]
