@@ -58,6 +58,50 @@ pub(super) fn drive<F: Future>(future: F, now: &Cell<u64>) -> F::Output {
 }
 
 #[test]
+fn async_duplicate_echo_effects_are_observable() {
+    let _lock = TEST_LOCK.lock().unwrap();
+    let before = ECHO_CALLS.load(Ordering::Relaxed);
+    let now = Rc::new(Cell::new(0));
+    let out = Rc::new(RefCell::new(Vec::new()));
+    let packet = request(41, coaptic::Code::POST, "echo", b"effect");
+    let io = NativeOnly(Scripted {
+        incoming: [
+            packet.clone(),
+            packet,
+            request(42, coaptic::Code::GET, "effects", &[]),
+        ]
+        .into(),
+        outgoing: out.clone(),
+        fail: false,
+    });
+    let mut protocol = Timer(now.clone());
+    let mut local = Timer(now.clone());
+    assert_eq!(
+        drive(
+            run_async(
+                io,
+                |b| {
+                    b.fill(42);
+                    true
+                },
+                || (now.get() < 500).then_some(now.get()),
+                &[b'e'; 32],
+                (&mut protocol, &mut local)
+            ),
+            &now
+        ),
+        Ok(())
+    );
+    let packets = out.borrow();
+    assert_eq!(packets.len(), 3);
+    assert_eq!(packets[0], packets[1]);
+    assert_eq!(
+        decode(&packets[2]).unwrap().payload(),
+        before.wrapping_add(1).to_be_bytes()
+    );
+}
+
+#[test]
 fn native_only_service_echoes_after_pending_io_and_releases_ownership() {
     let _lock = TEST_LOCK.lock().unwrap();
     for _ in 0..2 {

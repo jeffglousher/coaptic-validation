@@ -38,7 +38,6 @@ static ID: [AtomicU8; 32] = [const { AtomicU8::new(0) }; 32];
 static TICKS: AtomicU32 = AtomicU32::new(0);
 #[cfg(test)]
 static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-#[cfg(test)]
 static ECHO_CALLS: AtomicU32 = AtomicU32::new(0);
 // Integration policy: periodic CON bounds dead-observer retention to this
 // cadence plus the library's retry budget, provided the platform keeps polling.
@@ -74,13 +73,19 @@ fn test(_: Request<'_>) -> Response<'static> {
 }
 
 fn echo(request: Request<'_>) -> Response<'static> {
-    #[cfg(test)]
     ECHO_CALLS.fetch_add(1, Ordering::Relaxed);
     let body = request.body().unwrap_or(request.payload());
     if body.len() > 128 {
         return Response::new(coaptic::Code::REQUEST_ENTITY_TOO_LARGE);
     }
     Response::content_copy(body)
+}
+
+// Volatile handler-entry count, including size refusals. Read before/after a
+// finite campaign; wrapping subtraction is valid for fewer than 2^32 entries.
+// This is instrumentation, not a durable application-effect receipt.
+fn effects(_: Request<'_>) -> Response<'static> {
+    Response::content_copy(&ECHO_CALLS.load(Ordering::Relaxed).to_be_bytes())
 }
 
 fn upload(request: Request<'_>) -> Response<'static> {
@@ -95,7 +100,7 @@ fn upload(request: Request<'_>) -> Response<'static> {
 }
 
 fn large(_: Request<'_>) -> Response<'static> {
-    Response::content(&LARGE)
+    Response::content(&LARGE).etag(b"large-v1")
 }
 
 fn ticks(_: Request<'_>) -> Response<'static> {
@@ -143,6 +148,7 @@ pub(crate) fn prepare_unprotected<T>(
         .route("upload", post(upload))
         .route("large", get(large))
         .route("ticks", get(ticks))
+        .route("effects", get(effects))
         .well_known_core()
         .bind(io)
         .map_err(|_| "bind")?;
@@ -177,6 +183,7 @@ pub fn run<T: DatagramIo>(
         .route("upload", post(upload))
         .route("large", get(large))
         .route("ticks", get(ticks))
+        .route("effects", get(effects))
         .well_known_core()
         .bind(io)
         .map_err(|_| "bind")?;
@@ -244,6 +251,7 @@ pub fn run_protected<T: DatagramIo, S: super::security_state::Store>(
         .route("upload", post(upload))
         .route("large", get(large))
         .route("ticks", get(ticks))
+        .route("effects", get(effects))
         .well_known_core()
         .bind(io)
         .map_err(|_| "bind")?;
@@ -571,6 +579,48 @@ mod tests {
         let mut bytes = [0; 1152];
         let len = encode(&message, &mut bytes).unwrap();
         bytes[..len].to_vec()
+    }
+
+    #[test]
+    fn duplicate_echo_effects_are_observable_without_counting_reads() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        let before = ECHO_CALLS.load(Ordering::Relaxed);
+        let packet = request(41, coaptic::Code::POST, "echo", b"effect");
+        let outgoing = Rc::new(RefCell::new(Vec::new()));
+        let io = Scripted {
+            incoming: [
+                packet.clone(),
+                packet,
+                request(42, coaptic::Code::GET, "effects", &[]),
+            ]
+            .into(),
+            outgoing: outgoing.clone(),
+            fail: false,
+        };
+        let mut tick = 0;
+        assert_eq!(
+            run(
+                io,
+                |b| {
+                    b.fill(42);
+                    true
+                },
+                || {
+                    tick += 1;
+                    (tick < 20).then_some(tick)
+                },
+                &[b'e'; 32]
+            ),
+            Ok(())
+        );
+        let packets = outgoing.borrow();
+        assert_eq!(packets.len(), 3);
+        assert_eq!(packets[0], packets[1]);
+        assert_eq!(
+            decode(&packets[2]).unwrap().payload(),
+            before.wrapping_add(1).to_be_bytes()
+        );
+        assert_eq!(ECHO_CALLS.load(Ordering::Relaxed), before.wrapping_add(1));
     }
 
     #[cfg(feature = "async-network")]

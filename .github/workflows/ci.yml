@@ -36,7 +36,7 @@ on:
         type: boolean
       library_revision:
         description: Full Coaptic commit SHA
-        default: "a6400cb1ccd561fdf5d98cc5031bf9732d44d439"
+        default: "b8750885f8bd10d2f5dd73c92807df00c7f2f0a8"
         type: string
 permissions:
   contents: read
@@ -55,7 +55,7 @@ jobs:
     with:
       suite_revision: ${{ github.sha }}
       library_repository: jeffglousher/coaptic
-      library_revision: ${{ inputs.library_revision || 'a6400cb1ccd561fdf5d98cc5031bf9732d44d439' }}
+      library_revision: ${{ inputs.library_revision || 'b8750885f8bd10d2f5dd73c92807df00c7f2f0a8' }}
   windows-stack-profile:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.stack_profile && !inputs.admission_wall_screen && !inputs.admission_pressure_proof && (inputs.wall_screen_contract == '' || inputs.wall_screen_contract == 'admission') }}
     uses: ./.github/workflows/windows-stack-profile.yml

@@ -67,17 +67,18 @@ python tools/benchmark/native_check.py --server target/benchmark-native/release/
                 locks.validate_graph(base, ALTERNATES[name], NATIVE)
                 original, selected = locks.parse(base), locks.parse(ALTERNATES[name])
                 self.assertEqual(original["version"], selected["version"])
-                if name == "Cargo.lock":
+                if len(locks.syn_rows(original["package"])) == 2:
                     expected = deepcopy(original)
                     io_row = locks.one(expected["package"], "coaptic-io")
-                    io_row["dependencies"] = ["syn 3.0.5" if d == "syn 2.0.119" else d
+                    io_row["dependencies"] = ["syn " + sorted(p["version"] for p in locks.syn_rows(original["package"]))[1] if d == "syn 2.0.119" else d
                                               for d in io_row["dependencies"]]
                     self.assertEqual(selected, expected)
                 else:
                     before = {(p["name"], p["version"]): p for p in original["package"]}
                     after = {(p["name"], p["version"]): p for p in selected["package"]}
                     self.assertEqual(set(after) - set(before), {("syn", "3.0.9")})
-                    removed = {("syn", "2.0.119")} if name == "fuzz/Cargo.lock" else set()
+                    other_syn2_users = any(p["name"] != "coaptic-io" and any(d.split()[0] == "syn" for d in p.get("dependencies", [])) for p in original["package"])
+                    removed = set() if other_syn2_users else {("syn", "2.0.119")}
                     self.assertEqual(set(before) - set(after), removed)
                     for key, row in before.items():
                         if key[0] != "coaptic-io" and key not in removed:
@@ -343,7 +344,7 @@ class CheckoutTests(unittest.TestCase):
         path = self.suite / "tools/security-profile/Cargo.lock"
         path.write_bytes(path.read_bytes().replace(b'name = "coaptic"', b'name = "foreign-coaptic"'))
         before = self.snapshot()
-        with self.assertRaisesRegex(ValueError, "exactly one Coaptic"):
+        with self.assertRaisesRegex(ValueError, "modified source input"):
             self.run_prepare()
         self.assertEqual(self.snapshot(), before)
 

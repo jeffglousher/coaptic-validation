@@ -147,6 +147,7 @@ pub async fn run_protected_async<T: AsyncDatagramIo, S: crate::security_state::S
         .route("upload", post(upload))
         .route("large", get(large))
         .route("ticks", get(ticks))
+        .route("effects", get(effects))
         .well_known_core()
         .bind(io)
         .map_err(|_| "bind")?;
