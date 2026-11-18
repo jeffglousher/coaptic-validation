@@ -64,13 +64,15 @@ def grade(lines, host, run_id):
             start=readiness or received
             sends[key]=(row,dict(mid=row['mid'],token=row['tok'],receive_us=received['w'],send_us=row['w'],
                 readiness_boundary='worker_select_return' if readiness else 'receive_return',
-                ready_to_send=delta(start,row), receive_to_send=delta(received,row)))
+                ready_to_send=delta(start,row), receive_to_send=delta(received,row),
+                sample_start={key:start[key] for key in ('w','c','b','r')}))
         elif row['k']==3:
             if key not in sends:
                 raise ValueError('send completion lacks entry')
             start,exchange=sends.pop(key)
             exchange['send_call']=delta(start,row)
             exchange['send_complete_us']=row['w']
+            exchange['sample_end']={key:row[key] for key in ('w','c','b','r')}
             exchanges.append(exchange)
     if sends:
         raise ValueError('incomplete sends')
@@ -86,7 +88,8 @@ def grade(lines, host, run_id):
         if len(mids)!=expected or any(mid not in by_mid or mid in used for mid in mids):
             raise ValueError('host/device exchange mismatch')
         used.update(mids)
-        selected.append(dict(path=operation['path'],iteration=operation['iteration'],host_elapsed_ns=operation['elapsed_ns'],
+        device=[by_mid[mid] for mid in mids]
+        selected.append(dict(device_service=delta(device[0]['sample_start'],device[-1]['sample_end']),path=operation['path'],iteration=operation['iteration'],host_elapsed_ns=operation['elapsed_ns'],
                              exchanges=[by_mid[mid] for mid in mids]))
     if len(used)!=len(exchanges) or len(exchanges)!=32:
         raise ValueError('unexpected traffic in cohort')
