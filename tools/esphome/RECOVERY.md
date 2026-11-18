@@ -103,6 +103,40 @@ This traffic exercises same-App Call retry/reconnect, beyond the prior
 idle reconnection proof. A Call initiated during the outage does not establish
 a Call already pending before disable; it is not a CPU/latency benchmark or cold-power recovery.
 
-Other pool campaigns,
-four-cell device execution and CPU measurement remain work
-for the current recovery qualification assignment.
+The four sync/async ? unprotected/durable OSCORE device cells passed the finite
+controls, with source-matched images and verified normal restoration. The
+[core qualification record](https://github.com/jeffglousher/coaptic/blob/main/architecture/requirements/ESP-DEVICE-RECOVERY-20261118.md)
+names exact source, hashes, cases and retained failures. Only Observe pool
+exhaustion was selected; this is not exhaustion proof for every App pool.
+
+`device_cpu_patch.py` prepares exact-SHA copies of IDF5.5.5 `tasks.c` and this
+component for one finite diagnostic. It never writes the installed SDK. A
+separate generated CMake input replaces exactly one kernel source and preserves
+its internal compile definition. The kernel refuses other configurations: it
+requires the IDF non-SMP two-core kernel, ESP_TIMER and U64 runtime statistics.
+Under the existing kernel lock it observes current-core runtime including the
+unswitched slice, blocked?Ready transitions and context switches. It does not
+change scheduling or protocol state. Its single selected worker must not be
+externally suspended, replaced or deleted during the capture.
+
+The diagnostic stores at most 512 metadata rows (28,672 bytes), without payloads
+or keys. Rows distinguish select, receive, send and durable-state boundaries;
+published rows become immutable. CPU includes attributed ISR time and flash
+stalls. Ready-but-unscheduled time includes preemption and yields. Readiness
+means worker-observed select return; it excludes earlier socket enqueue delay.
+Queued receives without a fresh select get an explicit receive-return boundary.
+Heap/stack samples include diagnostic overhead, and global minima include startup.
+
+`device_cpu_grading.py` binds all 32 device exchanges to exactly eight
+identity/small/large iteration groups in an authenticated 24-read host campaign.
+It rejects overflow, missing/foreign rows, unmatched input, wrong operation
+inventory and inconsistent CPU+blocked+ready wall accounting. It requires a
+resource snapshot beginning inside the measured traffic interval. Defined
+readiness?final-send-return spans exclude post-send cleanup; available
+readiness?next-select-entry spans retain that tail and are reported separately.
+Neither is silently described as whole-App CPU. The accepted async OSCORE
+capture is one diagnostic, not an optimization or a cross-runtime speed result.
+
+`export_device_recovery.py` accepts explicit evidence/core roots and exports
+only checked numeric receipts. Credential-bearing configs, OTA binaries and raw
+private evidence remain outside these public repositories.
