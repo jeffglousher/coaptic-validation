@@ -73,11 +73,23 @@ campaign uses elective options rather than Uri-Query to distinguish Calls.
 `reconnect` and `reconnect-unprotected` use the same ADDRESS/credentials/state/
 report/run arguments (literal `- -` placeholders for unprotected). They retain
 one App and its security owner while sending at most 128 finite identity Calls
-over a 70-second campaign, with a 15-second bound per Call and 250 ms between
-completed Calls. A delayed Call (at least 500 ms) must complete and a subsequent
+over a 70-second campaign, with a 15-second bound per Call and 300 ms between
+completed Calls. CLI runs observe at least 35 seconds for the 30-second device
+schedule. A delayed Call (at least 500 ms) must complete and a subsequent
 fresh identity must complete. The runner must also grade the source-bound Wi-Fi
 interruption/recovery receipt: a slow Call alone does not prove radio recovery.
 Reports retain monotonic operation spans with a host UTC anchor for correlation.
+The device retains three fixed receive timestamp/MID/token marks under a spinlock:
+first eligible request after boot (never overwritten), last request and first
+request after enable. Reconnect traffic must precede other eight-byte-token
+CoAP I/O so the initial mark matches its authenticated first Call. Last/sample
+marks cannot calibrate clocks because they may describe late duplicate packets.
+Repeated recovery receipts include logical member bytes and aligned component
+size. The grader brackets
+the device/host clock offset using a matched fast round trip (authenticated in
+protected mode; run-ID-matched in unprotected mode), adds
+10 ms of clock uncertainty, then requires a delayed Call to overlap the controlled
+disable/reconnect interval for the entire offset bracket, followed by fresh recovery.
 This traffic exercises an outstanding Call across interruption, beyond the prior
 idle reconnection proof; it is not a CPU/latency benchmark or cold-power recovery.
 

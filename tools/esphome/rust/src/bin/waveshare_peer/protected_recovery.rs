@@ -272,6 +272,7 @@ pub(super) fn reconnect(
     peer: Endpoint,
     id: &str,
     path: &Path,
+    minimum_observation: Duration,
 ) -> Result<()> {
     let mut report = File::create_new(path).map_err(|_| "exclusive reconnect report")?;
     let campaign_start = Instant::now();
@@ -289,16 +290,32 @@ pub(super) fn reconnect(
     let outcome = (|| {
         for index in 0..128 {
             let started = Instant::now();
+            if started >= overall {
+                return Err("reconnect campaign deadline");
+            }
             let now = clock.elapsed().as_millis() as u64;
+            let remaining_ms = overall.duration_since(started).as_millis() as u64;
+            if remaining_ms == 0 {
+                return Err("reconnect campaign deadline");
+            }
             let call = client
                 .get("identity")
                 .to(peer)
-                .deadline(now.saturating_add(15000))
+                .deadline(now.saturating_add(remaining_ms.min(15000)))
                 .send(now)
                 .map_err(|_| "reconnect send")?;
             let deadline = overall.min(started + Duration::from_secs(15));
+            let token = u64::from_be_bytes(
+                call.token()
+                    .as_bytes()
+                    .try_into()
+                    .map_err(|_| "reconnect token width")?,
+            );
             let mut output = [0; 4096];
             loop {
+                if Instant::now() >= deadline {
+                    return Err("reconnect response deadline");
+                }
                 let poll = client.poll(clock.elapsed().as_millis() as u64);
                 if let Some(state) = state.as_deref_mut() {
                     state
@@ -311,6 +328,9 @@ pub(super) fn reconnect(
                         .map_err(|_| "reconnect checkpoint")?;
                 }
                 poll.map_err(|_| "reconnect poll")?;
+                if Instant::now() >= deadline {
+                    return Err("reconnect response deadline");
+                }
                 if let Some(reply) = client
                     .take_response_into(call, &mut output)
                     .map_err(|_| "reconnect response buffer")?
@@ -330,17 +350,17 @@ pub(super) fn reconnect(
             let elapsed_us = elapsed_ns / 1000;
             let start_ns = started.duration_since(campaign_start).as_nanos();
             completed += 1;
-            fresh_after_delay |= delayed && elapsed_us < 500000;
+            fresh_after_delay = delayed && elapsed_us < 500000;
             delayed |= elapsed_us >= 500000;
-            writeln!(report, "{{\"case\":\"reconnect_call\",\"index\":{index},\"start_ns\":{start_ns},\"elapsed_ns\":{elapsed_ns},\"elapsed_us\":{elapsed_us},\"identity_verified\":true}}")
+            writeln!(report, "{{\"case\":\"reconnect_call\",\"index\":{index},\"token\":\"{token:016x}\",\"start_ns\":{start_ns},\"elapsed_ns\":{elapsed_ns},\"elapsed_us\":{elapsed_us},\"identity_verified\":true}}")
                 .map_err(|_| "reconnect call report")?;
-            if fresh_after_delay {
+            if fresh_after_delay && campaign_start.elapsed() >= minimum_observation {
                 return Ok(());
             }
             if Instant::now() >= overall {
                 return Err("reconnect campaign deadline");
             }
-            std::thread::sleep(Duration::from_millis(250));
+            std::thread::sleep(Duration::from_millis(300));
         }
         Err("delayed Call and fresh recovery not observed")
     })();
@@ -456,6 +476,7 @@ mod tests {
             peer.into(),
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             &path,
+            Duration::ZERO,
         );
         stop.store(true, Ordering::Relaxed);
         let server_result = server.join().unwrap();

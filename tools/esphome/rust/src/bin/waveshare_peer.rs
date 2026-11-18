@@ -254,6 +254,7 @@ fn run() -> Result<()> {
                 peer.into(),
                 &args[6],
                 Path::new(&args[5]),
+                Duration::from_secs(35),
             );
         }
         let remote = if args[1] == "timing-server-lan-unprotected" {
@@ -366,6 +367,7 @@ fn run() -> Result<()> {
             peer.into(),
             &args[6],
             Path::new(&args[5]),
+            Duration::from_secs(35),
         );
     }
     if args[1] == "recovery" {
