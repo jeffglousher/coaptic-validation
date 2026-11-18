@@ -33,7 +33,15 @@ and API reboot timeouts must be zero, with no fallback AP. The shared external
 AP is never controlled. The campaign owner must retain partial failures and
 restore and verify the authorized normal image after any OTA attempt.
 
+`tools/qualification/recovery_peer.py` selects `duplicate-effects` or
+`observe-capacity` explicitly for an unprotected device. It verifies the supplied
+run identity, retains a partial failure receipt, bounds every exchange by five
+seconds and 128 datagrams, and cancels owned Observe relations after the capacity
+case. That case fills both Observe slots, verifies the third registration is
+refused by the absence of Observe, cancels one and verifies slot reuse. It does
+not prove exhaustion of other pools. Never relabel this client as protected.
+
 Host tests and generated configuration checks do not establish installed-device
-execution. Missing Q-Block2 suffix-loss and pool-exhaustion selectors, protected
+execution. Missing Q-Block2 suffix-loss selectors, other pool campaigns, protected
 duplicate campaigns, four-cell device execution and CPU measurement remain work
 for the current recovery qualification assignment.
