@@ -97,9 +97,11 @@ size. The grader brackets
 the device/host clock offset using a matched fast round trip (authenticated in
 protected mode; run-ID-matched in unprotected mode), adds
 10 ms of clock uncertainty, then requires a delayed Call to overlap the controlled
-disable/reconnect interval for the entire offset bracket, followed by fresh recovery.
-This traffic exercises an outstanding Call across interruption, beyond the prior
-idle reconnection proof; it is not a CPU/latency benchmark or cold-power recovery.
+interruption and complete after the connection observation for the entire offset
+bracket, followed by fresh recovery.
+This traffic exercises same-App Call retry/reconnect, beyond the prior
+idle reconnection proof. A Call initiated during the outage does not establish
+a Call already pending before disable; it is not a CPU/latency benchmark or cold-power recovery.
 
 Other pool campaigns,
 four-cell device execution and CPU measurement remain work

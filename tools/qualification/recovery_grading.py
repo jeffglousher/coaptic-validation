@@ -38,12 +38,13 @@ def grade_reconnect(line, rows, run_id):
             fresh = calls[index + 1]
             if (call["elapsed_ns"] >= 500_000_000
                     and call["start_ns"] < low + available
-                    and end > high + disabled
+                    and end > high + available
                     and fresh["elapsed_ns"] < 500_000_000
                     and fresh["identity_verified"]):
                 return {"passed": True, "calibration_token": calibration["token"],
                         "clock_offset_low_ns": low, "clock_offset_high_ns": high,
                         "clock_uncertainty_ns": 10_000_000,
                         "delayed_call": call["index"], "fresh_call": fresh["index"],
-                        "scope": "Call overlaps the controlled disable/reconnect interval"}
+                        "request_started": "before_disable" if call["start_ns"] < low + disabled else "not_proven_before_disable",
+                        "scope": "same-App Call during interruption completes after connection observation"}
     raise AssertionError("no calibrated delayed Call overlaps the device interruption with fresh recovery")

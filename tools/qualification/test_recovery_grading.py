@@ -24,7 +24,7 @@ class CorrelationTests(unittest.TestCase):
     def test_calibrated_outage_overlap_requires_following_fresh_call(self):
         line, rows, run = self.fixture()
         self.assertEqual(grade_reconnect(line, rows, run)["delayed_call"], 1)
-        for change in ("unrelated", "no-fresh", "slow-calibration", "wrong-source", "no-connection", "late-duplicate"):
+        for change in ("unrelated", "no-fresh", "slow-calibration", "wrong-source", "no-connection", "late-duplicate", "ends-before-reconnect"):
             with self.subTest(change=change):
                 changed = copy.deepcopy(rows)
                 changed_line = line
@@ -33,6 +33,7 @@ class CorrelationTests(unittest.TestCase):
                 elif change == "slow-calibration": changed[0]["elapsed_ns"] = 200_000_000
                 elif change == "wrong-source": changed_line = line.replace(run, "b" * 32)
                 elif change == "no-connection": changed_line = line.replace("connected=true", "connected=false")
+                elif change == "ends-before-reconnect": changed[1]["elapsed_ns"] = 1_000_000_000
                 elif change == "late-duplicate":
                     changed_line = line.replace("first_rx_token=0000000000000001", "first_rx_token=0000000000000099")
                     changed_line += " sample_rx_token=0000000000000001 sample_rx_us=29505000"
