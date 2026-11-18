@@ -125,7 +125,17 @@ struct CpuSpan {
   explicit CpuSpan(uint8_t kind):end(kind+1) { cpu_record(kind); }
   ~CpuSpan() { cpu_record(end); }
 };
-static void cpu_dump(const char *id) {
+static void cpu_dump(const char *id, uint32_t rx, uint32_t tx, TaskHandle_t task) {
+  static uint64_t resource_at=0;
+  const uint64_t at=esp_timer_get_time();
+  if (!cpu_frozen.load(std::memory_order_acquire) && (resource_at==0 || (rx>0 && at-resource_at>=500000))) {
+    resource_at=at;
+    const auto caps=MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT;
+    ESP_LOGI(TAG,"COAPTIC_CPU_RESOURCE run=%s at=%llu rx=%lu tx=%lu free=%u minimum=%u largest=%u stack_free=%lu",
+      id,(unsigned long long)at,(unsigned long)rx,(unsigned long)tx,
+      unsigned(heap_caps_get_free_size(caps)),unsigned(heap_caps_get_minimum_free_size(caps)),
+      unsigned(heap_caps_get_largest_free_block(caps)),(unsigned long)(task?uxTaskGetStackHighWaterMark(task):0));
+  }
   if (cpu_frozen.load(std::memory_order_acquire)) return;
   const auto last=cpu_last_ms.load(std::memory_order_acquire);
   if (!last || uint32_t(esp_timer_get_time()/1000)-last<5000) return;
@@ -149,7 +159,7 @@ def patch_component(data):
     source = once(source, 'static constexpr const char *TAG = "coaptic_network";',
                   'static constexpr const char *TAG = "coaptic_network";\n'+CPP_ADDITIONS)
     source = once(source, 'void CoapticNetwork::loop() {',
-                  'void CoapticNetwork::loop() {\n  cpu_dump(run_id_.c_str());')
+                  'void CoapticNetwork::loop() {\n  cpu_dump(run_id_.c_str(),rx_.load(),tx_.load(),task_);')
     marker = '  *peer = (static_cast<uint64_t>(ntohl(address.sin_addr.s_addr)) << 16) | ntohs(address.sin_port);'
     source = once(source, marker, marker+'\n  cpu_active=true; cpu_record(1,bytes,length);')
     marker = '  int sent = sendto(socket_, bytes, length, 0, reinterpret_cast<sockaddr *>(&address), sizeof(address));'
