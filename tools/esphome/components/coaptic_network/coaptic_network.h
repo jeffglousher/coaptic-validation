@@ -105,8 +105,7 @@ class CoapticNetwork : public Component {
   struct RxMark { uint64_t at_us{0}; uint32_t mid{65536}, token_hi{0}, token_lo{0}; };
   // One worker writer and main-loop snapshots. No packet contents are retained.
   portMUX_TYPE wifi_rx_mux_ = portMUX_INITIALIZER_UNLOCKED;
-  RxMark wifi_last_rx_{}, wifi_first_rx_{}, wifi_after_rx_{};
-  bool wifi_capture_after_{false};
+  RxMark wifi_first_rx_{};
   uint8_t wifi_phase_{0};
   std::string run_id_;
   std::string secret_, salt_, context_;

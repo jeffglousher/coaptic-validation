@@ -7,6 +7,8 @@ import re
 
 
 def grade_reconnect(line, rows, run_id):
+    identifiers = re.findall(r"\brun_id=([0-9a-f]{32})", line)
+    assert identifiers and all(value == run_id for value in identifiers)
     fields = dict(re.findall(r"([a-z_]+)=([^ ]+)", line))
     assert fields["run_id"] == run_id and fields["connected"] == "true"
     assert rows[-1]["passed"] and rows[-1]["run_id"] == run_id
@@ -27,7 +29,7 @@ def grade_reconnect(line, rows, run_id):
     for prefix in ("first",):
         calibration = by_token.get(fields.get(prefix + "_rx_token"))
         received = int(fields.get(prefix + "_rx_us", 0)) * 1000
-        if not calibration or received <= 0 or calibration["elapsed_ns"] > 100_000_000:
+        if not calibration or calibration["index"] != 0 or received <= 0 or calibration["elapsed_ns"] > 100_000_000:
             continue
         low = calibration["start_ns"] - received - 10_000_000
         high = calibration["start_ns"] + calibration["elapsed_ns"] - received + 10_000_000

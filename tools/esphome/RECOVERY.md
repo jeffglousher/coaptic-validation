@@ -62,6 +62,9 @@ cancellation and reuse. All remaining relations receive bounded authenticated
 cancellation attempts, with cleanup failures and an unresolved-relation bitmask
 retained separately. A checkpoint gate refuses cancellation traffic on a poisoned
 session; cleanup never overrides a failed/ambiguous durable commit.
+Registration controls first drain/ACK a complete notification cadence, separating
+temporary ordinary-TX/NSTART refusal from Observe pool refusal. Cancellation
+honors bounded existing backoff instead of discarding the live relation.
 
 This small-control client uses the existing 128-byte inline response hold. Full
 datagram retention reserves RX credits and admits only one persistent Call with
@@ -79,12 +82,11 @@ schedule. A delayed Call (at least 500 ms) must complete and a subsequent
 fresh identity must complete. The runner must also grade the source-bound Wi-Fi
 interruption/recovery receipt: a slow Call alone does not prove radio recovery.
 Reports retain monotonic operation spans with a host UTC anchor for correlation.
-The device retains three fixed receive timestamp/MID/token marks under a spinlock:
-first eligible request after boot (never overwritten), last request and first
-request after enable. Reconnect traffic must precede other eight-byte-token
+The device retains one fixed first-receive timestamp/MID/token mark under a
+spinlock, never overwritten. Reconnect traffic must precede other eight-byte-token
 CoAP I/O so the initial mark matches its authenticated first Call. Last/sample
 marks cannot calibrate clocks because they may describe late duplicate packets.
-Repeated recovery receipts include logical member bytes and aligned component
+Repeated recovery/clock receipts fit separate bounded log records and include logical member bytes and aligned component
 size. The grader brackets
 the device/host clock offset using a matched fast round trip (authenticated in
 protected mode; run-ID-matched in unprotected mode), adds

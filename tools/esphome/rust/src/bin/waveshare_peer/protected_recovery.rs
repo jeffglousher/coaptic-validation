@@ -9,7 +9,24 @@ fn wait<S: coaptic_esphome_probe::security_state::Store>(
     call: Call,
     output: &mut [u8],
 ) -> Result<(Code, usize, Option<u32>)> {
-    let deadline = Instant::now() + Duration::from_secs(5);
+    wait_deadline(
+        client,
+        state,
+        clock,
+        call,
+        output,
+        Instant::now() + Duration::from_secs(5),
+    )
+}
+
+fn wait_deadline<S: coaptic_esphome_probe::security_state::Store>(
+    client: &mut Client,
+    state: &mut State<'_, S>,
+    clock: &Instant,
+    call: Call,
+    output: &mut [u8],
+    deadline: Instant,
+) -> Result<(Code, usize, Option<u32>)> {
     loop {
         let poll = client.poll(clock.elapsed().as_millis() as u64);
         state
@@ -140,19 +157,94 @@ fn cancel<S: coaptic_esphome_probe::security_state::Store>(
                 .replay_checkpoint(),
         )
         .map_err(|_| "protected cancellation checkpoint gate")?;
-    let cancel = client
-        .get("ticks")
-        .custom_options(&SELECTIONS[index])
-        .to(peer)
-        .deregister_call(call)
-        .send(clock.elapsed().as_millis() as u64)
-        .map_err(|_| "protected cancellation send")?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let cancel = loop {
+        if Instant::now() >= deadline {
+            return Err("protected cancellation backoff deadline");
+        }
+        match client
+            .get("ticks")
+            .custom_options(&SELECTIONS[index])
+            .to(peer)
+            .deregister_call(call)
+            .send(clock.elapsed().as_millis() as u64)
+        {
+            Ok(cancel) => break cancel,
+            Err(coaptic::app::Error::Backoff { until_ms }) => {
+                // Backoff is refused before I/O. Preserve the relation and
+                // continue authenticating/ACKing notifications until it expires.
+                while (clock.elapsed().as_millis() as u64) < until_ms {
+                    if Instant::now() >= deadline {
+                        return Err("protected cancellation backoff deadline");
+                    }
+                    let poll = client.poll(clock.elapsed().as_millis() as u64);
+                    state
+                        .checkpoint(
+                            client
+                                .oscore()
+                                .ok_or("context missing")?
+                                .replay_checkpoint(),
+                        )
+                        .map_err(|_| "protected cancellation checkpoint gate")?;
+                    poll.map_err(|_| "protected cancellation backoff poll")?;
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+            }
+            Err(error) => {
+                eprintln!("protected cancellation selection {index}: {error:?}");
+                return Err("protected cancellation send");
+            }
+        }
+    };
     let mut output = [0; 4096];
-    let (code, n, observe) = wait(client, state, clock, cancel, &mut output)?;
+    let (code, n, observe) = wait_deadline(client, state, clock, cancel, &mut output, deadline)?;
     if code != Code::CONTENT || n != 4 || observe.is_some() {
         return Err("protected cancellation response");
     }
     Ok(())
+}
+
+fn settle_notifications(
+    client: &mut Client,
+    state: &mut State<'_, FileStore>,
+    clock: &Instant,
+    live: &[Option<Call>; 3],
+) -> Result<()> {
+    // The service confirms periodically. Give the first 250ms tick and its ACK
+    // a complete turn before testing Observe capacity, rather than confusing
+    // transient ordinary-TX/NSTART refusal with a full Observe pool.
+    let deadline = Instant::now() + Duration::from_millis(350);
+    loop {
+        let poll = client.poll(clock.elapsed().as_millis() as u64);
+        state
+            .checkpoint(
+                client
+                    .oscore()
+                    .ok_or("context missing")?
+                    .replay_checkpoint(),
+            )
+            .map_err(|_| "notification checkpoint")?;
+        poll.map_err(|_| "notification poll")?;
+        for call in live.iter().flatten() {
+            let mut output = [0; 128];
+            if let Some(reply) = client
+                .take_response_into(*call, &mut output)
+                .map_err(|_| "notification response buffer")?
+            {
+                let reply = reply.map_err(|_| "notification exchange")?;
+                if reply.code() != Code::CONTENT
+                    || reply.payload().len() != 4
+                    || reply.observe_seq().is_none()
+                {
+                    return Err("notification representation");
+                }
+            }
+        }
+        if Instant::now() >= deadline {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
 }
 
 pub(super) fn campaign(
@@ -220,11 +312,19 @@ pub(super) fn campaign(
             // Retain uncertain relations for bounded authenticated teardown too.
             live[index] = Some(call);
             let (code, n, observe) = wait(client, state, clock, call, &mut output)?;
+            if observe.is_none() {
+                live[index] = None;
+            } // Authenticated terminal refusal: no remote subscription.
             if code != Code::CONTENT || n != 4 || observe.is_some() != (index < 2) {
+                eprintln!(
+                    "protected Observe selection {index}: code={code:?} bytes={n} observe={observe:?}"
+                );
                 return Err("protected Observe capacity refusal");
             }
             if index == 2 {
                 live[index] = None;
+            } else {
+                settle_notifications(client, state, clock, &live)?;
             }
         }
         cancel(client, state, clock, peer, 0, live[0].unwrap())?;
@@ -581,6 +681,35 @@ mod tests {
         let server_stop = Arc::clone(&stop);
         let server = std::thread::spawn(move || {
             let clock = Instant::now();
+            #[cfg(feature = "async-network")]
+            {
+                struct Timer<'a>(&'a Instant);
+                impl coaptic::platform::AsyncTimer for Timer<'_> {
+                    async fn wait_until(&mut self, deadline: u64) {
+                        if let Some(when) = self.0.checked_add(Duration::from_millis(deadline)) {
+                            async_io::Timer::at(when).await;
+                        } else {
+                            core::future::pending::<()>().await;
+                        }
+                    }
+                }
+                let mut protocol = Timer(&clock);
+                let mut local = Timer(&clock);
+                async_io::block_on(coaptic_esphome_probe::network::run_protected_async(
+                    coaptic_async_host::Udp::new(socket, [0; 1153]).unwrap(),
+                    |b| getrandom::fill(b).is_ok(),
+                    || {
+                        (!server_stop.load(Ordering::Relaxed)
+                            && clock.elapsed() < Duration::from_secs(30))
+                        .then_some(clock.elapsed().as_millis() as u64)
+                    },
+                    &[b'a'; 32],
+                    (&mut protocol, &mut local),
+                    &device,
+                    device_store,
+                ))
+            }
+            #[cfg(not(feature = "async-network"))]
             coaptic_esphome_probe::network::run_protected(
                 UdpSocketIo::new(socket, [0; 1153]).unwrap(),
                 |b| getrandom::fill(b).is_ok(),
