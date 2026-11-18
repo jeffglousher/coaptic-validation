@@ -344,7 +344,7 @@ class CheckoutTests(unittest.TestCase):
         path = self.suite / "tools/security-profile/Cargo.lock"
         path.write_bytes(path.read_bytes().replace(b'name = "coaptic"', b'name = "foreign-coaptic"'))
         before = self.snapshot()
-        with self.assertRaisesRegex(ValueError, "exactly one Coaptic"):
+        with self.assertRaisesRegex(ValueError, "modified source input"):
             self.run_prepare()
         self.assertEqual(self.snapshot(), before)
 
