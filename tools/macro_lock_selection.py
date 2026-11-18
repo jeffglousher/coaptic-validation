@@ -18,18 +18,18 @@ import tomllib
 
 MANIFEST = "crates/coaptic-io/Cargo.toml"
 NATIVE = "tools/benchmark/native/Cargo.syn3.lock"
-NATIVE_HASH = "3c25aa2229363f18f89f58783f431dafcd769a110fdb23c1b81ca343eb95f2c4"
+NATIVE_HASH = "4260b91ca554d99d036db0d9e7d5b6fe576bd13107580c637d8701ff1fe7e36b"
 # Canonical Git bytes, not a hash supplied by the checkout being prepared.
 INPUTS = (
     ("Cargo.lock", "Cargo.syn3.lock",
-     "f711ce82fa0c978951b004095f37ad2cc4b05c1ceabbff406646ba6c87ed934b",
-     "b26481d282ef0c3355dd4c520079135c87107b359216dd19c0cb3a8856b85589"),
+     "7280385e41eb30f25d657db4ec48b25d524fa5aa9100de4f458c97ed1dc7351c",
+     "3e0bd37598b03552a867bbd1d36c92dd882e0788f2aa8a4b47b5522ba819da9c"),
     ("tools/durable-host/Cargo.lock", "tools/durable-host/Cargo.syn3.lock",
-     "201a985ddbb079b851b734371217185a62b8260710c5686a1f772655eb07643b",
-     "011e7e4c565a0f6a8db6b0f7a62ab58c74525b0bc621d4b3117269fd3f9387fe"),
+     "e3203ab2562a6b394155c5b960073d6cf6c142c3dc43f8e2d247928a7c68e2ea",
+     "5ae448908a2dabe8b208c85aeabd583b35248135e181f359fe66907fa5759ac8"),
     ("fuzz/Cargo.lock", "fuzz/Cargo.syn3.lock",
-     "a463590ec3555d76ad4a3b8996ca8cbc18b2c9f97502b7ba87f32d7dbc7386ee",
-     "cb4fc3fda0fe9cda1db44985002e8ea5981a488172faf9c2ed4e308b71906513"),
+     "83bffeffd6b11b24b49425852cd1878fb4ff881503428c568e3c03997dc3d554",
+     "9824176916eab4946ec71bdb4f047b8f4a14562c7bd2ec6ce0ddef2047fa7d74"),
 )
 REGISTRY = "registry+https://github.com/rust-lang/crates.io-index"
 SYN_CHECKSUMS = {
