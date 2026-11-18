@@ -2,6 +2,8 @@
 //! Credentials/state live in an operator-private directory. State is exclusively
 //! locked; every update uses sync_all and authenticated readback. This qualifies
 //! normal process/device restart separately from flash/power-loss/rollback.
+#[path = "waveshare_peer/protected_recovery.rs"]
+mod protected_recovery;
 #[path = "waveshare_peer/qblock_suffix.rs"]
 mod qblock_suffix;
 #[path = "waveshare_peer/raw_udp.rs"]
@@ -33,16 +35,43 @@ struct CaptureIo {
     io: UdpSocketIo<[u8; 1153]>,
     first: [u8; 1152],
     length: usize,
+    duplicate_next: bool,
+    duplicated: bool,
+    duplicate_peer: Option<Endpoint>,
+    duplicate_token: Option<Token>,
+    duplicate_reply: Option<[u8; 32]>,
 }
 impl coaptic::storage::DatagramTransport for CaptureIo {
     type Error = std::io::Error;
 }
 impl DatagramIo for CaptureIo {
     fn recv(&mut self, bytes: &mut [u8]) -> std::io::Result<Option<(usize, Endpoint)>> {
-        self.io.recv(bytes)
+        let received = self.io.recv(bytes)?;
+        if let Some((n, peer)) = received
+            && self.duplicate_peer == Some(peer)
+            && self.duplicate_reply.is_none()
+            && let Ok(packet) = decode(&bytes[..n])
+            && self.duplicate_token == Some(packet.token())
+            && packet.code().is_response()
+        {
+            use sha2::{Digest, Sha256};
+            self.duplicate_reply = Some(Sha256::digest(&bytes[..n]).into());
+        }
+        Ok(received)
     }
     fn send(&mut self, peer: Endpoint, bytes: &[u8]) -> std::io::Result<usize> {
         let sent = self.io.send(peer, bytes)?;
+        if sent == bytes.len()
+            && self.duplicate_next
+            && decode(bytes).is_ok_and(|p| p.oscore().is_some() && p.code().is_request())
+        {
+            self.duplicate_next = false;
+            self.first[..bytes.len()].copy_from_slice(bytes);
+            self.length = bytes.len();
+            self.duplicate_peer = Some(peer);
+            self.duplicate_token = Some(decode(bytes).expect("checked request").token());
+            self.duplicate_reply = None;
+        }
         if self.length == 0
             && sent == bytes.len()
             && decode(bytes)
@@ -87,9 +116,7 @@ fn query(
     .map_err(|_| "send")?;
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        client
-            .poll(clock.elapsed().as_millis() as u64)
-            .map_err(|_| "poll")?;
+        let poll = client.poll(clock.elapsed().as_millis() as u64);
         // Client-response state is persisted before exposing a completed result.
         state
             .checkpoint(
@@ -99,6 +126,7 @@ fn query(
                     .replay_checkpoint(),
             )
             .map_err(|_| "checkpoint")?;
+        poll.map_err(|_| "poll")?;
         if let Some(reply) = client
             .take_response_into(call, output)
             .map_err(|_| "response buffer")?
@@ -228,6 +256,7 @@ fn run() -> Result<()> {
         "check",
         "replay",
         "raw-udp",
+        "recovery",
         "timing",
         "timing-server",
         "timing-server-lan",
@@ -271,19 +300,42 @@ fn run() -> Result<()> {
     let start = context.sender_seq();
     let socket = UdpSocket::bind("0.0.0.0:0").map_err(|_| "bind")?;
     socket.set_nonblocking(true).map_err(|_| "nonblocking")?;
-    let mut client = App::profile::<profiles::Constrained>()
+    let builder = App::profile::<profiles::Constrained>()
         .block_wise::<true>()
-        .full_responses()
         .randomness(|b| getrandom::fill(b).is_ok())
-        .oscore(context)
+        .oscore(context);
+    // These finite control replies fit the 128-byte inline response hold. Full
+    // datagram retention reserves RX credits and intentionally admits only one
+    // persistent Call in this two-RX profile; the device pools stay unchanged.
+    let builder = if args[1] == "recovery" {
+        builder
+    } else {
+        builder.full_responses()
+    };
+    let mut client = builder
         .bind(CaptureIo {
             io: UdpSocketIo::new(socket, [0; 1153]).map_err(|_| "scratch")?,
             first: [0; 1152],
             length: 0,
+            duplicate_next: false,
+            duplicated: false,
+            duplicate_peer: None,
+            duplicate_token: None,
+            duplicate_reply: None,
         })
         .map_err(|_| "app bind")?;
     let clock = Instant::now();
     let mut output = [0; 4096];
+    if args[1] == "recovery" {
+        return protected_recovery::campaign(
+            &mut client,
+            &mut state,
+            &clock,
+            peer.into(),
+            &args[6],
+            Path::new(&args[5]),
+        );
+    }
     if args[1] == "raw-udp" {
         return raw_udp::campaign(
             &mut client,

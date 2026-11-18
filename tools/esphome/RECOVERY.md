@@ -50,6 +50,26 @@ with Size2=2000, then requires complete byte recovery and a fresh small read.
 Its scope is device response reissue after host receive loss; it does not prove
 MCU client suffix recovery. A real UDP regression exercises the ordinary fixture.
 
-Other pool campaigns, protected
-duplicate campaigns, four-cell device execution and CPU measurement remain work
+`waveshare-peer recovery ADDRESS CREDENTIALS STATE REPORT RUN_ID` selects the
+protected duplicate-count and Observe-capacity campaign. It recovers and owns the
+existing exclusive durable host security record; it never provisions or copies
+that state. After authenticating the first echo response, it resends the retained
+protected request bytes and requires the matching cached ciphertext response.
+A fresh authenticated counter read must show one handler entry. Three distinct elective
+cache-key values (private option 2048) prevent client subscription coalescing;
+they fill two device Observe slots, refuse the third registration, then verify
+cancellation and reuse. All remaining relations receive bounded authenticated
+cancellation attempts, with cleanup failures and an unresolved-relation bitmask
+retained separately. A checkpoint gate refuses cancellation traffic on a poisoned
+session; cleanup never overrides a failed/ambiguous durable commit.
+
+This small-control client uses the existing 128-byte inline response hold. Full
+datagram retention reserves RX credits and admits only one persistent Call with
+two RX datagrams, which cannot fill the device's two Observe slots. Pool sizes,
+Calls and security capacities are unchanged; timing/Q-Block2 clients retain full
+response assembly. Ordinary handler Observe queries are not supported, so the
+campaign uses elective options rather than Uri-Query to distinguish Calls.
+
+Other pool campaigns,
+four-cell device execution and CPU measurement remain work
 for the current recovery qualification assignment.
