@@ -68,9 +68,12 @@ def grade(lines, host, run_id):
                 raise ValueError('send completion lacks entry')
             start,exchange=sends.pop(key)
             exchange['send_call']=delta(start,row)
+            exchange['send_complete_us']=row['w']
             exchanges.append(exchange)
     if sends:
         raise ValueError('incomplete sends')
+    if set(receives)!={(x['mid'],x['token']) for x in exchanges}:
+        raise ValueError('unmatched receive in cohort')
     by_mid={x['mid']:x for x in exchanges}
     if len(by_mid)!=len(exchanges):
         raise ValueError('ambiguous MID')
@@ -85,7 +88,9 @@ def grade(lines, host, run_id):
                              exchanges=[by_mid[mid] for mid in mids]))
     if len(used)!=len(exchanges) or len(exchanges)!=32:
         raise ValueError('unexpected traffic in cohort')
-    traffic_resources=[x for x in resources if 0<x['rx']<32 and x['tx']>0]
+    first_receive=min(pair[0]['w'] for pair in receives.values())
+    final_send=max(x['send_complete_us'] for x in exchanges)
+    traffic_resources=[x for x in resources if 0<x['tx']<=x['rx']<32 and first_receive<=x['at']<=final_send]
     if not traffic_resources:
         raise ValueError('no protected traffic-period resource sample')
     state_spans=[];pending={}

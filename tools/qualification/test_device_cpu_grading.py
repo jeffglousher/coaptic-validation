@@ -26,7 +26,7 @@ class CpuGradingTests(unittest.TestCase):
         result=grade(lines,host,run)
         self.assertEqual(len(result['operations']),24)
         self.assertEqual(result['operations'][0]['exchanges'][0]['receive_to_send']['task_cpu_us'],10)
-        for change in ('overflow','foreign','accounting','missing','host-mid','resource','unprotected'):
+        for change in ('overflow','foreign','accounting','missing','host-mid','resource','late-resource','extra-receive','unprotected'):
             with self.subTest(change=change):
                 changed=copy.deepcopy(lines);peer=copy.deepcopy(host)
                 if change=='overflow': changed[-1]=changed[-1].replace('false','true')
@@ -35,6 +35,10 @@ class CpuGradingTests(unittest.TestCase):
                 elif change=='missing':changed.pop(1)
                 elif change=='host-mid':peer[0]['events'][0][4]=999
                 elif change=='resource':changed.pop(-2)
+                elif change=='late-resource':changed[-2]=changed[-2].replace('at=500','at=2000')
+                elif change=='extra-receive':
+                    changed.insert(-2,f'COAPTIC_CPU run={run} i=96 k=1 w=1060 c=960 b=50 r=50 mid=999 tok=0000000000000999 n=48')
+                    changed[-1]=changed[-1].replace('count=96','count=97')
                 elif change=='unprotected':peer[-1]['security']='unprotected'
                 with self.assertRaises(ValueError):grade(changed,peer,run)
 
