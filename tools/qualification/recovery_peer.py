@@ -41,6 +41,12 @@ class Peer:
                 ack = aiocoap.Message(code=aiocoap.EMPTY)
                 ack.mtype, ack.mid = aiocoap.ACK, reply.mid
                 self.channel.send(ack.encode())
+            if reply.mtype == aiocoap.ACK and reply.mid != packet.mid:
+                continue
+            # Notifications already queued before cancellation share its token.
+            # Acknowledge them, but require a non-Observe cancellation response.
+            if packet.opt.observe == 1 and reply.opt.observe is not None:
+                continue
             if reply.token == packet.token and reply.code.is_response():
                 return reply
         raise TimeoutError("finite response deadline or packet budget exhausted")
