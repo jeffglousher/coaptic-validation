@@ -1,10 +1,19 @@
 import unittest
 
-import aiocoap
+# Host-only discovery has no independent-client dependencies. The validation
+# runner installs pinned aiocoap and executes this regression there.
+try:
+    import aiocoap
+except ModuleNotFoundError as error:
+    if error.name != "aiocoap":
+        raise
+    aiocoap = None
 
-from recovery_peer import Peer
+if aiocoap is not None:
+    from recovery_peer import Peer
 
 
+@unittest.skipIf(aiocoap is None, "requires pinned aiocoap; executed by validation runner")
 class CancellationRaceTests(unittest.TestCase):
     def test_queued_notification_and_old_ack_cannot_complete_cancellation(self):
         token = b"relation"
