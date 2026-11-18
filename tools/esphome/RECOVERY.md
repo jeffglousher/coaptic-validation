@@ -103,7 +103,7 @@ This traffic exercises same-App Call retry/reconnect, beyond the prior
 idle reconnection proof. A Call initiated during the outage does not establish
 a Call already pending before disable; it is not a CPU/latency benchmark or cold-power recovery.
 
-The four sync/async ? unprotected/durable OSCORE device cells passed the finite
+The four sync/async and unprotected/durable OSCORE device cells passed the finite
 controls, with source-matched images and verified normal restoration. The
 [core qualification record](https://github.com/jeffglousher/coaptic/blob/main/architecture/requirements/ESP-DEVICE-RECOVERY-20261118.md)
 names exact source, hashes, cases and retained failures. Only Observe pool
@@ -115,7 +115,7 @@ separate generated CMake input replaces exactly one kernel source and preserves
 its internal compile definition. The kernel refuses other configurations: it
 requires the IDF non-SMP two-core kernel, ESP_TIMER and U64 runtime statistics.
 Under the existing kernel lock it observes current-core runtime including the
-unswitched slice, blocked?Ready transitions and context switches. It does not
+unswitched slice, blocked-to-Ready transitions and context switches. It does not
 change scheduling or protocol state. Its single selected worker must not be
 externally suspended, replaced or deleted during the capture.
 
@@ -132,8 +132,8 @@ identity/small/large iteration groups in an authenticated 24-read host campaign.
 It rejects overflow, missing/foreign rows, unmatched input, wrong operation
 inventory and inconsistent CPU+blocked+ready wall accounting. It requires a
 resource snapshot beginning inside the measured traffic interval. Defined
-readiness?final-send-return spans exclude post-send cleanup; available
-readiness?next-select-entry spans retain that tail and are reported separately.
+readiness-to-final-send-return spans exclude post-send cleanup; available
+readiness-to-next-select-entry spans retain that tail and are reported separately.
 Neither is silently described as whole-App CPU. The accepted async OSCORE
 capture is one diagnostic, not an optimization or a cross-runtime speed result.
 

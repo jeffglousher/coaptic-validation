@@ -60,10 +60,12 @@ def export(root, core):
         normal=['normal-after-'+controls+'.jsonl']
         if wifi!=controls:normal.append('normal-after-'+wifi+'.jsonl')
         if wifi=='async-oscore-clock':normal[-1]='normal-after-drained-async-protected-verified.jsonl'
+        clients=dict(wifi=dict(kind='native',sha256=w['client_sha256']),qblock_suffix=dict(kind='native',sha256=c['client_sha256']))
+        clients['duplicate_and_observe']=(dict(kind='native',sha256=w['client_sha256'] if 'protected_controls' in w else c['client_sha256']) if security=='durable-oscore' else dict(kind='aiocoap-script',script_sha256=sha(Path(__file__).with_name('recovery_peer.py').read_bytes())))
         cells.append(dict(mode=mode,security=security,run_id=build['run_id'],image_sha256=build['image_sha256'],
             elf_sha256=build['elf_sha256'],archive_sha256=build['archive_sha256'],archive_features=build['archive_features'],
             source_head=build['source_head'],suite_recorded_at_build_completion=build['suite_source'],
-            client_sha256=c['client_sha256'],duplicate_effects=effects,observe_capacity=2,observe_refused_and_reused=True,
+            clients=clients,duplicate_effects=effects,observe_capacity=2,observe_refused_and_reused=True,
             qblock_suffix=q,wifi=grade,delayed_call_elapsed_us=next(x['elapsed_us'] for x in reconnect if x.get('index')==grade['delayed_call']),
             restorations=[restoration(x) for x in dict.fromkeys(normal)]))
     cpu=read('trial-async-oscore-cpu.json');b=read('async-oscore-cpu/firmware-build.json')
