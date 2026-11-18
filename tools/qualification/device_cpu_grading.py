@@ -72,6 +72,7 @@ def grade(lines, host, run_id):
             start,exchange=sends.pop(key)
             exchange['send_call']=delta(start,row)
             exchange['send_complete_us']=row['w']
+            exchange['end_index']=row['i']
             exchange['sample_end']={key:row[key] for key in ('w','c','b','r')}
             exchanges.append(exchange)
     if sends:
@@ -89,7 +90,12 @@ def grade(lines, host, run_id):
             raise ValueError('host/device exchange mismatch')
         used.update(mids)
         device=[by_mid[mid] for mid in mids]
-        selected.append(dict(device_service=delta(device[0]['sample_start'],device[-1]['sample_end']),path=operation['path'],iteration=operation['iteration'],host_elapsed_ns=operation['elapsed_ns'],
+        tail=None
+        for row in rows[device[-1]['end_index']+1:]:
+            if row['k']==1: break
+            if row['k']==8:
+                tail=delta(device[0]['sample_start'],row); break
+        selected.append(dict(readiness_to_next_select_entry=tail,readiness_to_final_send_return=delta(device[0]['sample_start'],device[-1]['sample_end']),path=operation['path'],iteration=operation['iteration'],host_elapsed_ns=operation['elapsed_ns'],
                              exchanges=[by_mid[mid] for mid in mids]))
     if len(used)!=len(exchanges) or len(exchanges)!=32:
         raise ValueError('unexpected traffic in cohort')
