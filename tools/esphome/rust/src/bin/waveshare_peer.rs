@@ -289,6 +289,7 @@ fn run() -> Result<()> {
         "replay",
         "raw-udp",
         "recovery",
+        "qblock-suffix",
         "reconnect",
         "timing",
         "timing-server",
@@ -299,6 +300,15 @@ fn run() -> Result<()> {
         || !args[6].bytes().all(|b| b.is_ascii_hexdigit())
     {
         return Err("network mode/run identity");
+    }
+    if args[1] == "qblock-suffix" {
+        return qblock_suffix::protected(
+            peer,
+            &args[6],
+            Path::new(&args[5]),
+            &c,
+            Path::new(&args[4]),
+        );
     }
     if args[1] == "timing" {
         return timing::campaign(&c, Path::new(&args[4]), peer, &args[6], Path::new(&args[5]));

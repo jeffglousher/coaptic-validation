@@ -470,7 +470,7 @@ pub(super) fn reconnect(
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use coaptic_esphome_probe::security_state::{Error, RECORD_BYTES, Store};
     use std::sync::{
@@ -479,7 +479,7 @@ mod tests {
     };
 
     #[derive(Clone, Default)]
-    struct Memory(Arc<Mutex<Option<[u8; RECORD_BYTES]>>>);
+    pub(crate) struct Memory(Arc<Mutex<Option<[u8; RECORD_BYTES]>>>);
     impl Store for Memory {
         fn read(&mut self) -> std::result::Result<Option<[u8; RECORD_BYTES]>, Error> {
             Ok(*self.0.lock().unwrap())
@@ -489,7 +489,7 @@ mod tests {
             Ok(())
         }
     }
-    fn fixture_credentials(sender: u8, recipient: u8) -> Credentials {
+    pub(crate) fn fixture_credentials(sender: u8, recipient: u8) -> Credentials {
         Credentials {
             secret: [0x31; 32],
             salt: [0x52; 16],

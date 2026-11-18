@@ -48,7 +48,13 @@ body. The fixture's stable `large-v1` ETag permits Q-Block2 response identity.
 The host drops exactly the first final 976-byte block after receiving block zero
 with Size2=2000, then requires complete byte recovery and a fresh small read.
 Its scope is device response reissue after host receive loss; it does not prove
-MCU client suffix recovery. A real UDP regression exercises the ordinary fixture.
+MCU client suffix recovery. Real UDP regressions exercise the ordinary fixture and both protected service
+implementations. `qblock-suffix ADDRESS CREDENTIALS STATE REPORT RUN_ID` selects
+the durable OSCORE version. Read-only request/response graders authenticate the
+inner Q-Block2 options before selecting the loss and recording suffix repair.
+They originate no traffic and do not own replay admission; only the App recovered
+from the exclusively held durable record owns live security state. Setup failures
+also produce a structured failure receipt.
 
 `waveshare-peer recovery ADDRESS CREDENTIALS STATE REPORT RUN_ID` selects the
 protected duplicate-count and Observe-capacity campaign. It recovers and owns the
