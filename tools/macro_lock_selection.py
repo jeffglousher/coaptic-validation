@@ -1,7 +1,7 @@
 """Checked CI macro-lock inputs, without Cargo resolution or source writes.
 
 The caller owns a dedicated checkout and opts in before prepare.py records its
-provenance. Canonical Syn2 locks remain source inputs. Three checked alternates
+provenance. Canonical Syn2 locks remain source inputs. Checked alternates
 select the macro's declared Syn major, removing a displaced Syn2 package only
 when no other package uses it. All unrelated resolved packages are conserved.
 Hosted Cargo --locked acceptance remains a separate qualification.
@@ -27,6 +27,15 @@ INPUTS = (
     ("tools/durable-host/Cargo.lock", "tools/durable-host/Cargo.syn3.lock",
      "e3203ab2562a6b394155c5b960073d6cf6c142c3dc43f8e2d247928a7c68e2ea",
      "5ae448908a2dabe8b208c85aeabd583b35248135e181f359fe66907fa5759ac8"),
+    ("tools/security-interop/Cargo.lock", "tools/security-interop/Cargo.syn3.lock",
+     "721b3181e00d0618c69bda3ec52f819d87067b2a3ee68bbd5d34cd99d1af72fb",
+     "fe7b6efb9064df64b9a7eb9d171617277f86d7b0da8bcbb8768795fe7236e41b"),
+    ("tools/security-profile/Cargo.lock", "tools/security-profile/Cargo.syn3.lock",
+     "6ec9c96eb5fdfa392db3120277123e2364da87e086cfa1599fc0ef10d54c6864",
+     "8ae8b409eb3f8ca742f279df4b975202b924744da0946e0f50c943f2045fa729"),
+    ("tools/qualification/esp32/Cargo.lock", "tools/qualification/esp32/Cargo.syn3.lock",
+     "70db51d153eec9151eedfe31bdd7cdb5dd316962e7d8bf09135732fbf2a2cf96",
+     "33878f953283996e25dd9f573354a8dfa65fe7a503d338ffb0e724c4856f4820"),
     ("fuzz/Cargo.lock", "fuzz/Cargo.syn3.lock",
      "83bffeffd6b11b24b49425852cd1878fb4ff881503428c568e3c03997dc3d554",
      "9824176916eab4946ec71bdb4f047b8f4a14562c7bd2ec6ce0ddef2047fa7d74"),
@@ -34,6 +43,7 @@ INPUTS = (
 REGISTRY = "registry+https://github.com/rust-lang/crates.io-index"
 SYN_CHECKSUMS = {
     "2.0.119": "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297",
+    "3.0.6": "8593e8e72159ed2257d083c7a454a85cbf854f37a0966d8d483aff8c8a3ebcee",
     "3.0.5": "12df2e0110f65b775f769bb17ef989067a1d931b2eb822bd4346631eeada89f9",
     "3.0.9": "d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b",
 }
@@ -87,7 +97,7 @@ def expected_graph(base, native):
     rows = packages(value)
     syns = syn_rows(rows)
     versions = sorted(p["version"] for p in syns)
-    if versions not in (["2.0.119"], ["2.0.119", "3.0.5"]):
+    if versions not in (["2.0.119"], ["2.0.119", "3.0.5"], ["2.0.119", "3.0.6"]):
         raise ValueError("unsupported canonical Syn package set")
     io = one(rows, "coaptic-io")
     if io.get("version") != "0.0.10" or "source" in io:
@@ -105,11 +115,11 @@ def expected_graph(base, native):
     native_io = one(native_rows, "coaptic-io")
     if [d for d in native_io.get("dependencies", []) if d.split()[0] == "syn"] != ["syn 3.0.9"]:
         raise ValueError("trusted native macro must select Syn3")
-    target = "3.0.5" if len(syns) == 2 else "3.0.9"
+    target = versions[1] if len(syns) == 2 else "3.0.9"
     for row in rows:
         for edge in row.get("dependencies", []):
             if edge.split()[0] == "syn" and edge not in (
-                    ("syn",) if len(syns) == 1 else ("syn 2.0.119", "syn 3.0.5")):
+                    ("syn",) if len(syns) == 1 else ("syn 2.0.119", "syn " + target)):
                 raise ValueError("ambiguous or foreign Syn dependency edge")
         if "dependencies" in row:
             row["dependencies"] = [
