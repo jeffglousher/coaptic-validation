@@ -8,9 +8,30 @@ import unittest
 from unittest.mock import MagicMock, Mock, patch
 from native_diagnostic import (ADMISSION_DIAGNOSTIC_LIMIT, control_line, cpu_cost, main, measure,
                                PROC_MEMORY_READ_LIMIT, PROC_MEMORY_RESULT_LIMIT, _proc_memory_fields,
-                               process_memory_evidence, snapshot, server_resources,
+                               process_cycle_cost, process_memory_evidence, snapshot, server_resources,
                                validate_admission_diagnostics, validate_report)
 from native_profiles import dimensions, PROFILE_SIZES
+
+
+class WindowsProcessCycleTests(unittest.TestCase):
+    def test_refuses_unsupported_capture_before_launch(self):
+        for platform, gated in (("linux", True), ("win32", False)):
+            with self.subTest(platform=platform, gated=gated), \
+                 patch("native_diagnostic.sys.platform", platform), \
+                 patch("native_diagnostic.subprocess.Popen") as launch, \
+                 self.assertRaisesRegex(ValueError, "require Windows and --cpu-gated"):
+                measure(Path("server"), Path("client"), 64, 8, 1, 1000, "spin", "oscore",
+                        cpu_gated=gated, windows_process_cycles=True)
+            launch.assert_not_called()
+
+    def test_cycle_delta_ignores_lifetime_history_and_refuses_regression(self):
+        before = dict(server=dict(process_cycles=1000), client=dict(process_cycles=65000))
+        after = dict(server=dict(process_cycles=1008), client=dict(process_cycles=65020))
+        self.assertEqual(process_cycle_cost(before, after, 2), dict(
+            server=dict(cycles=8, cycles_per_verified_operation=4),
+            client=dict(cycles=20, cycles_per_verified_operation=10)))
+        with self.assertRaisesRegex(ValueError, "cycle counter regressed"):
+            process_cycle_cost(after, before, 2)
 
 
 class ProcessMemoryTests(unittest.TestCase):

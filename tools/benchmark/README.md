@@ -424,6 +424,14 @@ The CPU handshake pauses after warmup and before report formatting. User and
 process-accounted kernel CPU are divided by verified complete operations;
 client costs remain separate. Snapshot/IPC boundary costs and OS quantization
 remain. Machine-wide interrupts and unrelated kernel work are not attributed.
+On Windows, add `--windows-process-cycles` to a `--cpu-gated` run to retain
+`QueryProcessCycleTime` snapshots for the server and client. Each snapshot reads
+cycles before the existing time and memory samples. The report gives cycle
+deltas per verified completion alongside OS CPU time. Cycles depend on the
+processor and operating conditions. Keep the readings in cycles and use them
+as a separate diagnostic signal. Compare like configurations and keep the time
+and cycle results even when they differ.
+
 Pacing uses absolute operation-start deadlines with one outstanding Call by default;
 late starts catch up without dropping operations. Every latency is retained,
 and lateness, failed/unattempted operations and achieved rate remain visible.
