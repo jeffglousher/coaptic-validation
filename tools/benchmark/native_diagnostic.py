@@ -303,6 +303,45 @@ def snapshot(process):
                 memory=memory, process_memory=process_memory_evidence(process.pid))
 
 
+def windows_cycle_reader():
+    """Read a child process cycle counter using a short-lived query handle."""
+    from ctypes import POINTER, WinDLL, WinError, byref, c_ulonglong
+    from ctypes.wintypes import BOOL, DWORD, HANDLE
+
+    kernel = WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [DWORD, BOOL, DWORD]
+    kernel.OpenProcess.restype = HANDLE
+    kernel.QueryProcessCycleTime.argtypes = [HANDLE, POINTER(c_ulonglong)]
+    kernel.QueryProcessCycleTime.restype = BOOL
+    kernel.CloseHandle.argtypes = [HANDLE]
+    kernel.CloseHandle.restype = BOOL
+
+    def read(pid):
+        process_query_limited_information = 0x1000
+        handle = kernel.OpenProcess(process_query_limited_information, False, pid)
+        if not handle:
+            raise WinError()
+        try:
+            cycles = c_ulonglong()
+            if not kernel.QueryProcessCycleTime(handle, byref(cycles)):
+                raise WinError()
+            return cycles.value
+        finally:
+            kernel.CloseHandle(handle)
+
+    return read
+
+
+def process_cycle_cost(before, after, completed):
+    result = {}
+    for name in before:
+        delta = after[name]["process_cycles"] - before[name]["process_cycles"]
+        if delta < 0:
+            raise ValueError("process cycle counter regressed")
+        result[name] = dict(cycles=delta, cycles_per_verified_operation=delta / completed)
+    return result
+
+
 def control_line(stream, timeout, limit=128):
     """Bounded wait for a child handshake, including on Windows anonymous pipes."""
     result = queue.Queue(maxsize=1)
@@ -531,7 +570,7 @@ def validate_report(report, size, operations, policy, security, rate=None,
 def measure(server, client, size, operations, warmup, timeout_ms, policy, security,
             *, server_kind="coaptic-reusable", rate=None, cpu_gated=False,
             phase_timeout_seconds=300, concurrency=1, message_type="con", admission_diagnostics=False,
-            independent_endpoints=False, resource_profile="host-control"):
+            independent_endpoints=False, resource_profile="host-control", windows_process_cycles=False):
     """Measure complete operations with additive wall-clock phase observations.
 
     Client startup and warmup share one ready signal and one combined duration.
@@ -540,6 +579,16 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
     block; total also includes temporary-directory removal and receipt metadata.
     """
     total_started = time.perf_counter_ns()
+    if windows_process_cycles and (sys.platform != "win32" or not cpu_gated):
+        raise ValueError("Windows process cycles require Windows and --cpu-gated")
+    read_cycles = windows_cycle_reader() if windows_process_cycles else None
+
+    def observe(process):
+        if read_cycles is None:
+            return snapshot(process)
+        cycles = read_cycles(process.pid)
+        return dict(snapshot(process), process_cycles=cycles)
+
     validate_concurrency(concurrency, message_type, independent_endpoints)
     # Host diagnostics historically accept every bounded representation size.
     # Representative fixtures use the exact existing profile selections.
@@ -623,14 +672,14 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                                            server=sut, resource_profile=resource_profile,
                                            size=size, security=security, rx_bytes=rx_bytes)
                 peers = {"client": psutil.Process(child.pid), "server": psutil.Process(sut.pid)}
-                before = {name: snapshot(p) for name, p in peers.items()}
+                before = {name: observe(p) for name, p in peers.items()}
                 started = time.perf_counter_ns()
                 child.stdin.write("run\n")
                 child.stdin.flush()
                 if cpu_gated:
                     if control_line(child.stderr, phase_timeout_seconds) != "measured":
                         raise RuntimeError("client measurement failed before CPU boundary")
-                    after = {name: snapshot(p) for name, p in peers.items()}
+                    after = {name: observe(p) for name, p in peers.items()}
                     resource_window_ns = time.perf_counter_ns() - started
                     child.stdin.write("report\n")
                     child.stdin.flush()
@@ -643,7 +692,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                 if report["warmup"] != warmup:
                     raise ValueError("mismatched warmup")
                 if not cpu_gated:
-                    after = {name: snapshot(p) for name, p in peers.items()}
+                    after = {name: observe(p) for name, p in peers.items()}
                     resource_window_ns = time.perf_counter_ns() - started
                 phases["measurement_and_report"] = (time.perf_counter_ns() - started) / 1e9
                 phases["resource_window"] = resource_window_ns / 1e9
@@ -670,6 +719,11 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                                 "suite": source_identity(Path(__file__).resolve().parents[2]),
                                 "core": source_identity(Path(__file__).resolve().parents[2] / "coaptic")},
                             source_identity_limit="checkout observations, not an independent binary build attestation")
+                if windows_process_cycles:
+                    result["windows_process_cycles"] = dict(
+                        counter="QueryProcessCycleTime",
+                        scope="process cycles sampled at the CPU gates before time and memory reads",
+                        cost=process_cycle_cost(before, after, report["completed"]))
             except Exception as error:
                 if child is not None and child.poll() is None:
                     child.terminate()
@@ -720,6 +774,8 @@ def main():
     parser.add_argument("--message-type", choices=("con", "non"), default="con")
     parser.add_argument("--independent-endpoints", action="store_true")
     parser.add_argument("--cpu-gated", action="store_true")
+    parser.add_argument("--windows-process-cycles", action="store_true",
+                        help="sample process cycles at the Windows CPU gates. Requires --cpu-gated")
     parser.add_argument("--phase-timeout-seconds", type=int, default=300,
                         help="finite control-phase wall deadline, 1..3600s; expiry invalidates observation")
     args = parser.parse_args()
@@ -731,7 +787,8 @@ def main():
                          server_kind=args.server_kind, rate=args.rate, cpu_gated=args.cpu_gated,
                          phase_timeout_seconds=args.phase_timeout_seconds,
                          concurrency=args.concurrency, message_type=args.message_type, independent_endpoints=args.independent_endpoints,
-                         admission_diagnostics=args.admission_diagnostics, resource_profile=args.resource_profile)
+                         admission_diagnostics=args.admission_diagnostics, resource_profile=args.resource_profile,
+                         windows_process_cycles=args.windows_process_cycles)
     except Exception as error:
         args.output.write_text(json.dumps(dict(passed=False, error_type=type(error).__name__,
                                               reason=str(error),
