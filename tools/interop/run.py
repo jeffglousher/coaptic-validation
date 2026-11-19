@@ -2171,6 +2171,23 @@ def qblock2_ipv6_loss(client, server):
     return {"probe": probe, "schedules": proofs}
 
 
+class QBlockConGradeError(AssertionError):
+    """Preserve finite unprotected loopback evidence for a rejected CON grade."""
+
+    def __init__(self, error, *, family, schedule, endpoints, trace):
+        super().__init__(str(error))
+        # The relay bounds the number of rows. Cap oversized wire strings too.
+        packets = []
+        for row in trace:
+            bounded = dict(row)
+            for key in ("hex", "forwarded_hex"):
+                if key in row and len(row[key]) > 1024:
+                    bounded[key] = row[key][:1024]
+                    bounded[key + "_truncated"] = True
+            packets.append(bounded)
+        self.evidence = dict(family=family, schedule=schedule, endpoints=endpoints, trace=packets)
+
+
 def qblock2_con_loss(client, server, family="ipv4"):
     """Default-NSTART CON retransmission, bounded partial refusal, then fresh success."""
     from qblock_con import grade
@@ -2189,7 +2206,11 @@ def qblock2_con_loss(client, server, family="ipv4"):
                                      v6only=[sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY)
                                              for sock in (relay.front, relay.back)])
                 result = request(client, "udp", relay.number, path="large", family=family, timeout=deadline, qblock2=True)
-            proof = grade(relay.trace, result, endpoints, complete=label != "partial_refusal", family=family)
+            try:
+                proof = grade(relay.trace, result, endpoints, complete=label != "partial_refusal", family=family)
+            except AssertionError as error:
+                raise QBlockConGradeError(error, family=family, schedule=label,
+                                          endpoints=endpoints, trace=relay.trace) from error
             proofs[label] = dict(proof=proof, result=result, deadline_ms=deadline)
     return {"family": family, "probe": probe, "schedules": proofs}
 
@@ -2553,7 +2574,10 @@ def main():
             report["cases"].append({"name": name, "passed": True, "evidence": detail})
             print(f"PASS {name}", flush=True)
         except Exception as error:
-            report["cases"].append({"name": name, "passed": False, "error": str(error)})
+            failure = {"name": name, "passed": False, "error": str(error)}
+            if isinstance(error, QBlockConGradeError):
+                failure["evidence"] = error.evidence
+            report["cases"].append(failure)
             print(f"FAIL {name}: {error}", flush=True)
 
     for client, server in [("coaptic", "coaptic"), ("coaptic", "libcoap"), ("libcoap", "coaptic")]:

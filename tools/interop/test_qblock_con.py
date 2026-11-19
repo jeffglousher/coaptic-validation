@@ -38,6 +38,26 @@ def evidence(complete=True):
 
 
 class ConRecoveryTests(unittest.TestCase):
+    def test_echoed_request_mid_and_server_con_have_separate_ownership(self):
+        trace = evidence()
+
+        def write_mid(indices, mid):
+            for index in indices:
+                packet = bytes.fromhex(trace[index]["hex"])
+                trace[index]["hex"] = (packet[:2] + mid + packet[4:]).hex()
+
+        # The client chose this MID for the initial request. Its echoed ACK
+        # does not reserve the number in the server's CON sequence.
+        shared_mid = get()[2:4]
+        write_mid((2, 3, 4), shared_mid)
+        proof = grade(trace, SUCCESS, ENDPOINTS, complete=True)
+        self.assertEqual((proof["blocks"], proof["retransmissions"]), (8, 1))
+
+        # Reusing the same server-generated MID for the next block is invalid.
+        write_mid((5, 6), shared_mid)
+        with self.assertRaisesRegex(AssertionError, "server reused CON MID"):
+            grade(trace, SUCCESS, ENDPOINTS, complete=True)
+
     def test_complete_and_partial_evidence_are_distinct(self):
         passed = grade(evidence(), SUCCESS, ENDPOINTS, complete=True)
         self.assertEqual((passed["delivered_bytes"], passed["retransmissions"], passed["nstart"]), (2000, 1, 1))

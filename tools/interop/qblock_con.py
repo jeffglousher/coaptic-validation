@@ -35,7 +35,7 @@ def grade(trace, result, endpoints, *, complete, family="ipv4"):
     initial = None
     pending = None
     delivered = set()
-    mids = set()
+    server_con_mids = set()
     etag = None
     dropped = []
     retransmissions = 0
@@ -88,7 +88,8 @@ def grade(trace, result, endpoints, *, complete, family="ipv4"):
         if num == 0:
             if index != 1 or action != "forward" or ty != 2 or mid != int.from_bytes(initial[2:4], "big"):
                 raise AssertionError("initial piggybacked block identity")
-            mids.add(mid)
+            # A piggybacked ACK echoes the client-generated request MID.
+            # Only the subsequent CONs use the server's MID sequence.
         else:
             if ty != 0:
                 raise AssertionError("later block is not CON")
@@ -96,12 +97,14 @@ def grade(trace, result, endpoints, *, complete, family="ipv4"):
                 if pending[:2] != (mid, wire):
                     raise AssertionError("NSTART1 bypass or changed retransmission")
                 retransmissions += 1
-            elif mid in mids or num != len(delivered):
-                raise AssertionError("reused MID or out-of-order CON")
+            elif mid in server_con_mids:
+                raise AssertionError("server reused CON MID")
+            elif num != len(delivered):
+                raise AssertionError("out-of-order CON block")
             else:
                 if num == 1 and action != "drop":
                     raise AssertionError("first block1 was not lost")
-                mids.add(mid)
+                server_con_mids.add(mid)
             pending = (mid, wire, action == "forward")
         if action == "drop":
             if num != 1:
