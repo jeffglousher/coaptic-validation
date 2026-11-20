@@ -74,6 +74,16 @@ def check_body(message, offset, size, etag, requested_block=None):
     return end, None, current
 
 
+def wait_for_slot(due_ns):
+    while True:
+        now = time.perf_counter_ns()
+        remaining = due_ns - now
+        if remaining <= 0:
+            return now
+        if remaining > 150_000:
+            time.sleep((remaining - 150_000) / 1_000_000_000)
+
+
 class Worker:
     def __init__(self, args, number, context, crypto_lock):
         self.args, self.number = args, number
@@ -194,6 +204,9 @@ def run(args):
                              (args.sequence, 0, 1 << 36)):
         if not low <= value <= high:
             raise ValueError("driver bounds")
+    rate = getattr(args, "rate", None)
+    if rate is not None and not (1 <= rate <= 1_000_000 and args.operations <= rate * 120):
+        raise ValueError("invalid offered rate or paced duration")
     per_endpoint = 65536 // ((args.bytes + 15) // 16)
     # Reserve a complete bootstrap plus a possible Echo retry conservatively
     # as two operations, including the smallest one-datagram representation.
@@ -218,7 +231,16 @@ def run(args):
         barrier.wait()
         barrier.wait()
         count = args.operations // args.concurrency + (worker.number < args.operations % args.concurrency)
-        for _ in range(count):
+        missed = 0
+        max_lateness = 0
+        for index in range(count):
+            if rate is not None:
+                ordinal = index * args.concurrency + worker.number
+                due = start + ordinal * 1_000_000_000 // rate
+                next_due = start + (ordinal + 1) * 1_000_000_000 // rate
+                actual = wait_for_slot(due)
+                missed += int(actual >= next_due)
+                max_lateness = max(max_lateness, actual - due)
             try:
                 latencies.append(worker.exchange(sequence))
             except Exception as error:
@@ -226,7 +248,7 @@ def run(args):
                 label = type(error).__name__
                 reasons[label] = reasons.get(label, 0) + 1
             sequence += 1
-        return latencies, failures, warmup_failed, reasons
+        return latencies, failures, warmup_failed, reasons, missed, max_lateness
 
     try:
         for worker in workers:
@@ -244,7 +266,7 @@ def run(args):
         for row in rows:
             for key, value in row[3].items():
                 reasons[key] = reasons.get(key, 0) + value
-        return dict(schema="coaptic-load/1", protocol="coap", security=args.security, mode=args.mode,
+        report = dict(schema="coaptic-load/1", protocol="coap", security=args.security, mode=args.mode,
                     concurrency=args.concurrency, warmup=args.warmup, attempted=args.operations,
                     completed=len(latencies), failed=failed, warmup_failed=warmup_failed, driver_failures=reasons.get("DriverError", 0),
                     endpoint_rotations=sum(len(w.retired) for w in workers), verified_bytes=len(latencies) * args.bytes,
@@ -253,6 +275,14 @@ def run(args):
                     bootstrap="complete verified GET per worker before warmup/timing; at most one authenticated Echo retry",
                     elapsed_ns=elapsed, latencies_ns=latencies, failure_types=reasons, clock="time.perf_counter_ns",
                     measurement="closed-loop; Python/GIL, authentication and complete byte validation included")
+        if rate is not None:
+            report.update(
+                requested_operations_per_second=rate,
+                pacing_missed_period_operations=sum(row[4] for row in rows),
+                pacing_max_lateness_ns=max(row[5] for row in rows),
+                measurement="absolute start schedule; Python/GIL, authentication and full byte validation inside operation latency",
+            )
+        return report
     finally:
         for worker in workers:
             worker.close()
@@ -264,6 +294,7 @@ def main():
         parser.add_argument("--" + name, required=True)
     for name in ("port", "bytes", "concurrency", "operations", "warmup", "timeout-ms", "sequence"):
         parser.add_argument("--" + name, type=int, required=True)
+    parser.add_argument("--rate", type=int)
     args = parser.parse_args()
     if args.mode not in ("con", "non") or args.security not in ("unprotected", SECURITY):
         parser.error("unsupported mode/security")

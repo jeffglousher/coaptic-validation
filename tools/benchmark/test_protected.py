@@ -76,6 +76,23 @@ class ProtectedTests(unittest.TestCase):
         bootstrap.assert_called_once()
         self.assertEqual((result["attempted"], result["completed"], result["failed"], result["warmup_failed"],
                           result["driver_failures"], result["verified_bytes"]), (2, 1, 1, 1, 1, 64))
+        self.assertNotIn("requested_operations_per_second", result)
+
+    def test_paced_workers_share_one_schedule_and_count_every_missed_period(self):
+        args = SimpleNamespace(host="127.0.0.1", port=1, bytes=64, concurrency=2, operations=5,
+                               warmup=0, timeout_ms=1000, sequence=0, mode="con",
+                               security="unprotected", rate=400)
+        period = 2_500_000
+        with patch.object(Worker, "bootstrap"), patch.object(Worker, "exchange", return_value=100):
+            with patch("load.wait_for_slot", side_effect=lambda due: due + period) as wait:
+                result = run(args)
+        due = sorted(call.args[0] for call in wait.call_args_list)
+        self.assertEqual([value - due[0] for value in due], [0, period, 2 * period, 3 * period, 4 * period])
+        self.assertEqual(result["completed"], 5)
+        self.assertEqual(result["failed"], 0)
+        self.assertEqual(result["requested_operations_per_second"], 400)
+        self.assertEqual(result["pacing_missed_period_operations"], 5)
+        self.assertEqual(result["pacing_max_lateness_ns"], period)
 
     def echo_worker(self, responses, *, tamper=False):
         server = Context(self.credentials, server=True)
