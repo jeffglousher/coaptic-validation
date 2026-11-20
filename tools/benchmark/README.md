@@ -350,6 +350,24 @@ Architecture and further workload decisions are tracked in
 [#341](https://github.com/jeffglousher/coaptic/issues/341). Existing interop,
 plugtest and device qualification retain their own acceptance and reports.
 
+## Matched offered-rate UDP peer measurements
+
+The independent `protected/load.py` driver accepts an optional
+`--rate OPERATIONS_PER_SECOND`. Append the flag and a fixed value to its
+driver command in the benchmark manifest. The value is the aggregate
+complete-operation start rate across workers. An absolute monotonic schedule
+assigns slots across endpoints. Each worker keeps one outstanding datagram
+and verifies every fragment and the complete body. The driver counts starts
+at least one period late and reports maximum start lateness. It accounts for
+every scheduled operation, including late starts. A paced comparison must
+check these fields alongside completion rate and latency.
+
+Bootstrap and warmup precede pacing. Latency starts after pacing and includes
+the independent client's exchanges and verification. Use the same driver,
+payloads, protection, worker count and offered rate across peers. Closed-loop
+behavior and report fields retain their existing defaults when the option
+is omitted.
+
 ## CPU cost and paced native operations
 
 `native_diagnostic.py` measures Coaptic at both ends, including established
