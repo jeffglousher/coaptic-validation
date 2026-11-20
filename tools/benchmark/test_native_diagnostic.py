@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, Mock, patch
 from native_diagnostic import (ADMISSION_DIAGNOSTIC_LIMIT, control_line, cpu_cost, main, measure,
                                PROC_MEMORY_READ_LIMIT, PROC_MEMORY_RESULT_LIMIT, _proc_memory_fields,
                                process_cycle_cost, process_memory_evidence, snapshot, server_resources,
-                               validate_admission_diagnostics, validate_report)
+                               validate_admission_diagnostics, validate_group_report, validate_report)
 from native_profiles import dimensions, PROFILE_SIZES
 
 
@@ -303,6 +303,20 @@ class ReportTests(unittest.TestCase):
                     boundary.assert_not_called()
         result, _ = self.run_profile_fixture("service-fixed", 16384, concurrency=4, independent_endpoints=True)
         self.assertEqual(result["server_resources"]["tx_body_slots"], 4)
+
+    def test_group_report_requires_all_calls_and_full_overlap(self):
+        report = dict(start_group_width=4, peak_pending=4, verified_completions=[2] * 4,
+                      overlapping_completions=[2, 2, 1, 1])
+        validate_group_report(report, 8, 4, True)
+        with self.assertRaises(ValueError):
+            validate_group_report(report, 8, 4, False)
+        for changed in (dict(start_group_width=True), dict(peak_pending=3),
+                        dict(verified_completions=[3, 2, 1, 2]),
+                        dict(overlapping_completions=[2, 2, 1, 0]),
+                        dict(overlapping_completions=[3, 1, 1, 1]),
+                        dict(overlapping_completions=None)):
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                validate_group_report(report | changed, 8, 4, True)
 
     def test_async_profiles_reach_matching_commands_ledgers_and_concurrency(self):
         for profile, sizes in PROFILE_SIZES.items():

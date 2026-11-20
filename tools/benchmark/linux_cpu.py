@@ -29,7 +29,7 @@ import threading
 import time
 
 from native_lock import native_lock
-from native_profiles import validate_concurrency, PROFILE_SIZES, dimensions, validate_profile
+from native_profiles import validate_concurrency, PROFILE_SIZES, dimensions, validate_profile, validate_start_groups
 
 
 MIB = 1024 * 1024
@@ -130,6 +130,8 @@ def configuration(args):
     plan = rotation(args, cells)
     for mode, _, (_, size, rate, _), _ in plan:
         operations = rate * (args.seconds if mode == "clean" else PROFILE_SECONDS)
+        validate_start_groups(getattr(args, "group_starts", False), args.concurrency,
+                              getattr(args, "independent_endpoints", False), rate, operations)
         if long_window and not 1 <= operations <= 60_000:
             raise ValueError("native operation count must be 1..60000")
         minimum = (WARMUP + operations) * math.ceil(size / 1024)
@@ -1579,7 +1581,8 @@ def save_window(directory, result):
 
 def window(server, client, cell, operations, directory, mode="clean", quota=8 * MIB,
            *, concurrency=1, message_type="con", admission_diagnostics=False,
-           resource_profile="host-control", independent_endpoints=False, long_window=False, syscall_observer=None):
+           resource_profile="host-control", independent_endpoints=False, long_window=False, syscall_observer=None,
+           group_starts=False):
     security, size, rate, kind = cell
     if syscall_observer is not None and (mode != "clean" or kind != "coaptic-mio"
             or concurrency != 1 or message_type != "con" or admission_diagnostics
@@ -1590,6 +1593,7 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
     validate_profile(resource_profile, kind, size, concurrency=concurrency,
                      message_type=message_type, security=security, independent_endpoints=independent_endpoints,
                      admission_diagnostics=admission_diagnostics)
+    validate_start_groups(group_starts, concurrency, independent_endpoints, rate, operations)
     duration = operations // rate if type(rate) is int and rate > 0 else 0
     wait_seconds = measurement_timeout(duration, long_window)
     if long_window and (mode != "clean" or resource_profile == "host-control" or kind != "coaptic-mio"
@@ -1612,6 +1616,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
               "paced_span_limit_seconds": 1500 if long_window else 120,
               "operation_deadline_ms": 3000, "outbound_datagram_limit": DATAGRAM_BUDGET,
               "load_before": os.getloadavg()}
+    if group_starts:
+        result["group_starts"] = True
     if admission_diagnostics:
         result["admission_diagnostics"] = True
     if syscall_observer is not None:
@@ -1638,6 +1644,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                        "--concurrency", str(concurrency), "--message-type", message_type]
         if independent_endpoints:
             client_args.append("--independent-endpoints")
+        if group_starts:
+            client_args.append("--group-starts")
         if long_window:
             client_args.append("--long-window")
         if admission_diagnostics:
@@ -1725,7 +1733,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                     report = json.loads(raw)
                     result["report"] = report_summary(report)
                     native.validate_report(report, size, operations, "spin", security, rate,
-                                           concurrency, message_type, admission_diagnostics, independent_endpoints=independent_endpoints)
+                                           concurrency, message_type, admission_diagnostics,
+                                           independent_endpoints=independent_endpoints, group_starts=group_starts)
                     if long_window and any(type(report.get(key)) is not type(value) or report[key] != value
                                            for key, value in (("long_window", True), ("paced_span_limit_seconds", 1500),
                                                               ("operation_deadline_ms", 3000),
@@ -1802,8 +1811,12 @@ def accepted(result, tick):
                          result["bytes"], concurrency=result.get("concurrency"),
                          message_type=result.get("message_type"), security=result["security"],
                          independent_endpoints=result.get("independent_endpoints", False))
-        from native_diagnostic import validate_endpoint_report
+        from native_diagnostic import validate_endpoint_report, validate_group_report
         validate_endpoint_report(result["report"], result.get("concurrency"), result.get("independent_endpoints", False), require_overlap=True)
+        group_starts = result.get("group_starts", False)
+        validate_start_groups(group_starts, result.get("concurrency"), result.get("independent_endpoints", False),
+                              result["rate"], result.get("operations"))
+        validate_group_report(result["report"], result.get("operations"), result.get("concurrency"), group_starts)
     except ValueError:
         return False
     report = result["report"]
@@ -1824,6 +1837,8 @@ def report_latencies(result):
     raw = bounded_read(result["report_file"], report_limit(result["operations"]))
     report = json.loads(raw)
     report_summary(report)
+    from native_diagnostic import validate_group_report
+    validate_group_report(report, result["operations"], result.get("concurrency"), result.get("group_starts", False))
     values = report["latencies_ns"]
     if (len(values) != result["report"]["completed"]
             or report.get("concurrency") != result.get("concurrency")
@@ -1841,7 +1856,8 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
             key = (item["security"], item["bytes"], item["rate"],
                    adapter_pair[0] if adapter_pair else item["server_kind"],
                    item.get("concurrency"), item.get("message_type"),
-                   item.get("resource_profile", "host-control"), item.get("independent_endpoints", False))
+                   item.get("resource_profile", "host-control"), item.get("independent_endpoints", False),
+                   item.get("group_starts", False))
             groups.setdefault(key, []).append(item)
     output = []
     cleanup_failed = any(unresolved_cleanup(item) for item in results)
@@ -1849,7 +1865,9 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
                      or "admission_diagnostics" in item.get("report", {}) for item in results)
     for key, items in groups.items():
         record = dict(zip(("security", "bytes", "rate", "server_kind", "concurrency", "message_type",
-                           "resource_profile", "independent_endpoints"), key))
+                           "resource_profile", "independent_endpoints"), key[:-1]))
+        if key[-1]:
+            record["group_starts"] = True
         labels = {label: [i for i in items if i["revision_label"] == label]
                   for label in ("baseline", "candidate")}
         kinds = dict(zip(("baseline", "candidate"), adapter_pair or (key[3], key[3])))
@@ -1965,6 +1983,7 @@ def run(args):
                                    **partition,
                                    "perf": args.perf, "concurrency": args.concurrency,
                                    "independent_endpoints": getattr(args, "independent_endpoints", False),
+                                   "group_starts": getattr(args, "group_starts", False),
                                    "admission_diagnostics": diagnostic,
                                    "message_type": args.message_type,
                                    "candidate_server_kind": args.candidate_server_kind,
@@ -1990,6 +2009,7 @@ def run(args):
                 "cells": cells, "seconds": args.seconds, "repeats": args.repeats,
                 "concurrency": args.concurrency, "message_type": args.message_type,
                 "independent_endpoints": getattr(args, "independent_endpoints", False),
+                "group_starts": getattr(args, "group_starts", False),
                 "adapter_pair": adapter_pair, "comparison_type": comparison_type,
                 "admission_diagnostics": diagnostic,
                 "admission_diagnostic_limit_bytes": ADMISSION_DIAGNOSTIC_LIMIT,
@@ -2022,7 +2042,8 @@ def run(args):
                             out / f"window-{index:03}", mode, quota,
                             concurrency=args.concurrency, message_type=args.message_type,
                             admission_diagnostics=diagnostic, resource_profile=profile,
-                            independent_endpoints=getattr(args, "independent_endpoints", False), long_window=long_window)
+                            independent_endpoints=getattr(args, "independent_endpoints", False), long_window=long_window,
+                            group_starts=getattr(args, "group_starts", False))
             result.update(revision_label=label, core_sha=builds[label]["core"]["revision"], repeat=repeat,
                           server_sha256=digest(server), client_sha256=digest(client), index=index)
             result["comparison_type"] = comparison_type
@@ -2093,6 +2114,7 @@ def argument_parser():
     parser.add_argument("--concurrency", type=int, choices=range(1, 5), default=1)
     parser.add_argument("--message-type", choices=("con", "non"), default="con")
     parser.add_argument("--independent-endpoints", action="store_true")
+    parser.add_argument("--group-starts", action="store_true")
     return parser
 
 

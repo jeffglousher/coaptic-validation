@@ -21,6 +21,14 @@ def validate_concurrency(concurrency, message_type, independent_endpoints=False)
         raise ValueError("concurrency bounds 1..4; per-endpoint NSTART=1; C2..4 CON requires actual independent endpoints")
 
 
+def validate_start_groups(selected, concurrency, independent_endpoints, rate, operations):
+    if type(selected) is not bool or (selected and (
+            independent_endpoints is not True or type(concurrency) is not int or concurrency not in (2, 3, 4)
+            or type(rate) is not int or rate <= 0 or type(operations) is not int
+            or operations <= 0 or operations % concurrency)):
+        raise ValueError("group starts require paced independent CON endpoints and complete groups")
+
+
 def validate_profile(profile, kind, size, *, concurrency=1, message_type="con",
                      security=None, admission_diagnostics=False, independent_endpoints=False):
     if profile not in PROFILE_SIZES:
