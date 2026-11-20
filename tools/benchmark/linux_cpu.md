@@ -367,6 +367,22 @@ do not restart it. Ready/startup guards, report 15 seconds, profiler, cleanup an
 runner's 120-second planning guard is outside this path and remains unchanged.
 Unresolved cleanup remains fatal and vetoes comparisons.
 
+#### Same-binary peer CPU placement diagnostic
+
+`--peer-cpu-control` is an optional long partition with the same core SHA
+and identical executables in both labels. It keeps the existing workload,
+window count, timeouts and evidence allowances. The baseline uses the
+inherited CPU mask. The alternate assigns the two single-threaded peers
+to CPUs on distinct cores according to the guest's Linux topology. The
+runner checks both observed masks before and after traffic. Only the
+owned peer processes are affected. Guest topology supplies the placement
+rule and gives no guarantee of dedicated physical hosts.
+
+The manual workflow exposes `peer_cpu_control`, off by default. The run
+retains paired timing and placement evidence and withholds all primary
+CPU ratios. Successful completion means the diagnostic windows ran and
+their processes settled.
+
 ### Optional C1 admission-interval diagnostic
 
 `--admission-diagnostics` is explicitly opt-in in the native client,

@@ -1407,6 +1407,22 @@ class AggregationTests(unittest.TestCase):
                 self.assertTrue(summary["admission_diagnostics"])
         self.assertEqual(cpu.aggregate(original, 2, .01), expected)
 
+    def test_peer_placement_vetoes_mixed_campaign_cpu_ratios(self):
+        values = self.pairs()
+        self.assertTrue(cpu.aggregate(values, 2, .01)[0]["comparable"])
+        values[0]["peer_cpu_control"] = True
+        values += [observation(self.root, label, repeat, size=1024)
+                   for repeat in range(2) for label in ("baseline", "candidate")]
+        self.assertFalse(cpu.accepted(values[0], .01))
+        with patch.object(cpu, "report_latencies") as latencies:
+            summaries = cpu.aggregate(values, 2, .01)
+        latencies.assert_not_called()
+        self.assertEqual(len(summaries), 2)
+        for summary in summaries:
+            self.assertFalse(summary["comparable"])
+            self.assertIsNone(summary["server_cpu_ratio"])
+            self.assertEqual(summary["comparison_type"], "peer_cpu_control")
+
     def test_same_source_adapter_pairs_are_explicit_and_reject_wrong_execution(self):
         kinds = ("coaptic-ready", "coaptic-async")
         values = self.pairs()
@@ -3343,6 +3359,48 @@ class LongWindowTests(unittest.TestCase):
         for seconds in (30, 1501):
             args.seconds = seconds
             with self.assertRaises(ValueError): cpu.configuration(args)
+
+    def test_peer_cpu_control_requires_identical_sources_and_long_mode(self):
+        args = self.selected(peer_cpu_control=True)
+        with self.assertRaisesRegex(ValueError, "same-source long"):
+            cpu.configuration(args)
+        args.candidate_sha = args.baseline_sha
+        self.assertEqual(cpu.configuration(args), [("oscore", 32, 100, "coaptic-mio")])
+        args.long_window = False
+        with self.assertRaisesRegex(ValueError, "same-source long"):
+            cpu.configuration(args)
+
+    def test_peer_cpu_plan_uses_distinct_guest_cores(self):
+        def sysfs(path, limit):
+            self.assertEqual(limit, 32)
+            if path.name == "physical_package_id":
+                return b"0\n"
+            return b"1\n" if path.parent.parent.name == "cpu2" else b"0\n"
+
+        with patch.object(cpu.os, "sched_getaffinity", return_value={0, 1, 2}, create=True), \
+                patch.object(cpu, "bounded_read", side_effect=sysfs):
+            topology = cpu.peer_cpu_plan()
+        self.assertEqual(topology, dict(inherited=[0, 1, 2], server=0, client=2,
+                                        topology={0: (0, 0), 1: (0, 0), 2: (0, 1)}))
+        with patch.object(cpu.os, "sched_getaffinity", return_value={0, 1}, create=True), \
+                patch.object(cpu, "bounded_read", side_effect=sysfs), \
+                self.assertRaisesRegex(ValueError, "no distinct cores"):
+            cpu.peer_cpu_plan()
+
+    def test_peer_cpu_masks_and_single_thread_checked(self):
+        peers = {name: argparse.Namespace(pid=pid, num_threads=lambda: 1)
+                 for name, pid in (("server", 101), ("client", 102))}
+        expected = {"server": [0], "client": [2]}
+        masks = {101: {0}, 102: {2}}
+        with patch.object(cpu.os, "sched_getaffinity", side_effect=masks.__getitem__, create=True):
+            self.assertEqual(cpu.verify_peer_cpus(peers, expected), expected)
+            masks[102] = {0, 2}
+            with self.assertRaisesRegex(ValueError, "CPU mask"):
+                cpu.verify_peer_cpus(peers, expected)
+            masks[102] = {2}
+            peers["client"].num_threads = lambda: 2
+            with self.assertRaisesRegex(ValueError, "single-thread"):
+                cpu.verify_peer_cpus(peers, expected)
 
     def test_grouped_long_service_preserves_rotation_and_send_bounds(self):
         args = self.selected()

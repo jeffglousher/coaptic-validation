@@ -78,6 +78,10 @@ on:
         description: Give paced independent CON endpoints the same start slots; require complete groups
         type: boolean
         default: false
+      peer_cpu_control:
+        description: Same-binary long diagnostic comparing inherited and separate guest cores; CPU qualification disabled
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -108,6 +112,7 @@ jobs:
       MESSAGE_TYPE: ${{ inputs.message_type }}
       INDEPENDENT_ENDPOINTS: ${{ inputs.independent_endpoints }}
       GROUP_STARTS: ${{ inputs.group_starts }}
+      PEER_CPU_CONTROL: ${{ inputs.peer_cpu_control }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -132,6 +137,7 @@ jobs:
               candidate_server_kind=(None if os.environ['CANDIDATE_SERVER_KIND'] == 'same'
                                      else os.environ['CANDIDATE_SERVER_KIND']),
               baseline_sha=os.environ['BASELINE_SHA'], candidate_sha=os.environ['CANDIDATE_SHA'],
+              peer_cpu_control=os.environ['PEER_CPU_CONTROL'] == 'true',
               concurrency=int(os.environ['CLIENT_CONCURRENCY']), message_type=os.environ['MESSAGE_TYPE'],
               independent_endpoints=os.environ['INDEPENDENT_ENDPOINTS'] == 'true',
               group_starts=os.environ['GROUP_STARTS'] == 'true'))
@@ -212,6 +218,7 @@ jobs:
           if [[ "$ADMISSION_DIAGNOSTICS" == true ]]; then options+=(--admission-diagnostics); fi
           if [[ "$INDEPENDENT_ENDPOINTS" == true ]]; then options+=(--independent-endpoints); fi
           if [[ "$GROUP_STARTS" == true ]]; then options+=(--group-starts); fi
+          if [[ "$PEER_CPU_CONTROL" == true ]]; then options+=(--peer-cpu-control); fi
           if [[ "$CANDIDATE_SERVER_KIND" != same ]]; then options+=(--candidate-server-kind "$CANDIDATE_SERVER_KIND"); fi
           "$RUNNER_TEMP/cpu-venv/bin/python" tools/benchmark/linux_cpu.py \
             --baseline-sha "$BASELINE_SHA" --candidate-sha "$CANDIDATE_SHA" \

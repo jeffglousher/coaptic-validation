@@ -107,6 +107,10 @@ def configuration(args):
     security = getattr(args, "security_mode", "both")
     if type(long_window) is not bool or security not in ("both", "unprotected", "oscore"):
         raise ValueError("invalid long-window/security selection")
+    peer_cpu_control = getattr(args, "peer_cpu_control", False)
+    if type(peer_cpu_control) is not bool or (peer_cpu_control and (
+            not long_window or sha40(args.baseline_sha) != sha40(args.candidate_sha))):
+        raise ValueError("peer CPU placement requires a same-source long diagnostic partition")
     if long_window:
         if (profile == "host-control" or len(sizes) != 1 or len(rates) != 1
                 or security == "both" or args.server_kind != "coaptic-mio"
@@ -1564,7 +1568,7 @@ def save_window(directory, result):
         identity_fields = {key: result[key] for key in
                            ("mode", "security", "bytes", "rate", "server_kind", "operations",
                             "concurrency", "message_type", "cleanup_errors", "revision_label",
-                            "core_sha", "repeat", "index", "comparison_type", "admission_diagnostics",
+                            "core_sha", "repeat", "index", "comparison_type", "admission_diagnostics", "peer_cpu_control",
                             "long_window", "measurement_timeout_seconds", "paced_span_limit_seconds",
                             "operation_deadline_ms", "outbound_datagram_limit")
                            if key in result}
@@ -1579,11 +1583,41 @@ def save_window(directory, result):
         save(directory / "result.json", result, WINDOW_LIMIT)
 
 
+def peer_cpu_plan():
+    """Select two distinct cores from the topology visible to this Linux guest."""
+    allowed = sorted(os.sched_getaffinity(0))
+    if not 2 <= len(allowed) <= 256:
+        raise ValueError("peer placement requires 2..256 allowed CPUs")
+    topology = {}
+    for cpu in allowed:
+        base = Path(f"/sys/devices/system/cpu/cpu{cpu}/topology")
+        package, core = (int(bounded_read(base / name, 32)) for name in ("physical_package_id", "core_id"))
+        if package < 0 or core < 0:
+            raise ValueError("peer placement requires known guest package and core IDs")
+        topology[cpu] = (package, core)
+    server = allowed[0]
+    client = next((cpu for cpu in allowed[1:] if topology[cpu] != topology[server]), None)
+    if client is None:
+        raise ValueError("no distinct cores in the allowed guest topology")
+    return dict(inherited=allowed, server=server, client=client, topology=topology)
+
+
+def verify_peer_cpus(peers, expected):
+    """The CPU setting applies to the only thread of each owned process."""
+    masks = {name: sorted(os.sched_getaffinity(proc.pid)) for name, proc in peers.items()}
+    if masks != expected or any(proc.num_threads() != 1 for proc in peers.values()):
+        raise ValueError("owned peer CPU mask or single-thread constraint changed")
+    return masks
+
+
 def window(server, client, cell, operations, directory, mode="clean", quota=8 * MIB,
            *, concurrency=1, message_type="con", admission_diagnostics=False,
            resource_profile="host-control", independent_endpoints=False, long_window=False, syscall_observer=None,
-           group_starts=False):
+           group_starts=False, peer_cpus=None, separate_peers=False):
     security, size, rate, kind = cell
+    if ((separate_peers and peer_cpus is None) or (peer_cpus is not None and (
+            not long_window or mode != "clean" or syscall_observer is not None))):
+        raise ValueError("peer CPU placement requires an unprofiled long window")
     if syscall_observer is not None and (mode != "clean" or kind != "coaptic-mio"
             or concurrency != 1 or message_type != "con" or admission_diagnostics
             or independent_endpoints or long_window):
@@ -1622,6 +1656,9 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
         result["admission_diagnostics"] = True
     if syscall_observer is not None:
         result["syscall_diagnostic"] = True
+    if peer_cpus is not None:
+        result["peer_cpu_control"] = True
+        result["peer_cpu_placement"] = {"mode": "separate" if separate_peers else "inherited"}
     sut = child = None
     clock_evidence = ({"schema": "coaptic-linux-process-cpu-clock/1",
                        "backend": "clock_getcpuclockid + time.clock_gettime_ns/clock_getres",
@@ -1689,6 +1726,14 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                     directory / "server.log", kind, deadline=time.monotonic() + 60, server=sut,
                     resource_profile=resource_profile, size=size, security=security, rx_bytes=rx_bytes)
                 peers = {"server": psutil.Process(sut.pid), "client": psutil.Process(child.pid)}
+                if peer_cpus is not None:
+                    inherited = dict.fromkeys(peers, peer_cpus["inherited"])
+                    verify_peer_cpus(peers, inherited)
+                    expected = {name: [peer_cpus[name]] for name in peers} if separate_peers else inherited
+                    if separate_peers:
+                        for name, proc in peers.items():
+                            os.sched_setaffinity(proc.pid, expected[name])
+                    result["peer_cpu_placement"]["before"] = verify_peer_cpus(peers, expected)
                 clocks = ({name: ProcessCpuClock(proc) for name, proc in
                            (("server", sut), ("client", child))} if mode == "clean" else {})
                 if clocks:
@@ -1718,6 +1763,8 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
                     resource_ns = time.perf_counter_ns() - started
                     if clocks:
                         clock_evidence["after"] = {name: clock.snapshot() for name, clock in clocks.items()}
+                    if peer_cpus is not None:
+                        result["peer_cpu_placement"]["after"] = verify_peer_cpus(peers, expected)
                     if mode == "record":
                         result["scheduler_after"] = scheduler_snapshot(sut.pid)
                         result["scheduler_delta"] = scheduler_delta(result["scheduler_before"],
@@ -1802,6 +1849,7 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
 
 def accepted(result, tick):
     if (not result.get("passed") or result["mode"] != "clean"
+            or result.get("peer_cpu_control", False) is not False
             or result.get("syscall_diagnostic", False) is not False
             or result.get("admission_diagnostics", False) is not False
             or "admission_diagnostics" in result.get("report", {})):
@@ -1875,6 +1923,7 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
     cleanup_failed = any(unresolved_cleanup(item) for item in results)
     diagnostic = any(item.get("admission_diagnostics", False) is not False
                      or "admission_diagnostics" in item.get("report", {}) for item in results)
+    placement_control = any(item.get("peer_cpu_control", False) is not False for item in results)
     for key, items in groups.items():
         record = dict(zip(("security", "bytes", "rate", "server_kind", "concurrency", "message_type",
                            "resource_profile", "independent_endpoints"), key[:-1]))
@@ -1891,7 +1940,7 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
             label: [i.get("report", {}).get("peak_pending")
                     for i in sorted(group, key=lambda i: i["repeat"])]
             for label, group in labels.items()}
-        valid = campaign_complete and not cleanup_failed and not diagnostic and all(
+        valid = campaign_complete and not cleanup_failed and not diagnostic and not placement_control and all(
                     len(group) == repeats and {i["repeat"] for i in group} == set(range(repeats))
                     and all(accepted(i, tick) for i in group) for group in labels.values())
         long_partition = any(i.get("long_window", False) for i in items)
@@ -1914,6 +1963,9 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
         if diagnostic:
             record.update(admission_diagnostics=True,
                           eligibility="admission instrumentation present; all CPU comparisons vetoed; no clean/diagnostic mixing")
+        if placement_control:
+            record.update(comparison_type="peer_cpu_control",
+                          eligibility="diagnostic placement; primary CPU comparisons vetoed")
         if valid:
             costs = {}
             per_repeat = {label: {} for label in labels}
@@ -1953,6 +2005,7 @@ def run(args):
     diagnostic = getattr(args, "admission_diagnostics", False)
     long_window = getattr(args, "long_window", False)
     security_mode = getattr(args, "security_mode", "both")
+    peer_cpu_control = getattr(args, "peer_cpu_control", False)
     setup_logs = getattr(args, "setup_logs", None)
     partition = dict(long_window=long_window, security_mode=security_mode,
                      partial_matrix=long_window, measurement_timeout_seconds=measurement_timeout(args.seconds, long_window),
@@ -1961,6 +2014,9 @@ def run(args):
     adapter_pair = ((args.server_kind, args.candidate_server_kind)
                     if args.candidate_server_kind is not None else None)
     comparison_type = "admission_diagnostic" if diagnostic else ("application_scheduling" if adapter_pair else "core_revision")
+    if peer_cpu_control:
+        comparison_type = "peer_cpu_control"
+        partition["peer_cpu_control"] = True
     plan = rotation(args, cells)
     metadata_bytes = metadata_allowance(plan, args.seconds)
     perf_slots = sum(mode != "clean" for mode, _, _, _ in plan)
@@ -1995,6 +2051,7 @@ def run(args):
                                    "candidate_server_kind": args.candidate_server_kind,
                                    "comparison_type": comparison_type,
                                    "RUSTUP_TOOLCHAIN": FLAGS["RUSTUP_TOOLCHAIN"]})
+        peer_cpus = peer_cpu_plan() if peer_cpu_control else None
         suite_identity = identity(SUITE)
         if suite_identity["status"] or identity(SUITE / "coaptic")["status"]:
             raise ValueError("commit the source first; clean suite/core required")
@@ -2026,6 +2083,11 @@ def run(args):
         save(out / "manifest.json", manifest)
         baseline = build(args, "baseline", args.baseline_sha, out)
         candidate = build(args, "candidate", args.candidate_sha, out, expected=baseline)
+        if peer_cpu_control:
+            for binary in ("bench-rust-server", "bench-native-client"):
+                if baseline["binaries"][binary]["sha256"] != candidate["binaries"][binary]["sha256"]:
+                    raise ValueError("peer CPU placement requires identical executable bytes")
+            manifest["peer_cpu_plan"] = peer_cpus
         matching_lock_inputs(baseline, candidate)
         for field in ("native_manifest_sha256", "target", "rustc", "cargo", "flags"):
             if baseline[field] != candidate[field]:
@@ -2049,7 +2111,8 @@ def run(args):
                             concurrency=args.concurrency, message_type=args.message_type,
                             admission_diagnostics=diagnostic, resource_profile=profile,
                             independent_endpoints=getattr(args, "independent_endpoints", False), long_window=long_window,
-                            group_starts=getattr(args, "group_starts", False))
+                            group_starts=getattr(args, "group_starts", False),
+                            **(dict(peer_cpus=peer_cpus, separate_peers=label == "candidate") if peer_cpu_control else {}))
             result.update(revision_label=label, core_sha=builds[label]["core"]["revision"], repeat=repeat,
                           server_sha256=digest(server), client_sha256=digest(client), index=index)
             result["comparison_type"] = comparison_type
@@ -2064,7 +2127,7 @@ def run(args):
             if unresolved_cleanup(result):
                 raise RuntimeError("owned process termination unresolved; campaign aborted")
         return (all(r["passed"] for r in results if r["mode"] == "clean")
-                and (not long_window or all(row["comparable"] for row in
+                and (not long_window or peer_cpu_control or all(row["comparable"] for row in
                      aggregate(results, args.repeats, 1 / os.sysconf("SC_CLK_TCK")))))
     except Exception as error:
         save(out / "failure.json", {"type": type(error).__name__, "reason": str(error)[:4096]})
@@ -2121,6 +2184,8 @@ def argument_parser():
     parser.add_argument("--message-type", choices=("con", "non"), default="con")
     parser.add_argument("--independent-endpoints", action="store_true")
     parser.add_argument("--group-starts", action="store_true")
+    parser.add_argument("--peer-cpu-control", action="store_true",
+                        help="same-binary long placement diagnostic; primary CPU ratios vetoed")
     return parser
 
 
