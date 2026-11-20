@@ -975,19 +975,27 @@ def build(args, label, revision, out, *, expected=None):
 
 
 def matching_lock_inputs(baseline, candidate):
-    """Both builds must select from the same validated, committed input pair."""
+    """Both builds must select from the same validated, committed native locks."""
     for build_record in (baseline, candidate):
         selected = build_record["native_lock_input"]
         requirement = selected["syn_requirement"]
         if requirement not in ("2", "3"):
             raise ValueError("unsupported recorded native lock requirement")
-        expected = selected["canonical_base_sha256"] if requirement == "2" else selected["syn3_sha256"]
+        aes_requirement = selected.get("aes_requirement")
+        if aes_requirement is not None and not selected.get("historical_aes_sha256"):
+            raise ValueError("missing committed historical AES lock evidence")
+        if aes_requirement == "=0.9.3" and requirement == "2":
+            expected = selected["historical_aes_sha256"]
+        elif aes_requirement in (None, "=0.9.4"):
+            expected = selected["canonical_base_sha256"] if requirement == "2" else selected["syn3_sha256"]
+        else:
+            raise ValueError("unsupported recorded native AES/Syn pins")
         if (selected["selected_sha256"] != expected
                 or build_record["native_lock_sha256"] != expected):
             raise ValueError("recorded native lock differs from selected input")
-    for field in ("canonical_base_sha256", "syn3_sha256"):
-        if baseline["native_lock_input"][field] != candidate["native_lock_input"][field]:
-            raise ValueError("native lock input pair differs: " + field)
+    for field in ("canonical_base_sha256", "syn3_sha256", "historical_aes_sha256"):
+        if baseline["native_lock_input"].get(field) != candidate["native_lock_input"].get(field):
+            raise ValueError("native lock inputs differ: " + field)
 
 
 def perf_command(mode, pid, seconds, output, quota, *, event="cpu-clock", control_paths=None):

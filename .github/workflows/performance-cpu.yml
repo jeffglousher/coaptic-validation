@@ -142,7 +142,7 @@ jobs:
           components: clippy
       - name: Python checks and one runner build lane
         env:
-          COAPTIC_PRIVILEGED_CLEANUP_TESTS: '1'
+          COAPTIC_PRIVILEGED_CLEANUP_TESTS: ${{ inputs.perf && '1' || '0' }}
         run: |
           mkdir -p "$RUNNER_TEMP/cpu-build-lane" "$RUNNER_TEMP/cpu-setup-logs"
           python3 -m venv "$RUNNER_TEMP/cpu-venv"
@@ -153,7 +153,9 @@ jobs:
             test_core_cost_probe test_perf_sampling_probe test_native_lock
           # Never change perf_event_paranoid or install a kernel/profiling service.
           # Missing perf/sudo, unsupported events and permission refusal are raw artifacts.
-          (ulimit -f 2048; { command -v perf; perf --version; command -v prlimit; uname -a; } >"$RUNNER_TEMP/cpu-setup-logs/perf-tools.log" 2>&1) || true
+          if [[ "$PERF_ENABLED" == true ]]; then
+            (ulimit -f 2048; { command -v perf; perf --version; command -v prlimit; uname -a; } >"$RUNNER_TEMP/cpu-setup-logs/perf-tools.log" 2>&1) || true
+          fi
       - name: Native endpoint and staged driver proof before measurement
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/cpu-build-lane

@@ -385,6 +385,14 @@ shape before attributing complete-operation differences to the server.
 
 ## CPU cost and paced native operations
 
+The manual Linux runner selects the committed native lock from each core
+manifest. The original #650 source uses AES 0.9.3 with Syn 2. Current
+sources use the canonical AES 0.9.4 lock or its Syn 3 variant. The runner
+validates each alternate against the canonical bytes, builds with
+--locked, restores the canonical file, and records the selected digests.
+Clean CPU comparisons can run with perf disabled and without privileged
+profiling checks.
+
 `native_diagnostic.py` measures Coaptic at both ends, including established
 OSCORE. It is separate from the independent comparator campaign. Select
 `--server-kind coaptic-reusable|coaptic-mio|coaptic-ready|coaptic-async|coaptic-blocking|coaptic-staged-mio`,
