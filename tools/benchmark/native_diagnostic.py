@@ -24,7 +24,7 @@ import time
 import sys
 
 import psutil
-from native_profiles import PROFILE_SIZES, dimensions, validate_concurrency, validate_profile
+from native_profiles import PROFILE_SIZES, dimensions, validate_concurrency, validate_profile, validate_start_groups
 
 
 SERVER_KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready", "coaptic-async",
@@ -497,12 +497,32 @@ def validate_endpoint_report(report, concurrency, selected, *, require_overlap=F
         raise ValueError("configured endpoint count did not demonstrate actual overlap/service")
 
 
+def validate_group_report(report, operations, concurrency, selected):
+    width = report.get("start_group_width")
+    if not selected:
+        if "start_group_width" in report:
+            raise ValueError("start group evidence in an individually paced cohort")
+        return
+    groups = operations // concurrency
+    overlap = report.get("overlapping_completions")
+    verified = report.get("verified_completions")
+    if (type(width) is not int or width != concurrency or report.get("peak_pending") != concurrency
+            or verified != [groups] * concurrency or any(type(value) is not int for value in verified)
+            or not isinstance(overlap, list) or len(overlap) != concurrency
+            or any(type(value) is not int or not 0 <= value <= groups for value in overlap)
+            or sum(overlap) != groups * (concurrency - 1)):
+        raise ValueError("incomplete group overlap or per-endpoint service")
+
+
 def validate_report(report, size, operations, policy, security, rate=None,
-                    concurrency=1, message_type="con", admission_diagnostics=False, independent_endpoints=False):
+                    concurrency=1, message_type="con", admission_diagnostics=False, independent_endpoints=False,
+                    group_starts=False):
     if not isinstance(report, dict):
         raise ValueError("native diagnostic report must be an object")
     validate_concurrency(concurrency, message_type, independent_endpoints)
     validate_endpoint_report(report, concurrency, independent_endpoints)
+    validate_start_groups(group_starts, concurrency, independent_endpoints, rate, operations)
+    validate_group_report(report, operations, concurrency, group_starts)
     if (report.get("schema") != "coaptic-native-complete/1"
             or type(report.get("bytes")) is not int or type(report.get("completed")) is not int
             or report.get("bytes") != size or report.get("completed") != operations
@@ -551,7 +571,8 @@ def validate_report(report, size, operations, policy, security, rate=None,
     if (type(achieved) not in (int, float) or not math.isfinite(achieved)
             or not math.isclose(achieved, expected_rate, rel_tol=1e-9)):
         raise ValueError("inconsistent achieved operation rate")
-    span = None if rate is None else (operations - 1) * 1_000_000_000 // rate
+    last_start = operations - (concurrency if group_starts else 1)
+    span = None if rate is None else last_start * 1_000_000_000 // rate
     if report.get("scheduled_dispatch_span_ns") != span or "scheduled_dispatch_span_ns" not in report:
         raise ValueError("inconsistent dispatch schedule")
     if span is not None and report["elapsed_ns"] < span:
@@ -570,7 +591,8 @@ def validate_report(report, size, operations, policy, security, rate=None,
 def measure(server, client, size, operations, warmup, timeout_ms, policy, security,
             *, server_kind="coaptic-reusable", rate=None, cpu_gated=False,
             phase_timeout_seconds=300, concurrency=1, message_type="con", admission_diagnostics=False,
-            independent_endpoints=False, resource_profile="host-control", windows_process_cycles=False):
+            independent_endpoints=False, resource_profile="host-control", windows_process_cycles=False,
+            group_starts=False):
     """Measure complete operations with additive wall-clock phase observations.
 
     Client startup and warmup share one ready signal and one combined duration.
@@ -590,6 +612,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
         return dict(snapshot(process), process_cycles=cycles)
 
     validate_concurrency(concurrency, message_type, independent_endpoints)
+    validate_start_groups(group_starts, concurrency, independent_endpoints, rate, operations)
     # Host diagnostics historically accept every bounded representation size.
     # Representative fixtures use the exact existing profile selections.
     if resource_profile != "host-control":
@@ -656,6 +679,8 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                 command.extend(["--concurrency", str(concurrency), "--message-type", message_type])
                 if independent_endpoints:
                     command.append("--independent-endpoints")
+                if group_starts:
+                    command.append("--group-starts")
                 if admission_diagnostics:
                     command.append("--admission-diagnostics")
                 command.append("--cpu-gated" if cpu_gated else "--gated")
@@ -688,7 +713,8 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                     raise RuntimeError("client refused measured operation")
                 report = json.loads(output)
                 validate_report(report, size, operations, policy, security, rate, concurrency, message_type,
-                                admission_diagnostics, independent_endpoints=independent_endpoints)
+                                admission_diagnostics, independent_endpoints=independent_endpoints,
+                                group_starts=group_starts)
                 if report["warmup"] != warmup:
                     raise ValueError("mismatched warmup")
                 if not cpu_gated:
@@ -773,6 +799,7 @@ def main():
     parser.add_argument("--concurrency", type=int, choices=range(1, 5), default=1)
     parser.add_argument("--message-type", choices=("con", "non"), default="con")
     parser.add_argument("--independent-endpoints", action="store_true")
+    parser.add_argument("--group-starts", action="store_true")
     parser.add_argument("--cpu-gated", action="store_true")
     parser.add_argument("--windows-process-cycles", action="store_true",
                         help="sample process cycles at the Windows CPU gates. Requires --cpu-gated")
@@ -788,7 +815,7 @@ def main():
                          phase_timeout_seconds=args.phase_timeout_seconds,
                          concurrency=args.concurrency, message_type=args.message_type, independent_endpoints=args.independent_endpoints,
                          admission_diagnostics=args.admission_diagnostics, resource_profile=args.resource_profile,
-                         windows_process_cycles=args.windows_process_cycles)
+                         windows_process_cycles=args.windows_process_cycles, group_starts=args.group_starts)
     except Exception as error:
         args.output.write_text(json.dumps(dict(passed=False, error_type=type(error).__name__,
                                               reason=str(error),

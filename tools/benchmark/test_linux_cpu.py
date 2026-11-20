@@ -3245,6 +3245,16 @@ class IndependentEndpointsTests(unittest.TestCase):
                 if key in changes: setattr(args,key,changes[key])
             with self.assertRaises(ValueError): cpu.configuration(args)
 
+    def test_group_plan_refuses_partial_groups_and_single_endpoint(self):
+        args = options(sizes="16384", resource_profile="service-fixed", server_kind="coaptic-mio",
+                       rates="50", seconds=30, perf=False, concurrency=4,
+                       independent_endpoints=True, group_starts=True)
+        self.assertEqual(len(cpu.configuration(args)), 2)
+        for change in (dict(rates="51"), dict(independent_endpoints=False, concurrency=1)):
+            bad = argparse.Namespace(**(vars(args) | change))
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, "group starts"):
+                cpu.configuration(bad)
+
     def test_acceptance_requires_port_ownership_per_lane_service_and_observed_overlap(self):
         from native_diagnostic import validate_endpoint_report
         report=dict(app_inline_bytes=32000, completed=1000, received_datagrams=1000, total_sent_datagrams=1000,
@@ -3275,6 +3285,20 @@ class IndependentEndpointsTests(unittest.TestCase):
         bad=deepcopy(report);bad["overlapping_completions"]=[0]*4;bad["peak_pending"]=1
         validate_endpoint_report(bad,4,True)
         with self.assertRaises(ValueError): validate_endpoint_report(bad,4,True,require_overlap=True)
+
+        grouped = deepcopy(result)
+        grouped.update(group_starts=True, operations=1000)
+        grouped["report"].update(start_group_width=4, overlapping_completions=[250, 250, 250, 0])
+        self.assertTrue(cpu.accepted(grouped, .01))
+        for change in (dict(start_group_width=2), dict(overlapping_completions=[250, 250, 249, 0])):
+            bad = deepcopy(grouped)
+            bad["report"].update(change)
+            self.assertFalse(cpu.accepted(bad, .01))
+        self.assertFalse(cpu.accepted(grouped | dict(group_starts=False), .01))
+        result["revision_label"] = grouped["revision_label"] = "baseline"
+        result["repeat"] = grouped["repeat"] = 0
+        classes = cpu.aggregate([result, grouped], 1, .01)
+        self.assertEqual({entry.get("group_starts", False) for entry in classes}, {True, False})
 
 
 class LongWindowTests(unittest.TestCase):

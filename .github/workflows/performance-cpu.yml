@@ -74,6 +74,10 @@ on:
         description: Explicit C2..4 CON over distinct local endpoints to one server; capacities still enforced
         type: boolean
         default: false
+      group_starts:
+        description: Give paced independent CON endpoints the same start slots; require complete groups
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -103,6 +107,7 @@ jobs:
       CLIENT_CONCURRENCY: ${{ inputs.client_concurrency }}
       MESSAGE_TYPE: ${{ inputs.message_type }}
       INDEPENDENT_ENDPOINTS: ${{ inputs.independent_endpoints }}
+      GROUP_STARTS: ${{ inputs.group_starts }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -128,7 +133,8 @@ jobs:
                                      else os.environ['CANDIDATE_SERVER_KIND']),
               baseline_sha=os.environ['BASELINE_SHA'], candidate_sha=os.environ['CANDIDATE_SHA'],
               concurrency=int(os.environ['CLIENT_CONCURRENCY']), message_type=os.environ['MESSAGE_TYPE'],
-              independent_endpoints=os.environ['INDEPENDENT_ENDPOINTS'] == 'true'))
+              independent_endpoints=os.environ['INDEPENDENT_ENDPOINTS'] == 'true',
+              group_starts=os.environ['GROUP_STARTS'] == 'true'))
           PY
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -205,6 +211,7 @@ jobs:
           if [[ "$PERF_ENABLED" == true ]]; then options+=(--perf); fi
           if [[ "$ADMISSION_DIAGNOSTICS" == true ]]; then options+=(--admission-diagnostics); fi
           if [[ "$INDEPENDENT_ENDPOINTS" == true ]]; then options+=(--independent-endpoints); fi
+          if [[ "$GROUP_STARTS" == true ]]; then options+=(--group-starts); fi
           if [[ "$CANDIDATE_SERVER_KIND" != same ]]; then options+=(--candidate-server-kind "$CANDIDATE_SERVER_KIND"); fi
           "$RUNNER_TEMP/cpu-venv/bin/python" tools/benchmark/linux_cpu.py \
             --baseline-sha "$BASELINE_SHA" --candidate-sha "$CANDIDATE_SHA" \

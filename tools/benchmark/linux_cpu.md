@@ -1186,7 +1186,17 @@ counts include protocol/control/invalid traffic and are not verified operations.
 The report names the bounded counter snapshot and Window metadata; neither
 size is a measured peak stack. CPU acceptance additionally
 requires actual observed overlap and service on every lane. A low-paced C4
-parameter alone cannot establish C4 overlap. No concurrency campaign is implied.
+parameter alone cannot establish C4 overlap.
+
+For low-rate groups, add `--group-starts` or enable the manual workflow's
+`group_starts` input. Select paced independent CON endpoints and complete
+groups of all selected lanes. Four endpoints at 50 starts/s share each
+80 ms group slot. A new group starts after the previous Calls terminate.
+Each group sends all requests before the client polls their responses.
+The receipt names the start group width and requires balanced completion
+counts and observed Call overlap for every group. Missed periods use the
+next group slot. Warmup retains its existing unpaced behavior. Grouped
+and individually paced measurements have separate comparison keys.
 
 Delaying one initial protected request while other endpoints advance the shared
 sequence beyond the server's replay window can legitimately cause replay refusal,

@@ -165,6 +165,7 @@ struct RunOptions {
     message_type: MessageType,
     admission_diagnostics: bool,
     independent_endpoints: bool,
+    group_starts: bool,
     long_window: bool,
 }
 impl Default for RunOptions {
@@ -176,6 +177,7 @@ impl Default for RunOptions {
             message_type: MessageType::Con,
             admission_diagnostics: false,
             independent_endpoints: false,
+            group_starts: false,
             long_window: false,
         }
     }
@@ -193,6 +195,13 @@ fn run_options(args: &mut Vec<String>) -> Result<RunOptions, &'static str> {
                     return Err("duplicate long window");
                 }
                 options.long_window = true;
+                args.remove(index);
+            }
+            "--group-starts" => {
+                if options.group_starts {
+                    return Err("duplicate group starts");
+                }
+                options.group_starts = true;
                 args.remove(index);
             }
             "--independent-endpoints" => {
@@ -278,6 +287,9 @@ fn run_options(args: &mut Vec<String>) -> Result<RunOptions, &'static str> {
     {
         return Err("independent endpoints require C2..4 CON");
     }
+    if options.group_starts && (options.rate.is_none() || !options.independent_endpoints) {
+        return Err("group starts require paced independent CON endpoints");
+    }
     if options.admission_diagnostics && (options.rate.is_none() || options.concurrency != 1) {
         return Err("admission diagnostics require paced concurrency 1");
     }
@@ -295,6 +307,14 @@ fn run_options(args: &mut Vec<String>) -> Result<RunOptions, &'static str> {
     Ok(options)
 }
 
+fn dispatch_index(options: &RunOptions, index: usize) -> usize {
+    if options.group_starts {
+        index - index % options.concurrency
+    } else {
+        index
+    }
+}
+
 fn paced_span_limit(options: &RunOptions) -> u64 {
     if options.long_window {
         LONG_PACED_SECONDS
@@ -307,8 +327,12 @@ fn validate_schedule(options: &RunOptions, operations: usize) -> Result<(), &'st
     if !(1..=MAX_OPERATIONS).contains(&operations) {
         return Err("diagnostic operation bounds");
     }
+    if options.group_starts && operations % options.concurrency != 0 {
+        return Err("group starts require a complete final group");
+    }
     if options.rate.is_some_and(|rate| {
-        scheduled_offset(operations - 1, rate) > Duration::from_secs(paced_span_limit(options))
+        scheduled_offset(dispatch_index(options, operations - 1), rate)
+            > Duration::from_secs(paced_span_limit(options))
     }) {
         return Err("paced dispatch schedule exceeds selected limit");
     }
@@ -526,21 +550,30 @@ fn run_window<T: DatagramIo>(
         let mut admitted = false;
         while window.attempted < operations && active < options.concurrency {
             let index = window.attempted;
+            // A new group starts after all Calls in the preceding group terminate.
+            if options.group_starts && active > 0 && index % options.concurrency == 0 {
+                break;
+            }
             let now = Instant::now();
             if pending.iter().flatten().any(|p| now >= p.deadline) {
                 window.failure = Some("complete operation deadline");
                 break;
             }
             if let Some(rate) = options.rate {
-                let scheduled = started + scheduled_offset(index, rate);
+                let slot = dispatch_index(options, index);
+                let scheduled = started + scheduled_offset(slot, rate);
                 if now < scheduled {
                     break;
                 }
                 let lateness = now.duration_since(scheduled);
                 let ns = lateness.as_nanos();
                 window.pacing_late_operations += usize::from(!lateness.is_zero());
-                window.pacing_missed_period_operations +=
-                    usize::from(lateness >= scheduled_offset(1, rate));
+                let missed = if options.group_starts {
+                    now >= started + scheduled_offset(slot + options.concurrency, rate)
+                } else {
+                    lateness >= scheduled_offset(1, rate)
+                };
+                window.pacing_missed_period_operations += usize::from(missed);
                 window.pacing_lateness_ns += ns;
                 window.pacing_max_lateness_ns = window.pacing_max_lateness_ns.max(ns);
                 if let Some(diagnostic) = &mut window.admission_diagnostics {
@@ -592,7 +625,7 @@ fn run_window<T: DatagramIo>(
                     diagnostic.idle_sleep_traversed = true;
                 }
                 std::thread::sleep(
-                    (started + scheduled_offset(window.attempted, rate))
+                    (started + scheduled_offset(dispatch_index(options, window.attempted), rate))
                         .saturating_duration_since(Instant::now()),
                 );
             }
@@ -665,7 +698,7 @@ fn run_client<T: ClientIo>(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let gated = options.gate != GateMode::None;
     if !(8..=9).contains(&args.len()) {
-        return Err("usage: bench-native-client PORT BYTES OPERATIONS WARMUP TIMEOUT_MS spin|sleep1 unprotected|oscore [CREDENTIALS] [--gated|--cpu-gated] [--rate OPS_PER_SEC] [--concurrency 1..4] [--message-type con|non] [--admission-diagnostics] [--independent-endpoints] [--long-window]".into());
+        return Err("usage: bench-native-client PORT BYTES OPERATIONS WARMUP TIMEOUT_MS spin|sleep1 unprotected|oscore [CREDENTIALS] [--gated|--cpu-gated] [--rate OPS_PER_SEC] [--concurrency 1..4] [--message-type con|non] [--admission-diagnostics] [--independent-endpoints] [--group-starts] [--long-window]".into());
     }
     let port: u16 = args[1].parse()?;
     let size: usize = args[2].parse()?;
@@ -693,7 +726,7 @@ fn run_client<T: ClientIo>(
     }
     let scheduled_span = options
         .rate
-        .map(|rate| scheduled_offset(operations - 1, rate));
+        .map(|rate| scheduled_offset(dispatch_index(&options, operations - 1), rate));
     let sleep = match args[6].as_str() {
         "spin" => false,
         "sleep1" => true,
@@ -735,6 +768,7 @@ fn run_client<T: ClientIo>(
     let warm_options = RunOptions {
         rate: None,
         admission_diagnostics: false,
+        group_starts: false,
         ..options
     };
     let warm = run_window(
@@ -804,6 +838,11 @@ fn run_client<T: ClientIo>(
         cancelled_inflight,
         ..
     } = window;
+    let group_json = if options.group_starts {
+        format!(",\"start_group_width\":{}", options.concurrency)
+    } else {
+        String::new()
+    };
     let endpoint_json = client.transport().endpoint_report(lane_before);
     let overlap_json = if options.independent_endpoints {
         format!(
@@ -828,7 +867,7 @@ fn run_client<T: ClientIo>(
     let long_window = options.long_window;
     let paced_span_limit_seconds = paced_span_limit(&options);
     println!(
-        "{{\"long_window\":{long_window},\"paced_span_limit_seconds\":{paced_span_limit_seconds},\"operation_deadline_ms\":{timeout_ms},\"outbound_datagram_limit\":{MAX_OUTBOUND_DATAGRAMS},\"minimum_planned_datagrams\":{minimum_planned_datagrams},\"schema\":\"coaptic-native-complete/1\",\"bytes\":{size},\"requested_operations\":{operations},\"attempted\":{attempted},\"completed\":{completed},\"failed\":{failed},\"unattempted\":{unattempted},\"failure\":{failure_json},\"concurrency\":{concurrency},\"message_type\":\"{message_type}\",\"peak_pending\":{peak_pending},\"cancelled_inflight\":{cancelled_inflight},\"pending_call_metadata_bytes\":{pending_call_metadata_bytes},\"rx_body_slots\":{rx_body_slots},\"total_sent_datagrams\":{total_sent_datagrams},\"warmup\":{warmup},\"elapsed_ns\":{elapsed},\"scheduled_rate_ops_per_second\":{rate_json},\"achieved_ops_per_second\":{achieved_rate},\"scheduled_dispatch_span_ns\":{span_json},\"pacing_late_operations\":{pacing_late_operations},\"pacing_missed_period_operations\":{pacing_missed_period_operations},\"pacing_total_lateness_ns\":{pacing_lateness_ns},\"pacing_max_lateness_ns\":{pacing_max_lateness_ns},\"pacing_dropped_operations\":0,\"pacing_semantics\":\"absolute operation-start deadlines; bounded outstanding Calls; late starts catch up without dropping; elapsed includes pacing; latencies exclude pacing\",\"received_datagrams\":{received},\"sent_datagrams\":{sent},\"latencies_ns\":{timings:?},\"core_heap_limit_bytes\":{heap_limit},\"app_inline_bytes\":{app_inline_bytes},\"verification_heap_bytes\":{verification_heap_bytes},\"timing_heap_bytes\":{timing_heap_bytes},\"udp_scratch_bytes\":1473,\"policy\":\"{}\",\"security\":\"{}\",\"measurement\":\"Coaptic client/server diagnostic; complete authenticated body verification; setup excluded; no durable recovery; heap request excludes allocator overhead; App inline includes UDP scratch\"{admission_json}{endpoint_json}{overlap_json}}}",
+        "{{\"long_window\":{long_window},\"paced_span_limit_seconds\":{paced_span_limit_seconds},\"operation_deadline_ms\":{timeout_ms},\"outbound_datagram_limit\":{MAX_OUTBOUND_DATAGRAMS},\"minimum_planned_datagrams\":{minimum_planned_datagrams},\"schema\":\"coaptic-native-complete/1\",\"bytes\":{size},\"requested_operations\":{operations},\"attempted\":{attempted},\"completed\":{completed},\"failed\":{failed},\"unattempted\":{unattempted},\"failure\":{failure_json},\"concurrency\":{concurrency},\"message_type\":\"{message_type}\",\"peak_pending\":{peak_pending},\"cancelled_inflight\":{cancelled_inflight},\"pending_call_metadata_bytes\":{pending_call_metadata_bytes},\"rx_body_slots\":{rx_body_slots},\"total_sent_datagrams\":{total_sent_datagrams},\"warmup\":{warmup},\"elapsed_ns\":{elapsed},\"scheduled_rate_ops_per_second\":{rate_json},\"achieved_ops_per_second\":{achieved_rate},\"scheduled_dispatch_span_ns\":{span_json},\"pacing_late_operations\":{pacing_late_operations},\"pacing_missed_period_operations\":{pacing_missed_period_operations},\"pacing_total_lateness_ns\":{pacing_lateness_ns},\"pacing_max_lateness_ns\":{pacing_max_lateness_ns},\"pacing_dropped_operations\":0,\"pacing_semantics\":\"absolute operation-start deadlines; bounded outstanding Calls; late starts catch up without dropping; elapsed includes pacing; latencies exclude pacing\",\"received_datagrams\":{received},\"sent_datagrams\":{sent},\"latencies_ns\":{timings:?},\"core_heap_limit_bytes\":{heap_limit},\"app_inline_bytes\":{app_inline_bytes},\"verification_heap_bytes\":{verification_heap_bytes},\"timing_heap_bytes\":{timing_heap_bytes},\"udp_scratch_bytes\":1473,\"policy\":\"{}\",\"security\":\"{}\",\"measurement\":\"Coaptic client/server diagnostic; complete authenticated body verification; setup excluded; no durable recovery; heap request excludes allocator overhead; App inline includes UDP scratch\"{admission_json}{endpoint_json}{overlap_json}{group_json}}}",
         args[6], args[7]
     );
     std::io::stdout().flush()?;
@@ -1268,6 +1307,42 @@ mod tests {
         }
         assert_eq!(client_capacities(64, 1).rx_datagram_slots, 4);
         assert_eq!(client_capacities(64, 1).tx_datagram_slots, 4);
+    }
+
+    #[test]
+    fn grouped_start_selector_and_absolute_slot_boundaries() {
+        let mut flags = args(&[
+            "client",
+            "--rate",
+            "50",
+            "--concurrency",
+            "4",
+            "--independent-endpoints",
+            "--group-starts",
+        ]);
+        let options = run_options(&mut flags).unwrap();
+        assert!(options.group_starts && options.independent_endpoints);
+        assert!(validate_schedule(&options, 1_500).is_ok());
+        assert!(validate_schedule(&options, 1_501).is_err());
+        for index in 0..4 {
+            assert_eq!(dispatch_index(&options, index), 0);
+        }
+        assert_eq!(
+            scheduled_offset(dispatch_index(&options, 7), 50),
+            Duration::from_millis(80)
+        );
+        assert!(run_options(&mut args(&["client", "--group-starts", "--rate", "50"])).is_err());
+        assert!(
+            run_options(&mut args(&[
+                "client",
+                "--concurrency",
+                "4",
+                "--independent-endpoints",
+                "--group-starts",
+            ]))
+            .is_err()
+        );
+        assert_eq!(dispatch_index(&RunOptions::default(), 7), 7);
     }
 
     #[test]
