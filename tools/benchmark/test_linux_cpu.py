@@ -3430,6 +3430,25 @@ class LongWindowTests(unittest.TestCase):
                 item['cpu_cost']['server']['total_seconds'] = .19
             self.assertFalse(cpu.aggregate(values, 4, .01)[0]['comparable'])
 
+    def test_short_latency_guard_withholds_ratio_on_a_single_tail_regression(self):
+        with tempfile.TemporaryDirectory() as directory:
+            windows = [observation(Path(directory), label, repeat) for repeat in range(2)
+                       for label in ("baseline", "candidate")]
+            def samples(item):
+                values = [100_000] * 1000
+                if item["revision_label"] == "candidate" and item["repeat"] == 0:
+                    values[-15:] = [111_000] * 15
+                return values
+            with patch.object(cpu, "report_latencies", side_effect=samples) as read:
+                row = cpu.aggregate(windows, 2, .01)[0]
+            self.assertEqual(read.call_count, 4)
+            self.assertTrue(row["latency_pooled_guard"]["passed"])
+            self.assertEqual(row["latency_pair_guards"][0]["p99_latency_ns"], 11_000)
+            self.assertFalse(row["latency_pair_guards"][0]["passed"])
+            self.assertTrue(row["latency_pair_guards"][1]["passed"])
+            self.assertFalse(row["comparable"])
+            self.assertIsNone(row["server_cpu_ratio"])
+
     def test_long_latency_requires_every_pair_and_pooled_guard(self):
         with tempfile.TemporaryDirectory() as directory:
             values = [observation(Path(directory), label, repeat) for repeat in range(4)
