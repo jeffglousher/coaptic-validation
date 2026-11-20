@@ -3344,6 +3344,25 @@ class LongWindowTests(unittest.TestCase):
             args.seconds = seconds
             with self.assertRaises(ValueError): cpu.configuration(args)
 
+    def test_grouped_long_service_preserves_rotation_and_send_bounds(self):
+        args = self.selected()
+        vars(args).update(resource_profile="service-allocated", sizes="16384", rates="50", seconds=72,
+                          concurrency=4, independent_endpoints=True, group_starts=True)
+        cells = cpu.configuration(args)
+        self.assertEqual(cells, [("oscore", 16384, 50, "coaptic-mio")])
+        plan = cpu.rotation(args, cells)
+        self.assertEqual(len(plan), 8)
+        self.assertTrue(all(mode == "clean" for mode, _, _, _ in plan))
+        self.assertEqual((50 * 72 + cpu.WARMUP) * 16, 57_920)
+        for changes, message in (
+            (dict(group_starts=False), "grouped independent CON"),
+            (dict(seconds=73), "complete groups"),
+            (dict(seconds=76), "socket budget"),
+            (dict(independent_endpoints=False), "NSTART"),
+        ):
+            with self.subTest(changes=changes), self.assertRaisesRegex(ValueError, message):
+                cpu.configuration(argparse.Namespace(**(vars(args) | changes)))
+
     def test_all_incompatibilities_refuse_before_build_and_native_start(self):
         invalid = [dict(resource_profile="host-control", sizes="64"), dict(sizes="64,1024", resource_profile="small-blockwise"),
                    dict(rates="10,50"), dict(security_mode="both"), dict(server_kind="coaptic-mio-direct"),

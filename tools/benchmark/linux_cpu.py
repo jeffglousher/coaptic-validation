@@ -110,10 +110,10 @@ def configuration(args):
     if long_window:
         if (profile == "host-control" or len(sizes) != 1 or len(rates) != 1
                 or security == "both" or args.server_kind != "coaptic-mio"
-                or args.candidate_server_kind is not None or args.concurrency != 1
-                or args.message_type != "con" or getattr(args, "independent_endpoints", False)
-                or args.repeats != 4 or args.perf or diagnostic):
-            raise ValueError("long windows require one representative profile/payload/rate/security, same Mio, C1 CON, four pairs, no perf/diagnostics/independent endpoints")
+                or args.candidate_server_kind is not None
+                or (args.concurrency != 1 and not getattr(args, "group_starts", False))
+                or args.message_type != "con" or args.repeats != 4 or args.perf or diagnostic):
+            raise ValueError("long windows require one representative profile/payload/rate/security, same Mio, C1 or grouped independent CON, four pairs, no perf/diagnostics")
     elif security != "both":
         raise ValueError("individual security selection requires --long-window")
     low, high = (31, 1500) if long_window else (2, 30)
@@ -1597,7 +1597,7 @@ def window(server, client, cell, operations, directory, mode="clean", quota=8 * 
     duration = operations // rate if type(rate) is int and rate > 0 else 0
     wait_seconds = measurement_timeout(duration, long_window)
     if long_window and (mode != "clean" or resource_profile == "host-control" or kind != "coaptic-mio"
-                        or concurrency != 1 or message_type != "con" or independent_endpoints
+                        or (concurrency != 1 and not group_starts) or message_type != "con"
                         or admission_diagnostics or operations != duration * rate
                         or not 1 <= operations <= 60_000
                         or (operations + WARMUP) * math.ceil(size / 1024) > DATAGRAM_BUDGET):

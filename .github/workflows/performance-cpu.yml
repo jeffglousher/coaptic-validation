@@ -30,7 +30,7 @@ on:
         type: number
         default: 10
       long_window:
-        description: Single-security representative Mio C1 CON partition; four pairs, perf/diagnostics off
+        description: Single-security representative Mio CON partition, C1 or grouped endpoints, four pairs
         type: boolean
         default: false
       security_mode:

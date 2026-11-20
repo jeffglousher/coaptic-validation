@@ -315,8 +315,9 @@ coverage nor either 50% CPU target. Physical and release checks remain separate.
 
 `--long-window --security-mode unprotected|oscore` enables **31..1500 clean
 seconds** only for one representative profile, one payload and one rate, ordinary
-Mio on both labels (`--candidate-server-kind` absent), C1 CON, independent
-endpoints off, exactly four rotated pairs, perf and admission diagnostics off.
+Mio on both labels (`--candidate-server-kind` absent), C1 CON or explicit grouped independent CON, exactly four rotated pairs,
+with perf and admission diagnostics off. Longer concurrent windows require
+both independent endpoints and group starts, including a complete final group.
 It produces eight clean windows and at most 12,000 scheduled clean seconds.
 The default remains both security modes, 2..30 seconds and the existing short
 campaign bounds/options. Individual security selection without long mode refuses
@@ -350,9 +351,9 @@ regardless of duration. Pools, packet/Call/body capacities, representations,
 nonce/replay state, cancellation/collection and pacing are unchanged.
 
 Only explicit native `--long-window` permits a paced dispatch span <=1500 seconds;
-the default remains 120 seconds. Native long mode requires paced C1 CON, spin,
-no diagnostics/independent endpoints and the same **3000 ms deadline for each
-complete operation**, including its entire Block2 representation. Short functional
+the default remains 120 seconds. Native long mode requires paced C1 CON or
+grouped independent CON, spin, no admission diagnostics and the same **3000 ms
+deadline for each complete operation**, including its entire Block2 representation. Short functional
 flag checks need not wait 31 seconds; the acceptance runner enforces that lower
 bound. Request/manifest/results record the selection, partial-matrix status and
 limits; native reports include selected pacing/deadline/send limits and minimum
