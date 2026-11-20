@@ -564,6 +564,142 @@ fn actual_service_ordinary_calls_use_borrowed_server_blocks_and_four_client_bodi
 }
 
 #[test]
+fn fixed_service_four_blockwise_calls_release_cancelled_and_expired_lanes() {
+    // Fixed App construction has host-test stack temporaries.
+    std::thread::Builder::new()
+        .name("fixed-service-lane-recovery".into())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(fixed_service_lane_recovery)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[inline(never)]
+fn fixed_service_lane_recovery() {
+    const BYTES: usize = 16 * 1024;
+    static BODY: [u8; BYTES] = {
+        let mut body = [0; BYTES];
+        let mut offset = 0;
+        while offset < BYTES {
+            body[offset] = (offset % 251) as u8;
+            offset += 1;
+        }
+        body
+    };
+    fn representation(_: coaptic::Request<'_>) -> coaptic::Response<'static> {
+        coaptic::Response::content(&BODY)
+            .content_format(coaptic::ContentFormat::OCTET_STREAM)
+            .etag(b"fixture")
+    }
+
+    for protected in [false, true] {
+        let Fixture {
+            server,
+            mut client,
+            peers,
+            ..
+        } = Fixture::new(4, protected, BYTES);
+        server.set_nonblocking(true).unwrap();
+        let builder = App::with_resources(coaptic::resources::Service::new())
+            .deterministic_for_tests()
+            .route("bench", coaptic::get(representation));
+        let builder = if protected {
+            builder.oscore(context(true))
+        } else {
+            builder.allow_unprotected()
+        };
+        let mut server = builder
+            .bind(coaptic::storage::UdpSocketIo::new(server, [0; 1473]).unwrap())
+            .unwrap();
+        let start = |client: &mut Client<EndpointIo>, lane: usize, now, deadline| {
+            client
+                .get("bench")
+                .to(peers[lane])
+                .block2(BlockValue::new(0, false, 6).unwrap())
+                .deadline(deadline)
+                .send(now)
+                .unwrap()
+        };
+        let mut calls = std::array::from_fn::<_, 4, _>(|lane| {
+            start(&mut client, lane, 0, if lane == 1 { 10 } else { 1000 })
+        });
+        for _ in 0..4 {
+            server.poll(1).unwrap();
+        }
+        for _ in 0..4 {
+            client.poll(2).unwrap();
+        }
+        let rx = client.storage_usage().rx_body.unwrap();
+        assert_eq!((rx.capacity, rx.occupied), (4, 4));
+        assert_eq!(client.resource_usage().client_requests.occupied, 4);
+
+        // First-block continuations are already queued on the real server UDP
+        // socket. Free two owners before the server sends their late replies.
+        assert!(client.cancel(calls[0]));
+        assert!(matches!(
+            client.take_response(calls[0]),
+            Some(Err(coaptic::CallFailure::Cancelled))
+        ));
+        assert_eq!(client.storage_usage().rx_body.unwrap().occupied, 3);
+        client.poll(10).unwrap();
+        assert!(matches!(
+            client.take_response(calls[1]),
+            Some(Err(coaptic::CallFailure::DeadlineExceeded))
+        ));
+        assert_eq!(client.storage_usage().rx_body.unwrap().occupied, 2);
+        assert_eq!(client.resource_usage().client_requests.occupied, 2);
+
+        for (lane, call) in calls[..2].iter_mut().enumerate() {
+            let old_token = call.token();
+            *call = start(&mut client, lane, 11, 1000);
+            assert_ne!(call.token(), old_token);
+        }
+        assert_eq!(client.resource_usage().client_requests.occupied, 4);
+
+        for now in 12..44 {
+            for _ in 0..8 {
+                server.poll(now).unwrap();
+            }
+            for _ in 0..8 {
+                client.poll(now).unwrap();
+            }
+        }
+        assert_eq!(client.resource_usage().completed_replies, 4);
+        let mut output = [0; BYTES];
+        for call in calls {
+            let reply = client
+                .take_response_into(call, &mut output)
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            assert_eq!(reply.code(), Code::CONTENT);
+            assert_eq!(reply.etag_bytes(), Some(&b"fixture"[..]));
+            assert_eq!(reply.format(), Some(coaptic::ContentFormat::OCTET_STREAM));
+            assert_eq!(reply.payload(), &BODY);
+        }
+        let usage = client.resource_usage();
+        assert_eq!(usage.client_requests.occupied, 0);
+        assert_eq!(usage.client_replies.occupied, 0);
+        assert_eq!(usage.storage.rx_body.unwrap().occupied, 0);
+        assert_eq!(usage.storage.rx_datagram.occupied, 0);
+        assert_eq!(usage.storage.tx_datagram.occupied, 0);
+        assert_eq!(server.storage_usage().tx_body.unwrap().occupied, 0);
+        // Four completed 16-block reads plus two abandoned two-request lanes.
+        // Socket counts include both late responses to the retired Calls.
+        assert_eq!(
+            (client.transport().sent, client.transport().received),
+            (68, 68)
+        );
+        // Late replies neither consume new sender nonces nor authorize a reply.
+        assert_eq!(
+            client.oscore().map(SecurityContext::sender_seq),
+            protected.then_some(68)
+        );
+    }
+}
+
+#[test]
 fn actual_body_occupancy_refusal_preserves_owners_retained_ciphertext_and_recovery() {
     // Fixed Service construction has large debug-only temporaries. Reserve one
     // bounded host-test stack; this does not measure the App's production stack.
