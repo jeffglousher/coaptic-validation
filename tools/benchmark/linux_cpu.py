@@ -1848,6 +1848,18 @@ def report_latencies(result):
     return values
 
 
+def latency_statistics(values):
+    values.sort()
+    middle = len(values) // 2
+    median = values[middle] if len(values) % 2 else (values[middle - 1] + values[middle]) / 2
+    return dict(median_latency_ns=median, p99_latency_ns=values[math.ceil(len(values) * .99) - 1])
+
+
+def latency_guard(baseline, candidate):
+    delta = {key: candidate[key] - baseline[key] for key in ("median_latency_ns", "p99_latency_ns")}
+    return dict(**delta, passed=delta["median_latency_ns"] <= 2000 and delta["p99_latency_ns"] <= 10000)
+
+
 def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=None):
     """Never pool security/body/load/adapter strata, partial pairs or perf timings."""
     groups = {}
@@ -1898,45 +1910,39 @@ def aggregate(results, repeats, tick, *, campaign_complete=True, adapter_pair=No
             elif abs(pair[0]["report"]["achieved_ops_per_second"] / pair[1]["report"]["achieved_ops_per_second"] - 1) > .05:
                 valid = False
         record.update(comparable=valid, server_cpu_ratio=None,
-                      eligibility="complete campaign; resolved cleanup; all rotated pairs complete; achieved rates within5%; <=1% missed periods (minimum1); server CPU >=20 ticks/window")
+                      eligibility="complete campaign; resolved cleanup; all rotated pairs complete; achieved rates within5%; <=1% missed periods (minimum1); server CPU >=20 ticks/window; every pair and pooled latency within +2us median/+10us p99")
         if diagnostic:
             record.update(admission_diagnostics=True,
                           eligibility="admission instrumentation present; all CPU comparisons vetoed; no clean/diagnostic mixing")
         if valid:
             costs = {}
+            per_repeat = {label: {} for label in labels}
             for label, group in labels.items():
                 completed = sum(i["report"]["completed"] for i in group)
                 costs[label] = {who: {field.replace("_seconds", "_ns"): sum(i["cpu_cost"][who][field] for i in group) * 1e9 / completed
                                      for field in ("user_seconds", "system_seconds", "total_seconds")}
                                 for who in ("server", "client")}
-                latencies = sorted(v for i in group for v in report_latencies(i))
-                costs[label].update(verified_operations=completed,
-                                    median_latency_ns=statistics.median(latencies),
-                                    p99_latency_ns=latencies[math.ceil(len(latencies) * .99) - 1])
-            record.update(cpu_ns_per_verified_operation=costs,
-                          server_cpu_ratio=costs["candidate"]["server"]["total_ns"] / costs["baseline"]["server"]["total_ns"])
+                pooled_values = []
+                for item in group:
+                    values = report_latencies(item)
+                    pooled_values.extend(values)
+                    per_repeat[label][item["repeat"]] = latency_statistics(values)
+                costs[label].update(verified_operations=completed, **latency_statistics(pooled_values))
+            pair_guards = [
+                dict(repeat=repeat,
+                     **latency_guard(per_repeat["baseline"][repeat], per_repeat["candidate"][repeat]))
+                for repeat in range(repeats)
+            ]
+            pooled = latency_guard(costs["baseline"], costs["candidate"])
+            passed = pooled["passed"] and all(pair["passed"] for pair in pair_guards)
+            record.update(
+                comparable=passed, cpu_ns_per_verified_operation=costs,
+                server_cpu_ratio=(costs["candidate"]["server"]["total_ns"] / costs["baseline"]["server"]["total_ns"]
+                                  if passed else None),
+                latency_pair_guards=pair_guards, latency_pooled_guard=pooled, latency_guards_passed=passed,
+            )
             if long_partition:
-                # Single-security evidence still needs EVERY pair and pooled
-                # latency guard. Keep failed statistics; withhold qualified ratios.
-                def guard(baseline, candidate):
-                    delta = {key: candidate[key] - baseline[key]
-                             for key in ("median_latency_ns", "p99_latency_ns")}
-                    return dict(**delta, passed=delta["median_latency_ns"] <= 2000
-                                and delta["p99_latency_ns"] <= 10000)
-                pair_guards = []
-                for repeat in range(4):
-                    statistics_by_label = {}
-                    for label, group in labels.items():
-                        values = sorted(report_latencies(next(i for i in group if i["repeat"] == repeat)))
-                        statistics_by_label[label] = dict(median_latency_ns=statistics.median(values),
-                                                         p99_latency_ns=values[math.ceil(len(values) * .99) - 1])
-                    pair_guards.append(dict(repeat=repeat, **guard(statistics_by_label["baseline"], statistics_by_label["candidate"])))
-                pooled = guard(costs["baseline"], costs["candidate"])
-                passed = pooled["passed"] and all(pair["passed"] for pair in pair_guards)
-                record.update(partial_matrix=True, latency_pair_guards=pair_guards,
-                              latency_pooled_guard=pooled, latency_guards_passed=passed)
-                if not passed:
-                    record.update(comparable=False, server_cpu_ratio=None)
+                record["partial_matrix"] = True
         output.append(record)
     return output
 

@@ -333,7 +333,11 @@ partition is partial matrix evidence. All four pairs must stay together; every
 individual window must pass the unchanged twenty-tick CPU floor, rate/pacing,
 complete-operation and cleanup gates. Every pair AND pooled stratum must retain
 the existing median +2 microsecond and p99 +10 microsecond latency guards.
-Passing pooled values cannot erase a failed pair. No sub-floor pooling or process
+Passing pooled values cannot erase a failed pair. Short clean comparisons
+apply the same pair and pooled latency guards. Successful command completion
+indicates that the campaign ran and retained its observations. The comparison
+receipt withholds the CPU ratio whenever a latency guard fails.
+No sub-floor pooling or process
 clock substitution qualifies a window, and this software change establishes no
 CPU reduction. Both #650 targets and #183 Linux qualification remain OPEN.
 
