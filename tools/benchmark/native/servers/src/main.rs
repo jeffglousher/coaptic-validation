@@ -433,8 +433,21 @@ fn receive_guarded(
     match recv(scratch) {
         Ok(packet) => finish_receive(buf, scratch, packet).map(Some),
         Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
-        Err(error) => Err(error),
+        Err(error) => Err(guarded_receive_error(error)),
     }
+}
+
+fn guarded_receive_error(error: std::io::Error) -> std::io::Error {
+    #[cfg(windows)]
+    {
+        const WSAEMSGSIZE: i32 = 10040;
+        // Winsock consumes the oversized datagram and reports an error when
+        // it exceeds even the guard byte. The caller can keep draining RX.
+        if error.raw_os_error() == Some(WSAEMSGSIZE) {
+            return std::io::ErrorKind::InvalidData.into();
+        }
+    }
+    error
 }
 
 fn guarded_scratch(capacity: usize, scratch: &mut [u8]) -> std::io::Result<&mut [u8]> {
@@ -499,7 +512,11 @@ impl coaptic::storage::AsyncDatagramIo for ReadyUdp {
     async fn recv(&mut self, buf: &mut [u8]) -> std::io::Result<(usize, Endpoint)> {
         self.received = false;
         let scratch = guarded_scratch(buf.len(), &mut self.scratch)?;
-        let packet = self.socket.recv_from(scratch).await?;
+        let packet = self
+            .socket
+            .recv_from(scratch)
+            .await
+            .map_err(guarded_receive_error)?;
         let result = finish_receive(buf, scratch, packet);
         self.received = result.is_ok();
         result
@@ -1052,6 +1069,13 @@ fn ready_burst(
         }
         match app.poll(started.elapsed().as_millis() as u64) {
             Ok(()) | Err(coaptic::app::Error::Oscore(_)) => {}
+            // Refusal consumed the packet. Drain to WouldBlock so ingress
+            // already queued behind it can still make progress.
+            Err(coaptic::app::Error::Io(coaptic::storage::DatagramIoError::Io(error)))
+                if error.kind() == std::io::ErrorKind::InvalidData =>
+            {
+                continue;
+            }
             Err(error) => return Err(error.into()),
         }
         if !app.transport().received {
@@ -1653,6 +1677,7 @@ mod tests {
             assert_eq!(app.engine().capacities(), expected);
             assert_eq!(app.client_capacity(), 1);
             sender.send_to(&[0xff; 1153], local).await.unwrap();
+            sender.send_to(&[0xff; 1160], local).await.unwrap();
             // An empty CON needs only a Reset, without global route/body state.
             sender.send_to(&[0x40, 0, 0, 23], local).await.unwrap();
             let mut packet = [0; 8];
@@ -1667,6 +1692,40 @@ mod tests {
             }
             assert_eq!(app.engine_mut().rx_occupied(), 0);
             assert_eq!(app.engine().capacities(), expected);
+        });
+    }
+
+    #[test]
+    fn ready_burst_refuses_oversized_datagrams_and_reuses_rx() {
+        async_runtime().block_on(async {
+            let io = async_test_io("127.0.0.1:0").await;
+            let local = io.socket.local_addr().unwrap();
+            let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+            let mut app = bind_fixture(io, 64, 1472, None).unwrap();
+            let expected = app.engine().capacities();
+            let epoch = Instant::now();
+            for (oversized, mid) in [(1473, 23), (1480, 24)] {
+                sender
+                    .send_to(&[0xff; 1480][..oversized], local)
+                    .await
+                    .unwrap();
+                sender.send_to(&[0x40, 0, 0, mid], local).await.unwrap();
+                tokio::time::timeout(Duration::from_secs(1), ready_wait(&mut app, epoch))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert!(ready_burst(&mut app, epoch).unwrap());
+                let mut packet = [0; 8];
+                let (n, from) =
+                    tokio::time::timeout(Duration::from_secs(1), sender.recv_from(&mut packet))
+                        .await
+                        .unwrap()
+                        .unwrap();
+                assert_eq!(from, local);
+                assert_eq!(&packet[..n], &[0x70, 0, 0, mid]);
+                assert_eq!(app.engine_mut().rx_occupied(), 0);
+                assert_eq!(app.engine().capacities(), expected);
+            }
         });
     }
 
