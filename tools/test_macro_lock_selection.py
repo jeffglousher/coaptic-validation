@@ -22,12 +22,15 @@ def head_bytes(name):
 
 
 CANONICAL_INPUTS = frozenset(prepare.LOCKS) | {row[0] for row in locks.INPUTS}
+HISTORICAL_NATIVE = "tools/benchmark/native/Cargo.aes093.lock"
 
 
 def fixture_input(name):
     # CI discovery runs after source preparation. Canonical lock fixtures must
     # describe HEAD, even when the working checkout already holds selected pins.
-    return head_bytes(name) if name in CANONICAL_INPUTS or name == locks.NATIVE else (ROOT / name).read_bytes()
+    if name in CANONICAL_INPUTS or name in (locks.NATIVE, HISTORICAL_NATIVE):
+        return head_bytes(name)
+    return (ROOT / name).read_bytes()
 
 
 NATIVE = head_bytes(locks.NATIVE)
@@ -162,7 +165,7 @@ class CheckoutTests(unittest.TestCase):
         (self.suite / ".gitignore").write_text("coaptic/\n__pycache__/\n")
         names = set(prepare.LOCKS) | {row[1] for row in locks.INPUTS} | {
             "fuzz/Cargo.lock", locks.NATIVE, "tools/prepare.py", "tools/macro_lock_selection.py", ".gitattributes",
-            "tools/benchmark/native_lock.py", "tools/source_identity.py",
+            HISTORICAL_NATIVE, "tools/benchmark/native_lock.py", "tools/source_identity.py",
             "tools/esphome/lock_selection.py", "tools/esphome/rust/Cargo.syn2.lock"}
         for name in names:
             path = self.suite / name
@@ -173,7 +176,9 @@ class CheckoutTests(unittest.TestCase):
             path = root / fixture
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("fixture: {}\n")
-        (self.core / "Cargo.toml").write_text('[package]\nname="coaptic"\nversion = "9.8.7"\n')
+        (self.core / "Cargo.toml").write_text(
+            '[package]\nname="coaptic"\nversion = "9.8.7"\n[dependencies]\naes={version="=0.9.4"}\n'
+        )
         path = self.core / locks.MANIFEST
         path.parent.mkdir(parents=True)
         path.write_text('[package]\nname="coaptic-io"\nversion="0.0.10"\n[dependencies]\nsyn={version="3",features=["full"]}\n')
