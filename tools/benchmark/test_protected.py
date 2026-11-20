@@ -3,6 +3,7 @@ import secrets
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -12,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "protected"))
 import aiocoap
 from aiocoap.message import Direction
 from context import Context
-from load import DriverError, Worker, body_matches, check_body, run
+from load import DriverError, GroupObservation, Worker, body_matches, check_body, run
 import aiocoap_server
 
 
@@ -77,6 +78,7 @@ class ProtectedTests(unittest.TestCase):
         self.assertEqual((result["attempted"], result["completed"], result["failed"], result["warmup_failed"],
                           result["driver_failures"], result["verified_bytes"]), (2, 1, 1, 1, 1, 64))
         self.assertNotIn("requested_operations_per_second", result)
+        self.assertNotIn("start_group_width", result)
 
     def test_paced_workers_share_one_schedule_and_count_every_missed_period(self):
         args = SimpleNamespace(host="127.0.0.1", port=1, bytes=64, concurrency=2, operations=5,
@@ -93,6 +95,74 @@ class ProtectedTests(unittest.TestCase):
         self.assertEqual(result["requested_operations_per_second"], 400)
         self.assertEqual(result["pacing_missed_period_operations"], 5)
         self.assertEqual(result["pacing_max_lateness_ns"], period)
+
+    def test_group_starts_require_paced_con_and_complete_groups(self):
+        args = dict(host="127.0.0.1", port=1, bytes=64, concurrency=2, operations=6,
+                    warmup=0, timeout_ms=1000, sequence=0, mode="con",
+                    security="unprotected", rate=400, group_starts=True)
+        with patch("load.Worker") as worker:
+            for overrides in (dict(rate=None), dict(mode="non"), dict(operations=5)):
+                with self.subTest(overrides=overrides):
+                    with self.assertRaisesRegex(ValueError, "paced CON and complete groups"):
+                        run(SimpleNamespace(**(args | overrides)))
+        worker.assert_not_called()
+
+    def test_group_schedule_keeps_failed_and_just_touching_intervals_distinct(self):
+        args = SimpleNamespace(host="127.0.0.1", port=1, bytes=64, concurrency=2, operations=6,
+                               warmup=0, timeout_ms=1000, sequence=0, mode="con",
+                               security="unprotected", rate=400, group_starts=True)
+        epoch = 1000
+        period = 5_000_000
+        # Two verified groups, but only the first pair overlaps.
+        intervals = ((100, 200), (150, 210), (230, 300), None, (400, 450), (450, 500))
+
+        def exchange(worker, sequence, *, observation):
+            interval = intervals[(sequence - 1) * 2 + worker.number]
+            if interval is None:
+                raise DriverError("group member failed")
+            first, last = interval
+            observation.first_send_ns = epoch + first
+            observation.final_receive_ns = epoch + last
+            return last - first
+
+        with patch.object(Worker, "bootstrap"), patch.object(Worker, "exchange", new=exchange):
+            with patch("load.wait_for_slot", side_effect=lambda due: due + period) as wait:
+                with patch("load.time.perf_counter_ns", return_value=epoch):
+                    result = run(args)
+        self.assertEqual(sorted(call.args[0] - epoch for call in wait.call_args_list),
+                         [0, 0, period, period, 2 * period, 2 * period])
+        self.assertEqual(result["pacing_missed_period_operations"], 6)
+        self.assertEqual(result["pacing_max_lateness_ns"], period)
+        self.assertEqual(result["verified_by_worker"], [3, 2])
+        self.assertEqual(len(set(result["worker_endpoint_ports"])), 2)
+        self.assertEqual(result["verified_groups"], 2)
+        self.assertEqual(result["overlapping_verified_groups"], 1)
+        self.assertEqual(result["failed"], 1)
+
+    def test_group_wire_counts_distinguish_confirmed_response_shapes(self):
+        for response_type in (aiocoap.ACK, aiocoap.CON):
+            with self.subTest(response_type=response_type):
+                separate = response_type == aiocoap.CON
+                reply = aiocoap.Message(code=aiocoap.CONTENT, content_format=42,
+                                        payload=bytes(range(64)))
+                reply.mid, reply.mtype, reply.token = int(separate), response_type, (1).to_bytes(8, "big")
+                empty_ack = bytes([0x60, 0, 0, 0])
+                sock = Mock()
+                sock.recv.side_effect = ([empty_ack] if separate else []) + [reply.encode()]
+                args = SimpleNamespace(host="127.0.0.1", port=1, bytes=64, timeout_ms=1000, mode="con")
+                with patch.object(Worker, "new_socket", return_value=sock):
+                    worker = Worker(args, 0, None, threading.Lock())
+                    observation = GroupObservation(1)
+                    epoch = time.perf_counter_ns()
+                    worker.exchange(1, observation=observation)
+                    observation.record_verified(0, epoch)
+                self.assertLessEqual(observation.first_sends[0], observation.final_receives[0])
+                self.assertEqual(observation.wire, dict(
+                    data_requests=1, received_datagrams=1 + separate,
+                    matching_empty_acks=int(separate), piggybacked_responses=int(not separate),
+                    separate_con_responses=int(separate), separate_non_responses=0,
+                    sent_response_acks=int(separate),
+                ))
 
     def echo_worker(self, responses, *, tamper=False):
         server = Context(self.credentials, server=True)

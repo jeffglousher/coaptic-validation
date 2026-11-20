@@ -10,6 +10,7 @@ import json
 import socket
 import threading
 import time
+from array import array
 
 import aiocoap
 from aiocoap.message import Direction
@@ -18,6 +19,32 @@ from context import Context, SECURITY
 
 class DriverError(Exception):
     pass
+
+
+class GroupObservation:
+    """One worker's verified intervals and measured datagram counts."""
+    def __init__(self, operations):
+        self.first_send_ns = None
+        self.final_receive_ns = None
+        self.first_sends = array("Q", [0]) * operations
+        self.final_receives = array("Q", [0]) * operations
+        self.wire = dict(
+            data_requests=0,
+            received_datagrams=0,
+            matching_empty_acks=0,
+            piggybacked_responses=0,
+            separate_con_responses=0,
+            separate_non_responses=0,
+            sent_response_acks=0,
+        )
+
+    def record_verified(self, index, epoch):
+        first, last = self.first_send_ns, self.final_receive_ns
+        if first is None or last is None or not epoch <= first <= last:
+            raise DriverError("invalid verified I/O interval")
+        # Zero identifies a group slot with no verified operation.
+        self.first_sends[index] = first - epoch + 1
+        self.final_receives[index] = last - epoch + 1
 
 
 # One immutable window covers any payload accepted by recv(65535), including
@@ -104,7 +131,7 @@ class Worker:
         for sock in self.retired:
             sock.close()
 
-    def exchange(self, sequence, *, bootstrap=False):
+    def exchange(self, sequence, *, bootstrap=False, observation=None):
         start = time.perf_counter_ns()
         if self.mid + (self.args.bytes + 15) // 16 > 65536:
             try:
@@ -135,16 +162,26 @@ class Worker:
                     self.socket.send(outgoing.encode())
             else:
                 self.socket.send(request.encode())
+            if observation is not None:
+                if observation.first_send_ns is None:
+                    observation.first_send_ns = time.perf_counter_ns()
+                observation.wire["data_requests"] += 1
             while True:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise TimeoutError("complete representation deadline")
                 self.socket.settimeout(remaining)
                 wire = self.socket.recv(_MAX_RECEIVE)
+                received_at = None
+                if observation is not None:
+                    received_at = time.perf_counter_ns()
+                    observation.wire["received_datagrams"] += 1
                 response = aiocoap.Message.decode(wire)
                 if wire == bytes([0x60, 0, mid >> 8, mid & 255]):
                     if self.args.mode != "con":
                         raise ValueError("ACK for NON request")
+                    if observation is not None:
+                        observation.wire["matching_empty_acks"] += 1
                     continue
                 if response.code == aiocoap.EMPTY:
                     raise ValueError("malformed empty control")
@@ -184,10 +221,21 @@ class Worker:
                     ack = aiocoap.Message(code=aiocoap.EMPTY)
                     ack.mtype, ack.mid = aiocoap.ACK, response.mid
                     self.socket.send(ack.encode())
+                    if observation is not None:
+                        observation.wire["sent_response_acks"] += 1
                 break
             if challenge:
                 continue
+            if observation is not None:
+                if response.mtype == aiocoap.ACK:
+                    observation.wire["piggybacked_responses"] += 1
+                elif response.mtype == aiocoap.CON:
+                    observation.wire["separate_con_responses"] += 1
+                else:
+                    observation.wire["separate_non_responses"] += 1
             if block is None:
+                if observation is not None:
+                    observation.final_receive_ns = received_at
                 return time.perf_counter_ns() - start
 
     def bootstrap(self):
@@ -207,6 +255,10 @@ def run(args):
     rate = getattr(args, "rate", None)
     if rate is not None and not (1 <= rate <= 1_000_000 and args.operations <= rate * 120):
         raise ValueError("invalid offered rate or paced duration")
+    group_starts = getattr(args, "group_starts", False)
+    if group_starts and (rate is None or args.mode != "con" or args.operations % args.concurrency):
+        raise ValueError("group starts require paced CON and complete groups")
+    slot_width = args.concurrency if group_starts else 1
     per_endpoint = 65536 // ((args.bytes + 15) // 16)
     # Reserve a complete bootstrap plus a possible Echo retry conservatively
     # as two operations, including the smallest one-datagram representation.
@@ -214,6 +266,10 @@ def run(args):
                           + args.warmup + 2 + per_endpoint - 1) // per_endpoint) for i in range(args.concurrency))
     if reserved > 1024:
         raise ValueError("driver endpoint reservation exceeds 1024")
+    observations = None
+    if group_starts:
+        observations = [GroupObservation(args.operations // args.concurrency)
+                        for _ in range(args.concurrency)]
     context = Context(args.credentials, sequence=args.sequence) if args.security == SECURITY else None
     lock = threading.Lock()
     workers = [Worker(args, i, context, lock) for i in range(args.concurrency)]
@@ -221,6 +277,8 @@ def run(args):
 
     def work(worker):
         warmup_failed, failures, latencies, reasons = 0, 0, [], {}
+        observation = observations[worker.number] if observations is not None else None
+        worker_slot = 0 if group_starts else worker.number
         sequence = 1
         for _ in range(args.warmup):
             try:
@@ -235,14 +293,21 @@ def run(args):
         max_lateness = 0
         for index in range(count):
             if rate is not None:
-                ordinal = index * args.concurrency + worker.number
+                ordinal = index * args.concurrency + worker_slot
                 due = start + ordinal * 1_000_000_000 // rate
-                next_due = start + (ordinal + 1) * 1_000_000_000 // rate
+                next_due = start + (ordinal + slot_width) * 1_000_000_000 // rate
                 actual = wait_for_slot(due)
                 missed += int(actual >= next_due)
                 max_lateness = max(max_lateness, actual - due)
             try:
-                latencies.append(worker.exchange(sequence))
+                if observation is None:
+                    latency = worker.exchange(sequence)
+                else:
+                    observation.first_send_ns = None
+                    observation.final_receive_ns = None
+                    latency = worker.exchange(sequence, observation=observation)
+                    observation.record_verified(index, start)
+                latencies.append(latency)
             except Exception as error:
                 failures += 1
                 label = type(error).__name__
@@ -257,9 +322,11 @@ def run(args):
             futures = [pool.submit(work, worker) for worker in workers]
             barrier.wait()
             start = time.perf_counter_ns()
+            cpu_start = time.process_time_ns() if group_starts else None
             barrier.wait()
             rows = [future.result() for future in futures]
             elapsed = time.perf_counter_ns() - start
+            client_cpu = time.process_time_ns() - cpu_start if cpu_start is not None else None
         latencies = [n for row in rows for n in row[0]]
         failed, warmup_failed = sum(row[1] for row in rows), sum(row[2] for row in rows)
         reasons = {}
@@ -282,6 +349,24 @@ def run(args):
                 pacing_max_lateness_ns=max(row[5] for row in rows),
                 measurement="absolute start schedule; Python/GIL, authentication and full byte validation inside operation latency",
             )
+        if observations is not None:
+            verified_groups = overlapping_groups = 0
+            for index in range(args.operations // args.concurrency):
+                starts = [o.first_sends[index] for o in observations]
+                if all(starts):
+                    verified_groups += 1
+                    earliest_finish = min(o.final_receives[index] for o in observations)
+                    if args.concurrency > 1 and max(starts) < earliest_finish:
+                        overlapping_groups += 1
+            report.update(
+                start_group_width=args.concurrency,
+                verified_groups=verified_groups,
+                overlapping_verified_groups=overlapping_groups,
+                verified_by_worker=[len(row[0]) for row in rows],
+                worker_endpoint_ports=[w.socket.getsockname()[1] for w in workers],
+                client_process_cpu_time_ns=client_cpu,
+                measured_wire_by_worker=[o.wire for o in observations],
+            )
         return report
     finally:
         for worker in workers:
@@ -295,6 +380,8 @@ def main():
     for name in ("port", "bytes", "concurrency", "operations", "warmup", "timeout-ms", "sequence"):
         parser.add_argument("--" + name, type=int, required=True)
     parser.add_argument("--rate", type=int)
+    parser.add_argument("--group-starts", action="store_true",
+                        help="give all CON workers the same absolute start slot and report overlap and wire counts")
     args = parser.parse_args()
     if args.mode not in ("con", "non") or args.security not in ("unprotected", SECURITY):
         parser.error("unsupported mode/security")
