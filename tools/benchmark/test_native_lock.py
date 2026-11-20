@@ -18,6 +18,17 @@ version = "1.0.0"
 dependencies = ["syn 2.0.119"]
 
 [[package]]
+name = "aes"
+version = "0.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+
+[[package]]
+name = "coaptic"
+version = "0.0.10"
+dependencies = ["aes 0.9.4"]
+
+[[package]]
 name = "coaptic-io"
 version = "0.0.10"
 dependencies = [
@@ -36,6 +47,9 @@ version = "3.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 '''
 SYN3 = BASE.replace(b' "syn 2.0.119",', b' "syn 3.0.9",')
+HISTORICAL = (BASE.replace(b'0.9.4', b'0.9.3')
+              .replace(b'f' * 64, b'35f0f96ce78e38c3dc6d8948aa8163d06385be74000f3c7a95bf1eef35d3ea32'))
+CORE_MANIFEST = b'[dependencies]\naes = { version = "=0.9.4", optional = true }\n'
 MANIFEST = b'''[package]
 name = "coaptic-io"
 version = "0.0.10"
@@ -55,31 +69,44 @@ class NativeLockTests(unittest.TestCase):
         self.manifest.parent.mkdir(parents=True)
         self.base = self.native / "Cargo.lock"
         self.alt = self.native / "Cargo.syn3.lock"
+        self.historical = self.native / "Cargo.aes093.lock"
+        self.root_manifest = self.core / "Cargo.toml"
         self.fixture("2")
 
-    def fixture(self, requirement, base=BASE, alternate=SYN3):
+    def fixture(self, requirement, base=BASE, alternate=SYN3, *, aes="=0.9.4", historical=HISTORICAL):
         self.base.write_bytes(base)
         self.alt.write_bytes(alternate)
+        self.historical.write_bytes(historical)
+        self.root_manifest.write_bytes(CORE_MANIFEST.replace(b'=0.9.4', aes.encode()))
         self.manifest.write_bytes(MANIFEST.replace(b'version = "2"',
                                                  f'version = "{requirement}"'.encode()))
-        return (self.base.read_bytes(), self.alt.read_bytes(), self.manifest.read_bytes())
+        return tuple(p.read_bytes() for p in (
+            self.base, self.alt, self.manifest, self.historical, self.root_manifest,
+        ))
 
     def assert_inputs(self, expected):
-        self.assertEqual(tuple(p.read_bytes() for p in (self.base, self.alt, self.manifest)), expected)
+        self.assertEqual(tuple(p.read_bytes() for p in (
+            self.base, self.alt, self.manifest, self.historical, self.root_manifest,
+        )), expected)
 
-    def test_both_selections_restore_success_cargo_failure_and_keyboard_interrupt(self):
-        for requirement in ("2", "3"):
+    def test_selections_restore_success_cargo_failure_and_keyboard_interrupt(self):
+        for requirement, aes in (("2", "=0.9.3"), ("2", "=0.9.4"), ("3", "=0.9.4")):
             for failure in (None, subprocess.CalledProcessError(1, ["cargo", "build", "--locked"]),
                             KeyboardInterrupt()):
-                with self.subTest(requirement=requirement, failure=type(failure).__name__):
-                    original = self.fixture(requirement)
+                with self.subTest(requirement=requirement, aes=aes, failure=type(failure).__name__):
+                    original = self.fixture(requirement, aes=aes)
                     try:
                         with native_lock(self.core, self.native) as selected:
-                            expected = BASE if requirement == "2" else SYN3
+                            if aes == "=0.9.3":
+                                expected, path = HISTORICAL, self.historical
+                            else:
+                                expected, path = (BASE, self.base) if requirement == "2" else (SYN3, self.alt)
                             self.assertEqual(self.base.read_bytes(), expected)
-                            path = self.base if requirement == "2" else self.alt
                             self.assertEqual(Path(selected["selected_path"]), path)
                             self.assertEqual(selected["syn_requirement"], requirement)
+                            self.assertEqual(selected["aes_requirement"], aes)
+                            self.assertEqual(selected["historical_aes_sha256"], sha256(HISTORICAL).hexdigest())
+                            self.assertEqual(selected["core_root_manifest_sha256"], sha256(original[4]).hexdigest())
                             self.assertEqual(selected["selected_sha256"], sha256(expected).hexdigest())
                             self.assertEqual(sha256(self.base.read_bytes()).hexdigest(), selected["selected_sha256"])
                             self.assertEqual(selected["core_manifest_sha256"], sha256(original[2]).hexdigest())
@@ -151,9 +178,28 @@ class NativeLockTests(unittest.TestCase):
                         self.fail("invalid package/edge yielded")
                 self.assert_inputs(original)
 
+    def test_historical_lock_tampering_and_unknown_aes_pin_refuse_before_writes(self):
+        for requirement, aes, historical in (
+                ("2", "0.9.3", HISTORICAL), ("3", "=0.9.3", HISTORICAL),
+                ("2", "=0.9.5", HISTORICAL), ("2", "=0.9.3", HISTORICAL + b"# tampered\n"),
+                ("2", "=0.9.3", HISTORICAL.replace(b"35f0", b"dead"))):
+            with self.subTest(requirement=requirement, aes=aes):
+                initial = self.fixture(requirement, aes=aes, historical=historical)
+                with self.assertRaisesRegex(ValueError, "native lock pins|Cargo.aes093.lock"):
+                    with native_lock(self.core, self.native):
+                        self.fail("unsupported or altered AES lock yielded")
+                self.assert_inputs(initial)
+
+    def test_historical_lock_retains_exact_checkout_eol(self):
+        original = self.fixture("2", base=BASE.replace(b"\n", b"\r\n"), aes="=0.9.3")
+        with native_lock(self.core, self.native) as selected:
+            self.assertEqual(self.base.read_bytes(), HISTORICAL)
+            self.assertEqual(selected["selected_sha256"], sha256(HISTORICAL).hexdigest())
+        self.assert_inputs(original)
+
     def test_other_inputs_changed_are_fatal_but_base_restored(self):
         for requirement in ("2", "3"):
-            for which in ("alt", "manifest"):
+            for which in ("alt", "historical", "manifest", "root_manifest"):
                 with self.subTest(requirement=requirement, which=which):
                     original = self.fixture(requirement)
                     path = getattr(self, which)

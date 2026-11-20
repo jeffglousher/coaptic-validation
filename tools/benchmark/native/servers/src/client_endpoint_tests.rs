@@ -252,11 +252,11 @@ fn bounded_rotation_preserves_last_to_first_fairness_and_rejects_oversize_prefix
                 .send_to(&[round * 4 + i as u8], f.locals[i])
                 .unwrap();
         }
-        for i in 0..4 {
+        for (i, expected) in f.peers.iter().enumerate() {
             let mut output = [0; 1472];
             let (n, peer) = io.recv(&mut output).unwrap().unwrap();
             assert_eq!(n, 1);
-            assert_eq!(peer, f.peers[i]);
+            assert_eq!(peer, *expected);
             assert_eq!(io.cursor, (i + 1) % 4);
         }
     }

@@ -18,7 +18,8 @@ from unittest.mock import patch
 from unittest.mock import MagicMock, Mock
 
 import linux_cpu as cpu
-from test_native_lock import BASE as LOCK_BASE, SYN3 as LOCK_SYN3, MANIFEST as IO_MANIFEST
+from test_native_lock import BASE as LOCK_BASE, CORE_MANIFEST, HISTORICAL as LOCK_HISTORICAL
+from test_native_lock import SYN3 as LOCK_SYN3, MANIFEST as IO_MANIFEST
 
 
 HOST = "x86_64-unknown-linux-gnu"
@@ -27,13 +28,15 @@ RUSTC_VERSION = (f"rustc 1.99.0 (111111111 2026-10-01)\ncommit-hash: {'1' * 40}\
 CARGO_VERSION = f"cargo 1.99.0 (222222222 2026-10-01)\ncommit-hash: {'2' * 40}\nrelease: 1.99.0"
 
 
-def native_inputs(suite, requirement="2"):
+def native_inputs(suite, requirement="2", aes="=0.9.4"):
     native = suite / "tools/benchmark/native"
     native.mkdir(parents=True, exist_ok=True)
     (native / "Cargo.lock").write_bytes(LOCK_BASE)
     (native / "Cargo.syn3.lock").write_bytes(LOCK_SYN3)
+    (native / "Cargo.aes093.lock").write_bytes(LOCK_HISTORICAL)
     manifest = suite / "coaptic/crates/coaptic-io/Cargo.toml"
     manifest.parent.mkdir(parents=True, exist_ok=True)
+    (suite / "coaptic/Cargo.toml").write_bytes(CORE_MANIFEST.replace(b'=0.9.4', aes.encode()))
     manifest.write_bytes(IO_MANIFEST.replace(b'version = "2"', f'version = "{requirement}"'.encode()))
     return native
 
@@ -812,12 +815,13 @@ os.close(writer)
 
 class BuildTests(unittest.TestCase):
     def test_selected_input_reaches_cargo_and_restores_before_acceptance_or_failure(self):
-        for requirement, selected in (("2", LOCK_BASE), ("3", LOCK_SYN3)):
+        for requirement, aes, selected in (
+                ("2", "=0.9.4", LOCK_BASE), ("3", "=0.9.4", LOCK_SYN3), ("2", "=0.9.3", LOCK_HISTORICAL)):
             for failed in (False, True):
-                with self.subTest(requirement=requirement, failed=failed), tempfile.TemporaryDirectory() as temporary:
+                with self.subTest(requirement=requirement, aes=aes, failed=failed), tempfile.TemporaryDirectory() as temporary:
                     root = Path(temporary)
                     suite, lane, out = root / "source", root / "lane", root / "evidence"
-                    native = native_inputs(suite, requirement)
+                    native = native_inputs(suite, requirement, aes)
                     out.mkdir()
                     revision = "a" * 40
                     failure = subprocess.CalledProcessError(1, ["cargo", "build", "--locked"])
@@ -884,6 +888,24 @@ class BuildTests(unittest.TestCase):
         changed["native_lock_sha256"] = "restored-baseline-hash"
         with self.assertRaisesRegex(ValueError, "selected input"):
             cpu.matching_lock_inputs(record("2"), changed)
+
+    def test_lock_matching_checks_original_aes_and_committed_input_identity(self):
+        hashes = dict(canonical_base_sha256="current", syn3_sha256="syn3", historical_aes_sha256="original")
+        original = dict(native_lock_sha256="original", native_lock_input=dict(
+            **hashes, syn_requirement="2", aes_requirement="=0.9.3", selected_sha256="original"))
+        current = dict(native_lock_sha256="syn3", native_lock_input=dict(
+            **hashes, syn_requirement="3", aes_requirement="=0.9.4", selected_sha256="syn3"))
+        cpu.matching_lock_inputs(original, current)
+        for field, value in (("syn_requirement", "3"), ("aes_requirement", "=0.9.4"),
+                             ("selected_sha256", "current"), ("historical_aes_sha256", "other")):
+            altered = deepcopy(original)
+            altered["native_lock_input"][field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                cpu.matching_lock_inputs(altered, current)
+        altered = deepcopy(current)
+        altered["native_lock_input"]["historical_aes_sha256"] = "other"
+        with self.assertRaisesRegex(ValueError, "historical_aes_sha256"):
+            cpu.matching_lock_inputs(original, altered)
 
     def test_explicit_host_target_ignores_configured_target_and_stale_top_level_binaries(self):
         host, configured = "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"
