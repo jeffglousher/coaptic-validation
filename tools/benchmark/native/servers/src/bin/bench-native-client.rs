@@ -295,14 +295,11 @@ fn run_options(args: &mut Vec<String>) -> Result<RunOptions, &'static str> {
     }
     if options.long_window
         && (options.rate.is_none()
-            || options.concurrency != 1
+            || (options.concurrency != 1 && !options.group_starts)
             || options.message_type != MessageType::Con
-            || options.independent_endpoints
             || options.admission_diagnostics)
     {
-        return Err(
-            "long window requires paced C1 CON without diagnostics or independent endpoints",
-        );
+        return Err("long window requires paced C1 or grouped independent CON without diagnostics");
     }
     Ok(options)
 }
@@ -1442,6 +1439,24 @@ mod tests {
         let mut input = args(&["client", "--long-window", "--rate", "10"]);
         assert!(run_options(&mut input).unwrap().long_window);
         assert_eq!(input, args(&["client"]));
+
+        let mut input = args(&[
+            "client",
+            "--long-window",
+            "--rate",
+            "50",
+            "--concurrency",
+            "4",
+            "--independent-endpoints",
+            "--group-starts",
+        ]);
+        let grouped = run_options(&mut input).unwrap();
+        assert!(grouped.long_window && grouped.group_starts && grouped.independent_endpoints);
+        assert_eq!(grouped.concurrency, 4);
+        assert!(validate_schedule(&grouped, 3600).is_ok());
+        assert!(validate_schedule(&grouped, 3601).is_err());
+        assert_eq!(outbound_budget(16384, 3600, 20), Ok(57_920));
+        assert!(outbound_budget(16384, 3800, 20).is_err());
     }
 
     #[test]
