@@ -368,6 +368,21 @@ payloads, protection, worker count and offered rate across peers. Closed-loop
 behavior and report fields retain their existing defaults when the option
 is omitted.
 
+Add `--group-starts` to a paced CON driver command to give all workers
+the same absolute slot. The aggregate offered rate is unchanged, so four
+workers at 50 operations/s share each 80 ms slot. Select an operation
+count divisible by the worker count. The driver reports successful
+operations per worker and counts groups in which every worker's verified
+I/O interval has a common intersection. These intervals run from the
+first send return through the last verified datagram's receive return.
+A missed period in group mode means at least one full group period late.
+The same option supports the campaign's one-operation C1 readiness check.
+
+Group mode reports client process CPU time and measured wire counts by
+worker, including empty ACKs, piggybacked replies and separate replies.
+Counts exclude bootstrap and warmup. Use them to check matching response
+shape before attributing complete-operation differences to the server.
+
 ## CPU cost and paced native operations
 
 `native_diagnostic.py` measures Coaptic at both ends, including established
