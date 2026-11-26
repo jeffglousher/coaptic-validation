@@ -55,6 +55,65 @@ static void representation(coap_resource_t *resource, coap_session_t *session,
         body_size, body, NULL, NULL);
 }
 
+/* libcoap's retained large-response cache answers follow-up GETs before a
+ * resource handler. These opt-in controls ask the same public block helpers
+ * to select a range for each request, so either response timing can be used. */
+static void block_representation(coap_resource_t *resource, coap_session_t *session,
+                                 const coap_pdu_t *request, const coap_string_t *query,
+                                 coap_pdu_t *response) {
+    (void)resource;
+    (void)query;
+    coap_block_b_t block = {0};
+    uint8_t value[8];
+    size_t n = coap_encode_var_safe8(value, sizeof(value), validator);
+    int requested = coap_get_block_b(session, request, COAP_OPTION_BLOCK2, &block);
+    coap_pdu_set_code(response, COAP_RESPONSE_CODE_CONTENT);
+    if (!coap_add_option(response, COAP_OPTION_ETAG, n, value))
+        goto error;
+    value[0] = COAP_MEDIATYPE_APPLICATION_OCTET_STREAM;
+    if (!coap_add_option(response, COAP_OPTION_CONTENT_FORMAT, 1, value))
+        goto error;
+    if (!requested && body_size <= 1024) {
+        if (!coap_add_data(response, body_size, body))
+            goto error;
+        return;
+    }
+    /* Size2 must already occupy space when libcoap negotiates the block. */
+    n = coap_encode_var_safe8(value, sizeof(value), body_size);
+    if (!coap_add_option(response, COAP_OPTION_SIZE2, n, value))
+        goto error;
+    if (!requested)
+        block.szx = block.aszx = 6;
+    int result = coap_write_block_b_opt(session, &block, COAP_OPTION_BLOCK2, response, body_size);
+    if (result == -2) {
+        coap_pdu_set_code(response, COAP_RESPONSE_CODE_BAD_REQUEST);
+        return;
+    }
+    if (result <= 0 || !coap_add_block_b_data(response, body_size, body, &block))
+        goto error;
+    return;
+error:
+    coap_pdu_set_code(response, COAP_RESPONSE_CODE_INTERNAL_ERROR);
+}
+
+static void separate_representation(coap_resource_t *resource, coap_session_t *session,
+                                    const coap_pdu_t *request, const coap_string_t *query,
+                                    coap_pdu_t *response) {
+    if (coap_pdu_get_type(request) == COAP_MESSAGE_CON &&
+        !coap_find_async(session, coap_pdu_get_token(request))) {
+        coap_async_t *pending = coap_register_async(session, request, 0);
+        if (!pending) {
+            coap_pdu_set_code(response, COAP_RESPONSE_CODE_SERVICE_UNAVAILABLE);
+            return;
+        }
+        /* No response code asks libcoap to ACK the request. Triggering this
+         * same handler emits the separately tracked confirmable response. */
+        coap_async_trigger(pending);
+        return;
+    }
+    block_representation(resource, session, request, query, response);
+}
+
 int main(int argc, char **argv) {
     if (argc == 2 && strcmp(argv[1], "--security-profile") == 0) {
         coap_startup();
@@ -64,15 +123,27 @@ int main(int argc, char **argv) {
         coap_cleanup();
         return 0;
     }
+    coap_method_handler_t handler = representation;
+    if (argc >= 3 && strcmp(argv[argc - 2], "--handler-response") == 0) {
+        if (strcmp(argv[argc - 1], "separate-con") == 0)
+            handler = separate_representation;
+        else if (strcmp(argv[argc - 1], "piggyback") == 0)
+            handler = block_representation;
+        else
+            return 2;
+        argc -= 2;
+    }
     int fixture_etag = argc > 1 && strcmp(argv[argc - 1], "--fixture-etag") == 0;
     if (fixture_etag) --argc;
     if (argc != 4 && argc != 6) {
-        fprintf(stderr, "bench-libcoap HOST PORT BYTES [oscore|dtls CREDENTIALS] [--fixture-etag]\n");
+        fprintf(stderr, "bench-libcoap HOST PORT BYTES [oscore|dtls CREDENTIALS] [--fixture-etag] [--handler-response piggyback|separate-con]\n");
         return 2;
     }
     int oscore = argc == 6 && strcmp(argv[4], "oscore") == 0;
     int dtls = argc == 6 && strcmp(argv[4], "dtls") == 0;
     if (argc == 6 && !oscore && !dtls) return 2;
+    if (handler != representation && (oscore || dtls)) return 2;
+    if (handler == separate_representation && !coap_async_is_supported()) return 2;
     uint8_t material[24] = {0};
     if (argc == 6 && !read_credentials(argv[5], material)) return 2;
     char *end;
@@ -113,7 +184,7 @@ int main(int argc, char **argv) {
     coap_resource_t *resource = coap_resource_init(coap_make_str_const("bench"),
         oscore ? COAP_RESOURCE_FLAGS_OSCORE_ONLY : 0);
     if (!resource) return 2;
-    coap_register_handler(resource, COAP_REQUEST_GET, representation);
+    coap_register_handler(resource, COAP_REQUEST_GET, handler);
     coap_add_resource(context, resource);
     while (coap_io_process(context, COAP_IO_WAIT) >= 0) {}
     coap_free_context(context);

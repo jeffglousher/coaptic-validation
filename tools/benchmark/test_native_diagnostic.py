@@ -20,11 +20,15 @@ class WindowsProcessCycleTests(unittest.TestCase):
         self.assertEqual(matched_packets("libcoap", "oscore", "separate-con", 4096, 128, 4, **dims), 1024)
         self.assertEqual(matched_packets("coaptic-async", "oscore", "piggyback", 4096, 128, 4, **dims), 512)
         self.assertEqual(matched_packets("libcoap", "unprotected", "piggyback", 64, 59999, 0, **dims), 59999)
+        self.assertEqual(matched_packets("libcoap-handler", "unprotected", "separate-con", 4096, 128, 4, **dims), 1024)
+        self.assertEqual(matched_packets("libcoap-handler", "unprotected", "piggyback", 4096, 128, 4, **dims), 512)
         with self.assertRaisesRegex(ValueError, "wire-qualified"):
             matched_packets("coaptic-async", "oscore", "separate-con", 1025, 20, 0, **dims)
         for peer, security, shape, count in (("libcoap", "oscore", "piggyback", 20),
                                               ("libcoap", "unprotected", "separate-con", 20),
                                               ("libcoap", "oscore", None, 20),
+                                              ("libcoap-handler", "oscore", "separate-con", 20),
+                                              ("libcoap-handler", "unprotected", None, 20),
                                               ("coaptic-async", "oscore", "separate-con", 7500)):
             with self.assertRaises(ValueError):
                 matched_packets(peer, security, shape, 4096, count, 0, **dims)

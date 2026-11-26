@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 import sys
 
 from campaign import run_cell
@@ -13,11 +14,13 @@ OSCORE = "OSCORE-AES-CCM-16-64-128"
 
 def check_peer(executable, peer, security, size, shape, operations):
     address = ["{host}", "{port}", "{bytes}"]
-    if peer == "libcoap":
+    if peer in ("libcoap", "libcoap-handler"):
         server = [str(executable), *address]
         if security == OSCORE:
             server += ["oscore", "{credentials}"]
         server.append("--fixture-etag")
+        if peer == "libcoap-handler":
+            server.extend(["--handler-response", shape])
     else:
         server = [str(executable), "coaptic-async", *address, "1472"]
         if security == OSCORE:
@@ -53,6 +56,8 @@ def main():
     parser.add_argument("--coaptic", type=Path, required=True)
     parser.add_argument("--libcoap", type=Path, required=True)
     parser.add_argument("--operations", type=int, default=32)
+    parser.add_argument("--unprotected-handler", action="store_true",
+                        help="also compare both unprotected response styles with libcoap application-managed Block2")
     args = parser.parse_args()
     if not 1 <= args.operations <= 10000:
         parser.error("operations must be 1..10000")
@@ -67,9 +72,18 @@ def main():
             shape = "separate-con" if security == OSCORE else "piggyback"
             for peer, path in binaries.items():
                 rows.append(check_peer(path, peer, security, size, shape, args.operations))
+            if args.unprotected_handler and security == "unprotected":
+                rows.append(check_peer(binaries["coaptic"], "coaptic", security, size, "separate-con", args.operations))
+                for handler_shape in ("piggyback", "separate-con"):
+                    rows.append(check_peer(binaries["libcoap"], "libcoap-handler", security, size, handler_shape, args.operations))
             if security == OSCORE:
                 rows.append(check_peer(binaries["coaptic"], "coaptic", security, size, "piggyback", args.operations))
-    print(json.dumps(dict(schema="coaptic-libcoap-ack/1", binaries=hashes, runs=rows), indent=2))
+    result = dict(schema="coaptic-libcoap-ack/1", binaries=hashes, runs=rows)
+    if args.unprotected_handler:
+        command = [sys.executable, "-B", str(DRIVER.with_name("verify_ack_retry.py")),
+                   "--server", str(binaries["libcoap"])]
+        result["libcoap_handler_recovery"] = json.loads(subprocess.check_output(command, text=True, timeout=20))
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

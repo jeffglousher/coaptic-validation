@@ -597,6 +597,25 @@ The JSON reports both directions and excludes readiness, bootstrap and warmup tr
 Use these as wire qualification before CPU timing; the independent Python driver has its
 own runtime and verification costs.
 
+Add `--unprotected-handler` to verify four-datagram unprotected reads on both
+peers. This also checks libcoap's piggybacked response through the same block
+handler. In this opt-in fixture, libcoap selects each requested byte range with
+`coap_write_block_b_opt` and `coap_add_block_b_data`. Its async resource API
+sends the empty ACK and tracks the separate CON. Stock libcoap's large-response
+API serves later blocks from its own cache before the handler runs. The handler
+control borrows the immutable application body on every GET and copies only
+the selected range into the libcoap PDU. It chooses Classic Block2 above
+1024 bytes. The stock rows retain their automatic large-transfer state.
+Libcoap owns the async allocation and retransmission queue in the separate
+control. Neither C mode models Coaptic's bounded body pool. The loss check withholds the final block's ACK,
+compares the retransmitted PDU byte for byte, verifies an out-of-range refusal
+and fetches every block again on the same endpoint.
+
+For native timing use `--server-kind libcoap-handler --security unprotected`
+and select `--expect-exchange separate-con` or `--expect-exchange piggyback`.
+Use `--server-kind libcoap` for the stock handler. Both application-managed
+rows send the same ETag, Content-Format and Size2 as the stock 4 KiB fixture.
+
 For profiler-off CPU measurements, run `native_diagnostic.py` with the same
 server binaries and `bench-native-client`. Select `--server-kind coaptic-async`
 or `--server-kind libcoap`, `--expect-exchange separate-con` for matched OSCORE
