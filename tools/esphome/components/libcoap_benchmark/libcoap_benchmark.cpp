@@ -184,6 +184,7 @@ void server_get(coap_resource_t *resource, coap_session_t *session,
     coap_pdu_set_code(reply, COAP_RESPONSE_CODE_UNAUTHORIZED);
     return;
   }
+  ++state.handler_calls;
   const bool compare = query && query->length == 5 &&
                        std::memcmp(query->s, "ack=", 4) == 0 &&
                        (query->s[4] == '0' || query->s[4] == '1');
@@ -207,7 +208,6 @@ void server_get(coap_resource_t *resource, coap_session_t *session,
       return;
     }
   }
-  ++state.handler_calls;
   coap_pdu_set_code(reply, COAP_RESPONSE_CODE_CONTENT);
   coap_block_b_t block{};
   const bool requested =

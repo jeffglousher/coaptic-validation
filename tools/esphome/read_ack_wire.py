@@ -87,6 +87,8 @@ def campaign(sock, run_id, rounds):
 def match_wire(reference, result):
     """Compare verified block sizes and every datagram length across two service images."""
     def shapes(report):
+        if not isinstance(report, dict):
+            raise ValueError("invalid peer report")
         ops = report["operations"]
         if (report["security"] != "unprotected" or report["identity_checks"] != 2
                 or report["verified"] != len(ops) or not ops):
@@ -116,7 +118,7 @@ def main():
         sock.connect((str(args.address), args.port))
         sock.settimeout(2)
         result = campaign(sock, args.run_id, args.rounds)
-    if reference is not None:
+    if args.match:
         match_wire(reference, result)
         result["matched_peer_run_id"] = reference["run_id"]
     print(json.dumps(result))
