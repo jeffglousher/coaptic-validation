@@ -129,6 +129,33 @@ Handler calls include block GETs and are not logical completion counts. Use
 the separate Windows client's exact completion/verification report for the
 comparison. There is no timed handler instrumentation or automatic restart.
 
+### Direct unprotected ACK comparison
+
+Run the following host command once per server image, inside its service
+window. Use the same port, number of rounds and Python environment for each
+peer. It uses the aiocoap version in `tools/benchmark/protected/requirements.txt`.
+
+```text
+python tools/esphome/read_ack_wire.py DEVICE_IPV4 LIBCOAP_RUN_ID > libcoap.json
+python tools/esphome/read_ack_wire.py DEVICE_IPV4 COAPTIC_RUN_ID --match libcoap.json
+```
+
+The host checks the image identity before and after the run. Each round reads
+7 bytes from `/test` and 2,000 bytes from `/large` in both response modes.
+The explicit query `ack=0` requests a piggybacked response. With `ack=1` the
+server sends an empty ACK, then a separate CON. Libcoap enters the handler once
+to register the separate reply and again to construct it. Both entries count
+toward its reported handler calls. The host acknowledges that CON
+after verifying its token, options and payload. Every large read uses 1,024-
+and 976-byte blocks with the same eight-byte ETag on both servers. The JSON
+records ordered datagram lengths and the two MIDs per block. The second run
+checks every block and datagram length against the first report. An exchange with
+a missing, duplicate or mismatched datagram fails the run. Timings include host
+verification and Wi-Fi. Use independent worker clocks for server CPU.
+
+This comparison covers the unprotected qualification service. The C image
+disables OSCORE. Build and physical qualification are separate steps.
+
 Primary API/build references:
 
 - [ESP component and supported targets](https://components.espressif.com/components/espressif/coap/versions/4.3.5~8/readme)

@@ -61,7 +61,7 @@ def body_matches(body, offset):
     return body == _FIXTURE_WINDOW[start:start + len(body)]
 
 
-def check_body(message, offset, size, etag, requested_block=None):
+def check_body(message, offset, size, etag, requested_block=None, *, fixture=False):
     counts = {}
     for option in message.opt.option_list():
         number = int(option.number)
@@ -75,6 +75,9 @@ def check_body(message, offset, size, etag, requested_block=None):
     if len(message.opt.etags) > 1 or any(not 1 <= len(v) <= 8 for v in message.opt.etags):
         raise ValueError("invalid ETag")
     current = message.opt.etags
+    if fixture and (current != (b"fixture",) or counts.get(28, 0) > 1
+                    or (message.opt.size2 is not None and message.opt.size2 != size)):
+        raise ValueError("fixture ETag/Size2 mismatch")
     if etag is not None and current != etag:
         raise ValueError("changed representation ETag")
     body = message.payload
@@ -115,6 +118,7 @@ class Worker:
     def __init__(self, args, number, context, crypto_lock):
         self.args, self.number = args, number
         self.context, self.crypto_lock = context, crypto_lock
+        self.expected_exchange = getattr(args, "expect_exchange", None)
         self.mid = 0
         self.retired = []
         self.bootstrap_echo_challenges = 0
@@ -144,9 +148,14 @@ class Worker:
         deadline = time.monotonic() + self.args.timeout_ms / 1000
         token = ((self.number << 48) | sequence).to_bytes(8, "big")
         offset, etag = 0, None
-        block = (0, False, 6) if self.args.bytes > 1024 else None
+        # The native comparison client starts with GET and follows the server's
+        # first Block2 choice. Keep explicit negotiation in the other campaigns.
+        block = (0, False, 6) if self.args.bytes > 1024 and self.expected_exchange is None else None
         echo = None
+        expected = None if bootstrap else self.expected_exchange
+        response_mids = set() if expected == "separate-con" else None
         while True:
+            saw_empty_ack = False
             mid = self.mid
             self.mid += 1
             request = aiocoap.Message(code=aiocoap.GET, uri_path=("bench",), block2=block)
@@ -176,21 +185,36 @@ class Worker:
                 if observation is not None:
                     received_at = time.perf_counter_ns()
                     observation.wire["received_datagrams"] += 1
-                response = aiocoap.Message.decode(wire)
                 if wire == bytes([0x60, 0, mid >> 8, mid & 255]):
                     if self.args.mode != "con":
                         raise ValueError("ACK for NON request")
+                    if expected and (saw_empty_ack or expected == "piggyback"):
+                        raise ValueError("unexpected extra empty ACK")
+                    saw_empty_ack = True
                     if observation is not None:
                         observation.wire["matching_empty_acks"] += 1
                     continue
+                response = aiocoap.Message.decode(wire)
                 if response.code == aiocoap.EMPTY:
                     raise ValueError("malformed empty control")
                 if response.token != token:
+                    if expected:
+                        raise ValueError("unexpected response token in matched exchange")
                     continue
                 if response.mtype == aiocoap.RST or (response.mtype == aiocoap.ACK and self.args.mode != "con"):
                     raise ValueError("response type")
                 if response.mtype == aiocoap.ACK and response.mid != mid:
+                    if expected:
+                        raise ValueError("unexpected piggyback MID in matched exchange")
                     continue
+                if expected == "separate-con" and (not saw_empty_ack or response.mtype != aiocoap.CON):
+                    raise ValueError("expected empty ACK followed by a separate CON")
+                if response_mids is not None:
+                    if response.mid in response_mids:
+                        raise ValueError("reused separate response MID within one read")
+                    response_mids.add(response.mid)
+                if expected == "piggyback" and response.mtype != aiocoap.ACK:
+                    raise ValueError("expected piggybacked response")
                 if self.context:
                     if response.opt.oscore is None:
                         raise ValueError("unprotected application response")
@@ -214,7 +238,8 @@ class Worker:
                     echo = plain.opt.echo
                     self.bootstrap_echo_challenges += 1
                 else:
-                    offset, block, etag = check_body(plain, offset, self.args.bytes, etag, block)
+                    offset, block, etag = check_body(plain, offset, self.args.bytes, etag, block,
+                                                     fixture=self.expected_exchange is not None)
                     echo = None
                 # A separate CON response is acknowledged only after authentication.
                 if response.mtype == aiocoap.CON:
@@ -266,9 +291,12 @@ def run(args):
                           + args.warmup + 2 + per_endpoint - 1) // per_endpoint) for i in range(args.concurrency))
     if reserved > 1024:
         raise ValueError("driver endpoint reservation exceeds 1024")
+    expected = getattr(args, "expect_exchange", None)
+    if expected is not None and (args.mode != "con" or expected not in ("piggyback", "separate-con")):
+        raise ValueError("wire shape requires a CON request and a known exchange")
     observations = None
-    if group_starts:
-        observations = [GroupObservation(args.operations // args.concurrency)
+    if group_starts or expected:
+        observations = [GroupObservation(args.operations // args.concurrency if group_starts else 0)
                         for _ in range(args.concurrency)]
     context = Context(args.credentials, sequence=args.sequence) if args.security == SECURITY else None
     lock = threading.Lock()
@@ -306,7 +334,8 @@ def run(args):
                     observation.first_send_ns = None
                     observation.final_receive_ns = None
                     latency = worker.exchange(sequence, observation=observation)
-                    observation.record_verified(index, start)
+                    if group_starts:
+                        observation.record_verified(index, start)
                 latencies.append(latency)
             except Exception as error:
                 failures += 1
@@ -349,7 +378,11 @@ def run(args):
                 pacing_max_lateness_ns=max(row[5] for row in rows),
                 measurement="absolute start schedule; Python/GIL, authentication and full byte validation inside operation latency",
             )
+        if expected:
+            report["expected_exchange"] = expected
         if observations is not None:
+            report["measured_wire_by_worker"] = [o.wire for o in observations]
+        if group_starts:
             verified_groups = overlapping_groups = 0
             for index in range(args.operations // args.concurrency):
                 starts = [o.first_sends[index] for o in observations]
@@ -365,7 +398,6 @@ def run(args):
                 verified_by_worker=[len(row[0]) for row in rows],
                 worker_endpoint_ports=[w.socket.getsockname()[1] for w in workers],
                 client_process_cpu_time_ns=client_cpu,
-                measured_wire_by_worker=[o.wire for o in observations],
             )
         return report
     finally:
@@ -380,6 +412,9 @@ def main():
     for name in ("port", "bytes", "concurrency", "operations", "warmup", "timeout-ms", "sequence"):
         parser.add_argument("--" + name, type=int, required=True)
     parser.add_argument("--rate", type=int)
+    parser.add_argument("--expect-exchange", choices=("piggyback", "separate-con"),
+                        help="require the selected wire shape on every warmup and timed CON block; "
+                             "separate-con requires the matching empty ACK before the verified response")
     parser.add_argument("--group-starts", action="store_true",
                         help="give all CON workers the same absolute start slot and report overlap and wire counts")
     args = parser.parse_args()

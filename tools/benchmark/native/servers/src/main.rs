@@ -44,7 +44,7 @@ mod staged_mio;
 mod staged_ready;
 mod staged_udp;
 use coap_lite::{CoapOption, MessageClass, MessageType, Packet, ResponseType};
-use coaptic::app::{AppAssembled, AppStorage};
+use coaptic::app::{AppAssembled, AppStorage, HandlerFn};
 use coaptic::oscore::{DeriveParams, SecurityContext};
 use coaptic::storage::{AllocMemory, Capacities, DatagramIo, Endpoint, MemoryLayout, UdpSocketIo};
 use coaptic::{App, ContentFormat, Request, Response, get};
@@ -161,6 +161,27 @@ macro_rules! bind_resources {
     }};
 }
 
+fn take_separate_con(
+    args: &mut Vec<String>,
+    profile: ResourceProfile,
+) -> Result<bool, &'static str> {
+    let Some(index) = args.iter().position(|arg| arg == "--separate-con") else {
+        return Ok(false);
+    };
+    args.remove(index);
+    if args.iter().any(|arg| arg == "--separate-con")
+        || args.get(1).map(String::as_str) != Some("coaptic-async")
+        || profile != ResourceProfile::HostControl
+    {
+        return Err("--separate-con requires one coaptic-async host-control selection");
+    }
+    Ok(true)
+}
+
+fn separate_representation(request: Request<'_>) -> Response<'static> {
+    representation(request).separate()
+}
+
 fn representation(_: Request<'_>) -> Response<'static> {
     Response::content(BODY.get().expect("initialized fixture"))
         .content_format(ContentFormat::OCTET_STREAM)
@@ -274,6 +295,16 @@ fn bind_fixture<T: coaptic::storage::DatagramTransport<Error = std::io::Error>>(
     rx_bytes: usize,
     context: Option<SecurityContext>,
 ) -> Result<App<coaptic::profiles::Default, T, 1, true, AllocMemory>, Box<dyn std::error::Error>> {
+    bind_fixture_with_handler(io, bytes, rx_bytes, context, representation)
+}
+
+fn bind_fixture_with_handler<T: coaptic::storage::DatagramTransport<Error = std::io::Error>>(
+    io: T,
+    bytes: usize,
+    rx_bytes: usize,
+    context: Option<SecurityContext>,
+    handler: HandlerFn,
+) -> Result<App<coaptic::profiles::Default, T, 1, true, AllocMemory>, Box<dyn std::error::Error>> {
     let capacities = Capacities {
         rx_datagram_slots: 4,
         rx_datagram_bytes: rx_bytes,
@@ -290,7 +321,7 @@ fn bind_fixture<T: coaptic::storage::DatagramTransport<Error = std::io::Error>>(
         .routes::<1>()
         .block_wise::<true>()
         .randomness(|buffer| getrandom::fill(buffer).is_ok())
-        .route("bench", get(representation));
+        .route("bench", get(handler));
     let builder = if let Some(context) = context {
         builder.oscore(context)
     } else {
@@ -577,6 +608,7 @@ async fn async_udp_server(
     bytes: usize,
     rx_bytes: usize,
     context: Option<SecurityContext>,
+    separate_con: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let io = ReadyUdp {
         socket: tokio::net::UdpSocket::bind(address).await?,
@@ -586,13 +618,18 @@ async fn async_udp_server(
         counts: None,
     };
     let adapter_bytes = std::mem::size_of_val(&io);
-    let mut app = bind_fixture(io, bytes, rx_bytes, context)?;
+    let (handler, response_exchange): (HandlerFn, _) = if separate_con {
+        (separate_representation, "separate-con")
+    } else {
+        (representation, "piggyback")
+    };
+    let mut app = bind_fixture_with_handler(io, bytes, rx_bytes, context, handler)?;
     let app_bytes = std::mem::size_of_val(&app);
     let run = async_udp_loop(&mut app, Instant::now());
     // App owns the adapter and scratch; the separate loop future borrows App.
     // Both live in the outer setup future, whose complete layout is not reported.
     println!(
-        "{{\"schema\":\"coaptic-native-server-resources/2\",\"server_kind\":\"coaptic-async\",\"udp_scratch_bytes\":2049,\"adapter_inline_bytes\":{adapter_bytes},\"app_including_adapter_bytes\":{app_bytes},\"loop_future_borrowing_app_bytes\":{},\"runtime_heap_bytes\":null,\"runtime_stack_bytes\":null,\"nesting\":\"scratch inside adapter inside App; loop future borrows separate App; both inside outer setup future; do not sum nested owners\",\"limits\":\"inline component sizes only; complete outer setup future, core heap, response body, runtime heap, thread and polling stacks, allocator and kernel costs excluded and unknown\"}}",
+        "{{\"schema\":\"coaptic-native-server-resources/2\",\"server_kind\":\"coaptic-async\",\"response_exchange\":\"{response_exchange}\",\"udp_scratch_bytes\":2049,\"adapter_inline_bytes\":{adapter_bytes},\"app_including_adapter_bytes\":{app_bytes},\"loop_future_borrowing_app_bytes\":{},\"runtime_heap_bytes\":null,\"runtime_stack_bytes\":null,\"nesting\":\"scratch inside adapter inside App; loop future borrows separate App; both inside outer setup future; do not sum nested owners\",\"limits\":\"inline component sizes only; complete outer setup future, core heap, response body, runtime heap, thread and polling stacks, allocator and kernel costs excluded and unknown\"}}",
         std::mem::size_of_val(&run)
     );
     std::io::stdout().flush()?;
@@ -1190,6 +1227,7 @@ fn codec_server(address: &str, body: &[u8]) -> Result<(), Box<dyn std::error::Er
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args: Vec<_> = env::args().collect();
     let profile = ResourceProfile::take_option(&mut args)?;
+    let separate_con = take_separate_con(&mut args, profile)?;
     // Reject unsupported combinations before credentials, representation or sockets.
     if profile != ResourceProfile::HostControl {
         let kind = args.get(1).ok_or("missing server kind")?;
@@ -1250,7 +1288,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if !(5..=7).contains(&args.len()) {
         return Err(
-            "usage: bench-rust-server coaptic-small|coaptic|coaptic-reusable|coaptic-ready|coaptic-staged-ready|coaptic-staged-mio|coaptic-mio|coaptic-mio-direct|coaptic-async|coaptic-blocking|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]]".into(),
+            "usage: bench-rust-server coaptic-small|coaptic|coaptic-reusable|coaptic-ready|coaptic-staged-ready|coaptic-staged-mio|coaptic-mio|coaptic-mio-direct|coaptic-async|coaptic-blocking|coap-rs|coap-lite-codec HOST PORT BYTES [RX_BYTES [OSCORE_CREDENTIAL_FILE]] [--separate-con (coaptic-async)]".into(),
         );
     }
     let rx_bytes: usize = args
@@ -1390,7 +1428,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "coaptic-async" => tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?
-            .block_on(async_udp_server(&address, size, rx_bytes, context)),
+            .block_on(async_udp_server(
+                &address,
+                size,
+                rx_bytes,
+                context,
+                separate_con,
+            )),
         "coap-rs" => tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
@@ -1404,6 +1448,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use super::*;
     use coaptic::message::{Message, MessageId, Type};
+
+    #[test]
+    fn separate_con_requires_an_explicit_host_control_async_fixture() {
+        fn args(words: &[&str]) -> Vec<String> {
+            words.iter().map(|word| word.to_string()).collect()
+        }
+        let host = ResourceProfile::HostControl;
+        let mut default = args(&["server", "coaptic-async"]);
+        assert!(!take_separate_con(&mut default, host).unwrap());
+        let mut selected = args(&["server", "--separate-con", "coaptic-async"]);
+        assert!(take_separate_con(&mut selected, host).unwrap());
+        assert_eq!(selected, default);
+        for (kind, profile) in [
+            ("coap-rs", host),
+            ("coaptic-async", ResourceProfile::DeviceFixed),
+        ] {
+            assert!(
+                take_separate_con(&mut args(&["server", kind, "--separate-con"]), profile).is_err()
+            );
+        }
+        let mut repeated = args(&[
+            "server",
+            "coaptic-async",
+            "--separate-con",
+            "--separate-con",
+        ]);
+        assert!(take_separate_con(&mut repeated, host).is_err());
+    }
 
     #[test]
     fn representative_profiles_refuse_unsupported_selection_before_binding() {

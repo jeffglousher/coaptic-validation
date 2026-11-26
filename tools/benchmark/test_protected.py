@@ -164,6 +164,51 @@ class ProtectedTests(unittest.TestCase):
                     sent_response_acks=int(separate),
                 ))
 
+    def test_matched_exchange_requires_each_canonical_ack_and_verified_block(self):
+        token = (1).to_bytes(8, "big")
+        def response(kind, mid, num, **changes):
+            block = aiocoap.Message(code=aiocoap.CONTENT, content_format=42, etag=b"fixture",
+                                    block2=(num, num == 0, 0),
+                                    payload=bytes(range(num * 16, (num + 1) * 16)))
+            block.mtype, block.mid, block.token = kind, mid, token
+            return block.copy(**changes).encode()
+
+        ack0, ack1 = bytes([0x60, 0, 0, 0]), bytes([0x60, 0, 0, 1])
+        con0, con1 = response(aiocoap.CON, 100, 0), response(aiocoap.CON, 101, 1)
+        pig0, pig1 = response(aiocoap.ACK, 0, 0), response(aiocoap.ACK, 1, 1)
+        cases = [
+            ("separate-con", [ack0, con0, ack1, con1], True, [100, 101]),
+            ("piggyback", [pig0, pig1], True, []),
+            ("separate-con", [ack0, con0, pig1], False, [100]),
+            ("separate-con", [ack0, con0, con1], False, [100]),
+            ("separate-con", [ack0, con0, ack1, response(aiocoap.CON, 100, 1)], False, [100]),
+            ("separate-con", [ack0, response(aiocoap.CON, 100, 0, etag=b"wrong")], False, []),
+            ("separate-con", [ack0, response(aiocoap.CON, 100, 0, size2=31)], False, []),
+            ("separate-con", [ack0, response(aiocoap.CON, 100, 0, size2=32), ack1, con1], True, [100, 101]),
+            ("separate-con", [ack0, ack0, con0, con1], False, []),
+            ("separate-con", [ack1, con0], False, []),
+            ("separate-con", [ack0 + b"\xffx", con0], False, []),
+            ("separate-con", [ack0, response(aiocoap.CON, 100, 0, token=b"x")], False, []),
+            ("separate-con", [ack0, response(aiocoap.CON, 100, 0, payload=b"x")], False, []),
+            ("piggyback", [ack0, con0], False, []),
+            ("piggyback", [con0], False, []),
+            ("piggyback", [response(aiocoap.ACK, 1, 0)], False, []),
+        ]
+        for shape, packets, valid, ack_mids in cases:
+            with self.subTest(shape=shape, packets=packets):
+                sock = Mock()
+                sock.recv.side_effect = packets
+                args = SimpleNamespace(bytes=32, mode="con", timeout_ms=1000, expect_exchange=shape)
+                with patch.object(Worker, "new_socket", return_value=sock):
+                    worker = Worker(args, 0, None, threading.Lock())
+                    if valid:
+                        self.assertGreater(worker.exchange(1), 0)
+                    else:
+                        with self.assertRaises(ValueError):
+                            worker.exchange(1)
+                controls = [call.args[0] for call in sock.send.call_args_list if call.args[0][0] == 0x60]
+                self.assertEqual(controls, [bytes([0x60, 0, 0, mid]) for mid in ack_mids])
+
     def echo_worker(self, responses, *, tamper=False):
         server = Context(self.credentials, server=True)
         pending, requests = [], []

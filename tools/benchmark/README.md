@@ -583,3 +583,26 @@ fail; all observations, memory tradeoffs and boot variation remain. The runtime
 wake-handling code delivered alongside these records matches the measured 32f8
 production source, with a separate future-deadline regression. Its source checks
 do not claim an isolated complete-App CPU gain or adoption of the failed H profiles.
+
+### Verify the same acknowledgement exchange against libcoap
+
+Run `python compare_ack.py --coaptic PATH_TO_BENCH_RUST_SERVER --libcoap PATH_TO_BENCH_LIBCOAP`
+from this directory with the protected driver requirements installed. The check verifies 64-byte
+and four-block reads against both native binaries. Unprotected requests use a piggybacked
+response. Established OSCORE requests use an empty request ACK, separate CON response and
+empty response ACK on both servers. An additional Coaptic run uses its default piggybacked
+response. Each measured block must exhibit the requested order on loopback. The driver
+authenticates the response and checks its representation before acknowledging a separate CON.
+The JSON reports both directions and excludes readiness, bootstrap and warmup traffic.
+Use these as wire qualification before CPU timing; the independent Python driver has its
+own runtime and verification costs.
+
+For profiler-off CPU measurements, run `native_diagnostic.py` with the same
+server binaries and `bench-native-client`. Select `--server-kind coaptic-async`
+or `--server-kind libcoap`, `--expect-exchange separate-con` for matched OSCORE
+or `--expect-exchange piggyback` for matched unprotected traffic, and
+`--cpu-gated`. The native driver establishes its own context before warmup and
+compares every byte and the fixture ETag. The timed rows also require the exact
+datagram total in each direction. These checks cover the qualified sizes of 64
+and 4096 bytes, one CON reader and 1024-byte negotiated blocks for the large
+fixture. `--rate 800` selects paced reads. Omit the rate for closed-loop capacity.

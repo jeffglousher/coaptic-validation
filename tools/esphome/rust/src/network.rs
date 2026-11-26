@@ -103,6 +103,20 @@ fn large(_: Request<'_>) -> Response<'static> {
     Response::content(&LARGE).etag(b"large-v1")
 }
 
+// Only the unprotected comparison service selects the wire shape by query.
+fn unprotected_read(
+    request: Request<'_>,
+    handler: fn(Request<'_>) -> Response<'static>,
+) -> Response<'static> {
+    let separate = request.uri_query().eq([Ok("ack=1")]);
+    let response = handler(request);
+    if separate {
+        response.separate()
+    } else {
+        response
+    }
+}
+
 fn ticks(_: Request<'_>) -> Response<'static> {
     Response::content_copy(&TICKS.load(Ordering::Relaxed).to_be_bytes()).observe(0)
 }
@@ -142,11 +156,11 @@ pub(crate) fn prepare_unprotected<T>(
         .randomness(random)
         .allow_unprotected()
         .block_wise::<true>()
-        .route("identity", get(identity))
-        .route("test", get(test))
+        .route("identity", get(|request| unprotected_read(request, identity)))
+        .route("test", get(|request| unprotected_read(request, test)))
         .route("echo", post(echo))
         .route("upload", post(upload))
-        .route("large", get(large))
+        .route("large", get(|request| unprotected_read(request, large)))
         .route("ticks", get(ticks))
         .route("effects", get(effects))
         .well_known_core()
@@ -177,11 +191,11 @@ pub fn run<T: DatagramIo>(
         .randomness(random)
         .allow_unprotected()
         .block_wise::<true>()
-        .route("identity", get(identity))
-        .route("test", get(test))
+        .route("identity", get(|request| unprotected_read(request, identity)))
+        .route("test", get(|request| unprotected_read(request, test)))
         .route("echo", post(echo))
         .route("upload", post(upload))
-        .route("large", get(large))
+        .route("large", get(|request| unprotected_read(request, large)))
         .route("ticks", get(ticks))
         .route("effects", get(effects))
         .well_known_core()
