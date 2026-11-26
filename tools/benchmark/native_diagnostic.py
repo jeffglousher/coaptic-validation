@@ -28,7 +28,7 @@ from native_profiles import PROFILE_SIZES, dimensions, validate_concurrency, val
 
 
 SERVER_KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready", "coaptic-async",
-                "coaptic-blocking", "coaptic-staged-ready", "coaptic-staged-mio", "coaptic-mio-direct", "libcoap")
+                "coaptic-blocking", "coaptic-staged-ready", "coaptic-staged-mio", "coaptic-mio-direct", "libcoap", "libcoap-handler")
 
 
 def validate_profile_resources(record, server_kind, profile, size, security, rx_bytes):
@@ -590,15 +590,17 @@ def validate_report(report, size, operations, policy, security, rate=None,
 
 def matched_packets(server_kind, security, shape, size, operations, warmup, *,
                     concurrency, message_type, profile):
-    if server_kind == "libcoap" and shape is None:
+    if server_kind in ("libcoap", "libcoap-handler") and shape is None:
         raise ValueError("libcoap requires an explicit expected CON exchange")
     if shape is None:
         return None
     if (profile != "host-control" or message_type != "con" or concurrency != 1
-            or server_kind not in ("libcoap", "coaptic-async") or shape not in ("piggyback", "separate-con")):
+            or server_kind not in ("libcoap", "libcoap-handler", "coaptic-async") or shape not in ("piggyback", "separate-con")):
         raise ValueError("matched exchange requires host-control, one CON client and a peer fixture")
     if server_kind == "libcoap" and shape != ("separate-con" if security == "oscore" else "piggyback"):
         raise ValueError("expected exchange does not match the libcoap fixture")
+    if server_kind == "libcoap-handler" and security != "unprotected":
+        raise ValueError("libcoap handler control requires unprotected UDP")
     # The native client negotiates the first block. A representation just over
     # 1024 bytes can still fit a single PDU on one or both peers.
     if size not in (64, 4096):
@@ -670,11 +672,13 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
             reserve.bind(("127.0.0.1", 0))
             port = reserve.getsockname()[1]
         command = [str(Path(server).resolve())]
-        if server_kind == "libcoap":
+        if server_kind in ("libcoap", "libcoap-handler"):
             command.extend(["127.0.0.1", str(port), str(size)])
             if security == "oscore":
                 command.extend(["oscore", str(credentials)])
             command.append("--fixture-etag")
+            if server_kind == "libcoap-handler":
+                command.extend(["--handler-response", expect_exchange])
         else:
             command.extend([server_kind, "127.0.0.1", str(port), str(size), str(rx_bytes)])
             if security == "oscore":
