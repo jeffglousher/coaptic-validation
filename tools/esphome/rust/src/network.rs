@@ -156,7 +156,10 @@ pub(crate) fn prepare_unprotected<T>(
         .randomness(random)
         .allow_unprotected()
         .block_wise::<true>()
-        .route("identity", get(|request| unprotected_read(request, identity)))
+        .route(
+            "identity",
+            get(|request| unprotected_read(request, identity)),
+        )
         .route("test", get(|request| unprotected_read(request, test)))
         .route("echo", post(echo))
         .route("upload", post(upload))
@@ -191,7 +194,10 @@ pub fn run<T: DatagramIo>(
         .randomness(random)
         .allow_unprotected()
         .block_wise::<true>()
-        .route("identity", get(|request| unprotected_read(request, identity)))
+        .route(
+            "identity",
+            get(|request| unprotected_read(request, identity)),
+        )
         .route("test", get(|request| unprotected_read(request, test)))
         .route("echo", post(echo))
         .route("upload", post(upload))
