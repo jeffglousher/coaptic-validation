@@ -168,7 +168,7 @@ struct Representation {
 };
 
 void server_get(coap_resource_t *resource, coap_session_t *session,
-                const coap_pdu_t *request, const coap_string_t *,
+                const coap_pdu_t *request, const coap_string_t *query,
                 coap_pdu_t *reply) {
   auto *representation =
       static_cast<Representation *>(coap_resource_get_userdata(resource));
@@ -183,6 +183,29 @@ void server_get(coap_resource_t *resource, coap_session_t *session,
     ++state.refused_peers;
     coap_pdu_set_code(reply, COAP_RESPONSE_CODE_UNAUTHORIZED);
     return;
+  }
+  const bool compare = query && query->length == 5 &&
+                       std::memcmp(query->s, "ack=", 4) == 0 &&
+                       (query->s[4] == '0' || query->s[4] == '1');
+  if (compare && query->s[4] == '1' &&
+      !coap_find_async(session, coap_pdu_get_token(request))) {
+    // libcoap sends the request ACK when we return without a response code.
+    // Its async dispatch re-enters this handler to build the separate CON.
+    auto *pending = coap_register_async(session, request, 0);
+    if (!pending) {
+      coap_pdu_set_code(reply, COAP_RESPONSE_CODE_SERVICE_UNAVAILABLE);
+      return;
+    }
+    coap_async_trigger(pending);
+    return;
+  }
+  if (compare && representation->data == LARGE_REPRESENTATION.data()) {
+    constexpr uint8_t etag[] = {'l', 'a', 'r', 'g', 'e', '-', 'v', '1'};
+    if (!coap_add_option(reply, COAP_OPTION_ETAG, sizeof(etag), etag)) {
+      state.error = "response_etag_allocation";
+      coap_pdu_set_code(reply, COAP_RESPONSE_CODE_INTERNAL_ERROR);
+      return;
+    }
   }
   ++state.handler_calls;
   coap_pdu_set_code(reply, COAP_RESPONSE_CODE_CONTENT);

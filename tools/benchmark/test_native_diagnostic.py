@@ -14,6 +14,21 @@ from native_profiles import dimensions, PROFILE_SIZES
 
 
 class WindowsProcessCycleTests(unittest.TestCase):
+    def test_matched_wire_budget_includes_both_acks_bootstrap_and_every_block(self):
+        from native_diagnostic import matched_packets
+        dims = dict(concurrency=1, message_type="con", profile="host-control")
+        self.assertEqual(matched_packets("libcoap", "oscore", "separate-con", 4096, 128, 4, **dims), 1024)
+        self.assertEqual(matched_packets("coaptic-async", "oscore", "piggyback", 4096, 128, 4, **dims), 512)
+        self.assertEqual(matched_packets("libcoap", "unprotected", "piggyback", 64, 59999, 0, **dims), 59999)
+        with self.assertRaisesRegex(ValueError, "wire-qualified"):
+            matched_packets("coaptic-async", "oscore", "separate-con", 1025, 20, 0, **dims)
+        for peer, security, shape, count in (("libcoap", "oscore", "piggyback", 20),
+                                              ("libcoap", "unprotected", "separate-con", 20),
+                                              ("libcoap", "oscore", None, 20),
+                                              ("coaptic-async", "oscore", "separate-con", 7500)):
+            with self.assertRaises(ValueError):
+                matched_packets(peer, security, shape, 4096, count, 0, **dims)
+
     def test_refuses_unsupported_capture_before_launch(self):
         for platform, gated in (("linux", True), ("win32", False)):
             with self.subTest(platform=platform, gated=gated), \

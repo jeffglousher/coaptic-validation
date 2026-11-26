@@ -1,4 +1,4 @@
-"""Coaptic-only complete-operation diagnostic, not a comparative campaign.
+"""Complete-operation diagnostic for native servers with a verified Coaptic client.
 
 Gates keep CPU/RSS samples outside operation clocks. Resource windows include
 control IPC/sampling overhead; CPU accounting is quantized. Optional kernel memory
@@ -28,7 +28,7 @@ from native_profiles import PROFILE_SIZES, dimensions, validate_concurrency, val
 
 
 SERVER_KINDS = ("coaptic-reusable", "coaptic-mio", "coaptic-ready", "coaptic-async",
-                "coaptic-blocking", "coaptic-staged-ready", "coaptic-staged-mio", "coaptic-mio-direct")
+                "coaptic-blocking", "coaptic-staged-ready", "coaptic-staged-mio", "coaptic-mio-direct", "libcoap")
 
 
 def validate_profile_resources(record, server_kind, profile, size, security, rx_bytes):
@@ -588,11 +588,34 @@ def validate_report(report, size, operations, policy, security, rate=None,
     validate_admission_diagnostics(report, admission_diagnostics)
 
 
+def matched_packets(server_kind, security, shape, size, operations, warmup, *,
+                    concurrency, message_type, profile):
+    if server_kind == "libcoap" and shape is None:
+        raise ValueError("libcoap requires an explicit expected CON exchange")
+    if shape is None:
+        return None
+    if (profile != "host-control" or message_type != "con" or concurrency != 1
+            or server_kind not in ("libcoap", "coaptic-async") or shape not in ("piggyback", "separate-con")):
+        raise ValueError("matched exchange requires host-control, one CON client and a peer fixture")
+    if server_kind == "libcoap" and shape != ("separate-con" if security == "oscore" else "piggyback"):
+        raise ValueError("expected exchange does not match the libcoap fixture")
+    # The native client negotiates the first block. A representation just over
+    # 1024 bytes can still fit a single PDU on one or both peers.
+    if size not in (64, 4096):
+        raise ValueError("matched peer rows require the wire-qualified 64 or 4096 byte fixture")
+    per_read = ((size + 1023) // 1024) * (2 if shape == "separate-con" else 1)
+    # One complete bootstrap and at most one challenge request + response ACK.
+    challenge = 2 if server_kind == "libcoap" and security == "oscore" else 0
+    if per_read * (operations + warmup + 1) + challenge > 60_000:
+        raise ValueError("matched exchange exceeds outbound datagram budget")
+    return per_read * operations
+
+
 def measure(server, client, size, operations, warmup, timeout_ms, policy, security,
             *, server_kind="coaptic-reusable", rate=None, cpu_gated=False,
             phase_timeout_seconds=300, concurrency=1, message_type="con", admission_diagnostics=False,
             independent_endpoints=False, resource_profile="host-control", windows_process_cycles=False,
-            group_starts=False):
+            group_starts=False, expect_exchange=None):
     """Measure complete operations with additive wall-clock phase observations.
 
     Client startup and warmup share one ready signal and one combined duration.
@@ -636,6 +659,8 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
             and (rate is None or (type(rate) is int and 1 <= rate <= 1_000_000
                                   and operations / rate <= 120))):
         raise ValueError("diagnostic bounds")
+    packets = matched_packets(server_kind, security, expect_exchange, size, operations, warmup,
+                              concurrency=concurrency, message_type=message_type, profile=resource_profile)
     rx_bytes = dimensions(resource_profile, size)["rx_datagram_bytes"]
     phases = {}
     with tempfile.TemporaryDirectory(prefix="coaptic-native-diagnostic-") as directory:
@@ -644,12 +669,20 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as reserve:
             reserve.bind(("127.0.0.1", 0))
             port = reserve.getsockname()[1]
-        command = [str(Path(server).resolve()), server_kind, "127.0.0.1",
-                   str(port), str(size), str(rx_bytes)]
-        if security == "oscore":
-            command.append(str(credentials))
-        if resource_profile != "host-control":
-            command.extend(["--resource-profile", resource_profile])
+        command = [str(Path(server).resolve())]
+        if server_kind == "libcoap":
+            command.extend(["127.0.0.1", str(port), str(size)])
+            if security == "oscore":
+                command.extend(["oscore", str(credentials)])
+            command.append("--fixture-etag")
+        else:
+            command.extend([server_kind, "127.0.0.1", str(port), str(size), str(rx_bytes)])
+            if security == "oscore":
+                command.append(str(credentials))
+            if resource_profile != "host-control":
+                command.extend(["--resource-profile", resource_profile])
+            if expect_exchange == "separate-con":
+                command.append("--separate-con")
         child = None
         report = None
         server_log_path = Path(directory) / "server.log"
@@ -674,6 +707,8 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                            str(operations), str(warmup), str(timeout_ms), policy, security]
                 if security == "oscore":
                     command.append(str(credentials))
+                if expect_exchange is not None:
+                    command.append("--peer-bootstrap")
                 if rate is not None:
                     command.extend(["--rate", str(rate)])
                 command.extend(["--concurrency", str(concurrency), "--message-type", message_type])
@@ -715,6 +750,10 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                 validate_report(report, size, operations, policy, security, rate, concurrency, message_type,
                                 admission_diagnostics, independent_endpoints=independent_endpoints,
                                 group_starts=group_starts)
+                if packets is not None and (
+                        report["sent_datagrams"] != packets or report["received_datagrams"] != packets
+                        or report.get("bootstrap_echo_retries") != int(server_kind == "libcoap" and security == "oscore")):
+                    raise ValueError("peer bootstrap or timed datagram totals differ from the selected exchange")
                 if report["warmup"] != warmup:
                     raise ValueError("mismatched warmup")
                 if not cpu_gated:
@@ -733,7 +772,7 @@ def measure(server, client, size, operations, warmup, timeout_ms, policy, securi
                             cpu_boundary=("post-warmup ready/run to measured/report; excludes JSON formatting"
                                           if cpu_gated else "ready/run through JSON formatting"),
                             server_kind=server_kind, requested_operations_per_second=rate,
-                            server_resources=startup,
+                            server_resources=startup, expected_exchange=expect_exchange,
                             concurrency=concurrency, message_type=message_type, independent_endpoints=independent_endpoints,
                             admission_diagnostics=admission_diagnostics,
                             phase_timeout_seconds=phase_timeout_seconds,
@@ -794,6 +833,8 @@ def main():
     parser.add_argument("--security", choices=("unprotected", "oscore"), required=True)
     parser.add_argument("--server-kind", choices=SERVER_KINDS,
                         default="coaptic-reusable")
+    parser.add_argument("--expect-exchange", choices=("piggyback", "separate-con"),
+                        help="establish the peer before timing and check exact measured datagram totals")
     parser.add_argument("--resource-profile", choices=tuple(PROFILE_SIZES), default="host-control")
     parser.add_argument("--rate", type=int)
     parser.add_argument("--concurrency", type=int, choices=range(1, 5), default=1)
@@ -815,7 +856,8 @@ def main():
                          phase_timeout_seconds=args.phase_timeout_seconds,
                          concurrency=args.concurrency, message_type=args.message_type, independent_endpoints=args.independent_endpoints,
                          admission_diagnostics=args.admission_diagnostics, resource_profile=args.resource_profile,
-                         windows_process_cycles=args.windows_process_cycles, group_starts=args.group_starts)
+                         windows_process_cycles=args.windows_process_cycles, group_starts=args.group_starts,
+                         expect_exchange=args.expect_exchange)
     except Exception as error:
         args.output.write_text(json.dumps(dict(passed=False, error_type=type(error).__name__,
                                               reason=str(error),

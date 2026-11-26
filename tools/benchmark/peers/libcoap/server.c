@@ -5,6 +5,7 @@
 
 static unsigned char *body;
 static size_t body_size;
+static uint64_t validator;
 
 static int read_credentials(const char *path, uint8_t material[24]) {
     FILE *file = fopen(path, "rb");
@@ -50,7 +51,7 @@ static void representation(coap_resource_t *resource, coap_session_t *session,
         /* The immutable fixture is determined uniquely by its length. Supply
          * its nonzero validator instead of hashing the body per transfer.
          * -1 omits Max-Age's already implicit 60-second default. */
-        COAP_MEDIATYPE_APPLICATION_OCTET_STREAM, -1, (uint64_t)body_size,
+        COAP_MEDIATYPE_APPLICATION_OCTET_STREAM, -1, validator,
         body_size, body, NULL, NULL);
 }
 
@@ -63,8 +64,10 @@ int main(int argc, char **argv) {
         coap_cleanup();
         return 0;
     }
+    int fixture_etag = argc > 1 && strcmp(argv[argc - 1], "--fixture-etag") == 0;
+    if (fixture_etag) --argc;
     if (argc != 4 && argc != 6) {
-        fprintf(stderr, "bench-libcoap HOST PORT BYTES [oscore|dtls CREDENTIALS]\n");
+        fprintf(stderr, "bench-libcoap HOST PORT BYTES [oscore|dtls CREDENTIALS] [--fixture-etag]\n");
         return 2;
     }
     int oscore = argc == 6 && strcmp(argv[4], "oscore") == 0;
@@ -79,6 +82,8 @@ int main(int argc, char **argv) {
     if (*end || port < 1 || port > 65535) return 2;
     if (strcmp(argv[1], "127.0.0.1") != 0) return 2;
     body_size = (size_t)size;
+    /* The matched native client verifies the bytes of the "fixture" ETag. */
+    validator = fixture_etag ? UINT64_C(0x66697874757265) : (uint64_t)body_size;
     body = malloc(body_size);
     if (!body) return 2;
     for (size_t index = 0; index < body_size; ++index) body[index] = (unsigned char)(index % 251);

@@ -167,6 +167,7 @@ struct RunOptions {
     independent_endpoints: bool,
     group_starts: bool,
     long_window: bool,
+    peer_bootstrap: bool,
 }
 impl Default for RunOptions {
     fn default() -> Self {
@@ -179,6 +180,7 @@ impl Default for RunOptions {
             independent_endpoints: false,
             group_starts: false,
             long_window: false,
+            peer_bootstrap: false,
         }
     }
 }
@@ -190,6 +192,13 @@ fn run_options(args: &mut Vec<String>) -> Result<RunOptions, &'static str> {
     let mut index = 1;
     while index < args.len() {
         match args[index].as_str() {
+            "--peer-bootstrap" => {
+                if options.peer_bootstrap {
+                    return Err("duplicate peer bootstrap");
+                }
+                options.peer_bootstrap = true;
+                args.remove(index);
+            }
             "--long-window" => {
                 if options.long_window {
                     return Err("duplicate long window");
@@ -286,6 +295,11 @@ fn run_options(args: &mut Vec<String>) -> Result<RunOptions, &'static str> {
         && (options.concurrency == 1 || options.message_type != MessageType::Con)
     {
         return Err("independent endpoints require C2..4 CON");
+    }
+    if options.peer_bootstrap
+        && (options.concurrency != 1 || options.message_type != MessageType::Con)
+    {
+        return Err("peer bootstrap requires a single CON endpoint");
     }
     if options.group_starts && (options.rate.is_none() || !options.independent_endpoints) {
         return Err("group starts require paced independent CON endpoints");
@@ -688,6 +702,64 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+// Establish this App, socket and replay window before the measurement gate.
+fn bootstrap_peer<T: DatagramIo>(
+    client: &mut Client<T>,
+    peer: Endpoint,
+    clock: &Instant,
+    timeout: Duration,
+    protected: bool,
+    output: &mut [u8],
+    expected: &[u8],
+) -> Result<usize, &'static str> {
+    let deadline = Instant::now() + timeout;
+    let mut echo = None;
+    loop {
+        let get = client.get("bench").to(peer);
+        let get = if let Some(value) = echo {
+            get.echo(value)
+        } else {
+            get
+        };
+        let call = get
+            .send(clock.elapsed().as_millis() as u64)
+            .map_err(|_| "bootstrap send")?;
+        loop {
+            if Instant::now() >= deadline {
+                return Err("bootstrap timeout");
+            }
+            client
+                .poll(clock.elapsed().as_millis() as u64)
+                .map_err(|_| "bootstrap poll")?;
+            let Some(result) = client
+                .take_response_into(call, output)
+                .map_err(|_| "bootstrap output")?
+            else {
+                continue;
+            };
+            let response = result.map_err(|_| "bootstrap call")?;
+            if echo.is_none()
+                && protected
+                && response.code() == Code::UNAUTHORIZED
+                && response.payload().is_empty()
+                && !response.payload_truncated()
+            {
+                let mut options = response.received_options();
+                if options.next().map(|option| option.number())
+                    != Some(coaptic::message::OptionNumber::ECHO)
+                    || options.next().is_some()
+                {
+                    return Err("unexpected protected Echo challenge options");
+                }
+                echo = Some(response.echo_option().ok_or("missing protected Echo")?);
+                break;
+            }
+            verify(&response, expected)?;
+            return Ok(usize::from(echo.is_some()));
+        }
+    }
+}
+
 fn run_client<T: ClientIo>(
     args: &[String],
     options: RunOptions,
@@ -695,7 +767,7 @@ fn run_client<T: ClientIo>(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let gated = options.gate != GateMode::None;
     if !(8..=9).contains(&args.len()) {
-        return Err("usage: bench-native-client PORT BYTES OPERATIONS WARMUP TIMEOUT_MS spin|sleep1 unprotected|oscore [CREDENTIALS] [--gated|--cpu-gated] [--rate OPS_PER_SEC] [--concurrency 1..4] [--message-type con|non] [--admission-diagnostics] [--independent-endpoints] [--group-starts] [--long-window]".into());
+        return Err("usage: bench-native-client PORT BYTES OPERATIONS WARMUP TIMEOUT_MS spin|sleep1 unprotected|oscore [CREDENTIALS] [--gated|--cpu-gated] [--rate OPS_PER_SEC] [--concurrency 1..4] [--message-type con|non] [--admission-diagnostics] [--independent-endpoints] [--group-starts] [--long-window] [--peer-bootstrap]".into());
     }
     let port: u16 = args[1].parse()?;
     let size: usize = args[2].parse()?;
@@ -713,7 +785,11 @@ fn run_client<T: ClientIo>(
     // This is the minimum request count for the fixed 1024-byte Block2 fixture.
     // Retries or smaller negotiated blocks can spend more; CountIo refuses them
     // at the same total bound instead of silently dropping a scheduled Call.
-    let minimum_planned_datagrams = outbound_budget(size, operations, warmup)?;
+    let minimum_planned_datagrams = outbound_budget(
+        size,
+        operations,
+        warmup + usize::from(options.peer_bootstrap),
+    )?;
     validate_schedule(&options, operations)?;
     if options.long_window && (timeout_ms != 3000 || args[6] != "spin") {
         return Err(
@@ -762,6 +838,19 @@ fn run_client<T: ClientIo>(
     let timing_heap_bytes = timings.capacity() * std::mem::size_of::<u64>();
     let clock = Instant::now();
     let timeout = Duration::from_millis(timeout_ms);
+    let bootstrap_echo_retries = if options.peer_bootstrap {
+        bootstrap_peer(
+            &mut client,
+            peers[0],
+            &clock,
+            timeout,
+            args[7] == "oscore",
+            &mut output,
+            &expected,
+        )?
+    } else {
+        0
+    };
     let warm_options = RunOptions {
         rate: None,
         admission_diagnostics: false,
@@ -864,7 +953,7 @@ fn run_client<T: ClientIo>(
     let long_window = options.long_window;
     let paced_span_limit_seconds = paced_span_limit(&options);
     println!(
-        "{{\"long_window\":{long_window},\"paced_span_limit_seconds\":{paced_span_limit_seconds},\"operation_deadline_ms\":{timeout_ms},\"outbound_datagram_limit\":{MAX_OUTBOUND_DATAGRAMS},\"minimum_planned_datagrams\":{minimum_planned_datagrams},\"schema\":\"coaptic-native-complete/1\",\"bytes\":{size},\"requested_operations\":{operations},\"attempted\":{attempted},\"completed\":{completed},\"failed\":{failed},\"unattempted\":{unattempted},\"failure\":{failure_json},\"concurrency\":{concurrency},\"message_type\":\"{message_type}\",\"peak_pending\":{peak_pending},\"cancelled_inflight\":{cancelled_inflight},\"pending_call_metadata_bytes\":{pending_call_metadata_bytes},\"rx_body_slots\":{rx_body_slots},\"total_sent_datagrams\":{total_sent_datagrams},\"warmup\":{warmup},\"elapsed_ns\":{elapsed},\"scheduled_rate_ops_per_second\":{rate_json},\"achieved_ops_per_second\":{achieved_rate},\"scheduled_dispatch_span_ns\":{span_json},\"pacing_late_operations\":{pacing_late_operations},\"pacing_missed_period_operations\":{pacing_missed_period_operations},\"pacing_total_lateness_ns\":{pacing_lateness_ns},\"pacing_max_lateness_ns\":{pacing_max_lateness_ns},\"pacing_dropped_operations\":0,\"pacing_semantics\":\"absolute operation-start deadlines; bounded outstanding Calls; late starts catch up without dropping; elapsed includes pacing; latencies exclude pacing\",\"received_datagrams\":{received},\"sent_datagrams\":{sent},\"latencies_ns\":{timings:?},\"core_heap_limit_bytes\":{heap_limit},\"app_inline_bytes\":{app_inline_bytes},\"verification_heap_bytes\":{verification_heap_bytes},\"timing_heap_bytes\":{timing_heap_bytes},\"udp_scratch_bytes\":1473,\"policy\":\"{}\",\"security\":\"{}\",\"measurement\":\"Coaptic client/server diagnostic; complete authenticated body verification; setup excluded; no durable recovery; heap request excludes allocator overhead; App inline includes UDP scratch\"{admission_json}{endpoint_json}{overlap_json}{group_json}}}",
+        "{{\"bootstrap_echo_retries\":{bootstrap_echo_retries},\"long_window\":{long_window},\"paced_span_limit_seconds\":{paced_span_limit_seconds},\"operation_deadline_ms\":{timeout_ms},\"outbound_datagram_limit\":{MAX_OUTBOUND_DATAGRAMS},\"minimum_planned_datagrams\":{minimum_planned_datagrams},\"schema\":\"coaptic-native-complete/1\",\"bytes\":{size},\"requested_operations\":{operations},\"attempted\":{attempted},\"completed\":{completed},\"failed\":{failed},\"unattempted\":{unattempted},\"failure\":{failure_json},\"concurrency\":{concurrency},\"message_type\":\"{message_type}\",\"peak_pending\":{peak_pending},\"cancelled_inflight\":{cancelled_inflight},\"pending_call_metadata_bytes\":{pending_call_metadata_bytes},\"rx_body_slots\":{rx_body_slots},\"total_sent_datagrams\":{total_sent_datagrams},\"warmup\":{warmup},\"elapsed_ns\":{elapsed},\"scheduled_rate_ops_per_second\":{rate_json},\"achieved_ops_per_second\":{achieved_rate},\"scheduled_dispatch_span_ns\":{span_json},\"pacing_late_operations\":{pacing_late_operations},\"pacing_missed_period_operations\":{pacing_missed_period_operations},\"pacing_total_lateness_ns\":{pacing_lateness_ns},\"pacing_max_lateness_ns\":{pacing_max_lateness_ns},\"pacing_dropped_operations\":0,\"pacing_semantics\":\"absolute operation-start deadlines; bounded outstanding Calls; late starts catch up without dropping; elapsed includes pacing; latencies exclude pacing\",\"received_datagrams\":{received},\"sent_datagrams\":{sent},\"latencies_ns\":{timings:?},\"core_heap_limit_bytes\":{heap_limit},\"app_inline_bytes\":{app_inline_bytes},\"verification_heap_bytes\":{verification_heap_bytes},\"timing_heap_bytes\":{timing_heap_bytes},\"udp_scratch_bytes\":1473,\"policy\":\"{}\",\"security\":\"{}\",\"measurement\":\"Coaptic client diagnostic; complete body verification under selected security; setup excluded; no durable recovery; heap request excludes allocator overhead; App inline includes UDP scratch\"{admission_json}{endpoint_json}{overlap_json}{group_json}}}",
         args[6], args[7]
     );
     std::io::stdout().flush()?;
